@@ -24883,7 +24883,7 @@ def get_dereference_from_blacklist():
 
 
 @functools.lru_cache(maxsize=512)
-def dereference_from(addr):
+def dereference_from(addr, phys=False):
     """Create dereference array."""
 
     if not is_alive():
@@ -24917,25 +24917,29 @@ def dereference_from(addr):
         if len(addr_list) > 1 and addr < 0x100:
             break
 
-        # check non-address
-        if not is_valid_addr(addr):
-            break
-
         # goto next
-        addr = read_int_from_memory(addr)
+        if phys and len(addr_list) == 1:
+            mem = read_physmem(addr, current_arch.ptrsize)
+            unpack = u32 if current_arch.ptrsize == 4 else u64
+            addr = unpack(mem)
+        else:
+            # check non-address
+            if not is_valid_addr(addr):
+                break
+            addr = read_int_from_memory(addr)
         recursion -= 1
 
     return addr_list, error
 
 
 @functools.lru_cache(maxsize=512)
-def to_string_dereference_from(value, skip_idx=0):
+def to_string_dereference_from(value, skip_idx=0, phys=False):
     """Create string from dereference array"""
     string_color = get_gef_setting("theme.dereference_string")
     nb_max_string_length = get_gef_setting("context.nb_max_string_length")
 
     # dereference
-    addrs, error = dereference_from(value)
+    addrs, error = dereference_from(value, phys=phys)
 
     # if addrs has one element and it is address with error (e.g.: address_A -> [loop detected]),
     # don't skip the element even if skip_idx=1
@@ -25012,9 +25016,10 @@ class DereferenceCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
                         help="the memory address you want to dump. (default: current_arch.sp)")
-    parser.add_argument("nb_lines", metavar="NB_LINES", nargs="?", type=lambda x: int(x, 0), default=0x10,
+    parser.add_argument("nb_lines", metavar="NB_LINES", nargs="?", type=lambda x: int(x, 0), default=0x40,
                         help="the count of lines. (default: %(default)s)")
     parser.add_argument("--slub-contains", action="store_true", help="display slub_cache name if available (x64 kernel only).")
+    parser.add_argument("--phys", action="store_true", help="treat ADDRESS as a physical address.")
     parser.add_argument("--uniq", action="store_true", help="display with uniq.")
     parser.add_argument("--is-addr", action="store_true", help="display only valid address.")
     parser.add_argument("--is-not-addr", action="store_true", help="display only invalid address.")
@@ -25036,7 +25041,7 @@ class DereferenceCommand(GenericCommand):
         return
 
     @staticmethod
-    def pprint_dereferenced(addr, idx, tag=None):
+    def pprint_dereferenced(addr, idx, tag=None, phys=False):
         base_address_color = get_gef_setting("theme.dereference_base_address")
         registers_color = get_gef_setting("theme.dereference_register_value")
         memalign = current_arch.ptrsize
@@ -25044,12 +25049,12 @@ class DereferenceCommand(GenericCommand):
         offset = idx * memalign
         current_address = align_address(addr + offset)
 
-        addrs, error = dereference_from(current_address)
+        addrs, error = dereference_from(current_address, phys=phys)
         if len(addrs) == 1 and not error: # cannot access this area
             raise
 
         # create address link list
-        link = to_string_dereference_from(current_address, skip_idx=1)
+        link = to_string_dereference_from(current_address, skip_idx=1, phys=phys)
 
         # craete line of one entry
         addr_colored = Color.colorify(format_address(addrs[0]), base_address_color)
@@ -25059,7 +25064,12 @@ class DereferenceCommand(GenericCommand):
             line = f"{addr_colored}{VERTICAL_LINE}{offset:+#07x}{VERTICAL_LINE}{idx:+04d}: {link:{memalign * 2 + 2}s}"
 
         # add extra info (retaddr, canary, cookie, register)
-        current_address_value = read_int_from_memory(current_address)
+        if phys:
+            mem = read_physmem(current_address, current_arch.ptrsize)
+            unpack = u32 if current_arch.ptrsize == 4 else u64
+            current_address_value = unpack(mem)
+        else:
+            current_address_value = read_int_from_memory(current_address)
         extra = []
 
         # retaddr info
@@ -25085,15 +25095,17 @@ class DereferenceCommand(GenericCommand):
                 extra.append("retaddr[{:d}]".format(i))
                 break
 
-        # canary info
-        res = gef_read_canary()
-        if res:
-            canary, location = res
-            if current_address_value == canary:
-                extra.append("canary")
+        if is_qemu_system() or is_vmware() or is_kgdb():
+            pass
+        else:
+            # canary info
+            res = gef_read_canary()
+            if res:
+                canary, location = res
+                if current_address_value == canary:
+                    extra.append("canary")
 
-        # mangle cookie
-        if not is_qemu_system() and not is_in_kernel():
+            # mangle cookie
             res = PtrDemangleCommand.get_cookie()
             if res:
                 cookie = res
@@ -25138,10 +25150,15 @@ class DereferenceCommand(GenericCommand):
         else:
             start_address = args.location
 
-        if args.slub_contains:
+        if args.slub_contains or args.phys:
             if not (is_qemu_system() or is_kgdb() or is_vmware()):
                 err("Unsupported")
                 return
+
+        if args.phys:
+            _read_int_from_memory = lambda x: (u32 if ptr_width() == 4 else u64)(read_physmem(x, ptr_width()))
+        else:
+            _read_int_from_memory = read_int_from_memory
 
         from_idx = args.nb_lines * self.repeat_count
         to_idx = args.nb_lines * (self.repeat_count + 1)
@@ -25162,7 +25179,7 @@ class DereferenceCommand(GenericCommand):
             try:
                 # uniq filtering
                 if args.uniq:
-                    v = read_int_from_memory(start_address + idx * current_arch.ptrsize)
+                    v = _read_int_from_memory(start_address + idx * current_arch.ptrsize)
                     if v in seen:
                         if out == [] or out[-1] != "*":
                             out.append("*")
@@ -25170,16 +25187,16 @@ class DereferenceCommand(GenericCommand):
                     seen.add(v)
                 # valid address filtering
                 if args.is_addr:
-                    v = read_int_from_memory(start_address + idx * current_arch.ptrsize)
+                    v = _read_int_from_memory(start_address + idx * current_arch.ptrsize)
                     if not is_valid_addr(v):
                         continue
                 # invalid address filtering
                 if args.is_not_addr:
-                    v = read_int_from_memory(start_address + idx * current_arch.ptrsize)
+                    v = _read_int_from_memory(start_address + idx * current_arch.ptrsize)
                     if is_valid_addr(v):
                         continue
                 # dereference
-                line = DereferenceCommand.pprint_dereferenced(start_address, idx)
+                line = DereferenceCommand.pprint_dereferenced(start_address, idx, phys=args.phys)
                 out.append(line)
             except (RuntimeError, gdb.MemoryError):
                 # e.g.: nop DWORD PTR [rax+rax*1+0x0]
@@ -25195,7 +25212,7 @@ class DereferenceCommand(GenericCommand):
 
             # multiple level dump
             if args.depth - 1 > 0:
-                v = read_int_from_memory(start_address + idx * current_arch.ptrsize)
+                v = _read_int_from_memory(start_address + idx * current_arch.ptrsize)
                 if v % current_arch.ptrsize == 0 and is_valid_addr(v):
                     ret = gdb.execute("dereference --depth {:d} --no-pager {:#x}".format(args.depth - 1, v), to_string=True).strip()
                     for line in ret.splitlines():

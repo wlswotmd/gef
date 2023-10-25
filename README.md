@@ -319,7 +319,7 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/telescope.png)
     * It supports blacklist address features (to avoid dying when touching the address mapped to the serial device).
     * It also shows the symbol if available.
-    * It supports some new options: `--is-addr`, `--is-not-addr`, `--uniq`, `--depth` and `--slub-contains`.
+    * It supports some new options: `--is-addr`, `--is-not-addr`, `--uniq`, `--depth`, `--slub-contains` and `--phys`.
 * `proc-info`: is improved.
     * It displays some additional informations.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/proc-info.png)
