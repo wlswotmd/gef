@@ -11826,6 +11826,10 @@ class GenericCommand(gdb.Command):
             example = Color.colorify("\nExample:\n", "bold yellow") + self._example_.strip()
             self.__doc__ += example + "\n"
 
+        if self._note_:
+            note = Color.colorify("\nNote:\n", "bold yellow") + self._note_.strip()
+            self.__doc__ += note + "\n"
+
         if hasattr(self, "_aliases_") and self._aliases_:
             aliases = Color.colorify("\nAliases:\n", "bold yellow") + str(self._aliases_)
             self.__doc__ += aliases + "\n"
@@ -11876,7 +11880,11 @@ class GenericCommand(gdb.Command):
 
     @abc.abstractproperty
     def _example_(self):
-        return ""
+        pass
+
+    @abc.abstractproperty
+    def _note_(self):
+        pass
 
     @abc.abstractmethod
     def do_invoke(self, argv):
@@ -11941,10 +11949,11 @@ class GenericCommand(gdb.Command):
 #     _category_ = "99. GEF Maintenance Command"
 #     _aliases_ = ["tpl-fk"]
 #
-#    parser = argparse.ArgumentParser(prog=_cmdline_)
-#    _syntax_ = parser.format_help()
+#     parser = argparse.ArgumentParser(prog=_cmdline_)
+#     _syntax_ = parser.format_help()
 #
 #     _example_ = "{:s}".format(_cmdline_)
+#     _note_ = "..."
 #
 #     def __init__(self):
 #         super().__init__(complete=gdb.COMPLETE_FILENAME)
@@ -12390,8 +12399,9 @@ class HighlightAddCommand(GenericCommand):
     parser.add_argument("color", metavar="COLOR", nargs="+", help="the color you want use to highlight.")
     _syntax_ = parser.format_help()
 
-    _example_ = '{:s} "call   rcx" bold yellow\n'.format(_cmdline_)
-    _example_ += "use config `gef config highlight.regex true` if need regex"
+    _example_ = '{:s} "call   rcx" bold yellow'.format(_cmdline_)
+
+    _note_ = "use config `gef config highlight.regex true` if need regex."
 
     @parse_args
     def do_invoke(self, args):
@@ -15417,9 +15427,9 @@ class ReadSystemRegisterCommand(GenericCommand):
     parser.add_argument("reg_name", metavar="REGISTER_NAME", help="register name you want to read a value.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} TTBR0\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "NOTE: Attempting to read a non-existing register raises an undefined exception."
+    _example_ = "{:s} TTBR0".format(_cmdline_)
+
+    _note_ = "Attempting to read a non-existing register raises an undefined exception."
 
     # thanks to https://github.com/gdelugre/ida-arm-system-highlight
     # Extracted from the XML specifications for v8.7-A (2021-06).
@@ -16126,13 +16136,12 @@ class UnicornEmulateCommand(GenericCommand):
 
     _example_ = "{:s} -g 10                        # from $pc to the point where 4 instructions are executed\n".format(_cmdline_)
     _example_ += "{:s} -n 5                         # from $pc to 5 later instructions (assume it is no branch)\n".format(_cmdline_)
-    _example_ += "{:s} -t 0x805678a4 -o /tmp/emu.py # from $pc to specified address with saving script\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "NOTE:\n"
-    _example_ += "* unicorn does not support emulating syscall.\n"
-    _example_ += "* unicorn does not support some instructions. (e.g.: xsavec, xrstor, vpbroadcastb, etc.)\n"
-    _example_ += "* unicorn does not emulate ARM kernel-provided-user-helpers like $pc=0xffff0fe0, 0xffff0fc0, etc.\n"
-    _example_ += "  see: https://www.kernel.org/doc/Documentation/arm/kernel_user_helpers.txt"
+    _example_ += "{:s} -t 0x805678a4 -o /tmp/emu.py # from $pc to specified address with saving script".format(_cmdline_)
+
+    _note_ = "unicorn does not support emulating syscall.\n"
+    _note_ += "unicorn does not support some instructions. (e.g.: xsavec, xrstor, vpbroadcastb, etc.)\n"
+    _note_ += "unicorn does not emulate ARM kernel-provided-user-helpers like $pc=0xffff0fe0, 0xffff0fc0, etc.\n"
+    _note_ += "see: https://www.kernel.org/doc/Documentation/arm/kernel_user_helpers.txt"
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -16598,11 +16607,12 @@ class CapstoneDisassembleCommand(GenericCommand):
     }
 
     _example_ = "{:s} -l 50 $pc                            # dump from $pc up to 50 lines later\n".format(_cmdline_)
-    _example_ += "{:s} -l 50 $pc arch=ARM mode=ARM endian=1 # specify arch, mode and endian (1:big endian)\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "Available architectures and modes:\n"
+    _example_ += "{:s} -l 50 $pc arch=ARM mode=ARM endian=1 # specify arch, mode and endian (1:big endian)".format(_cmdline_)
+
+    _note_ = "Available architectures and modes:\n"
     for arch in valid_arch_modes:
-        _example_ += " - {:8s} {}\n".format(arch, " / ".join(valid_arch_modes[arch]))
+        _note_ += " - {:8s} {}\n".format(arch, " / ".join(valid_arch_modes[arch]))
+    _note_ = _note_.rstrip()
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -18257,17 +18267,18 @@ class AsmListCommand(GenericCommand):
 
     _example_ = "{:s} -a X86 -m 64\n".format(_cmdline_)
     _example_ += "{:s} -a X86 -m 32\n".format(_cmdline_)
-    _example_ += "{:s} -a X86 -m 16\n".format(_cmdline_)
-    _example_ += "  F0 (LOCK prefix) is ignored\n"
-    _example_ += "  F2/F3 (REPNE/REP prefix) are ignored\n"
-    _example_ += "  2E/36/3E/26/64/65 (CS/SS/DS/ES/FS/GS override prefix) are ignored\n"
-    _example_ += "  2E/3E (branch hint prefix) are ignored\n"
-    _example_ += "  66 (operand size prefix) is included\n"
-    _example_ += "  67 (address size prefix) is ignored\n"
-    _example_ += "  40-4F (REX prefix) are ignored\n"
-    _example_ += "  C4/C5 (VEX prefix) are ignored\n"
-    _example_ += "  8F (XOP prefix) is ignored\n"
-    _example_ += "  62 (EVEX prefix) is ignored"
+    _example_ += "{:s} -a X86 -m 16".format(_cmdline_)
+
+    _note_ = "- F0 (LOCK prefix) is ignored\n"
+    _note_ += "- F2/F3 (REPNE/REP prefix) are ignored\n"
+    _note_ += "- 2E/36/3E/26/64/65 (CS/SS/DS/ES/FS/GS override prefix) are ignored\n"
+    _note_ += "- 2E/3E (branch hint prefix) are ignored\n"
+    _note_ += "- 66 (operand size prefix) is included\n"
+    _note_ += "- 67 (address size prefix) is ignored\n"
+    _note_ += "- 40-4F (REX prefix) are ignored\n"
+    _note_ += "- C4/C5 (VEX prefix) are ignored\n"
+    _note_ += "- 8F (XOP prefix) is ignored\n"
+    _note_ += "- 62 (EVEX prefix) is ignored"
 
     def listup_x86(self, arch, mode):
         DISP64 = "1122334455667788"
@@ -20422,67 +20433,65 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
     _example_ = "{:s}                    # parse loaded binary\n".format(_cmdline_)
     _example_ += "{:s} -r                 # parse remote binary\n".format(_cmdline_)
     _example_ += "{:s} -f /path/to/binary # parse specified binary\n".format(_cmdline_)
-    _example_ += "{:s} -x                 # with hexdump\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "Simplified DWARF Exception structure:\n"
-    _example_ += "\n"
-    _example_ += "\n"
-    _example_ += "[OLD IMPLEMENTATION]\n"
-    _example_ += " libgcc_s.so bss area               ELF Program Header (for .eh_frame_hdr)\n"
-    _example_ += "+-----------------------+      +-> +----------------+\n"
-    _example_ += "| ...                   |      |   | p_type         |\n"
-    _example_ += "| frame_hdr_cache_head  |---+  |   | p_flags        |\n"
-    _example_ += "+-frame_hdr_cache_entry-+ <-+  |   | p_offset       |\n"
-    _example_ += "| pc_low                |      |   | p_vaddr        |----+\n"
-    _example_ += "| pc_high               |      |   | p_paddr        |    |\n"
-    _example_ += "| load_base             |      |   | p_filesz       |    |\n"
-    _example_ += "| p_eh_frame_hdr        |------+   | p_memsz        |    |\n"
-    _example_ += "| p_dynamic             |          | p_align        |    |         [NEW IMPLEMENTATION]\n"
-    _example_ += "| link                  |---+      +----------------+    |          _dlfo_main@ld.so rodata area\n"
-    _example_ += "+-frame_hdr_cache_entry-+ <-+                            |          _dlfo_nodelete_mappings@ld.so rodata area\n"
-    _example_ += "| pc_low                |                                |         +-------------+\n"
-    _example_ += "| pc_high               |                                |         | map_start   |\n"
-    _example_ += "| load_base             |                                |         | map_end     |\n"
-    _example_ += "| p_eh_frame_hdr        |                                |         | map         |\n"
-    _example_ += "| p_dynamic             |                                | <-------| eh_frame    |\n"
-    _example_ += "| link                  |                                |         | (eh_dbase)  |\n"
-    _example_ += "+-----------------------+                                |         | (eh_count)  |\n"
-    _example_ += "The frame_hdr_cache_head and frame_hdr_cache_entry are   |         +-------------+\n"
-    _example_ += "initialized the first time they are called.              |\n"
-    _example_ += "                                                         |\n"
-    _example_ += "                           +-----------------------------+\n"
-    _example_ += "                           |\n"
-    _example_ += ".eh_frame_hdr              |      .eh_frame                                           .gcc_except_table\n"
-    _example_ += "+----------------------+ <-+  +-> +-CIE-------------------+ <-+                   +-> +-LSDA-----------------+\n"
-    _example_ += "| version              |      |   | length                |   |                   |   | lpstart_enc          |\n"
-    _example_ += "| eh_frame_ptr_enc     |      |   | cie_id (=0)           |   |                   |   | ttype_enc            |\n"
-    _example_ += "| fde_count_enc        |      |   | version               |   |                   |   | ttype_off            |\n"
-    _example_ += "| table_enc            |      |   | augmentation_string   |   |                   |   | call_site_encoding   |\n"
-    _example_ += "| eh_frame_ptr         |------+   | code_alignment_factor |   |                   |   | call_site_table_len  |\n"
-    _example_ += "| fde_count            |          | data_alignment_factor |   |                   |   |+-CallSite-----------+|\n"
-    _example_ += "| Table[0] initial_loc |          | retaddr_register      |   |                   |   || call_site_start    || try_start\n"
-    _example_ += "| Table[0] fde         |---+      | augmentation_len      |   |                   |   || call_site_length   || try_end\n"
-    _example_ += "| Table[1] initial_loc |   |      | augmentation_data[0]  |   |                   |   || landing_pad        || catch_start\n"
-    _example_ += "| Table[1] fde         |   |      | ...                   |-(augmentation=='P')-+ |   || action             ||---+\n"
-    _example_ += "| ...                  |   |      | ...                   |   |                 | |   |+-CallSite-----------+|   |\n"
-    _example_ += "| Table[N] initial_loc |   |      | augmentation_data[N]  |   |                 | |   || ...                ||   |\n"
-    _example_ += "| Table[N] fde         |   |      | program               |   |                 | |   |+-ActionTable--------+| <-+\n"
-    _example_ += "+----------------------+   +----> +-FDE-------------------+   |                 | |   || ar_filter          ||---+\n"
-    _example_ += "                                  | length                |   |                 | |   || ar_disp            ||   |\n"
-    _example_ += "                                  | cie_pointer (!=0)     |---+                 | |   |+-ActionTable--------+|   |\n"
-    _example_ += "                                  | pc_begin              | try_catch_base      | |   || ...                ||   |\n"
-    _example_ += "                                  | pc_range              |                     | |   |+-TTypeTable---------+|   |\n"
-    _example_ += "                                  | augmentation_len      |                     | |   || ...(stored upward) ||   |\n"
-    _example_ += "                                  | augmentation_data[0]  |                     | |   |+-TTypeTable---------+| <-+\n"
-    _example_ += "                                  | ...                   |-(augmentation=='L')-|-+   || ttype              ||---> type_info\n"
-    _example_ += "                                  | augmentation_data[N]  |                     |     |+--------------------+|\n"
-    _example_ += "                                  | program               |                     |     +-LSDA-----------------+\n"
-    _example_ += "                                  +-CIE-------------------+   +-----------------+     | ...                  |\n"
-    _example_ += "                                  | ...                   |   |                       +----------------------+\n"
-    _example_ += "                                  +-FDE-------------------+   |\n"
-    _example_ += "                                  | ...                   |   |\n"
-    _example_ += "                                  +-----------------------+   |\n"
-    _example_ += "                                                              +----> personality_routine(=__gxx_personality_v0@libstdc++.so)"
+    _example_ += "{:s} -x                 # with hexdump".format(_cmdline_)
+
+    _note_ = "Simplified DWARF Exception structure:\n"
+    _note_ += "[OLD IMPLEMENTATION]\n"
+    _note_ += " libgcc_s.so bss area               ELF Program Header (for .eh_frame_hdr)\n"
+    _note_ += "+-----------------------+      +-> +----------------+\n"
+    _note_ += "| ...                   |      |   | p_type         |\n"
+    _note_ += "| frame_hdr_cache_head  |---+  |   | p_flags        |\n"
+    _note_ += "+-frame_hdr_cache_entry-+ <-+  |   | p_offset       |\n"
+    _note_ += "| pc_low                |      |   | p_vaddr        |----+\n"
+    _note_ += "| pc_high               |      |   | p_paddr        |    |\n"
+    _note_ += "| load_base             |      |   | p_filesz       |    |\n"
+    _note_ += "| p_eh_frame_hdr        |------+   | p_memsz        |    |\n"
+    _note_ += "| p_dynamic             |          | p_align        |    |         [NEW IMPLEMENTATION]\n"
+    _note_ += "| link                  |---+      +----------------+    |          _dlfo_main@ld.so rodata area\n"
+    _note_ += "+-frame_hdr_cache_entry-+ <-+                            |          _dlfo_nodelete_mappings@ld.so rodata area\n"
+    _note_ += "| pc_low                |                                |         +-------------+\n"
+    _note_ += "| pc_high               |                                |         | map_start   |\n"
+    _note_ += "| load_base             |                                |         | map_end     |\n"
+    _note_ += "| p_eh_frame_hdr        |                                |         | map         |\n"
+    _note_ += "| p_dynamic             |                                | <-------| eh_frame    |\n"
+    _note_ += "| link                  |                                |         | (eh_dbase)  |\n"
+    _note_ += "+-----------------------+                                |         | (eh_count)  |\n"
+    _note_ += "The frame_hdr_cache_head and frame_hdr_cache_entry are   |         +-------------+\n"
+    _note_ += "initialized the first time they are called.              |\n"
+    _note_ += "                                                         |\n"
+    _note_ += "                           +-----------------------------+\n"
+    _note_ += "                           |\n"
+    _note_ += ".eh_frame_hdr              |      .eh_frame                                           .gcc_except_table\n"
+    _note_ += "+----------------------+ <-+  +-> +-CIE-------------------+ <-+                   +-> +-LSDA-----------------+\n"
+    _note_ += "| version              |      |   | length                |   |                   |   | lpstart_enc          |\n"
+    _note_ += "| eh_frame_ptr_enc     |      |   | cie_id (=0)           |   |                   |   | ttype_enc            |\n"
+    _note_ += "| fde_count_enc        |      |   | version               |   |                   |   | ttype_off            |\n"
+    _note_ += "| table_enc            |      |   | augmentation_string   |   |                   |   | call_site_encoding   |\n"
+    _note_ += "| eh_frame_ptr         |------+   | code_alignment_factor |   |                   |   | call_site_table_len  |\n"
+    _note_ += "| fde_count            |          | data_alignment_factor |   |                   |   |+-CallSite-----------+|\n"
+    _note_ += "| Table[0] initial_loc |          | retaddr_register      |   |                   |   || call_site_start    || try_start\n"
+    _note_ += "| Table[0] fde         |---+      | augmentation_len      |   |                   |   || call_site_length   || try_end\n"
+    _note_ += "| Table[1] initial_loc |   |      | augmentation_data[0]  |   |                   |   || landing_pad        || catch_start\n"
+    _note_ += "| Table[1] fde         |   |      | ...                   |-(augmentation=='P')-+ |   || action             ||---+\n"
+    _note_ += "| ...                  |   |      | ...                   |   |                 | |   |+-CallSite-----------+|   |\n"
+    _note_ += "| Table[N] initial_loc |   |      | augmentation_data[N]  |   |                 | |   || ...                ||   |\n"
+    _note_ += "| Table[N] fde         |   |      | program               |   |                 | |   |+-ActionTable--------+| <-+\n"
+    _note_ += "+----------------------+   +----> +-FDE-------------------+   |                 | |   || ar_filter          ||---+\n"
+    _note_ += "                                  | length                |   |                 | |   || ar_disp            ||   |\n"
+    _note_ += "                                  | cie_pointer (!=0)     |---+                 | |   |+-ActionTable--------+|   |\n"
+    _note_ += "                                  | pc_begin              | try_catch_base      | |   || ...                ||   |\n"
+    _note_ += "                                  | pc_range              |                     | |   |+-TTypeTable---------+|   |\n"
+    _note_ += "                                  | augmentation_len      |                     | |   || ...(stored upward) ||   |\n"
+    _note_ += "                                  | augmentation_data[0]  |                     | |   |+-TTypeTable---------+| <-+\n"
+    _note_ += "                                  | ...                   |-(augmentation=='L')-|-+   || ttype              ||---> type_info\n"
+    _note_ += "                                  | augmentation_data[N]  |                     |     |+--------------------+|\n"
+    _note_ += "                                  | program               |                     |     +-LSDA-----------------+\n"
+    _note_ += "                                  +-CIE-------------------+   +-----------------+     | ...                  |\n"
+    _note_ += "                                  | ...                   |   |                       +----------------------+\n"
+    _note_ += "                                  +-FDE-------------------+   |\n"
+    _note_ += "                                  | ...                   |   |\n"
+    _note_ += "                                  +-----------------------+   |\n"
+    _note_ += "                                                              +----> personality_routine(=__gxx_personality_v0@libstdc++.so)"
 
     # FDE data encoding
     DW_EH_PE_ptr      = 0x00
@@ -25076,11 +25085,11 @@ class DereferenceCommand(GenericCommand):
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} $sp 20\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "NOTE: Use blacklist feature if reading the address causes process crash.\n"
-    _example_ += "e.g.: `gef config dereference.blacklist \"[ [0xffffffffc9000000, 0xffffffffc9001000], ]\"`\n"
-    _example_ += "then `gef save`"
+    _example_ = "{:s} $sp 20".format(_cmdline_)
+
+    _note_ = "Use blacklist feature if reading the address causes process crash.\n"
+    _note_ += "e.g.: `gef config dereference.blacklist \"[ [0xffffffffc9000000, 0xffffffffc9001000], ]\"`\n"
+    _note_ += "then `gef save`"
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -41557,9 +41566,9 @@ class MmxSetCommand(GenericCommand):
     parser.add_argument("reg_and_value", metavar="REG=VALUE", help="MMX register and value you want to set.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} $mm0=0x1122334455667788\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "NOTE: Disable `-enable-kvm` option for qemu-system."
+    _example_ = "{:s} $mm0=0x1122334455667788".format(_cmdline_)
+
+    _note_ = "Disable `-enable-kvm` option for qemu-system."
 
     def execute_movq_mm(self, value, reg):
         REG_CODE = {
@@ -42746,8 +42755,9 @@ class U2dCommand(GenericCommand):
 
     _example_ = "{:s} 0xdeadbeef\n".format(_cmdline_)
     _example_ += "{:s} 0.12345\n".format(_cmdline_)
-    _example_ += "{:s} 1.2345e-1\n".format(_cmdline_)
-    _example_ += " * only ~64bit supported (Unsupported 80bit, 128bit)"
+    _example_ += "{:s} 1.2345e-1".format(_cmdline_)
+
+    _note_ = "Only ~64bit supported (Unsupported 80bit, 128bit)"
 
     def f2u(self, x):
         u = lambda a: struct.unpack("<I", a)[0]
@@ -46735,9 +46745,9 @@ class KernelTaskCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} -q\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n."
+    _example_ = "{:s} -q".format(_cmdline_)
+
+    _note_ = "This command needs CONFIG_RANDSTRUCT=n."
 
     def __init__(self):
         super().__init__()
@@ -48307,9 +48317,9 @@ class KernelModuleCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} -q\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n."
+    _example_ = "{:s} -q".format(_cmdline_)
+
+    _note_ = "This command needs CONFIG_RANDSTRUCT=n."
 
     def get_modules_list(self):
         modules = KernelAddressHeuristicFinder.get_modules()
@@ -48892,12 +48902,12 @@ class KernelBlockDevicesCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} -q\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n.\n"
-    _example_ += "NOTE: If there are too many block devices, detection will not be successful.\n"
-    _example_ += "This is because block devices are not managed in one place, \n"
-    _example_ += "so I use the list of bdev_cache obtained from the slub-dump results."
+    _example_ = "{:s} -q".format(_cmdline_)
+
+    _note_ = "This command needs CONFIG_RANDSTRUCT=n.\n"
+    _note_ += "If there are too many block devices, detection will not be successful.\n"
+    _note_ += "This is because block devices are not managed in one place, \n"
+    _note_ += "so I use the list of bdev_cache obtained from the slub-dump results."
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -49272,9 +49282,9 @@ class KernelCharacterDevicesCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} -q\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n."
+    _example_ = "{:s} -q".format(_cmdline_)
+
+    _note_ = "This command needs CONFIG_RANDSTRUCT=n."
 
     # character device is managed at chrdevs[] and cdev_map.
     # we use each of them for getting structure information.
@@ -50410,9 +50420,9 @@ class KernelOperationsCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} -q\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n."
+    _example_ = "{:s} -q".format(_cmdline_)
+
+    _note_ = "This command needs CONFIG_RANDSTRUCT=n."
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -50856,40 +50866,40 @@ class KernelSysctlCommand(GenericCommand):
     parser.add_argument("--exact", action="store_true", help="use exact match.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} -q\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "Simplified sysctl_table structure:\n"
-    _example_ += "   sysctl_table_root                     ctl_dir\n"
-    _example_ += "   +-----------------+            +----->+--------------+\n"
-    _example_ += "   | default_set     |            |      | header       |\n"
-    _example_ += "   |   ...           |            |      |   ctl_table  |---+\n"
-    _example_ += "   |   dir           |            |      |   ...        |   |\n"
-    _example_ += "   |     header      |            |      |   parent     |---|--> parent ctl_node\n"
-    _example_ += "   |       ctl_table |            |      |   ...        |   |\n"
-    _example_ += "   |       ...       |            |      | root         |   |\n"
-    _example_ += "   |       parent    |            |      |   rb_node    |---|--> ctl_node\n"
-    _example_ += "   |       ...       |            |      +--------------+   |\n"
-    _example_ += "   |     root        |            |                         |\n"
-    _example_ += "   |       rb_node   |----+       |   +---------------------+\n"
-    _example_ += "   |   ...           |    |       |   |\n"
-    _example_ += "   +-----------------+    |       |   |  ctl_table (array)\n"
-    _example_ += "                          |       |   +->+--------------+\n"
-    _example_ += "+-------------------------+       |      | procname     |--> name[]\n"
-    _example_ += "|                                 |      | data         |--> data[max_len]\n"
-    _example_ += "|  ctl_node                       |      | maxlen       |\n"
-    _example_ += "+->+--------------+               |      | mode         |\n"
-    _example_ += "   | rb_node      |               |      | proc_handler |\n"
-    _example_ += "   |   color      |               |      +--------------+\n"
-    _example_ += "   |   right      |---> ctl_node  |      | procname     |--> name[]\n"
-    _example_ += "   |   left       |---> ctl_node  |      | data         |--> data[max_len]\n"
-    _example_ += "   | header       |---------------+      | maxlen       |\n"
-    _example_ += "   +--------------+                      | mode         |\n"
-    _example_ += "                                         | proc_handler |\n"
-    _example_ += "                                         +--------------+\n"
-    _example_ += "                                         | ...          |\n"
-    _example_ += "                                         +--------------+\n"
-    _example_ += "\n"
-    _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n."
+    _example_ = "{:s} -q".format(_cmdline_)
+
+    _note_ = "This command needs CONFIG_RANDSTRUCT=n.\n"
+    _note_ += "\n"
+    _note_ += "Simplified sysctl_table structure:\n"
+    _note_ += "   sysctl_table_root                     ctl_dir\n"
+    _note_ += "   +-----------------+            +----->+--------------+\n"
+    _note_ += "   | default_set     |            |      | header       |\n"
+    _note_ += "   |   ...           |            |      |   ctl_table  |---+\n"
+    _note_ += "   |   dir           |            |      |   ...        |   |\n"
+    _note_ += "   |     header      |            |      |   parent     |---|--> parent ctl_node\n"
+    _note_ += "   |       ctl_table |            |      |   ...        |   |\n"
+    _note_ += "   |       ...       |            |      | root         |   |\n"
+    _note_ += "   |       parent    |            |      |   rb_node    |---|--> ctl_node\n"
+    _note_ += "   |       ...       |            |      +--------------+   |\n"
+    _note_ += "   |     root        |            |                         |\n"
+    _note_ += "   |       rb_node   |----+       |   +---------------------+\n"
+    _note_ += "   |   ...           |    |       |   |\n"
+    _note_ += "   +-----------------+    |       |   |  ctl_table (array)\n"
+    _note_ += "                          |       |   +->+--------------+\n"
+    _note_ += "+-------------------------+       |      | procname     |--> name[]\n"
+    _note_ += "|                                 |      | data         |--> data[max_len]\n"
+    _note_ += "|  ctl_node                       |      | maxlen       |\n"
+    _note_ += "+->+--------------+               |      | mode         |\n"
+    _note_ += "   | rb_node      |               |      | proc_handler |\n"
+    _note_ += "   |   color      |               |      +--------------+\n"
+    _note_ += "   |   right      |---> ctl_node  |      | procname     |--> name[]\n"
+    _note_ += "   |   left       |---> ctl_node  |      | data         |--> data[max_len]\n"
+    _note_ += "   | header       |---------------+      | maxlen       |\n"
+    _note_ += "   +--------------+                      | mode         |\n"
+    _note_ += "                                         | proc_handler |\n"
+    _note_ += "                                         +--------------+\n"
+    _note_ += "                                         | ...          |\n"
+    _note_ += "                                         +--------------+"
 
     def __init__(self):
         super().__init__()
@@ -51569,11 +51579,11 @@ class KernelDmesgCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} -q\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "The information such as [T1] is the thread ID.\n"
-    _example_ += "Originally, this information is displayed when CONFIG_PRINTK_CALLER=y.\n"
-    _example_ += "However it is always displayed because it is useful."
+    _example_ = "{:s} -q".format(_cmdline_)
+
+    _note_ = "The information such as [T1] is the thread ID.\n"
+    _note_ += "Originally, this information is displayed when CONFIG_PRINTK_CALLER=y.\n"
+    _note_ += "However it is always displayed because it is useful."
 
     def dump_printk_ringbuffer(self, ring_buffer_name, ring_buffer_address):
         """
@@ -53401,23 +53411,23 @@ class MemoryInsertCommand(GenericCommand):
     parser.add_argument("size2", metavar="SIZE2", type=parse_address, help="the inserted(slided) size for meminsert.")
     _syntax_ = parser.format_help()
 
-    _example_ = "memcpy dst src 8\n"
-    _example_ += "                                 <--size-->\n"
-    _example_ += "            dst                   src\n"
-    _example_ += "  Before: [ AAAAAAAA | BBBBBBBB | CCCCCCCC ]\n"
-    _example_ += "  After : [ CCCCCCCC | BBBBBBBB | CCCCCCCC ]\n"
-    _example_ += "\n"
-    _example_ += "memswap dst src 8\n"
-    _example_ += "                                 <--size-->\n"
-    _example_ += "            dst                   src\n"
-    _example_ += "  Before: [ AAAAAAAA | BBBBBBBB | CCCCCCCC ]\n"
-    _example_ += "  After : [ CCCCCCCC | BBBBBBBB | AAAAAAAA ]\n"
-    _example_ += "\n"
-    _example_ += "meminsert dst src 16 8\n"
-    _example_ += "           <-------size1-------> <--size2->\n"
-    _example_ += "            dst                   src\n"
-    _example_ += "  Before: [ AAAAAAAA | BBBBBBBB | CCCCCCCC ]\n"
-    _example_ += "  After : [ CCCCCCCC | AAAAAAAA | BBBBBBBB ]\n"
+    _note_ = "memcpy dst src 8\n"
+    _note_ += "                                 <--size-->\n"
+    _note_ += "            dst                   src\n"
+    _note_ += "  Before: [ AAAAAAAA | BBBBBBBB | CCCCCCCC ]\n"
+    _note_ += "  After : [ CCCCCCCC | BBBBBBBB | CCCCCCCC ]\n"
+    _note_ += "\n"
+    _note_ += "memswap dst src 8\n"
+    _note_ += "                                 <--size-->\n"
+    _note_ += "            dst                   src\n"
+    _note_ += "  Before: [ AAAAAAAA | BBBBBBBB | CCCCCCCC ]\n"
+    _note_ += "  After : [ CCCCCCCC | BBBBBBBB | AAAAAAAA ]\n"
+    _note_ += "\n"
+    _note_ += "meminsert dst src 16 8\n"
+    _note_ += "           <-------size1-------> <--size2->\n"
+    _note_ += "            dst                   src\n"
+    _note_ += "  Before: [ AAAAAAAA | BBBBBBBB | CCCCCCCC ]\n"
+    _note_ += "  After : [ CCCCCCCC | AAAAAAAA | BBBBBBBB ]\n"
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -53937,77 +53947,77 @@ class SlubDumpCommand(GenericCommand):
     _example_ += "{:s} kmalloc-256 --cpu 1                              # dump kmalloc-256 from cpu 1\n".format(_cmdline_)
     _example_ += "{:s} kmalloc-256 --no-xor                             # skip xor to chunk->next\n".format(_cmdline_)
     _example_ += "{:s} kmalloc-256 --offset-random 0xb8 --no-byte-swap  # specified pattern of xor to chunk->next\n".format(_cmdline_)
-    _example_ += "{:s} --list                                           # list up slub cache names\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "Simplified SLUB structure:\n"
-    _example_ += "                         +-kmem_cache--+          +-kmem_cache--+   +-kmem_cache--+\n"
-    _example_ += "                         | cpu_slab    |---+      | cpu_slab    |   | cpu_slab    |\n"
-    _example_ += "                         | flags       |   |      | flags       |   | flags       |\n"
-    _example_ += "                         | size        |   |      | size        |   | size        |\n"
-    _example_ += "                         | object_size |   |      | object_size |   | object_size |\n"
-    _example_ += "                         | offset      |   |      | offset      |   | offset      |\n"
-    _example_ += "       +-slab_caches-+   | name        |   |      | name        |   | name        |\n"
-    _example_ += " ...<->| list_head   |<->| list_head   |<-------->| list_head   |<->| list_head   |<-> ...\n"
-    _example_ += "       +-------------+   | random      |   |      | random      |   | random      |\n"
-    _example_ += "                         | node[]      |-+ |      | node[]      |   | node[]      |\n"
-    _example_ += "                         +-------------+ | |      +-------------+   +-------------+\n"
-    _example_ += "                                         | |\n"
-    _example_ += "    +------------------------------------+ |\n"
-    _example_ += "    |   +----------------------------------+\n"
-    _example_ += "    |   |\n"
-    _example_ += "    |   |          +-__per_cpu_offset-+\n"
-    _example_ += "    |   +----------| cpu0_offset      |\n"
-    _example_ += "    |   |          | cpu1_offset      |\n"
-    _example_ += "    |   |          | cpu2_offset      |\n"
-    _example_ += "    |   |          | ...              |\n"
-    _example_ += "    |   |          +------------------+\n"
-    _example_ += "    |   v\n"
-    _example_ += "    |  +-kmem_cache_cpu-+  +--------------------------------------------------------------+\n"
-    _example_ += "    |  | freelist       |--+                           [active page freelist (slow path)] | [active page freelist (fast path)]\n"
-    _example_ += "    |  | page           |---->+-page(active)---+         +-chunk---+  +-chunk---+         |   +-chunk---+  +-chunk---+\n"
-    _example_ += "    |  | partial        |--+  | freelist       |----+    | ^       |  | ^       |         |   | ^       |  | ^       |\n"
-    _example_ += "    |  +----------------+  |  |                |    |    | |offset |  | |offset |         |   | |offset |  | |offset |\n"
-    _example_ += "    |                      |  +----------------+    |    | v       |  | v       |         |   | v       |  | v       |\n"
-    _example_ += "    |                      |                        +--->| next    |->| next    |->NULL   +-->| next    |->| next    |->NULL\n"
-    _example_ += "    |                      |                             +---------+  +---------+             +---------+  +---------+\n"
-    _example_ += "    |                      |\n"
-    _example_ += "    |                      |                           [partial page freelist]\n"
-    _example_ += "    |                      +->+-page(partial)--+         +-chunk---+  +-chunk---+\n"
-    _example_ += "    |                         | freelist       |----+    | ^       |  | ^       |\n"
-    _example_ += "    |                         | next           |--+ |    | |offset |  | |offset |\n"
-    _example_ += "    |                         +----------------+  | |    | v       |  | v       |\n"
-    _example_ += "    |                                             | +--->| next    |->| next    |->NULL\n"
-    _example_ += "    |                           +-----------------+      +---------+  +---------+\n"
-    _example_ += "    |                           |\n"
-    _example_ += "    |                           v                      [partial page freelist]\n"
-    _example_ += "    |                         +-page(partial)--+         +-chunk---+  +-chunk---+\n"
-    _example_ += "    |                         | freelist       |----+    | ^       |  | ^       |\n"
-    _example_ += "    |                         | next           |--+ |    | |offset |  | |offset |\n"
-    _example_ += "    |                         +----------------+  | |    | v       |  | v       |\n"
-    _example_ += "    |                                             | +--->| next    |->| next    |->NULL\n"
-    _example_ += "    |                           +-----------------+      +---------+  +---------+\n"
-    _example_ += "    |                           |\n"
-    _example_ += "    |                           v\n"
-    _example_ += "    |                          ...\n"
-    _example_ += "    +->+-kmem_cache_node-+                            [numa node partial page freelist]\n"
-    _example_ += "       | partial         |--->+-page(numa-node)+         +-chunk---+  +-chunk---+\n"
-    _example_ += "       |                 |    | freelist       |----+    | ^       |  | ^       |\n"
-    _example_ += "       +-----------------+    | next           |--+ |    | |offset |  | |offset |\n"
-    _example_ += "                              +----------------+  | |    | v       |  | v       |\n"
-    _example_ += "                                                  | +--->| next    |->| next    |->NULL\n"
-    _example_ += "                                +-----------------+      +---------+  +---------+\n"
-    _example_ += "                                |\n"
-    _example_ += "                                v                      [numa node partial page freelist]\n"
-    _example_ += "                              +-page(numa-node)+         +-chunk---+  +-chunk---+\n"
-    _example_ += "                              | freelist       |----+    | ^       |  | ^       |\n"
-    _example_ += "                              | next           |--+ |    | |offset |  | |offset |\n"
-    _example_ += "                              +----------------+  | |    | v       |  | v       |\n"
-    _example_ += "                                                  | +--->| next    |->| next    |->NULL\n"
-    _example_ += "                                +-----------------+      +---------+  +---------+\n"
-    _example_ += "                                |\n"
-    _example_ += "                                v\n"
-    _example_ += "                               ...\n"
-    _example_ += "*If all chunks in certain page are in use, they will not be displayed since they cannot be reached from slab_caches."
+    _example_ += "{:s} --list                                           # list up slub cache names".format(_cmdline_)
+
+    _note_ = "Simplified SLUB structure:\n"
+    _note_ += "                         +-kmem_cache--+          +-kmem_cache--+   +-kmem_cache--+\n"
+    _note_ += "                         | cpu_slab    |---+      | cpu_slab    |   | cpu_slab    |\n"
+    _note_ += "                         | flags       |   |      | flags       |   | flags       |\n"
+    _note_ += "                         | size        |   |      | size        |   | size        |\n"
+    _note_ += "                         | object_size |   |      | object_size |   | object_size |\n"
+    _note_ += "                         | offset      |   |      | offset      |   | offset      |\n"
+    _note_ += "       +-slab_caches-+   | name        |   |      | name        |   | name        |\n"
+    _note_ += " ...<->| list_head   |<->| list_head   |<-------->| list_head   |<->| list_head   |<-> ...\n"
+    _note_ += "       +-------------+   | random      |   |      | random      |   | random      |\n"
+    _note_ += "                         | node[]      |-+ |      | node[]      |   | node[]      |\n"
+    _note_ += "                         +-------------+ | |      +-------------+   +-------------+\n"
+    _note_ += "                                         | |\n"
+    _note_ += "    +------------------------------------+ |\n"
+    _note_ += "    |   +----------------------------------+\n"
+    _note_ += "    |   |\n"
+    _note_ += "    |   |          +-__per_cpu_offset-+\n"
+    _note_ += "    |   +----------| cpu0_offset      |\n"
+    _note_ += "    |   |          | cpu1_offset      |\n"
+    _note_ += "    |   |          | cpu2_offset      |\n"
+    _note_ += "    |   |          | ...              |\n"
+    _note_ += "    |   |          +------------------+\n"
+    _note_ += "    |   v\n"
+    _note_ += "    |  +-kmem_cache_cpu-+  +--------------------------------------------------------------+\n"
+    _note_ += "    |  | freelist       |--+                           [active page freelist (slow path)] | [active page freelist (fast path)]\n"
+    _note_ += "    |  | page           |---->+-page(active)---+         +-chunk---+  +-chunk---+         |   +-chunk---+  +-chunk---+\n"
+    _note_ += "    |  | partial        |--+  | freelist       |----+    | ^       |  | ^       |         |   | ^       |  | ^       |\n"
+    _note_ += "    |  +----------------+  |  |                |    |    | |offset |  | |offset |         |   | |offset |  | |offset |\n"
+    _note_ += "    |                      |  +----------------+    |    | v       |  | v       |         |   | v       |  | v       |\n"
+    _note_ += "    |                      |                        +--->| next    |->| next    |->NULL   +-->| next    |->| next    |->NULL\n"
+    _note_ += "    |                      |                             +---------+  +---------+             +---------+  +---------+\n"
+    _note_ += "    |                      |\n"
+    _note_ += "    |                      |                           [partial page freelist]\n"
+    _note_ += "    |                      +->+-page(partial)--+         +-chunk---+  +-chunk---+\n"
+    _note_ += "    |                         | freelist       |----+    | ^       |  | ^       |\n"
+    _note_ += "    |                         | next           |--+ |    | |offset |  | |offset |\n"
+    _note_ += "    |                         +----------------+  | |    | v       |  | v       |\n"
+    _note_ += "    |                                             | +--->| next    |->| next    |->NULL\n"
+    _note_ += "    |                           +-----------------+      +---------+  +---------+\n"
+    _note_ += "    |                           |\n"
+    _note_ += "    |                           v                      [partial page freelist]\n"
+    _note_ += "    |                         +-page(partial)--+         +-chunk---+  +-chunk---+\n"
+    _note_ += "    |                         | freelist       |----+    | ^       |  | ^       |\n"
+    _note_ += "    |                         | next           |--+ |    | |offset |  | |offset |\n"
+    _note_ += "    |                         +----------------+  | |    | v       |  | v       |\n"
+    _note_ += "    |                                             | +--->| next    |->| next    |->NULL\n"
+    _note_ += "    |                           +-----------------+      +---------+  +---------+\n"
+    _note_ += "    |                           |\n"
+    _note_ += "    |                           v\n"
+    _note_ += "    |                          ...\n"
+    _note_ += "    +->+-kmem_cache_node-+                            [numa node partial page freelist]\n"
+    _note_ += "       | partial         |--->+-page(numa-node)+         +-chunk---+  +-chunk---+\n"
+    _note_ += "       |                 |    | freelist       |----+    | ^       |  | ^       |\n"
+    _note_ += "       +-----------------+    | next           |--+ |    | |offset |  | |offset |\n"
+    _note_ += "                              +----------------+  | |    | v       |  | v       |\n"
+    _note_ += "                                                  | +--->| next    |->| next    |->NULL\n"
+    _note_ += "                                +-----------------+      +---------+  +---------+\n"
+    _note_ += "                                |\n"
+    _note_ += "                                v                      [numa node partial page freelist]\n"
+    _note_ += "                              +-page(numa-node)+         +-chunk---+  +-chunk---+\n"
+    _note_ += "                              | freelist       |----+    | ^       |  | ^       |\n"
+    _note_ += "                              | next           |--+ |    | |offset |  | |offset |\n"
+    _note_ += "                              +----------------+  | |    | v       |  | v       |\n"
+    _note_ += "                                                  | +--->| next    |->| next    |->NULL\n"
+    _note_ += "                                +-----------------+      +---------+  +---------+\n"
+    _note_ += "                                |\n"
+    _note_ += "                                v\n"
+    _note_ += "                               ...\n"
+    _note_ += "If all chunks in certain page are in use, they will not be displayed since they cannot be reached from slab_caches."
 
     def __init__(self, *args, **kwargs):
         super().__init__()
@@ -54959,47 +54969,47 @@ class SlubTinyDumpCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} kmalloc-256                                      # dump kmalloc-256 from all cpus\n".format(_cmdline_)
-    _example_ += "{:s} --list                                           # list up slub cache names\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "Simplified SLUB structure:\n"
-    _example_ += "                         +-kmem_cache--+     +-kmem_cache--+   +-kmem_cache--+\n"
-    _example_ += "                         | flags       |     | flags       |   | flags       |\n"
-    _example_ += "                         | size        |     | size        |   | size        |\n"
-    _example_ += "                         | object_size |     | object_size |   | object_size |\n"
-    _example_ += "                         | offset      |     | offset      |   | offset      |\n"
-    _example_ += "       +-slab_caches-+   | name        |     | name        |   | name        |\n"
-    _example_ += " ...<->| list_head   |<->| list_head   |<--->| list_head   |<->| list_head   |<-> ...\n"
-    _example_ += "       +-------------+   | node[]      |--+  | node[]      |   | node[]      |\n"
-    _example_ += "                         +-------------+  |  +-------------+   +-------------+\n"
-    _example_ += "                                          |\n"
-    _example_ += "    +-------------------------------------+\n"
-    _example_ += "    |\n"
-    _example_ += "    v\n"
-    _example_ += "  +-kmem_cache_node-+\n"
-    _example_ += "  | partial         |--+\n"
-    _example_ += "  +-----------------+  |\n"
-    _example_ += "                       |\n"
-    _example_ += "    +------------------+\n"
-    _example_ += "    |\n"
-    _example_ += "    v                       [numa node partial page freelist]\n"
-    _example_ += "  +-slub-----------+          +-chunk---+  +-chunk---+\n"
-    _example_ += "  | freelist       |----+     | ^       |  | ^       |\n"
-    _example_ += "  | next           |--+ |     | |offset |  | |offset |\n"
-    _example_ += "  +----------------+  | |     | v       |  | v       |\n"
-    _example_ += "                      | +---->| next    |->| next    |->NULL\n"
-    _example_ += "    +-----------------+       +---------+  +---------+\n"
-    _example_ += "    |\n"
-    _example_ += "    v                       [numa node partial page freelist]\n"
-    _example_ += "  +-slub-----------+          +-chunk---+  +-chunk---+\n"
-    _example_ += "  | freelist       |----+     | ^       |  | ^       |\n"
-    _example_ += "  | next           |--+ |     | |offset |  | |offset |\n"
-    _example_ += "  +----------------+  | |     | v       |  | v       |\n"
-    _example_ += "                      | +---->| next    |->| next    |->NULL\n"
-    _example_ += "    +-----------------+       +---------+  +---------+\n"
-    _example_ += "    |\n"
-    _example_ += "    v\n"
-    _example_ += "     ...\n"
+    _example_ = "{:s} kmalloc-256 # dump kmalloc-256 from all cpus\n".format(_cmdline_)
+    _example_ += "{:s} --list      # list up slub cache names".format(_cmdline_)
+
+    _note_ = "Simplified SLUB structure:\n"
+    _note_ += "                         +-kmem_cache--+     +-kmem_cache--+   +-kmem_cache--+\n"
+    _note_ += "                         | flags       |     | flags       |   | flags       |\n"
+    _note_ += "                         | size        |     | size        |   | size        |\n"
+    _note_ += "                         | object_size |     | object_size |   | object_size |\n"
+    _note_ += "                         | offset      |     | offset      |   | offset      |\n"
+    _note_ += "       +-slab_caches-+   | name        |     | name        |   | name        |\n"
+    _note_ += " ...<->| list_head   |<->| list_head   |<--->| list_head   |<->| list_head   |<-> ...\n"
+    _note_ += "       +-------------+   | node[]      |--+  | node[]      |   | node[]      |\n"
+    _note_ += "                         +-------------+  |  +-------------+   +-------------+\n"
+    _note_ += "                                          |\n"
+    _note_ += "    +-------------------------------------+\n"
+    _note_ += "    |\n"
+    _note_ += "    v\n"
+    _note_ += "  +-kmem_cache_node-+\n"
+    _note_ += "  | partial         |--+\n"
+    _note_ += "  +-----------------+  |\n"
+    _note_ += "                       |\n"
+    _note_ += "    +------------------+\n"
+    _note_ += "    |\n"
+    _note_ += "    v                       [numa node partial page freelist]\n"
+    _note_ += "  +-slub-----------+          +-chunk---+  +-chunk---+\n"
+    _note_ += "  | freelist       |----+     | ^       |  | ^       |\n"
+    _note_ += "  | next           |--+ |     | |offset |  | |offset |\n"
+    _note_ += "  +----------------+  | |     | v       |  | v       |\n"
+    _note_ += "                      | +---->| next    |->| next    |->NULL\n"
+    _note_ += "    +-----------------+       +---------+  +---------+\n"
+    _note_ += "    |\n"
+    _note_ += "    v                       [numa node partial page freelist]\n"
+    _note_ += "  +-slub-----------+          +-chunk---+  +-chunk---+\n"
+    _note_ += "  | freelist       |----+     | ^       |  | ^       |\n"
+    _note_ += "  | next           |--+ |     | |offset |  | |offset |\n"
+    _note_ += "  +----------------+  | |     | v       |  | v       |\n"
+    _note_ += "                      | +---->| next    |->| next    |->NULL\n"
+    _note_ += "    +-----------------+       +---------+  +---------+\n"
+    _note_ += "    |\n"
+    _note_ += "    v\n"
+    _note_ += "     ...\n"
 
     def __init__(self, *args, **kwargs):
         super().__init__()
@@ -55576,41 +55586,41 @@ class SlabDumpCommand(GenericCommand):
 
     _example_ = "{:s} kmalloc-256          # dump kmalloc-256 from all cpus\n".format(_cmdline_)
     _example_ += "{:s} kmalloc-256 --cpu 1  # dump kmalloc-256 from cpu 1\n".format(_cmdline_)
-    _example_ += "{:s} --list               # list up slab cache names\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "Simplified SLAB structure:\n"
-    _example_ += "                         +-kmem_cache--+         +-kmem_cache--+   +-kmem_cache--+\n"
-    _example_ += "                         | cpu_cache   |---+     | cpu_cache   |   | cpu_cache   |\n"
-    _example_ += "                         | limit       |   |     | limit       |   | limit       |\n"
-    _example_ += "                         | size        |   |     | size        |   | size        |\n"
-    _example_ += "                         | flags       |   |     | flags       |   | flags       |\n"
-    _example_ += "                         | num         |   |     | num         |   | num         |\n"
-    _example_ += "                         | gfporder    |   |     | gfporder    |   | gfporder    |\n"
-    _example_ += "       +-slab_caches-+   | name        |   |     | name        |   | name        |\n"
-    _example_ += " ...<->| list_head   |<->| list_head   |<------->| list_head   |<->| list_head   |<-> ...\n"
-    _example_ += "       +-------------+   | object_size |   |     | object_size |   | object_size |\n"
-    _example_ += "                         | node[]      |------+  | node[]      |   | node[]      |\n"
-    _example_ += "                         +-------------+   |  |  +-------------+   +-------------+\n"
-    _example_ += "    +-__per_cpu_offset-+                   |  |\n"
-    _example_ += "    | cpu0_offset      |--+----------------+  |\n"
-    _example_ += "    | cpu1_offset      |  |                   |\n"
-    _example_ += "    | cpu2_offset      |  |                   v                  +-page------+    +-page------+\n"
-    _example_ += "    | ...              |  |       +-kmem_cache_node-+      +---->| slab_list |--->| slab_list |-->...\n"
-    _example_ += "    +------------------+  |       | slabs_partial   |------+     | freelist  |    | freelist  |\n"
-    _example_ += "      +-------------------+       | slabs_full      |----->...   | s_mem     |-+  | s_mem     |-+\n"
-    _example_ += "      v                           | slabs_free      |----->...   | active    | |  | active    | |\n"
-    _example_ += "    +-array_cache--------+        +-----------------+            +-----------+ |  +-----------+ |\n"
-    _example_ += "    | avail              |                                         +-----------+    +-----------+\n"
-    _example_ += "    | limit              |                                         v                v\n"
-    _example_ += "    | entry[]            |                                       +-chunk--+       +-chunk--+\n"
-    _example_ += "    |   freed_chunk_ptr  |-------------------------------------->|        |       |        |\n"
-    _example_ += "    |   freed_chunk_ptr  |----------------------------+          +-chunk--+       +-chunk--+\n"
-    _example_ += "    |   freed_chunk_ptr  |                            |          |        |       |        |\n"
-    _example_ += "    |   freed_chunk_ptr  |                            |          +-chunk--+       +-chunk--+\n"
-    _example_ += "    |   freed_chunk_ptr  |                            |          |        |       |        |\n"
-    _example_ += "    |   ...              |                            |          +-chunk--+       +-chunk--+\n"
-    _example_ += "    +--------------------+                            +--------->|        |       |        |\n"
-    _example_ += "                                                                 +-...----+       +-...----+\n"
+    _example_ += "{:s} --list               # list up slab cache names".format(_cmdline_)
+
+    _note_ = "Simplified SLAB structure:\n"
+    _note_ += "                         +-kmem_cache--+         +-kmem_cache--+   +-kmem_cache--+\n"
+    _note_ += "                         | cpu_cache   |---+     | cpu_cache   |   | cpu_cache   |\n"
+    _note_ += "                         | limit       |   |     | limit       |   | limit       |\n"
+    _note_ += "                         | size        |   |     | size        |   | size        |\n"
+    _note_ += "                         | flags       |   |     | flags       |   | flags       |\n"
+    _note_ += "                         | num         |   |     | num         |   | num         |\n"
+    _note_ += "                         | gfporder    |   |     | gfporder    |   | gfporder    |\n"
+    _note_ += "       +-slab_caches-+   | name        |   |     | name        |   | name        |\n"
+    _note_ += " ...<->| list_head   |<->| list_head   |<------->| list_head   |<->| list_head   |<-> ...\n"
+    _note_ += "       +-------------+   | object_size |   |     | object_size |   | object_size |\n"
+    _note_ += "                         | node[]      |------+  | node[]      |   | node[]      |\n"
+    _note_ += "                         +-------------+   |  |  +-------------+   +-------------+\n"
+    _note_ += "    +-__per_cpu_offset-+                   |  |\n"
+    _note_ += "    | cpu0_offset      |--+----------------+  |\n"
+    _note_ += "    | cpu1_offset      |  |                   |\n"
+    _note_ += "    | cpu2_offset      |  |                   v                  +-page------+    +-page------+\n"
+    _note_ += "    | ...              |  |       +-kmem_cache_node-+      +---->| slab_list |--->| slab_list |-->...\n"
+    _note_ += "    +------------------+  |       | slabs_partial   |------+     | freelist  |    | freelist  |\n"
+    _note_ += "      +-------------------+       | slabs_full      |----->...   | s_mem     |-+  | s_mem     |-+\n"
+    _note_ += "      v                           | slabs_free      |----->...   | active    | |  | active    | |\n"
+    _note_ += "    +-array_cache--------+        +-----------------+            +-----------+ |  +-----------+ |\n"
+    _note_ += "    | avail              |                                         +-----------+    +-----------+\n"
+    _note_ += "    | limit              |                                         v                v\n"
+    _note_ += "    | entry[]            |                                       +-chunk--+       +-chunk--+\n"
+    _note_ += "    |   freed_chunk_ptr  |-------------------------------------->|        |       |        |\n"
+    _note_ += "    |   freed_chunk_ptr  |----------------------------+          +-chunk--+       +-chunk--+\n"
+    _note_ += "    |   freed_chunk_ptr  |                            |          |        |       |        |\n"
+    _note_ += "    |   freed_chunk_ptr  |                            |          +-chunk--+       +-chunk--+\n"
+    _note_ += "    |   freed_chunk_ptr  |                            |          |        |       |        |\n"
+    _note_ += "    |   ...              |                            |          +-chunk--+       +-chunk--+\n"
+    _note_ += "    +--------------------+                            +--------->|        |       |        |\n"
+    _note_ += "                                                                 +-...----+       +-...----+"
 
     def __init__(self, *args, **kwargs):
         super().__init__()
@@ -56373,30 +56383,30 @@ class SlobDumpCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} kmalloc-256  # dump kmalloc-256 kmem_cache and all freelists\n".format(_cmdline_)
-    _example_ += "{:s} --list       # list up slob cache names\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "Simplified SLOB structure:\n"
-    _example_ += "                         +-kmem_cache--+   +-kmem_cache--+   +-kmem_cache--+\n"
-    _example_ += "                         | object_size |   | object_size |   | object_size |\n"
-    _example_ += "                         | size        |   | size        |   | size        |\n"
-    _example_ += "                         | flags       |   | flags       |   | flags       |\n"
-    _example_ += "       +-slab_caches-+   | name        |   | name        |   | name        |\n"
-    _example_ += " ...<->| list_head   |<->| list_head   |<->| list_head   |<->| list_head   |<-> ...\n"
-    _example_ += "       +-------------+   +-------------+   +-------------+   +-------------+\n"
-    _example_ += "* slab_caches is not used when traversing the freelist\n"
-    _example_ += "\n"
-    _example_ += "   +-free_slob_large--+              +-page----------+           +-page----------+\n"
-    _example_ += "   | list_head        |<---------+   | freelist      |-----+     | freelist      |\n"
-    _example_ += "   +-free_slob_medium-+          |   | units (total) |     |     | units (total) |\n"
-    _example_ += "   | list_head        |-->...    +-->| list_head     |<----|---->| list_head     |<->...\n"
-    _example_ += "   +-free_slob_small--+              +---------------+     |     +---------------+\n"
-    _example_ += "   | list_head        |-->...                              |\n"
-    _example_ += "   +------------------+                      +-------------+\n"
-    _example_ += "   small : size < 0x100                      |\n"
-    _example_ += "   medium: 0x100 <= size < 0x400             |   +-chunk-----+   +-chunk-----+\n"
-    _example_ += "   large : 0x400 <= size < 0x1000            +-->| units     |-->| -offset   |-->...\n"
-    _example_ += "* size is only judged when first inserted,       | offset    |   +-----------+\n"
-    _example_ += "  so divided remainder is stay on                +-----------+   (when units=1, stored negative offset)\n"
+    _example_ += "{:s} --list       # list up slob cache names".format(_cmdline_)
+
+    _note_ = "Simplified SLOB structure:\n"
+    _note_ += "                         +-kmem_cache--+   +-kmem_cache--+   +-kmem_cache--+\n"
+    _note_ += "                         | object_size |   | object_size |   | object_size |\n"
+    _note_ += "                         | size        |   | size        |   | size        |\n"
+    _note_ += "                         | flags       |   | flags       |   | flags       |\n"
+    _note_ += "       +-slab_caches-+   | name        |   | name        |   | name        |\n"
+    _note_ += " ...<->| list_head   |<->| list_head   |<->| list_head   |<->| list_head   |<-> ...\n"
+    _note_ += "       +-------------+   +-------------+   +-------------+   +-------------+\n"
+    _note_ += "* slab_caches is not used when traversing the freelist\n"
+    _note_ += "\n"
+    _note_ += "   +-free_slob_large--+              +-page----------+           +-page----------+\n"
+    _note_ += "   | list_head        |<---------+   | freelist      |-----+     | freelist      |\n"
+    _note_ += "   +-free_slob_medium-+          |   | units (total) |     |     | units (total) |\n"
+    _note_ += "   | list_head        |-->...    +-->| list_head     |<----|---->| list_head     |<->...\n"
+    _note_ += "   +-free_slob_small--+              +---------------+     |     +---------------+\n"
+    _note_ += "   | list_head        |-->...                              |\n"
+    _note_ += "   +------------------+                      +-------------+\n"
+    _note_ += "   small : size < 0x100                      |\n"
+    _note_ += "   medium: 0x100 <= size < 0x400             |   +-chunk-----+   +-chunk-----+\n"
+    _note_ += "   large : 0x400 <= size < 0x1000            +-->| units     |-->| -offset   |-->...\n"
+    _note_ += "* size is only judged when first inserted,       | offset    |   +-----------+\n"
+    _note_ += "  so divided remainder is stay on                +-----------+   (when units=1, stored negative offset)"
 
     def __init__(self, *args, **kwargs):
         super().__init__()
@@ -56962,45 +56972,45 @@ class BuddyDumpCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} -z DMA32\n".format(_cmdline_)
-    _example_ += "{:s} -o 1 -o 2 -n\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "Simplified Buddy Allocator structure:\n"
-    _example_ += "  +-node_data[MAX_NUMNODES]-+\n"
-    _example_ += "  | *pglist_data (node 0)   |--+\n"
-    _example_ += "  | *pglist_data (node 1)   |  |\n"
-    _example_ += "  | *pglist_data (node 2)   |  |\n"
-    _example_ += "  | ...                     |  |\n"
-    _example_ += "  +-------------------------+  |\n"
-    _example_ += "                               |\n"
-    _example_ += "    +--------------------------+\n"
-    _example_ += "    |\n"
-    _example_ += "    v\n"
-    _example_ += "  +-pglist_data---------------------------+\n"
-    _example_ += "  | node_zones[MAX_NR_ZONES]              |\n"
-    _example_ += "  |   +-node_zones[0]--------------------+|\n"
-    _example_ += "  |   |  ...                             ||        +-page-----+    +-page-----+    +-page-----+\n"
-    _example_ += "  |   |  name                            ||        | flags    |    | flags    |    | flags    |\n"
-    _example_ += "  |   |  ...                             ||   +--->| lru.next |--->| lru.next |--->| lru.next |->...\n"
-    _example_ += "  |   |  free_area[MAX_ORDER]            ||   |    | lru.prev |    | lru.prev |    | lru.prev |\n"
-    _example_ += "  |   |    +-free_area[0]---------------+||   |    | ...      |    | ...      |    | ...      |\n"
-    _example_ += "  |   |    | free_list[MIGRATE_TYPES]   |||   |    +----------+    +----------+    +----------+\n"
-    _example_ += "  |   |    |   +-free_list[0]----------+|||   |\n"
-    _example_ += "  |   |    |   | next                  ||||---+\n"
-    _example_ += "  |   |    |   | prev                  ||||\n"
-    _example_ += "  |   |    |   +-free_list[1]----------+|||\n"
-    _example_ += "  |   |    |   | ...                   ||||\n"
-    _example_ += "  |   |    |   +-----------------------+|||\n"
-    _example_ += "  |   |    | nr_free                    |||\n"
-    _example_ += "  |   |    +-free_area[1]---------------+||\n"
-    _example_ += "  |   |    | ...                        |||\n"
-    _example_ += "  |   |    +----------------------------+||\n"
-    _example_ += "  |   +-node_zones[1]--------------------+|\n"
-    _example_ += "  |   |  ...                             ||\n"
-    _example_ += "  |   +----------------------------------+|\n"
-    _example_ += "  | ...                                   |\n"
-    _example_ += "  +---------------------------------------+\n"
-    _example_ += "\n"
-    _example_ += "You can combine this result with information of in-use space. Try using `pagewalk-with-hints` command."
+    _example_ += "{:s} -o 1 -o 2 -n".format(_cmdline_)
+
+    _note_ = "Simplified Buddy Allocator structure:\n"
+    _note_ += "  +-node_data[MAX_NUMNODES]-+\n"
+    _note_ += "  | *pglist_data (node 0)   |--+\n"
+    _note_ += "  | *pglist_data (node 1)   |  |\n"
+    _note_ += "  | *pglist_data (node 2)   |  |\n"
+    _note_ += "  | ...                     |  |\n"
+    _note_ += "  +-------------------------+  |\n"
+    _note_ += "                               |\n"
+    _note_ += "    +--------------------------+\n"
+    _note_ += "    |\n"
+    _note_ += "    v\n"
+    _note_ += "  +-pglist_data---------------------------+\n"
+    _note_ += "  | node_zones[MAX_NR_ZONES]              |\n"
+    _note_ += "  |   +-node_zones[0]--------------------+|\n"
+    _note_ += "  |   |  ...                             ||        +-page-----+    +-page-----+    +-page-----+\n"
+    _note_ += "  |   |  name                            ||        | flags    |    | flags    |    | flags    |\n"
+    _note_ += "  |   |  ...                             ||   +--->| lru.next |--->| lru.next |--->| lru.next |->...\n"
+    _note_ += "  |   |  free_area[MAX_ORDER]            ||   |    | lru.prev |    | lru.prev |    | lru.prev |\n"
+    _note_ += "  |   |    +-free_area[0]---------------+||   |    | ...      |    | ...      |    | ...      |\n"
+    _note_ += "  |   |    | free_list[MIGRATE_TYPES]   |||   |    +----------+    +----------+    +----------+\n"
+    _note_ += "  |   |    |   +-free_list[0]----------+|||   |\n"
+    _note_ += "  |   |    |   | next                  ||||---+\n"
+    _note_ += "  |   |    |   | prev                  ||||\n"
+    _note_ += "  |   |    |   +-free_list[1]----------+|||\n"
+    _note_ += "  |   |    |   | ...                   ||||\n"
+    _note_ += "  |   |    |   +-----------------------+|||\n"
+    _note_ += "  |   |    | nr_free                    |||\n"
+    _note_ += "  |   |    +-free_area[1]---------------+||\n"
+    _note_ += "  |   |    | ...                        |||\n"
+    _note_ += "  |   |    +----------------------------+||\n"
+    _note_ += "  |   +-node_zones[1]--------------------+|\n"
+    _note_ += "  |   |  ...                             ||\n"
+    _note_ += "  |   +----------------------------------+|\n"
+    _note_ += "  | ...                                   |\n"
+    _note_ += "  +---------------------------------------+\n"
+    _note_ += "\n"
+    _note_ += "You can combine this result with information of in-use space. Try using `pagewalk-with-hints` command."
 
     def __init__(self, *args, **kwargs):
         super().__init__()
@@ -57384,9 +57394,9 @@ class KernelPipeCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} -q\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n."
+    _example_ = "{:s} -q".format(_cmdline_)
+
+    _note_ = "This command needs CONFIG_RANDSTRUCT=n."
 
     def initialize(self):
         # kbase
@@ -57706,9 +57716,9 @@ class KernelBpfCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} -q\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n."
+    _example_ = "{:s} -q".format(_cmdline_)
+
+    _note_ = "This command needs CONFIG_RANDSTRUCT=n."
 
     def parse_xarray(self, ptr, root=False):
         if ptr == 0:
@@ -57987,7 +57997,7 @@ class KsymaddrRemoteCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} commit_creds prepare_kernel_cred # OR search\n".format(_cmdline_)
+    _example_ = "{:s} commit_creds prepare_kernel_cred # OR search".format(_cmdline_)
 
     def __init__(self, *args, **kwargs):
         super().__init__()
@@ -59728,88 +59738,85 @@ class PartitionAllocDumpCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("target_buffer_root", choices=["fast_malloc", "array_buffer", "buffer", "fm", "ab", "b"],
-                        help="the target buffer_root")
+                        help="the target buffer_root. The last three are abbreviated forms.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="display also empty slots.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} array_buffer # walk from array_buffer_root_\n".format(_cmdline_)
-    _example_ += "{:s} ab           # same above\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "Chromium mainline is too fast to develop. So if parse is failed, you need fix this gef.py."
+    _example_ += "{:s} ab           # same above".format(_cmdline_)
 
-    """
-    partition alloc freelist is following.
-
-     +-root-----------------+
-     | ...                  |    +---> +-extent------------+  +-> +-extent------------+  +-> ...
-     | next_super_page      |    |     | next              | -+   | next              | -+
-     | next_partition_page  |    |     +-------------------+      +-------------------+
-     | ...                  |    |
-     | first_extent         | ---+
-     | direct_map_list      | -------> +-direct_map_extent-+  +-> +-direct_map_extent-+  +-> ...
-     | ...                  |          | bucket            |  |   | bucket            |  |
-     |                      |          | next_extent       | -+   | next_extent       | -+
-     |                      |          +-------------------+      +-------------------+
-     |                      |
-     +-bucket[0](0x20)------+
-     | head                 | -------> +-slot_span---------+  +-> +-slot_span---------+  +-> ...
-     | slot_size            | <------- | bucket            |  |   | bucket            |  |
-     | ...                  |    +---- | freelist_head     |  |   | freelist_head     |  |
-     +-bucket[1](0x20)------+    |     | next_slot_span    | -+   | next_slot_span    | -+
-     | head                 |    |     +-------------------+      +-------------------+
-     | slot_size            |    |
-     | ...                  |    |
-     +----------------------+    |
-     | ...                  |    |
-     |                      |    +---> +-slot--------------+
-     |                      |          | next              | --+
-     +----------------------+          | (freed)           |   |
-                                       +-slot--------------+   |
-                                       |                   |   |
-                                       | (used)            |   |
-                                       +-slot--------------+ <-+
-                                   +-- | next              |
-                                   |   | (freed)           |
-                                   |   +-slot--------------+
-                                   |   |                   |
-                                   |   | (used)            |
-                                   +-> +-slot--------------+
-                                       | next              | --> NULL
-                                       | (freed)           |
-                                       +-slot--------------+
-                                       |                   |
-                                       |                   |
-                                       +-------------------+
-
-    `extent`, `slot_span` and `slot` are in super_page.
-
-          +-super_page-(2MB)----+
-     4KB  | Guard Page          |
-          +---------------------+
-     4KB  | extent * 1          |
-          | slot_span * 126     |
-          | unused * 1          |
-          +---------------------+
-     8KB  | Guard Page          |
-          +---------------------+
-     16KB | Partition Page #1   |
-          |   slot              |
-          |   slot              |
-          |   ...               |
-          +---------------------+
-          | ...                 |
-          +---------------------+
-     16KB | Partition Page #126 |
-          |   slot              |
-          |   slot              |
-          |   ...               |
-          +---------------------+
-     12KB | Unused              |
-          +---------------------+
-      4KB | Guard Page          |
-          +---------------------+
-    """
+    _note_ = "Chromium mainline is too fast to develop. So if parse is failed, you need fix this gef.py.\n"
+    _note_ += "\n"
+    _note_ += "Simplified partition alloc structure:\n"
+    _note_ += " +-root-----------------+\n"
+    _note_ += " | ...                  |    +---->+-extent------------+  +-->+-extent------------+  +-> ...\n"
+    _note_ += " | next_super_page      |    |     | next              |--+   | next              |--+\n"
+    _note_ += " | next_partition_page  |    |     +-------------------+      +-------------------+\n"
+    _note_ += " | ...                  |    |\n"
+    _note_ += " | first_extent         |----+\n"
+    _note_ += " | direct_map_list      |--------->+-direct_map_extent-+  +-->+-direct_map_extent-+  +-> ...\n"
+    _note_ += " | ...                  |          | bucket            |  |   | bucket            |  |\n"
+    _note_ += " |                      |          | next_extent       |--+   | next_extent       |--+\n"
+    _note_ += " |                      |          +-------------------+      +-------------------+\n"
+    _note_ += " |                      |\n"
+    _note_ += " +-bucket[0](0x20)------+\n"
+    _note_ += " | head                 |--------->+-slot_span---------+  +-->+-slot_span---------+  +-> ...\n"
+    _note_ += " | slot_size            |<---------| bucket            |  |   | bucket            |  |\n"
+    _note_ += " | ...                  |    +-----| freelist_head     |  |   | freelist_head     |  |\n"
+    _note_ += " +-bucket[1](0x20)------+    |     | next_slot_span    |--+   | next_slot_span    |--+\n"
+    _note_ += " | head                 |    |     +-------------------+      +-------------------+\n"
+    _note_ += " | slot_size            |    |\n"
+    _note_ += " | ...                  |    |\n"
+    _note_ += " +----------------------+    |\n"
+    _note_ += " | ...                  |    |\n"
+    _note_ += " |                      |    +---->+-slot--------------+\n"
+    _note_ += " |                      |          | next              |---+\n"
+    _note_ += " +----------------------+          | (freed)           |   |\n"
+    _note_ += "                                   +-slot--------------+   |\n"
+    _note_ += "                                   |                   |   |\n"
+    _note_ += "                                   | (used)            |   |\n"
+    _note_ += "                                   +-slot--------------+<--+\n"
+    _note_ += "                               +---| next              |\n"
+    _note_ += "                               |   | (freed)           |\n"
+    _note_ += "                               |   +-slot--------------+\n"
+    _note_ += "                               |   |                   |\n"
+    _note_ += "                               |   | (used)            |\n"
+    _note_ += "                               +-->+-slot--------------+\n"
+    _note_ += "                                   | next              |---> NULL\n"
+    _note_ += "                                   | (freed)           |\n"
+    _note_ += "                                   +-slot--------------+\n"
+    _note_ += "                                   |                   |\n"
+    _note_ += "                                   |                   |\n"
+    _note_ += "                                   +-------------------+\n"
+    _note_ += "\n"
+    _note_ += "`extent`, `slot_span` and `slot` are in super_page.\n"
+    _note_ += "\n"
+    _note_ += "      +-super_page-(2MB)----+\n"
+    _note_ += " 4KB  | Guard Page          |\n"
+    _note_ += "      +---------------------+\n"
+    _note_ += " 4KB  | extent * 1          |\n"
+    _note_ += "      | slot_span * 126     |\n"
+    _note_ += "      | unused * 1          |\n"
+    _note_ += "      +---------------------+\n"
+    _note_ += " 8KB  | Guard Page          |\n"
+    _note_ += "      +---------------------+\n"
+    _note_ += " 16KB | Partition Page #1   |\n"
+    _note_ += "      |   slot              |\n"
+    _note_ += "      |   slot              |\n"
+    _note_ += "      |   ...               |\n"
+    _note_ += "      +---------------------+\n"
+    _note_ += "      | ...                 |\n"
+    _note_ += "      +---------------------+\n"
+    _note_ += " 16KB | Partition Page #126 |\n"
+    _note_ += "      |   slot              |\n"
+    _note_ += "      |   slot              |\n"
+    _note_ += "      |   ...               |\n"
+    _note_ += "      +---------------------+\n"
+    _note_ += " 12KB | Unused              |\n"
+    _note_ += "      +---------------------+\n"
+    _note_ += "  4KB | Guard Page          |\n"
+    _note_ += "      +---------------------+"
 
     def warn(self, msg):
         msg = "{} {}".format(Color.colorify("[+]", "bold yellow"), msg)
@@ -62155,31 +62162,31 @@ class OpteeBgetDumpCommand(GenericCommand):
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} 0x2a408\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "Simplified heap structure\n"
-    _example_ += "+-malloc_ctx-------------------+         +-free-ed chunk----------+\n"
-    _example_ += "| bufsize prevfree             |<--+ +-->| bufsize prevfree       |= 0 (if upper chunk is used)  +--> ...\n"
-    _example_ += "| bufsize bsize                |   | |   | bufsize bsize          |= the size of this chunk      |\n"
-    _example_ += "| struct bfhead *flink         |-----+   | struct bfhead *flink   |------------------------------+\n"
-    _example_ += "| struct bfhead *blink         |   +-----| struct bfhead *blink   |\n"
-    _example_ += "| (bufsize totalloc)           |         |                        |\n"
-    _example_ += "| (long numget)                |         |                        |\n"
-    _example_ += "| (long numrel)                |         |                        |\n"
-    _example_ += "| (long numpblk)               |         +-used chunk-------------+\n"
-    _example_ += "| (long numpget)               |         | bufsize prevfree       |= the size of upper chunk (if upper chunk is free-ed)\n"
-    _example_ += "| (long numprel)               |         | bufsize bsize          |= the size of this chunk (negative number)\n"
-    _example_ += "| (long numdget)               |         | uchar user_data[bsize] |\n"
-    _example_ += "| (long numdrel)               |         |                        |\n"
-    _example_ += "| (func_ptr compfcn)           |         |                        |\n"
-    _example_ += "| (func_ptr acqfcn)            |         +------------------------+\n"
-    _example_ += "| (func_ptr relfcn)            |\n"
-    _example_ += "| (bufsize exp_incr)           |\n"
-    _example_ += "| (bufsize pool_len)           |\n"
-    _example_ += "| struct malloc_pool* pool     |\n"
-    _example_ += "| size_t pool_len              |\n"
-    _example_ += "| (struct malloc_stats mstats) |\n"
-    _example_ += "+------------------------------+"
+    _example_ = "{:s} 0x2a408".format(_cmdline_)
+
+    _note_ = "Simplified heap structure\n"
+    _note_ += "+-malloc_ctx-------------------+         +-free-ed chunk----------+\n"
+    _note_ += "| bufsize prevfree             |<--+ +-->| bufsize prevfree       |= 0 (if upper chunk is used)  +--> ...\n"
+    _note_ += "| bufsize bsize                |   | |   | bufsize bsize          |= the size of this chunk      |\n"
+    _note_ += "| struct bfhead *flink         |-----+   | struct bfhead *flink   |------------------------------+\n"
+    _note_ += "| struct bfhead *blink         |   +-----| struct bfhead *blink   |\n"
+    _note_ += "| (bufsize totalloc)           |         |                        |\n"
+    _note_ += "| (long numget)                |         |                        |\n"
+    _note_ += "| (long numrel)                |         |                        |\n"
+    _note_ += "| (long numpblk)               |         +-used chunk-------------+\n"
+    _note_ += "| (long numpget)               |         | bufsize prevfree       |= the size of upper chunk (if upper chunk is free-ed)\n"
+    _note_ += "| (long numprel)               |         | bufsize bsize          |= the size of this chunk (negative number)\n"
+    _note_ += "| (long numdget)               |         | uchar user_data[bsize] |\n"
+    _note_ += "| (long numdrel)               |         |                        |\n"
+    _note_ += "| (func_ptr compfcn)           |         |                        |\n"
+    _note_ += "| (func_ptr acqfcn)            |         +------------------------+\n"
+    _note_ += "| (func_ptr relfcn)            |\n"
+    _note_ += "| (bufsize exp_incr)           |\n"
+    _note_ += "| (bufsize pool_len)           |\n"
+    _note_ += "| struct malloc_pool* pool     |\n"
+    _note_ += "| size_t pool_len              |\n"
+    _note_ += "| (struct malloc_stats mstats) |\n"
+    _note_ += "+------------------------------+"
 
     def is_readable_virt_memory(self, addr):
         if is_arm32():
@@ -62509,9 +62516,9 @@ class CpuidCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s}\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "NOTE: Disable `-enable-kvm` option for qemu-system."
+    _example_ = "{:s}".format(_cmdline_)
+
+    _note_ = "Disable `-enable-kvm` option for qemu-system."
 
     def execute_cpuid(self, num, subnum=0):
         codes = [b"\x0f\xa2"] # cpuid
@@ -63347,9 +63354,9 @@ class MsrCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0xc0000080              # rcx value\n".format(_cmdline_)
-    _example_ += "{:s} MSR_EFER                # another valid format\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "NOTE: Disable`-enable-kvm` option for qemu-system."
+    _example_ += "{:s} MSR_EFER                # another valid format".format(_cmdline_)
+
+    _note_ = "Disable`-enable-kvm` option for qemu-system."
 
     msr_table = [
         ["MSR_EFER",           0xc0000080, "Extended feature register"],
@@ -69316,7 +69323,7 @@ class ExecUntilCondCommand(ExecUntilCommand):
 
     _example_ = '{:s} "$rax==0xdead && $rbx==0xcafe"    # execute until specified condition is filled\n'.format(_cmdline_)
     _example_ += '{:s} "$rax==0x12 && *(int*)$rbx==0x34" # multiple condition and memory access is supported\n'.format(_cmdline_)
-    _example_ += '{:s} "$ALL_REG==0x1234"                # compare with all regs. e.g.: `($rax==0x1234 || $rbx==0x1234 || ...)`\n'.format(_cmdline_)
+    _example_ += '{:s} "$ALL_REG==0x1234"                # compare with all regs. e.g.: `($rax==0x1234 || $rbx==0x1234 || ...)`'.format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False)
@@ -69744,11 +69751,11 @@ class KmallocTracerCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}         # simple output\n".format(_cmdline_)
-    _example_ += "{:s} -dtv    # useful output\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "NOTE: Disable `-enable-kvm` option for qemu-system (#PF may occur).\n"
-    _example_ += "NOTE: Append `tsc=unstable` option for kernel cmdline.\n"
-    _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n."
+    _example_ += "{:s} -dtv    # useful output".format(_cmdline_)
+
+    _note_ = "Disable `-enable-kvm` option for qemu-system (#PF may occur).\n"
+    _note_ += "Append `tsc=unstable` option for kernel cmdline.\n"
+    _note_ += "This command needs CONFIG_RANDSTRUCT=n."
 
     def __init__(self, *args, **kwargs):
         super().__init__()
@@ -70048,11 +70055,11 @@ class KmallocAllocatedByCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}         # simple output\n".format(_cmdline_)
-    _example_ += "{:s} -dtv    # useful output\n".format(_cmdline_)
-    _example_ += "\n"
-    _example_ += "NOTE: Disable `-enable-kvm` option for qemu-system (#PF may occur).\n"
-    _example_ += "NOTE: Append `tsc=unstable` option for kernel cmdline.\n"
-    _example_ += "NOTE: This command needs CONFIG_RANDSTRUCT=n."
+    _example_ += "{:s} -dtv    # useful output".format(_cmdline_)
+
+    _note_ = "Disable `-enable-kvm` option for qemu-system (#PF may occur).\n"
+    _note_ += "Append `tsc=unstable` option for kernel cmdline.\n"
+    _note_ += "This command needs CONFIG_RANDSTRUCT=n."
 
     def __init__(self, *args, **kwargs):
         super().__init__()
