@@ -3583,15 +3583,17 @@ def gef_execute_gdb_script(commands):
     return
 
 
-def get_cet_status():
+@functools.lru_cache(maxsize=None)
+def get_cet_status_old_interface():
+    # https://lore.kernel.org/lkml/1531342544.15351.37.camel@intel.com/
     sp = current_arch.sp
     mem = {}
 
-    # *addr = SHSTK/IBT status
-    # *(addr + 1) = SHSTK base address
-    # *(addr + 2) = SHSTK size
     # backup
     for i in range(3):
+        # *addr = SHSTK/IBT status
+        # *(addr + 1) = SHSTK base address
+        # *(addr + 2) = SHSTK size
         addr = sp + current_arch.ptrsize * i
         mem[addr] = read_memory(addr, current_arch.ptrsize)
 
@@ -3609,6 +3611,58 @@ def get_cet_status():
     if ret != 0:
         return None
     return sp_value
+
+
+@functools.lru_cache(maxsize=None)
+def get_cet_status_new_interface():
+    # https://www.kernel.org/doc/html/next/arch/x86/shstk.html
+    sp = current_arch.sp
+    mem = {}
+
+    # backup
+    for i in range(1):
+        # *addr = SHSTK status
+        addr = sp + current_arch.ptrsize * i
+        mem[addr] = read_memory(addr, current_arch.ptrsize)
+
+    res = gdb.execute("call-syscall arch_prctl 0x5005 {:#x}".format(sp), to_string=True) # ARCH_SHSTK_STATUS
+    output_line = res.splitlines()[-1]
+    ret = int(output_line.split()[2], 0)
+
+    sp_value = read_int_from_memory(sp)
+
+    # revert
+    for addr, data in mem.items():
+        write_memory(addr, data)
+
+    if ret != 0:
+        return None
+    return sp_value
+
+
+@functools.lru_cache(maxsize=None)
+def get_cet_status_via_procfs():
+    # https://www.kernel.org/doc/html/next/arch/x86/shstk.html
+    dic = {}
+    if is_remote_debug():
+        if get_pid(remote=True):
+            remote_status = "/proc/{:d}/status".format(get_pid(remote=True))
+        data = read_remote_file(remote_status, as_byte=True) # qemu-user is failed here, it is ok
+        if not data:
+            return None
+    else:
+        if get_pid():
+            local_status = "/proc/{:d}/status".format(get_pid())
+        data = open(local_status, "rb").read()
+        if not data:
+            return None
+
+    if b"x86_Thread_features:" not in data:
+        return False # unsupported
+
+    dic["shstk"] = b"x86_Thread_features: shstk" in data
+    dic["shstk lock"] = b"x86_Thread_features_locked: shstk" in data
+    return dic
 
 
 def get_mte_status():
@@ -3645,7 +3699,7 @@ def get_pac_status():
 @functools.lru_cache(maxsize=None)
 def checksec(filename):
     """Check the security property of the ELF binary. The following properties are:
-    Canary, NX, PIE, RELRO, Fortify, Static, Stripped, Intel CET, RPATH/RUNPATH, and Clang CFI/SafeStack.
+    Canary, NX, PIE, RELRO, Fortify, Static, Stripped, CET, RPATH/RUNPATH, and Clang CFI/SafeStack.
     Return a dict() with the different keys mentioned above, and the boolean
     associated whether the protection was found."""
 
@@ -3730,10 +3784,10 @@ def checksec(filename):
     else:
         results["Fortify"] = __check_security_property("-rs", filename, r"_chk@GLIBC") is True
 
-    # CET
+    # CET opcodes
     if is_x86():
         if not is_stripped(filename) and not is_static(filename):
-            results["Intel CET"] = __check_security_property("-S", filename, r"\.plt\.sec") is True
+            results["CET IBT opcodes"] = __check_security_property("-S", filename, r"\.plt\.sec") is True
         else: # static or stripped
             try:
                 cmd = [objdump, "-d", "-j", ".plt", filename] # check only .plt section for speed up
@@ -3742,17 +3796,22 @@ def checksec(filename):
                 cmd = [objdump, "-d", filename] # no .plt section
                 out = gef_execute_external(cmd, as_list=True)
 
-            results["Intel CET"] = False
+            results["CET IBT opcodes"] = False
             for line in out:
                 line = line.strip()
                 if not line:
                     continue
                 if is_x86_64() and line.endswith("endbr64"):
-                    results["Intel CET"] = True
+                    results["CET IBT opcodes"] = True
                     break
                 elif is_x86_32() and line.endswith("endbr32"):
-                    results["Intel CET"] = True
+                    results["CET IBT opcodes"] = True
                     break
+
+    # CET flags via Ehdr
+    if is_x86():
+        results["CET IBT flag"] = __check_security_property("-n", filename, r"Properties: x86 feature: .*IBT") is True
+        results["CET SHSTK flag"] = __check_security_property("-n", filename, r"Properties: x86 feature: .*SHSTK") is True
 
     # PAC
     if is_arm64():
@@ -19387,31 +19446,98 @@ class ChecksecCommand(GenericCommand):
             msg = Color.colorify("No", "bold red") + " (The symbol remains)"
             gef_print("{:<40s}: {:s}".format("Stripped", msg))
 
-        # CET opcode
+        # Intel CET
         if is_x86():
-            if sec["Intel CET"]:
-                gef_print("{:<40s}: {:s}".format("Intel CET endbr64/endbr32", Color.colorify("Found", "bold green")))
+            # SHSTK flags via Ehdr
+            if sec["CET SHSTK flag"]:
+                gef_print("{:<40s}: {:s}".format("CET SHSTK feature flag (via Ehdr)", Color.colorify("Found", "bold green")))
             else:
-                gef_print("{:<40s}: {:s}".format("Intel CET endbr64/endbr32", Color.colorify("Not found", "bold red")))
+                gef_print("{:<40s}: {:s}".format("CET SHSTK feature flag (via Ehdr)", Color.colorify("Not found", "bold red")))
 
-        # CET Status
-        if is_x86() and is_alive():
-            r = get_cet_status()
-            if r is None:
-                msg = Color.colorify("Disabled", "bold red") + " (kernel does not support)"
-                gef_print("{:<40s}: {:s}".format("Intel CET IBT", msg))
-                gef_print("{:<40s}: {:s}".format("Intel CET SHSTK", msg))
+            # SHSTK status via arch_prctl
+            if is_alive():
+                if is_pin():
+                    # Intel SDE implements userspace CET SHSTK but old interface
+                    r = get_cet_status_old_interface()
+                    if r is None:
+                        msg = Color.colorify("Disabled", "bold red") + " (kernel does not support; Intel SDE has no `-cet` option)"
+                        gef_print("{:<40s}: {:s}".format("CET IBT status (via old arch_prctl IF)", msg))
+                    else:
+                        if r & 0b10:
+                            msg = Color.colorify("Enabled", "bold green") + " (kernel supports; Intel SDE has `-cet` option)"
+                            gef_print("{:<40s}: {:s}".format("CET SHSTK status (via old arch_prctl IF)", msg))
+                        else:
+                            msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled; Intel SDE has `-cet` option)"
+                            gef_print("{:<40s}: {:s}".format("CET SHSTK status (via old arch_prctl IF)", msg))
+                else:
+                    # kernel 6.6 or after supports userspace CET SHSTK
+                    r = get_cet_status_new_interface()
+                    if r is None:
+                        msg = Color.colorify("Unimplemented", "bold red") + " (kernel does not support; kernel supports it from 6.6)"
+                        gef_print("{:<40s}: {:s}".format("CET SHSTK status (via new arch_prctl IF)", msg))
+                    else:
+                        if r & 0b01:
+                            msg = Color.colorify("Enabled", "bold green") + " (kernel supports and enabled)"
+                            gef_print("{:<40s}: {:s}".format("CET SHSTK status (via new arch_prctl IF)", msg))
+                        else:
+                            msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled)"
+                            gef_print("{:<40s}: {:s}".format("CET SHSTK status (via new arch_prctl IF)", msg))
+
+            # SHSTK status via procfs
+            if is_alive():
+                r = get_cet_status_via_procfs()
+                if r is None:
+                    msg = Color.grayify("Unknown") + " (failed to open /proc/PID/status)"
+                    gef_print("{:<40s}: {:s}".format("CET SHSTK status (via procfs)", msg))
+                    gef_print("{:<40s}: {:s}".format("CET SHSTK Lock status (via procfs)", msg))
+                elif r is False:
+                    msg = Color.colorify("Unimplemented", "bold red") + " (kernel does not support; kernel supports it from 6.6)"
+                    gef_print("{:<40s}: {:s}".format("CET SHSTK status (via procfs)", msg))
+                    gef_print("{:<40s}: {:s}".format("CET SHSTK Lock status (via procfs)", msg))
+                else:
+                    if r["shstk"]:
+                        gef_print("{:<40s}: {:s}".format("CET SHSTK status (via procfs)", Color.colorify("Enabled", "bold green")))
+                    else:
+                        msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled)"
+                        gef_print("{:<40s}: {:s}".format("CET SHSTK status (via procfs)", msg))
+                    if r["shstk lock"]:
+                        gef_print("{:<40s}: {:s}".format("CET SHSTK Lock status (via procfs)", Color.colorify("Enabled", "bold green")))
+                    else:
+                        msg = Color.colorify("Disabled", "bold red") + " (kernel supports but no locked)"
+                        gef_print("{:<40s}: {:s}".format("CET SHSTK Lock status (via procfs)", msg))
+
+            # IBT flags via Ehdr
+            if sec["CET IBT flag"]:
+                gef_print("{:<40s}: {:s}".format("CET IBT feature flag (via Ehdr)", Color.colorify("Found", "bold green")))
             else:
-                if r & 0b01:
-                    gef_print("{:<40s}: {:s}".format("Intel CET IBT", Color.colorify("Enabled", "bold green")))
+                gef_print("{:<40s}: {:s}".format("CET IBT feature flag (via Ehdr)", Color.colorify("Not found", "bold red")))
+
+            # IBT opcodes
+            if sec["CET IBT opcodes"]:
+                gef_print("{:<40s}: {:s}".format("CET IBT opcodes (endbr64/endbr32)", Color.colorify("Found", "bold green")))
+            else:
+                gef_print("{:<40s}: {:s}".format("CET IBT opcodes (endbr64/endbr32)", Color.colorify("Not found", "bold red")))
+
+            # IBT status via arch_prctl
+            if is_alive():
+                if is_pin():
+                    # Intel SDE implements userspace CET IBT but old interface
+                    r = get_cet_status_old_interface()
+                    if r is None:
+                        msg = Color.colorify("Disabled", "bold red") + " (kernel does not support; Intel SDE has no `-cet` option)"
+                        gef_print("{:<40s}: {:s}".format("CET IBT status (via old arch_prctl IF)", msg))
+                    else:
+                        if r & 0b01:
+                            msg = Color.colorify("Enabled", "bold green") + " (kernel supports; Intel SDE has `-cet` option)"
+                            gef_print("{:<40s}: {:s}".format("CET IBT status (via old arch_prctl IF)", msg))
+                        else:
+                            msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled; Intel SDE has `-cet` option)"
+                            gef_print("{:<40s}: {:s}".format("CET IBT status (via old arch_prctl IF)", msg))
                 else:
-                    msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled)"
-                    gef_print("{:<40s}: {:s}".format("Intel CET IBT", msg))
-                if r & 0b10:
-                    gef_print("{:<40s}: {:s}".format("Intel CET SHSTK", Color.colorify("Enabled", "bold green")))
-                else:
-                    msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled)"
-                    gef_print("{:<40s}: {:s}".format("Intel CET SHSTK", msg))
+                    # kernel does not support userspace CET IBT yet, only supports kernel space CET IBT.
+                    # https://lwn.net/Articles/889475/ (2022/3/31)
+                    msg = Color.colorify("Unimplemented", "bold red") + " (at least kernel 6.6 does not support userspace IBT)"
+                    gef_print("{:<40s}: {:s}".format("CET IBT status", msg))
 
         # PAC opcode
         if is_arm64():
@@ -19635,6 +19761,24 @@ class KernelChecksecCommand(GenericCommand):
                 gef_print("{:<40s}: {:s}".format("CET (CR4 bit 23)", Color.colorify("Enabled", "bold green")))
             else:
                 gef_print("{:<40s}: {:s}".format("CET (CR4 bit 23)", Color.colorify("Disabled", "bold red")))
+
+            # CET MSR
+            if (cr4 >> 23) & 1:
+                if is_kvm_enabled():
+                    additional = "for more precisely, use `msr MSR_IA32_S_CET` without --enable-kvm"
+                    gef_print("{:<40s}: {:s} ({:s})".format("CET SHSTK (MSR_IA32_S_CET bit 0)", Color.grayify("Unknown"), additional))
+                    gef_print("{:<40s}: {:s} ({:s})".format("CET IBT (MSR_IA32_S_CET bit 2)", Color.grayify("Unknown"), additional))
+                else:
+                    ret = gdb.execute("msr --quiet MSR_IA32_S_CET", to_string=True)
+                    MSR_IA32_S_CET = int(ret, 16)
+                    if MSR_IA32_S_CET & 1:
+                        gef_print("{:<40s}: {:s}".format("CET SHSTK (MSR_IA32_S_CET bit 0)", Color.colorify("Enabled", "bold green")))
+                    else:
+                        gef_print("{:<40s}: {:s}".format("CET SHSTK (MSR_IA32_S_CET bit 0)", Color.colorify("Disabled", "bold red")))
+                    if (MSR_IA32_S_CET >> 2) & 1:
+                        gef_print("{:<40s}: {:s}".format("CET IBT (MSR_IA32_S_CET bit 2)", Color.colorify("Enabled", "bold green")))
+                    else:
+                        gef_print("{:<40s}: {:s}".format("CET IBT (MSR_IA32_S_CET bit 2)", Color.colorify("Disabled", "bold red")))
 
         elif is_arm32():
             # PXN
@@ -63359,15 +63503,22 @@ class MsrCommand(GenericCommand):
     _note_ = "Disable`-enable-kvm` option for qemu-system."
 
     msr_table = [
-        ["MSR_EFER",           0xc0000080, "Extended feature register"],
-        ["MSR_STAR",           0xc0000081, "Legacy mode SYSCALL target"],
-        ["MSR_LSTAR",          0xc0000082, "Long mode SYSCALL target"],
-        ["MSR_CSTAR",          0xc0000083, "Compat mode SYSCALL target"],
-        ["MSR_SYSCALL_MASK",   0xc0000084, "EFLAGS mask for syscall"],
-        ["MSR_FS_BASE",        0xc0000100, "64bit FS base"],
-        ["MSR_GS_BASE",        0xc0000101, "64bit GS base"],
-        ["MSR_KERNEL_GS_BASE", 0xc0000102, "SwapGS GS shadow"],
-        ["MSR_TSC_AUX",        0xc0000103, "Auxiliary TSC"],
+        ["MSR_EFER",             0xc0000080, "Extended feature register"],
+        ["MSR_STAR",             0xc0000081, "Legacy mode SYSCALL target"],
+        ["MSR_LSTAR",            0xc0000082, "Long mode SYSCALL target"],
+        ["MSR_CSTAR",            0xc0000083, "Compat mode SYSCALL target"],
+        ["MSR_SYSCALL_MASK",     0xc0000084, "EFLAGS mask for syscall"],
+        ["MSR_FS_BASE",          0xc0000100, "64bit FS base"],
+        ["MSR_GS_BASE",          0xc0000101, "64bit GS base"],
+        ["MSR_KERNEL_GS_BASE",   0xc0000102, "SwapGS GS shadow"],
+        ["MSR_TSC_AUX",          0xc0000103, "Auxiliary TSC"],
+        ["MSR_IA32_U_CET",       0x000006a0, "User mode CET"],
+        ["MSR_IA32_S_CET",       0x000006a2, "Kernel mode CET"],
+        ["MSR_IA32_PL0_SSP",     0x000006a4, "Ring-0 shadow stack pointer"],
+        ["MSR_IA32_PL1_SSP",     0x000006a5, "Ring-1 shadow stack pointer"],
+        ["MSR_IA32_PL2_SSP",     0x000006a6, "Ring-2 shadow stack pointer"],
+        ["MSR_IA32_PL3_SSP",     0x000006a7, "Ring-3 shadow stack pointer"],
+        ["MSR_IA32_INT_SSP_TAB", 0x000006a8, "Exception shadow stack table"],
     ]
 
     def lookup_name2val(self, target_name):
@@ -63383,13 +63534,14 @@ class MsrCommand(GenericCommand):
         return "Unknown"
 
     def print_const_table(self):
-        gef_print(titlify("MSR table"))
+        gef_print(titlify("MSR table (Only frequently used)"))
         fmt = "{:34s}: {:10s} : {:s}"
         legend = ["Name", "Value", "Description"]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
         for name, val, desc in self.msr_table:
             gef_print("{:34s}: {:#010x} : {:s}".format(name, val, desc))
             continue
+        info("See more info: https://elixir.bootlin.com/linux/latest/source/arch/x86/include/asm/msr-index.h")
         return
 
     def bits_split(self, x, bits=64):
