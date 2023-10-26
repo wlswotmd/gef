@@ -51067,6 +51067,9 @@ class KernelSysctlCommand(GenericCommand):
             return False
 
     def sysctl_dump(self, rb_node):
+        if self.exact and self.exact_found:
+            return
+
         right = read_int_from_memory(rb_node + current_arch.ptrsize * 1) & ~1 # remove RB_BLACK
         left = read_int_from_memory(rb_node + current_arch.ptrsize * 2) & ~1 # remove RB_BLACK
         ctl_dir = read_int_from_memory(rb_node + current_arch.ptrsize * 3)
@@ -51091,29 +51094,29 @@ class KernelSysctlCommand(GenericCommand):
                 param_path = (parent_path + "." + procname_str).lstrip(".")
                 self.parent_paths[ctl_dir] = param_path
 
+                # mode
+                mode = u32(read_memory(ctl_table + self.OFFSET_mode, 4))
+
+                # `net.*` and `user.*` have a symlink attribute and they are redirected to another location.
+                # These must be traced from another root.
+                if (mode & 0o0120000) == 0o0120000: # symlink
+                    root = read_int_from_memory(ctl_table + current_arch.ptrsize)
+                    lookup = read_int_from_memory(root + self.OFFSET_lookup)
+                    if lookup == get_ksymaddr("net_ctl_header_lookup"): # net.*
+                        ctset = self.net_ctset
+                    elif lookup == get_ksymaddr("set_lookup"): # user.*
+                        ctset = self.user_ctset
+                    else:
+                        ctset = None
+                    if ctset:
+                        symlink_rb_node = read_int_from_memory(ctset + current_arch.ptrsize + self.OFFSET_rb_node)
+                        if ctset not in self.seen_ctset:
+                            self.seen_ctset.append(ctset)
+                            self.sysctl_dump(symlink_rb_node)
+
                 if self.should_be_print(param_path):
-                    # mode
-                    mode = u32(read_memory(ctl_table + self.OFFSET_mode, 4))
-
-                    # `net.*` and `user.*` have a symlink attribute and they are redirected to another location.
-                    # These must be traced from another root.
-                    if (mode & 0o0120000) == 0o0120000: # symlink
-                        root = read_int_from_memory(ctl_table + current_arch.ptrsize)
-                        lookup = read_int_from_memory(root + self.OFFSET_lookup)
-                        if lookup == get_ksymaddr("net_ctl_header_lookup"): # net.*
-                            ctset = self.net_ctset
-                        elif lookup == get_ksymaddr("set_lookup"): # user.*
-                            ctset = self.user_ctset
-                        else:
-                            ctset = None
-                        if ctset:
-                            symlink_rb_node = read_int_from_memory(ctset + current_arch.ptrsize + self.OFFSET_rb_node)
-                            if ctset not in self.seen_ctset:
-                                self.seen_ctset.append(ctset)
-                                self.sysctl_dump(symlink_rb_node)
-
                     # If it's not a directory, it should hold data, so dump it.
-                    elif (mode & 0o0040000) == 0: # not directory
+                    if (mode & 0o0040000) == 0: # not directory
                         maxlen = u32(read_memory(ctl_table + self.OFFSET_maxlen, 4))
                         # data
                         data_addr = read_int_from_memory(ctl_table + current_arch.ptrsize)
@@ -51155,6 +51158,9 @@ class KernelSysctlCommand(GenericCommand):
                             if self.verbose:
                                 fmt = "{:<56s} {:#018x} {:#07x} {:#010o}"
                                 self.out.append(fmt.format(param_path, data_addr, maxlen, mode))
+                        if self.exact:
+                            self.exact_found = True
+                            return
 
                 # next array element
                 ctl_table += self.SIZEOF_ctl_table
@@ -51287,11 +51293,16 @@ class KernelSysctlCommand(GenericCommand):
         init_user_ns = KernelAddressHeuristicFinder.get_init_user_ns()
         if init_user_ns:
             current = init_user_ns
-            set_is_seen = get_ksymaddr("set_is_seen")
+            # set_is_seen is found in 3 places (v5.19~), so get_ksymaddr should not be used.
+            set_is_seen = []
+            ret = gdb.execute("ksymaddr-remote --quiet --no-pager --exact set_is_seen", to_string=True)
+            for line in ret.splitlines():
+                addr = int(line.split()[0], 16)
+                set_is_seen.append(addr)
             if set_is_seen:
                 while True:
                     v = read_int_from_memory(current)
-                    if v == set_is_seen:
+                    if v in set_is_seen:
                         self.user_ctset = current
                         break
                     current += current_arch.ptrsize
@@ -51330,7 +51341,13 @@ class KernelSysctlCommand(GenericCommand):
 
         self.filter = args.filter
         self.exact = args.exact
+        self.exact_found = False
         self.verbose = args.verbose
+
+        if self.exact and not self.filter:
+            if not args.quiet:
+                err("Filter string is needed")
+            return
 
         if not args.quiet:
             info("Wait for memory scan")
@@ -51343,12 +51360,6 @@ class KernelSysctlCommand(GenericCommand):
         if not args.quiet:
             info("sysctl_table_root: {:#x}".format(sysctl_table_root))
 
-        self.out = []
-        if not args.quiet:
-            fmt = "{:<56s} {:<18s} {:<7s} {:<10s} {:<18s}"
-            legend = ["ParamName", "ParamAddress", "MaxLen", "Mode", "ParamValue"]
-            self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
-
         self.initialize()
 
         root_ctl_dir = sysctl_table_root + current_arch.ptrsize
@@ -51357,6 +51368,12 @@ class KernelSysctlCommand(GenericCommand):
         if not args.quiet:
             info("root_ctl_dir: {:#x}".format(root_ctl_dir))
             info("root_rb_node: {:#x}".format(root_rb_node))
+
+        self.out = []
+        if not args.quiet:
+            fmt = "{:<56s} {:<18s} {:<7s} {:<10s} {:<18s}"
+            legend = ["ParamName", "ParamAddress", "MaxLen", "Mode", "ParamValue"]
+            self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
         self.seen_ctl_dir = []
         self.seen_ctset = []
