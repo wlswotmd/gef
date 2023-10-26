@@ -58145,6 +58145,14 @@ class KsymaddrRemoteCommand(GenericCommand):
 
     def __init__(self, *args, **kwargs):
         super().__init__()
+        """
+        # Do not use dict; There are cases where multiple symbols with the same name exist.
+        # cat /proc/kallsyms |grep set_is_seen
+        ffffffff812326e0 t set_is_seen
+        ffffffff81d58900 t set_is_seen
+        ffffffff81d5cab0 t set_is_seen
+        #
+        """
         self.kallsyms = []
         return
 
@@ -58187,7 +58195,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         return tokens
 
     def read_kallsyms(self):
-        if self.kallsyms != []: # resolved already
+        if self.kallsyms: # resolved already
             return
 
         tokens = self.get_token_table()
@@ -58226,19 +58234,18 @@ class KsymaddrRemoteCommand(GenericCommand):
             fmt = "{:#018x} {:s} {:s}"
 
         self.out = []
-        for addr, symbol, typ in self.kallsyms:
-            if not keywords:
+        if not keywords:
+            for addr, symbol, typ in self.kallsyms:
                 self.out.append(fmt.format(addr, typ, symbol))
-                continue
-
-            for k in keywords:
+        elif self.exact:
+            for addr, symbol, typ in self.kallsyms:
+                if symbol in keywords:
+                    self.out.append(fmt.format(addr, typ, symbol))
+        else:
+            for addr, symbol, typ in self.kallsyms:
                 text = fmt.format(addr, typ, symbol)
-                if self.exact:
-                    if k == symbol:
-                        self.out.append(text)
-                        break
-                else:
-                    if k in text:
+                for k in keywords:
+                    if k in text: # not only symbol search, but also address search
                         self.out.append(text)
                         break
         return
