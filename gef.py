@@ -72202,33 +72202,24 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
     _aliases_ = ["ks-apply"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
-    @parse_args
-    @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
-    @only_if_in_kernel
-    def do_invoke(self, args):
-        self.dont_repeat()
-
-        if not args.quiet:
-            info("Wait for memory scan")
-
+    def create_symboled_elf(self, sym_elf_path):
         # get .kernel range
         text_base = get_ksymaddr("_stext")
         if text_base is None:
             err("Failed to get kernel base (_stext)")
-            return
+            return False
         res = gdb.execute("ksymaddr-remote --quiet --no-pager", to_string=True)
         text_end = int(res.splitlines()[-1].split()[0], 16)
 
         # make blank elf
-        sym_elf = AddSymbolTemporaryCommand.create_blank_elf(text_base, text_end)
-        if sym_elf is None:
+        blank_elf = AddSymbolTemporaryCommand.create_blank_elf(text_base, text_end)
+        if blank_elf is None:
             err("Failed to create blank elf")
-            return
+            return False
 
         # parse kernel symbol
         cmd_string_arr = []
@@ -72251,9 +72242,9 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
 
             # higher address needs relative
             relative_addr = addr - text_base
-            cmd_string_arr.append(f"--add-symbol '{func_name}'=.text:{relative_addr:#x},{global_flag},{type_flag}")
+            cmd_string_arr.append("--add-symbol '{:s}'=.text:{:#x},{:s},{:s}".format(func_name, relative_addr, global_flag, type_flag))
 
-        if not args.quiet:
+        if not self.quiet:
             info("{:d} entries will be added".format(len(cmd_string_arr)))
 
         # embedding symbols
@@ -72261,19 +72252,50 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
         processed_count = 0
         for cmd_string_arr_sliced in slicer(cmd_string_arr, 1000):
             cmd_string = " ".join(cmd_string_arr_sliced)
-            os.system(f"{objcopy} {cmd_string} '{sym_elf}'")
+            os.system("{:s} {:s} '{:s}'".format(objcopy, cmd_string, blank_elf))
             processed_count += len(cmd_string_arr_sliced)
 
             # debug print
-            if not args.quiet and processed_count and processed_count % 10000 == 0:
+            if not self.quiet and processed_count and processed_count % 10000 == 0:
                 info("{:d} entries were processed".format(processed_count))
 
-        # add symbol to gdb
-        gdb.execute(f"add-symbol-file {sym_elf} {text_base:#x}", to_string=True)
-        os.unlink(sym_elf)
+        if not self.quiet:
+            info("{:d} entries were processed".format(len(cmd_string_arr)))
+        os.rename(blank_elf, sym_elf_path)
+        return True
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel
+    def do_invoke(self, args):
+        self.dont_repeat()
 
         if not args.quiet:
-            info("{:d} entries were processed".format(len(cmd_string_arr)))
+            info("Wait for memory scan")
+        self.quiet = args.quiet
+
+        # resolve kversion for saved file name
+        kversion = KernelVersionCommand.kernel_version()
+        h = hashlib.sha256(str2bytes(kversion.version_string)).hexdigest()[-16:]
+        sym_elf_path = os.path.join(GEF_TEMP_DIR, "ks-apply-{:s}.elf".format(h))
+        if (not args.reparse) and os.path.exists(sym_elf_path) and os.path.getsize(sym_elf_path) > 0:
+            if not args.quiet:
+                info("A previously used file was found. reuse.")
+        else:
+            if os.path.exists(sym_elf_path):
+                os.unlink(sym_elf_path)
+            ret = self.create_symboled_elf(sym_elf_path)
+            if not ret:
+                return
+
+        # add symbol to gdb
+        text_base = get_ksymaddr("_stext")
+        cmd = "add-symbol-file {:s} {:#x}".format(sym_elf_path, text_base)
+        if not args.quiet:
+            warn("Execute `{:s}`".format(cmd))
+        gdb.execute(cmd)
         return
 
 

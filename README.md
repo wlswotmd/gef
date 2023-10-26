@@ -123,13 +123,12 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote.png)
 * `ksymaddr-remote-apply`: applies kallsyms information obtained by `ksymaddr-remote` to gdb.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote-apply.png)
+    * Once you get symboled pseudo ELF file, you can reuse and apply it automatically even after rebooting qemu-system.
 * `vmlinux-to-elf-apply`: applies kallsyms information obtained by `vmlinux-to-elf` to gdb.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmlinux-to-elf-apply1.png)
     * Once you get symboled vmlinux file, you can reuse and apply it automatically even after rebooting qemu-system.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmlinux-to-elf-apply2.png)
     * TIPS: `vmlinux-to-elf-apply` and `ksymaddr-remote-apply` provide almost the same functionality.
-        * For normal use, I think `vmlinux-to-elf-apply` is preferable because reusing image makes it faster.
-        * For FGKASLR, I think `ksymaddr-remote-apply` is preferable because faster without reusing image.
 * `slub-dump`: dumps slub free-list.
     * Supported on x64/x86/ARM64/ARM + SLUB + no-symbol + kASLR.
     * Supported on both `CONFIG_SLAB_FREELIST_HARDENED` is `y` or `n`.
