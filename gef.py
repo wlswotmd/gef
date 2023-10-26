@@ -19814,7 +19814,7 @@ class KernelChecksecCommand(GenericCommand):
         # KASLR
         cfg = "CONFIG_RANDOMIZE_BASE (KASLR)"
         ksym_ret = gdb.execute("ksymaddr-remote --quiet --no-pager kaslr_", to_string=True)
-        if ksym_ret is None:
+        if not ksym_ret:
             additional = "`kaslr_*`: Not found"
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
         else:
@@ -20372,8 +20372,8 @@ class KernelChecksecCommand(GenericCommand):
         # Each structure parsed by ksysctl has no difference among kernel versions, except for `struct ctl_dir.inodes`.
         # Additionally, the first member of struct ctl_table is a *char procname, which will almost certainly readable something.
         # If this fails, it can be determined that the randstruct is used.
-        ksysctl_ret = gdb.execute("ksysctl --quiet --no-pager", to_string=True)
-        if ksysctl_ret == "":
+        ksysctl_ret = gdb.execute("ksysctl --quiet --no-pager --exact --filter kernel.version", to_string=True)
+        if not ksysctl_ret:
             additional = "ksysctl was failed"
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
         else:
