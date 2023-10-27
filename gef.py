@@ -44599,17 +44599,37 @@ class KernelAddressHeuristicFinder:
         page_offset_base = KernelAddressHeuristicFinder.get_page_offset_base()
         if page_offset_base:
             return page_offset_base - current_arch.ptrsize * 2
+        return None
 
-        # plan 3
-        kinfo = KernelbaseCommand.get_kernel_base()
-        if not kinfo.has_none:
-            found_kbase = False
-            for vaddr, size, _perm in kinfo.maps[::-1]:
-                if found_kbase and size >= 0x200000:
-                    return vaddr
-                if vaddr == kinfo.kbase:
-                    found_kbase = True
-                    continue
+    @staticmethod
+    @switch_to_intel_syntax
+    def get_vmemmap():
+        if not is_x86_64():
+            return None
+
+        # plan 1 (from result of slub-dump)
+        allocator = KernelChecksecCommand.get_slab_type()
+        if allocator == "SLUB":
+            command = "slub-dump"
+        elif allocator == "SLUB_TINY":
+            command = "slub-tiny-dump"
+        else:
+            return None
+        for n in [8, 16, 32, 64, 96, 128, 192, 256, 512]:
+            ret = gdb.execute("{:s} --no-pager --quiet kmalloc-{:d}".format(command, n), to_string=True)
+            lines = ret.splitlines()
+            for i in range(len(lines) - 1):
+                if ("active page" in lines[i] or "node[0] page" in lines[i]) and "virtual address" in lines[i+1]:
+                    page = int(Color.remove_color(lines[i]).split()[-1], 16)
+                    vaddr = int(Color.remove_color(lines[i + 1]).split()[-1], 16)
+                    ret = gdb.execute("monitor gva2gpa {:#x}".format(vaddr), to_string=True)
+                    r = re.search(r"gpa: (0x\S+)", ret)
+                    if not r:
+                        ret = gdb.execute("v2p {:#x}".format(vaddr), to_string=True)
+                        r = re.search(r"Virt: 0x\S+ -> Phys: (0x\S+)", ret)
+                    if r:
+                        paddr = int(r.group(1), 16)
+                        return page - (paddr >> 6)
         return None
 
     @staticmethod
@@ -54633,7 +54653,7 @@ class SlubDumpCommand(GenericCommand):
         return align_address(kmem_cache_cpu)
 
     def page2virt(self, page, kmem_cache, freelist_fastpath=()):
-        ret = gdb.execute("page2virt {:#x}".format(page["address"]), to_string=True)
+        ret = gdb.execute("page2virt --from-slub-dump {:#x}".format(page["address"]), to_string=True)
         r = re.search(r"Virt: (\S+)", ret)
         if r:
             return int(r.group(1), 16)
@@ -55424,7 +55444,7 @@ class SlubTinyDumpCommand(GenericCommand):
         return read_cstring_from_memory(name_addr)
 
     def page2virt(self, page, kmem_cache):
-        ret = gdb.execute("page2virt {:#x}".format(page["address"]), to_string=True)
+        ret = gdb.execute("page2virt --from-slub-dump {:#x}".format(page["address"]), to_string=True)
         r = re.search(r"Virt: (\S+)", ret)
         if r:
             return int(r.group(1), 16)
@@ -68368,11 +68388,14 @@ class PagewalkWithHintsCommand(GenericCommand):
         if not self.quiet:
             info("resolve page")
         vmemmap_base = KernelAddressHeuristicFinder.get_vmemmap_base()
-        if not vmemmap_base:
-            return
+        if vmemmap_base:
+            vmemmap = read_int_from_memory(vmemmap_base)
+        else:
+            vmemmap = KernelAddressHeuristicFinder.get_vmemmap()
+            if vmemmap is None:
+                return
 
-        pages_start_addr = read_int_from_memory(vmemmap_base)
-        self.regions[pages_start_addr].add_description("struct page area")
+        self.regions[vmemmap].add_description("struct page area")
         return
 
     def resolve_buddy(self):
@@ -68682,6 +68705,7 @@ class Page2VirtCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("page", metavar="PAGE", type=parse_address, help="the page address you want to translate.")
+    parser.add_argument("--from-slub-dump", action="store_true", help="used internally in gef, please don't use it.")
     _syntax_ = parser.format_help()
 
     def __init__(self, *args, **kwargs):
@@ -68696,6 +68720,8 @@ class Page2VirtCommand(GenericCommand):
                 vmemmap_base = KernelAddressHeuristicFinder.get_vmemmap_base()
                 if vmemmap_base:
                     self.vmemmap = read_int_from_memory(vmemmap_base)
+                if not self.from_slub_dump and vmemmap_base is None:
+                    self.vmemmap = KernelAddressHeuristicFinder.get_vmemmap()
             if self.vmemmap:
                 info("vmemmap: {:#x}".format(self.vmemmap))
             if self.maps is None:
@@ -68815,6 +68841,8 @@ class Page2VirtCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
+        self.from_slub_dump = args.from_slub_dump
+
         kversion = KernelVersionCommand.kernel_version()
         if is_arm64() and kversion < "4.7":
             err("Unsupported (kernel is too old)")
@@ -68842,6 +68870,7 @@ class Virt2PageCommand(Page2VirtCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("virt", metavar="ADDRESS", type=parse_address, help="the virtual address you want to translate.")
+    parser.add_argument("--from-slub-dump", action="store_true", help="used internally in gef, please don't use it.")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -68851,6 +68880,8 @@ class Virt2PageCommand(Page2VirtCommand):
     @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
+
+        self.from_slub_dump = args.from_slub_dump
 
         kversion = KernelVersionCommand.kernel_version()
         if is_arm64() and kversion < "4.7":
