@@ -57236,16 +57236,16 @@ class BuddyDumpCommand(GenericCommand):
 
         struct zone {
             ...
-            const char                        *name;
+            const char *name;
         #ifdef CONFIG_MEMORY_ISOLATION
-            unsigned long                      nr_isolate_pageblock;
+            unsigned long nr_isolate_pageblock;
         #endif
         #ifdef CONFIG_MEMORY_HOTPLUG
-            seqlock_t                          span_seqlock;
+            seqlock_t span_seqlock;
         #endif
-            int                                initialized;
+            int initialized;
             ZONE_PADDING(_pad1_)
-            struct free_area                   free_area[MAX_ORDER];
+            struct free_area free_area[MAX_ORDER];
             ...
         }
 
@@ -57265,11 +57265,6 @@ class BuddyDumpCommand(GenericCommand):
              "Device",
         #endif
         };
-
-        struct free_area {
-            struct list_head     free_list[MIGRATE_TYPES];
-            unsigned long        nr_free;
-        };
         """
 
         # zone->name
@@ -57281,7 +57276,6 @@ class BuddyDumpCommand(GenericCommand):
             if name in ["DMA", "DMA32", "Normal", "HighMem", "Movable", "Device"]:
                 offset = current - self.nodes[0]
                 name_offsets.append(offset)
-                self.quiet_info("offset:{:#x}".format(offset))
             current += current_arch.ptrsize
         self.offset_name = name_offsets[0]
         self.quiet_info("offsetof(zone, name): {:#x}".format(self.offset_name))
@@ -57304,13 +57298,29 @@ class BuddyDumpCommand(GenericCommand):
         # zone->free_area
         current = self.nodes[0] + self.offset_name + current_arch.ptrsize
         while True:
-            val = read_int_from_memory(current)
-            if is_valid_addr(val):
+            # search list_head
+            val1 = read_int_from_memory(current)
+            val2 = read_int_from_memory(current + current_arch.ptrsize)
+            if is_valid_addr(val1) and is_valid_addr(val2):
                 break
             current += current_arch.ptrsize
         self.offset_free_area = current - self.nodes[0]
         self.quiet_info("offsetof(zone, free_area): {:#x}".format(self.offset_free_area))
 
+        """
+        const char * const migratetype_names[MIGRATE_TYPES] = {
+            "Unmovable",
+            "Movable",
+            "Reclaimable",
+            "HighAtomic",
+        #ifdef CONFIG_CMA
+            "CMA",
+        #endif
+        #ifdef CONFIG_MEMORY_ISOLATION
+            "Isolate",
+        #endif
+        };
+        """
         # MIGRATE_TYPES
         current = free_area = self.nodes[0] + self.offset_free_area
         while True:
@@ -57348,8 +57358,15 @@ class BuddyDumpCommand(GenericCommand):
                 "Isolate",
             ]
         else:
+            err("MIGRATE_TYPES: {:#x}".format(self.MIGRATE_TYPES))
             raise
 
+        """
+        struct free_area {
+            struct list_head free_list[MIGRATE_TYPES];
+            unsigned long nr_free;
+        };
+        """
         # sizeof(free_area)
         self.sizeof_free_area = offset_nr_free + current_arch.ptrsize
         self.quiet_info("sizeof(free_area): {:#x}".format(self.sizeof_free_area))
