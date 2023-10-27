@@ -64268,8 +64268,7 @@ class Virt2PhysCommand(GenericCommand):
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose output (for arm64 secure memory).")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} 0xa31dd000\n".format(_cmdline_)
-    _example_ += "{:s} 0xa31dd000 -S".format(_cmdline_)
+    _example_ = "{:s} 0xffffffff855041e0".format(_cmdline_)
 
     @staticmethod
     def get_maps(FORCE_PREFIX_S, verbose=False):
@@ -64364,6 +64363,8 @@ class Phys2VirtCommand(Virt2PhysCommand):
     parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="the address of data you want to translate.")
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose output (for arm64 secure memory).")
     _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0x55041e0".format(_cmdline_)
 
     @parse_args
     @only_if_gdb_running
@@ -68710,6 +68711,7 @@ class Page2VirtCommand(GenericCommand):
 
     def __init__(self, *args, **kwargs):
         super().__init__()
+        self.initialized = False
         self.vmemmap = None
         self.maps = None
         return
@@ -68727,6 +68729,7 @@ class Page2VirtCommand(GenericCommand):
             if self.maps is None:
                 self.maps = Virt2PhysCommand.get_maps(None)
             if self.vmemmap and self.maps:
+                self.initialized = True
                 return True
         elif is_x86_32():
             pass
@@ -68767,6 +68770,7 @@ class Page2VirtCommand(GenericCommand):
                 self.PAGE_OFFSET = -(1 << (VA_BITS))
                 VMEMMAP_SHIFT = PAGE_SHIFT - STRUCT_PAGE_MAX_SHIFT
                 self.VMEMMAP_START = -(1 << (VA_BITS - VMEMMAP_SHIFT)) & 0xffffffffffffffff
+            self.initialized = True
             return True
         elif is_arm32():
             pass
@@ -68843,15 +68847,18 @@ class Page2VirtCommand(GenericCommand):
 
         self.from_slub_dump = args.from_slub_dump
 
-        kversion = KernelVersionCommand.kernel_version()
-        if is_arm64() and kversion < "4.7":
-            err("Unsupported (kernel is too old)")
-            return
+        if is_arm64():
+            kversion = KernelVersionCommand.kernel_version()
+            if kversion < "4.7":
+                err("Unsupported (kernel is too old)")
+                return
 
-        ret = self.initialize()
-        if ret is False:
-            err("Failed to initialize")
-            return
+        if not self.initialized:
+            info("Wait for memory scan")
+            ret = self.initialize()
+            if ret is False:
+                err("Failed to initialize")
+                return
 
         vaddr = self.page2virt(args.page)
         if vaddr is None:
@@ -68883,20 +68890,23 @@ class Virt2PageCommand(Page2VirtCommand):
 
         self.from_slub_dump = args.from_slub_dump
 
-        kversion = KernelVersionCommand.kernel_version()
-        if is_arm64() and kversion < "4.7":
-            err("Unsupported (kernel is too old)")
-            return
+        if is_arm64():
+            kversion = KernelVersionCommand.kernel_version()
+            if kversion < "4.7":
+                err("Unsupported (kernel is too old)")
+                return
 
         virt = args.virt
         if args.virt & 0xfff:
             warn("The address must be 0x1000 aligned, round down and then calculate.")
             virt = args.virt & ~0xfff
 
-        ret = self.initialize()
-        if ret is False:
-            err("Failed to initialize")
-            return
+        if not self.initialized:
+            info("Wait for memory scan")
+            ret = self.initialize()
+            if ret is False:
+                err("Failed to initialize")
+                return
 
         page = self.virt2page(virt)
         if page is None:
