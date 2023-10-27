@@ -46295,6 +46295,9 @@ class KernelAddressHeuristicFinder:
         return None
 
 
+KF = KernelAddressHeuristicFinder # for convenience using from python-interactive
+
+
 @register_command
 class KernelbaseCommand(GenericCommand):
     """Display kernel base address."""

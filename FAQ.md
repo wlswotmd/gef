@@ -120,6 +120,9 @@ The workaround is to build and install new `binutils` from source code.
 ## Can I access each GEF command object from `python-interactive`?
 Yes, you can access by `__LCO__` that means loaded command objects. For example, `pi __LCO__["vmmap"]`.
 
+## I want to call the function in `KernelAddressHeuristicFinder` class from `python-interactive`, but the class name is too long and I often forget it.
+Yes, you can access by `KF`. For example. `pi KF.get_slab_caches()`.
+
 ## How can I get the instruction object?
 You can get instruction object by `pi get_insn(addr=None)`.
 
