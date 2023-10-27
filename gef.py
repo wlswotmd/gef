@@ -2364,7 +2364,7 @@ class GlibcArena:
         else:
             return self.addr + self.size
 
-    def tcachebin_addr(self, i):
+    def tcachebins_addr(self, i):
         if self.heap_base is None:
             return None
         if get_libc_version() < (2, 30):
@@ -2373,7 +2373,7 @@ class GlibcArena:
             offset = 0x10 + 2 * self.TCACHE_MAX_BINS + i * current_arch.ptrsize
         return self.heap_base + offset
 
-    def fastbin_addr(self, i):
+    def fastbins_addr(self, i):
         if hasattr(self.__arena, "fastbins_addr"):
             fastbins_addr = self.__arena.fastbins_addr
         else:
@@ -2397,7 +2397,7 @@ class GlibcArena:
             last_remainder_addr = self.__addr + last_remainder_type.bitpos // 8
         return last_remainder_addr
 
-    def bin_addr(self, i):
+    def bins_addr(self, i):
         if hasattr(self.__arena, "bins_addr"):
             bins_addr = self.__arena.bins_addr
         else:
@@ -2516,7 +2516,7 @@ class GlibcArena:
             chunks_all[i] = chunks
         return chunks_all
 
-    def fastbin_list(self):
+    def fastbins_list(self):
         def fastbin_index(sz):
             return (sz >> 4) - 2 if SIZE_SZ == 8 else (sz >> 3) - 2
 
@@ -2547,7 +2547,7 @@ class GlibcArena:
             chunks_all[i] = chunks
         return chunks_all
 
-    def bin_list(self, index):
+    def bins_list(self, index):
         try:
             fw, bk = self.bin(index)
         except gdb.MemoryError:
@@ -2572,20 +2572,64 @@ class GlibcArena:
 
     def unsortedbin_list(self):
         chunks_all = {}
-        chunks_all[0] = self.bin_list(0)
+        chunks_all[0] = self.bins_list(0)
         return chunks_all
 
-    def smallbin_list(self):
+    def smallbins_list(self):
         chunks_all = {}
         for i in range(1, 63):
-            chunks_all[i] = self.bin_list(i)
+            chunks_all[i] = self.bins_list(i)
         return chunks_all
 
-    def largebin_list(self):
+    def largebins_list(self):
         chunks_all = {}
         for i in range(63, 126):
-            chunks_all[i] = self.bin_list(i)
+            chunks_all[i] = self.bins_list(i)
         return chunks_all
+
+    def reset_bins_info(self):
+        self.cached_tcache_list = self.tcache_list()
+        self.cached_fastbins_list = self.fastbins_list()
+        self.cached_unsortedbin_list = self.unsortedbin_list()
+        self.cached_smallbins_list = self.smallbins_list()
+        self.cached_largebins_list = self.largebins_list()
+        return
+
+    def make_bins_info(self, address, skip_top=False):
+        info = []
+        for k, v in self.cached_tcache_list.items():
+            if address in v:
+                pos = ",".join([str(i + 1) for i, x in enumerate(v) if x == address])
+                sz = get_binsize_table()["tcache"][k]["size"]
+                m = "tcache[idx={:d},sz={:#x}][{:s}/{:d}]".format(k, sz, pos, len(v))
+                info.append(m)
+        for k, v in self.cached_fastbins_list.items():
+            if address in v:
+                pos = ",".join([str(i + 1) for i, x in enumerate(v) if x == address])
+                sz = get_binsize_table()["fastbins"][k]["size"]
+                m = "fastbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(k, sz, pos, len(v))
+                info.append(m)
+        for _k, v in self.cached_unsortedbin_list.items():
+            if address in v:
+                pos = ",".join([str(i + 1) for i, x in enumerate(v) if x == address])
+                m = "unsortedbins[{:s}/{:d}]".format(pos, len(v))
+                info.append(m)
+        for k, v in self.cached_smallbins_list.items():
+            if address in v:
+                pos = ",".join([str(i + 1) for i, x in enumerate(v) if x == address])
+                sz = get_binsize_table()["small_bins"][k]["size"]
+                m = "smallbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(k, sz, pos, len(v))
+                info.append(m)
+        for k, v in self.cached_largebins_list.items():
+            if address in v:
+                pos = ",".join([str(i + 1) for i, x in enumerate(v) if x == address])
+                sz = get_binsize_table()["large_bins"][k]["size"]
+                m = "largebins[idx={:d},sz={:#x}][{:s}/{:d}]".format(k, sz, pos, len(v))
+                info.append(m)
+        if not skip_top:
+            if address == self.top:
+                info.append("top")
+        return info
 
 
 def get_arena(address):
@@ -16999,13 +17043,6 @@ class GlibcHeapChunkCommand(GenericCommand):
             err("Heap is not initialized")
             return
 
-        # freelist info
-        tcache_list = arena.tcache_list()
-        fastbin_list = arena.fastbin_list()
-        unsortedbin_list = arena.unsortedbin_list()
-        smallbin_list = arena.smallbin_list()
-        largebin_list = arena.largebin_list()
-
         # get chunk
         if args.as_base:
             chunk = GlibcChunk(args.location, from_base=True)
@@ -17020,28 +17057,15 @@ class GlibcHeapChunkCommand(GenericCommand):
             return
 
         # extra information
-        freelist_hint_color = get_gef_setting("theme.heap_freelist_hint")
-        extra = []
+        info = []
+        arena.reset_bins_info()
+        info.extend(arena.make_bins_info(chunk.address, skip_top=True))
         if chunk.chunk_base_address == arena.top:
-            extra.append("top")
-        for k, v in tcache_list.items():
-            if chunk.address in v:
-                extra.append("tcache[{}]".format(k))
-        for k, v in fastbin_list.items():
-            if chunk.address in v:
-                extra.append("fastbin[{}]".format(k))
-        for _k, v in unsortedbin_list.items():
-            if chunk.address in v:
-                extra.append("unsortedbin")
-        for k, v in smallbin_list.items():
-            if chunk.address in v:
-                extra.append("smallbin[{}]".format(k))
-        for k, v in largebin_list.items():
-            if chunk.address in v:
-                extra.append("largebin[{}]".format(k))
+            info.append("top")
 
-        if extra:
-            gef_print("  Found freelist/top: {:s}".format(Color.colorify(", ".join(extra), freelist_hint_color)))
+        if info:
+            freelist_hint_color = get_gef_setting("theme.heap_freelist_hint")
+            gef_print("  Found freelist/top: {:s}".format(Color.colorify(", ".join(info), freelist_hint_color)))
         else:
             gef_print("  Found freelist/top: None")
         return
@@ -17114,16 +17138,10 @@ class GlibcHeapChunksCommand(GenericCommand):
         freelist_hint_color = get_gef_setting("theme.heap_freelist_hint")
         current_chunk = GlibcChunk(dump_start, from_base=True)
 
-        # Even if an error occurs during free-list parsing, It trust the free-list that has been parsed so far.
-        tcache_list = arena.tcache_list()
-        fastbin_list = arena.fastbin_list()
-        unsortedbin_list = arena.unsortedbin_list()
-        smallbin_list = arena.smallbin_list()
-        largebin_list = arena.largebin_list()
-
+        arena.reset_bins_info()
         while True:
             if current_chunk.chunk_base_address == arena.top:
-                gef_print("{!s} {} {}".format(current_chunk, LEFT_ARROW, Color.colorify("top", freelist_hint_color)))
+                gef_print("{!s} {:s}".format(current_chunk, Color.colorify("{:s} top".format(LEFT_ARROW), freelist_hint_color)))
                 break
             if current_chunk.chunk_base_address > arena.top:
                 err("Corrupted: chunk > top")
@@ -17135,21 +17153,9 @@ class GlibcHeapChunksCommand(GenericCommand):
             line = str(current_chunk)
 
             # in or not in free-list
-            for k, v in tcache_list.items():
-                if current_chunk.address in v:
-                    line += " {} {}".format(LEFT_ARROW, Color.colorify("tcache[{}]".format(k), freelist_hint_color))
-            for k, v in fastbin_list.items():
-                if current_chunk.address in v:
-                    line += " {} {}".format(LEFT_ARROW, Color.colorify("fastbin[{}]".format(k), freelist_hint_color))
-            for _k, v in unsortedbin_list.items():
-                if current_chunk.address in v:
-                    line += " {} {}".format(LEFT_ARROW, Color.colorify("unsortedbin", freelist_hint_color))
-            for k, v in smallbin_list.items():
-                if current_chunk.address in v:
-                    line += " {} {}".format(LEFT_ARROW, Color.colorify("smallbin[{}]".format(k), freelist_hint_color))
-            for k, v in largebin_list.items():
-                if current_chunk.address in v:
-                    line += " {} {}".format(LEFT_ARROW, Color.colorify("largebin[{}]".format(k), freelist_hint_color))
+            info = arena.make_bins_info(current_chunk.address)
+            if info:
+                line += Color.colorify(" {:s} {:s}".format(LEFT_ARROW, ", ".join(info)), freelist_hint_color)
 
             # peek nbyte
             if nb:
@@ -17236,8 +17242,8 @@ class GlibcHeapBinsCommand(GenericCommand):
             warn("Invalid backward and forward bin pointers(fd==bk==NULL)")
             return -1
 
-        bin_addr = arena.bin_addr(index)
-        head = bin_addr - current_arch.ptrsize * 2
+        bins_addr = arena.bins_addr(index)
+        head = bins_addr - current_arch.ptrsize * 2
         if fw == head and not verbose:
             return 0
 
@@ -17254,11 +17260,11 @@ class GlibcHeapBinsCommand(GenericCommand):
             size_str = "any"
 
         m = []
-        colored_bin_addr = str(lookup_address(bin_addr))
+        colored_bins_addr = str(lookup_address(bins_addr))
         colored_fw = str(lookup_address(fw))
         colored_bk = str(lookup_address(bk))
         fmt = "{:s}[idx={:d}, size={:s}, @{:s}]: fd={:s}, bk={:s}"
-        m.append(fmt.format(bin_name, index, size_str, colored_bin_addr, colored_fw, colored_bk))
+        m.append(fmt.format(bin_name, index, size_str, colored_bins_addr, colored_fw, colored_bk))
         corrupted_msg_color = get_gef_setting("theme.heap_corrupted_msg")
 
         seen = []
@@ -17376,8 +17382,8 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
                     break
             if m or verbose:
                 size = get_binsize_table()["tcache"][i]["size"]
-                colored_bin_addr = str(lookup_address(arena.tcachebin_addr(i)))
-                gef_print("tcachebins[idx={:d}, size={:#x}, @{:s}] count={:d}".format(i, size, colored_bin_addr, count))
+                colored_bins_addr = str(lookup_address(arena.tcachebins_addr(i)))
+                gef_print("tcachebins[idx={:d}, size={:#x}, @{:s}] count={:d}".format(i, size, colored_bins_addr, count))
                 if m:
                     gef_print("\n".join(m))
 
@@ -17479,8 +17485,8 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
                 bin_table = get_binsize_table()["fastbins"]
                 if i in bin_table:
                     size = bin_table[i]["size"]
-                    colored_bin_addr = str(lookup_address(arena.fastbin_addr(i)))
-                    gef_print("fastbins[idx={:d}, size={:#x}, @{:s}] ".format(i, size, colored_bin_addr))
+                    colored_bins_addr = str(lookup_address(arena.fastbins_addr(i)))
+                    gef_print("fastbins[idx={:d}, size={:#x}, @{:s}] ".format(i, size, colored_bins_addr))
                     if m:
                         gef_print("\n".join(m))
 
@@ -42711,36 +42717,13 @@ class VisualHeapCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
-    def subinfo(self, addr):
-        s = ""
-        for k, v in self.tcache_list.items():
-            if addr in v:
-                s += "{} {}".format(LEFT_ARROW, "tcache[{}]".format(k))
-        for k, v in self.fastbin_list.items():
-            if addr in v:
-                s += "{} {}".format(LEFT_ARROW, "fastbin[{}]".format(k))
-        for _k, v in self.unsortedbin_list.items():
-            if addr in v:
-                s += "{} {}".format(LEFT_ARROW, "unsortedbin")
-        for k, v in self.smallbin_list.items():
-            if addr in v:
-                s += "{} {}".format(LEFT_ARROW, "smallbin[{}]".format(k))
-        for k, v in self.largebin_list.items():
-            if addr in v:
-                s += "{} {}".format(LEFT_ARROW, "largebin[{}]".format(k))
-        if addr == self.top:
-            s += "{} {}".format(LEFT_ARROW, "top")
-        return s
-
-    def generate_visual_chunk(self, chunk, idx):
-        ptrsize = current_arch.ptrsize
-
-        unpack = u32 if ptrsize == 4 else u64
-        data = slicer(chunk.data, ptrsize * 2)
+    def generate_visual_chunk(self, arena, chunk, idx):
+        unpack = u32 if current_arch.ptrsize == 4 else u64
+        data = slicer(chunk.data, current_arch.ptrsize * 2)
         group_line_threshold = 8
 
         addr = chunk.chunk_base_address
-        width = ptrsize * 2 + 2
+        width = current_arch.ptrsize * 2 + 2
         exceed_top = False
         has_subinfo = False
 
@@ -42748,33 +42731,41 @@ class VisualHeapCommand(GenericCommand):
         # Group rows to display rows with the same value together.
         for blk, blks in itertools.groupby(data):
             repeat_count = len(list(blks))
-            d1, d2 = unpack(blk[:ptrsize]), unpack(blk[ptrsize:])
+            d1, d2 = unpack(blk[:current_arch.ptrsize]), unpack(blk[current_arch.ptrsize:])
             dascii = "".join([chr(x) if 0x20 <= x < 0x7f else "." for x in blk])
 
             fmt = "{:#x}: {:#0{:d}x} {:#0{:d}x} | {:s} | {:s}"
             if self.full or repeat_count < group_line_threshold:
                 # non-collapsed line
                 for _ in range(repeat_count):
-                    sub_info = self.subinfo(addr)
-                    has_subinfo |= bool(sub_info)
+                    sub_info = arena.make_bins_info(addr)
+                    if sub_info:
+                        sub_info = "{:s} {:s}".format(LEFT_ARROW, ", ".join(sub_info))
+                        has_subinfo = True
+                    else:
+                        sub_info = ""
 
                     if self.safe_linking_decode:
-                        if chunk.address == addr and ("tcache" in sub_info or "fastbin" in sub_info):
+                        if chunk.address == addr and ("tcache" in sub_info or "fastbins" in sub_info):
                             d1 = chunk.get_fwd_ptr(True)
 
                     out_tmp.append(fmt.format(addr, d1, width, d2, width, dascii, sub_info))
-                    addr += ptrsize * 2
+                    addr += current_arch.ptrsize * 2
 
-                    if addr > self.top + ptrsize * 4:
+                    if addr > arena.top + current_arch.ptrsize * 4:
                         exceed_top = True
                         break
             else:
                 # collapsed line
-                sub_info = self.subinfo(addr)
-                has_subinfo |= bool(sub_info)
+                sub_info = arena.make_bins_info(addr)
+                if sub_info:
+                    sub_info = "{:s} {:s}".format(LEFT_ARROW, ", ".join(sub_info))
+                    has_subinfo = True
+                else:
+                    sub_info = ""
                 out_tmp.append(fmt.format(addr, d1, width, d2, width, dascii, sub_info))
-                addr += ptrsize * 2 * repeat_count
-                out_tmp.append("* {:#d} lines, {:#x} bytes".format(repeat_count - 1, (repeat_count - 1) * ptrsize * 2))
+                addr += current_arch.ptrsize * 2 * repeat_count
+                out_tmp.append("* {:#d} lines, {:#x} bytes".format(repeat_count - 1, (repeat_count - 1) * current_arch.ptrsize * 2))
 
             if exceed_top:
                 break
@@ -42791,32 +42782,32 @@ class VisualHeapCommand(GenericCommand):
             self.out.append(Color.boldify("..."))
         return
 
-    def generate_visual_heap(self, max_count):
-        sect = process_lookup_address(self.dump_start)
-        addr = self.dump_start
+    def generate_visual_heap(self, arena, dump_start, max_count):
+        sect = process_lookup_address(dump_start)
+        addr = dump_start
         i = 0
         self.out = []
         while addr < sect.page_end:
             chunk = GlibcChunk(addr + current_arch.ptrsize * 2)
             # corrupt check
-            if addr != self.top and addr + chunk.size > self.top:
-                msg = "{} Corrupted (addr + chunk.size > self.top)".format(Color.colorify("[!]", "bold red"))
+            if addr != arena.top and addr + chunk.size > arena.top:
+                msg = "{} Corrupted (addr + chunk.size > arena.top)".format(Color.colorify("[!]", "bold red"))
                 self.out.append(msg)
-                chunk.data = read_memory(addr, self.top - addr + 0x10)
-                self.generate_visual_chunk(chunk, Color.grayify)
+                chunk.data = read_memory(addr, arena.top - addr + 0x10)
+                self.generate_visual_chunk(arena, chunk, i)
                 break
             elif addr + chunk.size > sect.page_end:
                 msg = "{} Corrupted (addr + chunk.size > sect.page_end)".format(Color.colorify("[!]", "bold red"))
                 self.out.append(msg)
-                chunk.data = read_memory(addr, self.top - addr + 0x10)
-                self.generate_visual_chunk(chunk, Color.grayify)
+                chunk.data = read_memory(addr, arena.top - addr + 0x10)
+                self.generate_visual_chunk(arena, chunk, i)
                 break
             # maybe not corrupted
             try:
                 chunk.data = read_memory(addr, chunk.size)
             except gdb.MemoryError:
                 break
-            self.generate_visual_chunk(chunk, i)
+            self.generate_visual_chunk(arena, chunk, i)
             addr += chunk.size
             i += 1
 
@@ -42846,29 +42837,16 @@ class VisualHeapCommand(GenericCommand):
             return
 
         if args.location:
-            self.dump_start = args.location
+            dump_start = args.location
         else:
-            self.dump_start = arena.heap_base
+            dump_start = arena.heap_base
             # specific pattern
             if is_32bit() and arena.is_main_arena and get_libc_version() >= (2, 26):
-                self.dump_start += 8
-
-        try:
-            self.tcache_list = arena.tcache_list() if arena else []
-            self.fastbin_list = arena.fastbin_list() if arena else []
-            self.unsortedbin_list = arena.unsortedbin_list() if arena else []
-            self.smallbin_list = arena.smallbin_list() if arena else []
-            self.largebin_list = arena.largebin_list() if arena else []
-            self.top = int(arena.top) if arena else None
-        except gdb.MemoryError as e:
-            err("Memoryr read error: {}".format(e))
-            return
+                dump_start += 8
 
         reset_gef_caches(all=True)
-        try:
-            self.generate_visual_heap(args.max_count)
-        except Exception:
-            pass
+        arena.reset_bins_info()
+        self.generate_visual_heap(arena, dump_start, args.max_count)
         gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
