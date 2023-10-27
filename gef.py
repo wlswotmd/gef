@@ -50541,12 +50541,12 @@ class KernelCharacterDevicesCommand(GenericCommand):
         # print
         self.out = []
         if not self.quiet:
-            fmt = "{:<18s} {:<18s} {:<18s} {:<6s} {:<6s} {:<18s} {:<18s} {:18s} {:<s}"
+            fmt = "{:<18s} {:<18s} {:<24s} {:<6s} {:<6s} {:<18s} {:<18s} {:18s} {:<s}"
             legend = ["chrdev", "name", "name (guessed)", "major", "minor", "cdev", "cdev->kobj.parent", "parent_name", "cdev->ops"]
             self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
         for (major, minor), m in sorted(merged.items()):
-            fmt = "{:#018x} {:<18s} {:<18s} {:<6d} {:<6d} {:#018x} {:#018x} {:<18s} {:#018x}{:s}"
+            fmt = "{:#018x} {:<18s} {:<24s} {:<6d} {:<6d} {:#018x} {:#018x} {:<18s} {:#018x}{:s}"
             guessed_name = KernelCharacterDevicesCommand.get_cdev_name(major, minor)
             if not args.verbose:
                 if m["chrdev"] == 0:
