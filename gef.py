@@ -13358,6 +13358,27 @@ class PidCommand(GenericCommand):
 
 
 @register_command
+class TidCommand(GenericCommand):
+    """Display the Thread ID."""
+    _cmdline_ = "tid"
+    _category_ = "02-d. Process Information - Trivial Information"
+    _aliases_ = ["gettid"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        ptid = gdb.selected_thread().ptid
+        gef_print("TID: {:d}".format(ptid[1] or ptid[2]))
+        return
+
+
+@register_command
 class FilenameCommand(GenericCommand):
     """Display current debugged filename."""
     _cmdline_ = "filename"

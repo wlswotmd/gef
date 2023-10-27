@@ -390,7 +390,7 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/theme-colors-sample.png)
 
 ### Added features
-* `pid`: prints pid.
+* `pid`/`tid`: prints pid and tid.
 * `filename`: prints filename.
 * `auxv`: pretty prints ELF auxiliary vector.
     * Supported also under qemu-user.
