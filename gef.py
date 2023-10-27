@@ -12006,9 +12006,10 @@ class GenericCommand(gdb.Command):
 
     def __get_setting_name(self, name):
         def __sanitize_class_name(clsname):
-            if " " not in clsname:
-                return clsname
-            return "-".join(clsname.split())
+            clsname = clsname.replace(" ", "_")
+            # gdb's user complete feature does not work well if "-" is included.
+            clsname = clsname.replace("-", "_")
+            return clsname
 
         class_name = __sanitize_class_name(self.__class__._cmdline_)
         return "{:s}.{:s}".format(class_name, name)
@@ -27831,7 +27832,7 @@ class TraceMallocRetBreakpoint(gdb.FinishBreakpoint):
 
         size = self.size
         ok("{} - {}({})={:#x}".format(Color.colorify("Heap-Analysis", "bold yellow"), self.name, size, loc))
-        check_heap_overlap = get_gef_setting("heap-analysis-helper.check_heap_overlap")
+        check_heap_overlap = get_gef_setting("heap_analysis_helper.check_heap_overlap")
 
         # pop from free-ed list if it was in it
         if __heap_freed_list__:
@@ -27953,10 +27954,10 @@ class TraceFreeBreakpoint(gdb.Breakpoint):
         reset_gef_caches()
         _, addr = current_arch.get_ith_parameter(0)
         msg = []
-        check_free_null = get_gef_setting("heap-analysis-helper.check_free_null")
-        check_double_free = get_gef_setting("heap-analysis-helper.check_double_free")
-        check_weird_free = get_gef_setting("heap-analysis-helper.check_weird_free")
-        check_uaf = get_gef_setting("heap-analysis-helper.check_uaf")
+        check_free_null = get_gef_setting("heap_analysis_helper.check_free_null")
+        check_double_free = get_gef_setting("heap_analysis_helper.check_double_free")
+        check_weird_free = get_gef_setting("heap_analysis_helper.check_weird_free")
+        check_uaf = get_gef_setting("heap_analysis_helper.check_uaf")
 
         ok("{} - free({:#x})".format(Color.colorify("Heap-Analysis", "bold yellow"), addr))
         if addr == 0:
@@ -28087,11 +28088,11 @@ class HeapAnalysisCommand(GenericCommand):
             return
 
         if args.config:
-            gdb.execute("gef config heap-analysis-helper.check_free_null")
-            gdb.execute("gef config heap-analysis-helper.check_double_free")
-            gdb.execute("gef config heap-analysis-helper.check_weird_free")
-            gdb.execute("gef config heap-analysis-helper.check_uaf")
-            gdb.execute("gef config heap-analysis-helper.check_heap_overlap")
+            gdb.execute("gef config heap_analysis_helper.check_free_null")
+            gdb.execute("gef config heap_analysis_helper.check_double_free")
+            gdb.execute("gef config heap_analysis_helper.check_weird_free")
+            gdb.execute("gef config heap_analysis_helper.check_uaf")
+            gdb.execute("gef config heap_analysis_helper.check_heap_overlap")
             return
 
         self.setup()
@@ -73195,7 +73196,7 @@ class GefConfigCommand(GenericCommand):
             err("Invalid command format")
             return
 
-        loaded_commands = [x[0].replace(" ", "-") for x in __gef__.loaded_commands] + ["gef"]
+        loaded_commands = [x[0].replace(" ", "_").replace("-", "_") for x in __gef__.loaded_commands] + ["gef"]
         plugin_name = name.split(".", 1)[0]
         if plugin_name not in loaded_commands:
             err("Unknown plugin '{:s}'".format(plugin_name))
