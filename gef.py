@@ -11927,6 +11927,11 @@ class GenericCommand(gdb.Command):
 
         if self._example_:
             gef_print("Example:\n{}".format(self._example_.strip()))
+            if self._note_:
+                gef_print("")
+
+        if self._note_:
+            gef_print("Note:\n{}".format(self._note_.strip()))
         return
 
     @abc.abstractproperty
