@@ -73443,6 +73443,8 @@ class GefReloadCommand(GenericCommand):
         for line in s.splitlines():
             if ".gnu_debugaltlink" in line:
                 continue
+            if "No debugging symbols" in line:
+                continue
             gef_print(line)
 
         if current_arch is None:
