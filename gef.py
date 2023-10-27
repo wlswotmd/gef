@@ -9657,13 +9657,12 @@ def parse_args(f):
     @functools.wraps(f)
     def wrapper(self, argv, **kwargs):
         try:
-            self.parser.exit = lambda *_: exec("raise(ArgparseExitProxyException())")
+            self.parser.exit = lambda *_: exec("if _: print(_[1]);\nraise(ArgparseExitProxyException())")
             args = self.parser.parse_args(argv)
         except ArgparseExitProxyException:
-            self.usage(omit_syntax=True)
             return
-        except Exception:
-            err("Invalid argument")
+        except Exception as e:
+            err("Invalid argument: {}".format(e))
             return
         return f(self, args, **kwargs)
 
@@ -11920,21 +11919,26 @@ class GenericCommand(gdb.Command):
     def __init__(self, *args, **kwargs):
         self.pre_load()
 
-        self.__doc__ = self.__doc__.replace(" " * 4, "")
+        self.__doc__ = self.__doc__.replace(" " * 4, "") + "\n"
+
         if self._syntax_:
-            syntax = Color.colorify("\nSyntax:\n", "bold yellow") + self._syntax_.strip()
+            self.__doc__ += "\n"
+            syntax = Color.colorify("Syntax:\n", "bold yellow") + self._syntax_.strip()
             self.__doc__ += syntax + "\n"
 
         if self._example_:
-            example = Color.colorify("\nExample:\n", "bold yellow") + self._example_.strip()
+            self.__doc__ += "\n"
+            example = Color.colorify("Example:\n", "bold yellow") + self._example_.strip()
             self.__doc__ += example + "\n"
 
         if self._note_:
-            note = Color.colorify("\nNote:\n", "bold yellow") + self._note_.strip()
+            self.__doc__ += "\n"
+            note = Color.colorify("Note:\n", "bold yellow") + self._note_.strip()
             self.__doc__ += note + "\n"
 
         if hasattr(self, "_aliases_") and self._aliases_:
-            aliases = Color.colorify("\nAliases:\n", "bold yellow") + str(self._aliases_)
+            self.__doc__ += "\n"
+            aliases = Color.colorify("Aliases:\n", "bold yellow") + str(self._aliases_)
             self.__doc__ += aliases + "\n"
 
         self.repeat = False
@@ -11963,19 +11967,19 @@ class GenericCommand(gdb.Command):
             show_last_exception()
         return
 
-    def usage(self, omit_syntax=False):
-        if omit_syntax is False:
-            gef_print("Syntax:\n{}".format(self._syntax_.strip()))
-        else:
-            gef_print("") # argparse don't print newline
+    def usage(self):
+        syntax = Color.colorify("Syntax:\n", "bold yellow") + self._syntax_.strip()
+        gef_print(syntax)
 
         if self._example_:
-            gef_print("Example:\n{}".format(self._example_.strip()))
-            if self._note_:
-                gef_print("")
+            gef_print("")
+            example = Color.colorify("Example:\n", "bold yellow") + self._example_.strip()
+            gef_print(example)
 
         if self._note_:
-            gef_print("Note:\n{}".format(self._note_.strip()))
+            gef_print("")
+            note = Color.colorify("Note:\n", "bold yellow") + self._note_.strip()
+            gef_print(note)
         return
 
     @abc.abstractproperty
@@ -18017,7 +18021,7 @@ class RopperCommand(GenericCommand):
             try:
                 ropper = sys.modules["ropper"]
                 ropper.start(argv)
-            except Exception:
+            except (Exception, SystemExit):
                 pass
             os._exit(0)
         else:
@@ -73551,8 +73555,7 @@ class GefAlias(gdb.Command):
         self._command = command
         self._alias = alias
         self._repeat = repeat
-        c = command.split()[0]
-        r = self.lookup_command(c)
+        r = self.lookup_command(command)
         self.__doc__ = "Alias for '{}'".format(Color.greenify(command))
         if r is not None:
             _instance = r[2]
