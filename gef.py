@@ -65,7 +65,7 @@
 #
 #######################################################################################
 # Use this command when check by vulture
-# vulture gef.py --ignore-names="*Command,invoke"
+# vulture gef.py --ignore-names="*Command,invoke,ARC64,KF,leave,total"
 #
 #######################################################################################
 # Use this command when check by ruff
