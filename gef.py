@@ -19951,8 +19951,9 @@ class KernelChecksecCommand(GenericCommand):
         # CONFIG_SLAB_FREELIST_HARDENED
         if allocator == "SLUB":
             cfg = "CONFIG_SLAB_FREELIST_HARDENED"
-            slub_dump_ret = gdb.execute("slub-dump --quiet --no-pager", to_string=True)
-            if slub_dump_ret.count("Corrupted") >= 10:
+            slab_cache_names = " ".join("kmalloc-{:d}".format(n) for n in [8, 16, 32, 64, 96, 128, 192, 256, 512])
+            slub_dump_ret = gdb.execute("slub-dump --quiet --no-pager {:s}".format(slab_cache_names), to_string=True)
+            if slub_dump_ret.count("Corrupted") >= 2: # Destruction of up to one SLUB freelist is allowed.
                 gef_print("{:<40s}: {:s}".format(cfg, Color.grayify("Unknown")))
             else:
                 slub_dump_ret = gdb.execute("slub-dump --meta", to_string=True)
