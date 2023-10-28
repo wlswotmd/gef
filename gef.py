@@ -73171,8 +73171,8 @@ class GefConfigCommand(GenericCommand):
         super().__init__(complete="use_user_complete")
         return
 
-    def print_setting(self, plugin_name, verbose=False):
-        res = __config__.get(plugin_name)
+    def print_setting(self, config_name, verbose=False):
+        res = __config__.get(config_name)
         string_color = get_gef_setting("theme.dereference_string")
         misc_color = get_gef_setting("theme.dereference_base_address")
 
@@ -73180,7 +73180,7 @@ class GefConfigCommand(GenericCommand):
             return
 
         _value, _type, _desc = res
-        _setting = Color.colorify(plugin_name, "green")
+        _setting = Color.colorify(config_name, "green")
         _type = _type.__name__
         if _type == "str":
             _value = '"{:s}"'.format(Color.colorify(_value, string_color))
@@ -73194,40 +73194,35 @@ class GefConfigCommand(GenericCommand):
             gef_print("\t{:s}".format(_desc))
         return
 
-    def print_settings(self):
-        for x in sorted(__config__):
-            self.print_setting(x)
-        return
-
-    def set_setting(self, name, value):
-        if "." not in name:
+    def set_setting(self, config_name, config_value):
+        if "." not in config_name:
             err("Invalid command format")
             return
 
         loaded_commands = [x[0].replace(" ", "_").replace("-", "_") for x in __gef__.loaded_commands] + ["gef"]
-        plugin_name = name.split(".", 1)[0]
-        if plugin_name not in loaded_commands:
-            err("Unknown plugin '{:s}'".format(plugin_name))
+        command_name = config_name.split(".", 1)[0]
+        if command_name not in loaded_commands:
+            err("Unknown command '{:s}'".format(command_name))
             return
 
-        _type = __config__.get(name, [None, None, None])[1]
+        _type = __config__.get(config_name, [None, None, None])[1]
         if _type is None:
-            err("Failed to get '{:s}' config setting".format(name))
+            err("Failed to get '{:s}' config setting".format(config_name))
             return
 
         try:
             if _type == bool:
-                if value.upper() in ("TRUE", "T", "1"):
+                if config_value.upper() in ("TRUE", "T", "1"):
                     _newval = True
                 else:
                     _newval = False
             else:
-                _newval = _type(value)
+                _newval = _type(config_value)
         except Exception:
-            err("{} expects type '{}'".format(name, _type.__name__))
+            err("{} expects type '{}'".format(config_name, _type.__name__))
             return
 
-        __config__[name][0] = _newval
+        __config__[config_name][0] = _newval
         reset_gef_caches(all=True)
         return
 
@@ -73249,13 +73244,16 @@ class GefConfigCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
+        # list up all configs
         if (args.setting_name, args.setting_value) == (None, None):
             gef_print(titlify("GEF configuration settings"))
-            self.print_settings()
+            for name in sorted(__config__):
+                self.print_setting(name)
             return
 
+        # show name-matched config(s)
         if args.setting_name and args.setting_value is None:
-            names = list(filter(lambda x: x.startswith(args.setting_name), __config__.keys()))
+            names = [x for x in __config__.keys() if x.startswith(args.setting_name)]
             if not names:
                 return
             if len(names) == 1:
@@ -73267,6 +73265,7 @@ class GefConfigCommand(GenericCommand):
                     self.print_setting(name)
             return
 
+        # set config value
         self.set_setting(args.setting_name, args.setting_value)
         return
 
