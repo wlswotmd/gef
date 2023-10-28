@@ -20376,7 +20376,7 @@ class KernelChecksecCommand(GenericCommand):
         for cfg in cfgs:
             addr = get_ksysctl(cfg)
             if addr is None:
-                additional = "{:s}: not found".format(cfg)
+                additional = "{:s}: Not found".format(cfg)
                 gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
             else:
                 val = u32(read_memory(addr, 4))
@@ -42558,7 +42558,7 @@ class ErrnoCommand(GenericCommand):
             es = self.ERRNO_DICT[val]
             gef_print("{:3d} (={:#4x}): {:<15s}: \"{:s}\"".format(val, val, es[0], es[1]))
         else:
-            err("not found value in ERRNO_DICT (1~{:d})".format(len(self.ERRNO_DICT)))
+            err("Not found value in ERRNO_DICT (1~{:d})".format(len(self.ERRNO_DICT)))
         return
 
 
