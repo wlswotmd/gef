@@ -866,7 +866,7 @@ class Color:
 
     @staticmethod
     def remove_color(text):
-        return re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})*)?m", "", text)
+        return re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,3})*)?m", "", text)
 
 
 class Address:
@@ -53985,6 +53985,233 @@ class TimeCommand(GenericCommand):
         gef_print(titlify("time elapsed"))
         gef_print("Real: {:.3f} s".format(end_time_real - start_time_real))
         gef_print("CPU:  {:.3f} s".format(end_time_proc - start_time_proc))
+        return
+
+
+@register_command
+class SaveOutputCommand(GenericCommand):
+    """Save the command outputs."""
+    _cmdline_ = "save-output"
+    _category_ = "09-g. Misc - Diff"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("cmd", metavar="GDB_CMD", help="gdb command.")
+    parser.add_argument("arg", metavar="ARG", nargs="*", help="arguments of gdb command.")
+    _syntax_ = parser.format_help()
+
+    def __init__(self):
+        super().__init__(prefix=False, complete=gdb.COMPLETE_COMMAND)
+        return
+
+    # Need not @parse_args because argparse can't stop interpreting options for user specified command.
+    def do_invoke(self, argv):
+        self.dont_repeat()
+
+        if len(argv) == 1 and argv[0] == "-h":
+            self.usage()
+            return
+
+        # get settings
+        always_no_pager = get_gef_setting("gef.always_no_pager")
+
+        # parse command
+        cmd = ""
+        for c in argv:
+            if "\\" in c or " " in c:
+                cmd += " " + repr(c)
+            else:
+                cmd += " " + c
+        cmd = cmd.strip()
+        if not cmd:
+            self.usage()
+            return
+
+        # do the command
+        try:
+            set_gef_setting("gef.always_no_pager", True) # change temporarily
+            current_output = Color.remove_color(gdb.execute(cmd, to_string=True))
+            set_gef_setting("gef.always_no_pager", always_no_pager) # revert settings
+        except gdb.error:
+            set_gef_setting("gef.always_no_pager", always_no_pager) # revert settings
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            gef_print(exc_value)
+            return
+
+        # save
+        _, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".txt", prefix="diff_saved_output_")
+        open(tmp_path, "wb").write(str2bytes(current_output))
+        open(tmp_path[:-4] + ".cmd", "wb").write(str2bytes(cmd))
+        info("The output is saved to {:s}.(txt|cmd)".format(tmp_path[:-4]))
+
+        # print
+        gef_print(current_output, less=not always_no_pager)
+        return
+
+
+@register_command
+class DiffOutputCommand(GenericCommand):
+    """The base command to diff of the command outputs."""
+    _cmdline_ = "diff-output"
+    _category_ = "09-g. Misc - Diff"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    if sys.version_info.minor >= 7:
+        subparsers = parser.add_subparsers(title="command", required=True)
+    else:
+        subparsers = parser.add_subparsers(title="command")
+    subparsers.add_parser("diff")
+    subparsers.add_parser("list")
+    subparsers.add_parser("clear")
+    _syntax_ = parser.format_help()
+
+    def __init__(self, *args, **kwargs):
+        prefix = kwargs.get("prefix", True)
+        super().__init__(prefix=prefix)
+        self.add_setting("colordiff_output_width", 200, "Used as NUM when `colordiff -y -W NUM`")
+        return
+
+    def get_saved_files(self):
+        saved_files = []
+        for cur, _dirs, files in os.walk(GEF_TEMP_DIR):
+            for f in files:
+                if not f.startswith("diff_saved_output_"):
+                    continue
+                if not f.endswith(".txt"):
+                    continue
+                path = os.path.join(cur, f)
+                saved_files.append(path)
+
+        return sorted(saved_files, key=lambda x:os.path.getmtime(x[:-4] + ".cmd"))
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+        return
+
+
+@register_command
+class DiffOutputDiffCommand(DiffOutputCommand):
+    """Diff the two outputs."""
+    _cmdline_ = "diff-output diff"
+    _category_ = "09-g. Misc - Diff"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("n1", metavar="N", type=int, help="first diff target got from `diff-output list`.")
+    parser.add_argument("n2", metavar="M", type=int, help="second diff target got from `diff-output list`.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0 1   # diff between 0 and 1".format(_cmdline_)
+
+    _note_ = "You can check the available indexes with `diff-output list`."
+
+    def __init__(self):
+        super().__init__(prefix=False)
+        return
+
+    def make_diff(self, path1, path2):
+        width = get_gef_setting("diff_output.colordiff_output_width")
+        cmd = "{:s} -y -W {:d} '{:s}' '{:s}'".format(self.colordiff, width, path1, path2)
+        result = subprocess.getoutput(cmd)
+        return result
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        try:
+            self.colordiff = which("colordiff")
+        except FileNotFoundError as e:
+            err("{}".format(e))
+            return
+
+        saved_files = self.get_saved_files()
+        try:
+            f1 = saved_files[args.n1]
+            f2 = saved_files[args.n2]
+        except IndexError:
+            err("Out of index error")
+            return
+
+        if not os.path.exists(f1):
+            err("{:s} is not found".format(f1))
+            return
+        if not os.path.exists(f1):
+            err("{:s} is not found".format(f2))
+            return
+
+        output = self.make_diff(f1, f2)
+
+        gef_print(output, less=not args.no_pager)
+        return
+
+
+@register_command
+class DiffOutputListCommand(DiffOutputCommand):
+    """List up saved outputs."""
+    _cmdline_ = "diff-output list"
+    _category_ = "09-g. Misc - Diff"
+    _aliases_ = ["diff-output ls"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    def __init__(self):
+        super().__init__(prefix=False)
+        return
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        fmt = "{:>3s}  {:26s}  {:39s}  {:>7s}  {:s}"
+        legend = ["#", "mtime", "path", "size", "command"]
+        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
+        for idx, path in enumerate(self.get_saved_files()):
+            data = open(path, "rb").read()
+            size = len(data)
+            mtime = datetime.datetime.fromtimestamp(os.path.getmtime(path))
+            cmd = open(path[:-4] + ".cmd", "rb").read()
+            cmd = bytes2str(cmd)
+            gef_print("{:>3d}  {}  {:s}  {:>7d}  {:s}".format(idx, mtime, path, size, cmd))
+        return
+
+
+@register_command
+class DiffOutputClearCommand(DiffOutputCommand):
+    """Clear all saved outputs."""
+    _cmdline_ = "diff-output clear"
+    _category_ = "09-g. Misc - Diff"
+    _aliases_ = ["diff-output del", "diff-output rm"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("n", metavar="N", type=int, nargs="*", help="index to be deleted.")
+    parser.add_argument("--all", action="store_true", help="if you want to delete everything.")
+    _syntax_ = parser.format_help()
+
+    def __init__(self):
+        super().__init__(prefix=False)
+        return
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if args.all:
+            for path in self.get_saved_files():
+                os.unlink(path)
+                os.unlink(path[:-4] + ".cmd")
+        elif args.n:
+            for i, path in enumerate(self.get_saved_files()):
+                if i in args.n:
+                    os.unlink(path)
+                    os.unlink(path[:-4] + ".cmd")
+        else:
+            self.usage()
+            return
+
+        info("Removed")
         return
 
 

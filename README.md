@@ -537,6 +537,7 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-cfi-gadgets.png)
 * `symbols`: lists up all symbols with coloring.
     * It is shortcut for `maintenance print msymbols`.
+* `save-output`/`diff-output`: save and diff the outputs.
 
 ### Other
 * The category is introduced in `gef help`.
