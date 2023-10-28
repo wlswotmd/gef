@@ -14681,7 +14681,11 @@ class SearchPatternCommand(GenericCommand):
                     self.usage()
                     return
             else:
-                start, end = parse_string_range(args.section)
+                try:
+                    start, end = parse_string_range(args.section)
+                except ValueError:
+                    self.usage()
+                    return
 
             info("Searching '{:s}' in {:#x}-{:#x}".format(Color.yellowify(pattern), start, end))
             ret = self.search_pattern_by_address(pattern, start, end)
