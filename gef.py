@@ -28345,6 +28345,7 @@ asmlinkage long sys_fchdir(unsigned int fd);
 asmlinkage long sys_chroot(const char __user *filename);
 asmlinkage long sys_fchmod(unsigned int fd, umode_t mode);
 asmlinkage long sys_fchmodat(int dfd, const char __user *filename, umode_t mode);
+asmlinkage long sys_fchmodat2(int dfd, const char __user *filename, umode_t mode, unsigned int flags);
 asmlinkage long sys_fchownat(int dfd, const char __user *filename, uid_t user, gid_t group, int flag);
 asmlinkage long sys_fchown(unsigned int fd, uid_t user, gid_t group);
 asmlinkage long sys_openat(int dfd, const char __user *filename, int flags, umode_t mode);
@@ -28619,6 +28620,7 @@ asmlinkage long sys_landlock_restrict_self(int ruleset_fd, __u32 flags);
 asmlinkage long sys_memfd_secret(unsigned int flags);
 asmlinkage long sys_set_mempolicy_home_node(unsigned long start, unsigned long len, unsigned long home_node, unsigned long flags);
 asmlinkage long sys_cachestat(unsigned int fd, struct cachestat_range __user *cstat_range, struct cachestat __user *cstat, unsigned int flags);
+asmlinkage long sys_map_shadow_stack(unsigned long addr, unsigned long size, unsigned int flags);
 asmlinkage long sys_ioperm(unsigned long from, unsigned long num, int on);
 asmlinkage long sys_pciconfig_read(unsigned long bus, unsigned long dfn, unsigned long off, unsigned long len, void __user *buf);
 asmlinkage long sys_pciconfig_write(unsigned long bus, unsigned long dfn, unsigned long off, unsigned long len, void __user *buf);
@@ -29238,6 +29240,8 @@ x64_syscall_tbl = """
 449     common  futex_waitv             sys_futex_waitv
 450     common  set_mempolicy_home_node sys_set_mempolicy_home_node
 451     common  cachestat               sys_cachestat
+452     common  fchmodat2               sys_fchmodat2
+453     64      map_shadow_stack        sys_map_shadow_stack
 
 #
 # Due to a historical design error, certain syscalls are numbered differently
@@ -29747,6 +29751,7 @@ x86_syscall_tbl = """
 449     i386    futex_waitv             sys_futex_waitv
 450     i386    set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     i386    cachestat               sys_cachestat
+452     i386    fchmodat2               sys_fchmodat2
 """
 
 
@@ -30067,6 +30072,7 @@ arm64_syscall_tbl = """
 449  arm64  futex_waitv              sys_futex_waitv
 450  arm64  set_mempolicy_home_node  sys_set_mempolicy_home_node
 451  arm64  cachestat                sys_cachestat
+452  arm64  fchmodat2                sys_fchmodat2
 """
 
 
@@ -30483,6 +30489,7 @@ arm_compat_syscall_tbl = """
 449  arm  futex_waitv                   sys_futex_waitv
 450  arm  set_mempolicy_home_node       sys_set_mempolicy_home_node
 451  arm  cachestat                     sys_cachestat
+452  arm  fchmodat2                     sys_fchmodat2
 """
 
 # ARM (native)
@@ -30955,6 +30962,7 @@ arm_native_syscall_tbl = """
 449     common  futex_waitv                     sys_futex_waitv
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     common  cachestat                       sys_cachestat
+452     common  fchmodat2                       sys_fchmodat2
 """
 
 
@@ -31400,6 +31408,7 @@ mips_o32_syscall_tbl = """
 449     o32     futex_waitv                     sys_futex_waitv
 450     o32     set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     o32     cachestat                       sys_cachestat
+452     o32     fchmodat2                       sys_fchmodat2
 """
 
 
@@ -31796,6 +31805,7 @@ mips_n32_syscall_tbl = """
 449     n32     futex_waitv                     sys_futex_waitv
 450     n32     set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     n32     cachestat                       sys_cachestat
+452     n32     fchmodat2                       sys_fchmodat2
 """
 
 
@@ -32168,6 +32178,7 @@ mips_n64_syscall_tbl = """
 449     n64     futex_waitv                     sys_futex_waitv
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     n64     cachestat                       sys_cachestat
+452     n64     fchmodat2                       sys_fchmodat2
 """
 
 
@@ -32712,6 +32723,7 @@ ppc_syscall_tbl = """
 449     common  futex_waitv                     sys_futex_waitv
 450     nospu   set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     common  cachestat                       sys_cachestat
+452     common  fchmodat2                       sys_fchmodat2
 """
 
 
@@ -33215,6 +33227,7 @@ sparc_syscall_tbl = """
 449     common  futex_waitv                     sys_futex_waitv
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     common  cachestat                       sys_cachestat
+452     common  fchmodat2                       sys_fchmodat2
 """
 
 
@@ -33533,6 +33546,7 @@ riscv64_syscall_tbl = """
 449  riscv64  futex_waitv              sys_futex_waitv
 450  riscv64  set_mempolicy_home_node  sys_set_mempolicy_home_node
 451  riscv64  cachestat                sys_cachestat
+452  riscv64  fchmodat2                sys_fchmodat2
 """
 
 
@@ -33845,6 +33859,7 @@ riscv32_syscall_tbl = """
 449  riscv32  futex_waitv                   sys_futex_waitv
 450  riscv32  set_mempolicy_home_node       sys_set_mempolicy_home_node
 451  riscv32  cachestat                     sys_cachestat
+452  riscv32  fchmodat2                     sys_fchmodat2
 """
 
 
@@ -34305,6 +34320,7 @@ s390x_syscall_tbl = """
 449  common     futex_waitv             sys_futex_waitv                 sys_futex_waitv
 450  common     set_mempolicy_home_node sys_set_mempolicy_home_node     sys_set_mempolicy_home_node
 451  common     cachestat               sys_cachestat                   sys_cachestat
+452  common     fchmodat2               sys_fchmodat2                   sys_fchmodat2
 """
 
 
@@ -34765,6 +34781,7 @@ sh4_syscall_tbl = """
 449     common  futex_waitv                     sys_futex_waitv
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     common  cachestat                       sys_cachestat
+452     common  fchmodat2                       sys_fchmodat2
 """
 
 
@@ -35222,6 +35239,7 @@ m68k_syscall_tbl = """
 449     common  futex_waitv                     sys_futex_waitv
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     common  cachestat                       sys_cachestat
+452     common  fchmodat2                       sys_fchmodat2
 """
 
 
@@ -35719,6 +35737,7 @@ alpha_syscall_tbl = """
 559     common  futex_waitv                     sys_futex_waitv
 560     common  set_mempolicy_home_node         sys_ni_syscall
 561     common  cachestat                       sys_cachestat
+562     common  fchmodat2                       sys_fchmodat2
 """
 
 
@@ -36175,6 +36194,7 @@ hppa_syscall_tbl = """
 449     common  futex_waitv                     sys_futex_waitv
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     common  cachestat                       sys_cachestat
+452     common  fchmodat2                       sys_fchmodat2
 """
 
 
@@ -36494,6 +36514,7 @@ or1k_syscall_tbl = """
 449  or1k  futex_waitv              sys_futex_waitv
 450  or1k  set_mempolicy_home_node  sys_set_mempolicy_home_node
 451  or1k  cachestat                sys_cachestat
+452  or1k  fchmodat2                sys_fchmodat2
 """
 
 
@@ -36812,6 +36833,7 @@ nios2_syscall_tbl = """
 449  nios2  futex_waitv              sys_futex_waitv
 450  nios2  set_mempolicy_home_node  sys_set_mempolicy_home_node
 451  nios2  cachestat                sys_cachestat
+452  nios2  fchmodat2                sys_fchmodat2
 """
 
 
@@ -37275,6 +37297,7 @@ microblaze_syscall_tbl = """
 449     common  futex_waitv                     sys_futex_waitv
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     common  cachestat                       sys_cachestat
+452     common  fchmodat2                       sys_fchmodat2
 """
 
 
@@ -37703,6 +37726,7 @@ xtensa_syscall_tbl = """
 449     common  futex_waitv                     sys_futex_waitv
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     common  cachestat                       sys_cachestat
+452     common  fchmodat2                       sys_fchmodat2
 """
 
 
@@ -38385,6 +38409,7 @@ loongarch_syscall_tbl = """
 449  loongarch  futex_waitv              sys_futex_waitv
 450  loongarch  set_mempolicy_home_node  sys_set_mempolicy_home_node
 451  loongarch  cachestat                sys_cachestat
+452  loongarch  fchmodat2                sys_fchmodat2
 """
 
 
@@ -38703,6 +38728,7 @@ arc_syscall_tbl = """
 449  arc  futex_waitv              sys_futex_waitv
 450  arc  set_mempolicy_home_node  sys_set_mempolicy_home_node
 451  arc  cachestat                sys_cachestat
+452  arc  fchmodat2                sys_fchmodat2
 """
 
 
@@ -39020,6 +39046,7 @@ csky_syscall_tbl = """
 449  csky  futex_waitv              sys_futex_waitv
 450  csky  set_mempolicy_home_node  sys_set_mempolicy_home_node
 451  csky  cachestat                sys_cachestat
+452  csky  fchmodat2                sys_fchmodat2
 """
 
 
