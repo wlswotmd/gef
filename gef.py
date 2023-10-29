@@ -20395,17 +20395,21 @@ class KernelChecksecCommand(GenericCommand):
         cfg = "CONFIG_KALLSYMS_ALL"
         modprobe_path = get_ksymaddr("modprobe_path")
         if modprobe_path:
-            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold red")))
+            additional = "modprobe_path: Found"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold red"), additional))
         else:
-            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold green")))
+            additional = "modprobe_path: Not found"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold green"), additional))
 
         # CONFIG_IKCONFIG
         cfg = "CONFIG_IKCONFIG"
         ikconfig_init = get_ksymaddr("ikconfig_init")
         if ikconfig_init:
-            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold red")))
+            additional = "ikconfig_init: Found"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold red"), additional))
         else:
-            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold green")))
+            additional = "ikconfig_init: Not found"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold green"), additional))
 
         # CONFIG_RANDSTRUCT
         cfg = "CONFIG_RANDSTRUCT"
@@ -20505,17 +20509,21 @@ class KernelChecksecCommand(GenericCommand):
             cfg = "CONFIG_SHADOW_CALL_STACK (Clang ARM64)"
             scs_alloc = get_ksymaddr("scs_alloc")
             if scs_alloc:
-                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
+                additional = "scs_alloc: Found"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
             else:
-                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+                additional = "scs_alloc: Not found"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
 
         # CONFIG_HARDENED_USERCOPY
         cfg = "CONFIG_HARDENED_USERCOPY"
         __check_heap_object = get_ksymaddr("__check_heap_object")
         if __check_heap_object:
-            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Enabled", "bold green")))
+            additional = "__check_heap_object: Found"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
         else:
-            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Disabled", "bold red")))
+            additional = "__check_heap_object: Not found"
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
 
         # KADR (kallsyms)
         cfg = "KADR (kallsyms)"
