@@ -58188,6 +58188,8 @@ class KernelBpfCommand(GenericCommand):
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-p", "--only-progs", action="store_true", help="print progs only")
+    parser.add_argument("-m", "--only-maps", action="store_true", help="print maps only")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
@@ -58204,7 +58206,7 @@ class KernelBpfCommand(GenericCommand):
         ptr &= ~3 # untagged
 
         if root:
-            node = read_int_from_memory(ptr + self.offset_head)
+            node = read_int_from_memory(ptr + self.offset_xa_head)
             return self.parse_xarray(node)
 
         shift = u8(read_memory(ptr + self.offset_shift, 1))
@@ -58222,7 +58224,6 @@ class KernelBpfCommand(GenericCommand):
             count -= 1
             if count == 0:
                 break
-
         return elems
 
     def initialize(self):
@@ -58241,17 +58242,102 @@ class KernelBpfCommand(GenericCommand):
 
         kversion = KernelVersionCommand.kernel_version()
 
+        """
+        struct xarray {
+            spinlock_t xa_lock;
+            gfp_t xa_flags;
+            void __rcu *xa_head;
+        };
+        """
         # idr->idr_rt->xa_head
-        self.offset_head = 4 * 2
+        base = prog_idr + 4 * 2
+        for i in range(100):
+            pos = base + current_arch.ptrsize * i
+            x = read_int_from_memory(pos)
+            if not is_valid_addr(x):
+                continue
+            if (x & 2) != 2: # tag
+                continue
+            y = read_int_from_memory(x)
+            if is_valid_addr(y):
+                continue
+            self.offset_xa_head = pos - prog_idr
+            if not self.quiet:
+                info("offsetof(xarray, xa_head): {:#x}".format(self.offset_xa_head))
+            break
+        else:
+            return False
+
+        """
+        struct xa_node {
+            unsigned char shift;
+            unsigned char offset;
+            unsigned char count;
+            unsigned char nr_values;
+            struct xa_node __rcu *parent;
+            struct xarray *array;
+            union {
+                struct list_head private_list;
+                struct rcu_head rcu_head;
+            };
+            void __rcu *slots[XA_CHUNK_SIZE];
+            union {
+                unsigned long tags[XA_MAX_MARKS][XA_MARK_LONGS];
+                unsigned long marks[XA_MAX_MARKS][XA_MARK_LONGS];
+            };
+        };
+        """
         # xa_node->{shift,count,slots}
         self.offset_shift = 0
         self.offset_count = 2
         self.offset_slots = current_arch.ptrsize * 5
+        if not self.quiet:
+            info("offsetof(xa_node, shift): {:#x}".format(self.offset_shift))
+            info("offsetof(xa_node, count): {:#x}".format(self.offset_count))
+            info("offsetof(xa_node, slots): {:#x}".format(self.offset_slots))
 
         # parse progs, maps
-        progs = self.parse_xarray(prog_idr, root=True)
-        maps = self.parse_xarray(map_idr, root=True)
+        try:
+            progs = self.parse_xarray(prog_idr, root=True)
+            if not self.quiet:
+                info("Num of progs: {:#x}".format(len(progs)))
+            maps = self.parse_xarray(map_idr, root=True)
+            if not self.quiet:
+                info("Num of maps: {:#x}".format(len(maps)))
+        except gdb.MemoryError:
+            err("Not found")
+            return False
 
+        """
+        struct bpf_prog {
+            u16 pages;
+            u16 jited:1,
+                jit_requested:1,
+                gpl_compatible:1,
+                cb_access:1,
+                dst_needed:1,
+                blinded:1,
+                is_func:1,
+                kprobe_override:1,
+                has_callchain_buf:1,
+                enforce_expected_attach_type:1,
+                call_get_stack:1;
+            enum bpf_prog_type type;
+            enum bpf_attach_type expected_attach_type;
+            u32 len;
+            u32 jited_len;
+            u8 tag[BPF_TAG_SIZE]; // 8 byte
+            struct bpf_prog_stats __percpu *stats; // 5.12~
+            int __percpu *active;                  // 5.12~
+            unsigned int (*bpf_func)(const void *ctx, const struct bpf_insn *insn); // 5.12~
+            struct bpf_prog_aux *aux;
+            struct sock_fprog_kern *orig_prog;
+            unsigned int (*bpf_func)(const void *ctx, const struct bpf_insn *insn); // ~5.11
+            const struct bpf_insn *insn);
+            struct sock_filter insns[0];
+            struct bpf_insn insnsi[];
+        };
+        """
         # bpf_prog->{type,expected_attach_type,len,jited_len,tag,aux}
         self.offset_prog_type = 4
         self.offset_expected_attach_type = self.offset_prog_type + 4
@@ -58259,14 +58345,36 @@ class KernelBpfCommand(GenericCommand):
         self.offset_jited_len = self.offset_len + 4
         self.offset_tag = self.offset_jited_len + 4
         if kversion >= "5.12":
-            self.offset_aux = align_address_to_size(self.offset_tag + 8, current_arch.ptrsize) + current_arch.ptrisize * 3
-            self.offset_func = self.offset_aux - current_arch.ptrsize
+            self.offset_aux = align_address_to_size(self.offset_tag + 8, current_arch.ptrsize) + current_arch.ptrsize * 3
+            self.offset_bpf_func = self.offset_aux - current_arch.ptrsize
         else:
             self.offset_aux = align_address_to_size(self.offset_tag + 8, current_arch.ptrsize)
-            self.offset_func = self.offset_aux + current_arch.ptrsize * 2
+            self.offset_bpf_func = self.offset_aux + current_arch.ptrsize * 2
+        if not self.quiet:
+            info("offsetof(bpf_prog, type): {:#x}".format(self.offset_prog_type))
+            info("offsetof(bpf_prog, expected_attach_type): {:#x}".format(self.offset_expected_attach_type))
+            info("offsetof(bpf_prog, len): {:#x}".format(self.offset_len))
+            info("offsetof(bpf_prog, jited_len): {:#x}".format(self.offset_jited_len))
+            info("offsetof(bpf_prog, tag): {:#x}".format(self.offset_tag))
+            info("offsetof(bpf_prog, aux): {:#x}".format(self.offset_aux))
+            info("offsetof(bpf_prog, bpf_func): {:#x}".format(self.offset_bpf_func))
 
-        # bpf_map->{type}
         if maps:
+            """
+            struct bpf_map {
+                const struct bpf_map_ops *ops ____cacheline_aligned;
+                struct bpf_map *inner_map_meta;
+            #ifdef CONFIG_SECURITY
+                void *security;
+            #endif
+                enum bpf_map_type map_type;
+                u32 key_size;
+                u32 value_size;
+                u32 max_entries;
+                ...
+            };
+            """
+            # bpf_map->{map_type,key_size,value_size,max_entries}
             cand = read_int_from_memory(maps[0] + current_arch.ptrsize * 2)
             if cand == 0 or is_valid_addr(cand):
                 self.offset_map_type = current_arch.ptrsize * 3
@@ -58275,10 +58383,54 @@ class KernelBpfCommand(GenericCommand):
             self.offset_key_size = self.offset_map_type + 4
             self.offset_value_size = self.offset_key_size + 4
             self.offset_max_entries = self.offset_value_size + 4
+            if not self.quiet:
+                info("offsetof(bpf_map, map_type): {:#x}".format(self.offset_map_type))
+                info("offsetof(bpf_map, key_size): {:#x}".format(self.offset_key_size))
+                info("offsetof(bpf_map, value_size): {:#x}".format(self.offset_value_size))
+                info("offsetof(bpf_map, max_entries): {:#x}".format(self.offset_max_entries))
 
+            """
+            struct bpf_array {
+                struct bpf_map map;
+                u32 elem_size;
+                u32 index_mask;
+                struct bpf_array_aux *aux;
+                union {
+                    char value[0] __aligned(8);
+                    void *ptrs[0] __aligned(8);
+                    void __percpu *pptrs[0] __aligned(8);
+                };
+            };
+            """
+            # bpf_array->union_array
+            value_size = u32(read_memory(maps[0] + self.offset_value_size, 4))
+            max_entries = u32(read_memory(maps[0] + self.offset_max_entries, 4))
+            k = 1
+            while k < max_entries:
+                k <<= 1
+            index_mask = k - 1
+
+            sizeof_cache_line = 0x40 # ?
+            base = maps[0] + sizeof_cache_line * 3
+            for i in range(100):
+                pos = base + current_arch.ptrsize * i
+                x = u32(read_memory(pos, 4))
+                y = u32(read_memory(pos + 4, 4))
+                if x == value_size and y == index_mask:
+                    self.offset_union_array = (pos - maps[0]) + 4 * 2 + current_arch.ptrsize
+                    if not self.quiet:
+                        info("offsetof(bpf_array, union_array): {:#x}".format(self.offset_union_array))
+                    break
+            else:
+                return False
         return progs, maps
 
-    def dump_bpf(self, progs, maps):
+    def dump_bpf_progs(self, progs):
+        self.out.append(titlify("prog_idr"))
+        fmt = "{:3s} {:18s} {:23s} {:24s} {:18s} {:18s} {:18s}"
+        legend = ["#", "bpf_prog", "bpf_prog_type", "bpf_attach_type", "tag", "bpf_prog_aux", "bpf_func"]
+        self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
         defined_prog_types = [
             "UNSPEC",
             "SOCKET_FILTER",
@@ -58312,6 +58464,7 @@ class KernelBpfCommand(GenericCommand):
             "LSM",
             "SK_LOOKUP",
         ]
+
         defined_attach_types = [
             "CGROUP_INET_INGRESS",
             "CGROUP_INET_EGRESS",
@@ -58353,11 +58506,7 @@ class KernelBpfCommand(GenericCommand):
             "XDP",
         ]
 
-        self.out.append(titlify("prog_idr"))
-        fmt = "{:3s} {:18s} {:23s} {:24s} {:18s} {:18s} {:18s}"
-        legend = ["#", "bpf_prog", "bpf_prog_type", "bpf_attach_type", "tag", "bpf_prog_aux", "bpf_func"]
-        self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
-
+        fmt = "{:<3d} {:#018x} {:23s} {:24s} {:#018x} {:#018x} {:#018x}"
         for i, prog in enumerate(progs):
             bpf_type = u32(read_memory(prog + self.offset_prog_type, 4))
             bpf_attach_type = u32(read_memory(prog + self.offset_expected_attach_type, 4))
@@ -58365,12 +58514,19 @@ class KernelBpfCommand(GenericCommand):
             t2 = defined_attach_types[bpf_attach_type]
             tag = u64(read_memory(prog + self.offset_tag, 8))
             aux = read_int_from_memory(prog + self.offset_aux)
-            func = read_int_from_memory(prog + self.offset_func)
-            self.out.append("{:<3d} {:#018x} {:23s} {:24s} {:#018x} {:#018x} {:#018x}".format(i, prog, t1, t2, tag, aux, func))
+            bpf_func = read_int_from_memory(prog + self.offset_bpf_func)
+            self.out.append(fmt.format(i, prog, t1, t2, tag, aux, bpf_func))
             if self.verbose:
-                ret = gdb.execute("pdisas {:#x}".format(func), to_string=True).rstrip()
+                ret = gdb.execute("pdisas {:#x}".format(bpf_func), to_string=True).rstrip()
                 self.out.append(ret)
                 self.out.append("      ...")
+        return
+
+    def dump_bpf_maps(self, maps):
+        self.out.append(titlify("map_idr"))
+        fmt = "{:3s} {:18s} {:21s} {:10s} {:10s} {:10s} {:18s}"
+        legend = ["#", "bpf_map", "bpf_map_type", "key_size", "value_size", "max_ents", "array"]
+        self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
         defined_map_types = [
             "UNSPEC",
@@ -58403,17 +58559,21 @@ class KernelBpfCommand(GenericCommand):
             "RINGBUF",
             "INODE_STORAGE",
         ]
-        self.out.append(titlify("map_idr"))
-        fmt = "{:3s} {:18s} {:21s} {:10s} {:10s} {:10s}"
-        legend = ["#", "bpf_map", "bpf_map_type", "key_size", "value_size", "max_ents"]
-        self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
+        fmt = "{:<3d} {:#018x} {:21s} {:#010x} {:#010x} {:#010x} {:#018x}"
         for i, m in enumerate(maps):
             map_type = u32(read_memory(m + self.offset_map_type, 4))
             t1 = defined_map_types[map_type]
             key_size = u32(read_memory(m + self.offset_key_size, 4))
             val_size = u32(read_memory(m + self.offset_value_size, 4))
             max_ents = u32(read_memory(m + self.offset_max_entries, 4))
-            self.out.append("{:<3d} {:#018x} {:21s} {:#010x} {:#010x} {:#010x}".format(i, m, t1, key_size, val_size, max_ents))
+            union_array = m + self.offset_union_array
+            self.out.append(fmt.format(i, m, t1, key_size, val_size, max_ents, union_array))
+
+            if self.verbose:
+                if map_type == 2: # ARRAY
+                    res = gdb.execute("telescope -n {:#x} {:#x}".format(union_array, max_ents), to_string=True)
+                    self.out.append(res.rstrip())
         return
 
     @parse_args
@@ -58431,6 +58591,7 @@ class KernelBpfCommand(GenericCommand):
 
         kversion = KernelVersionCommand.kernel_version()
         if kversion < "4.20":
+            # xarray is introduced from 4.20
             err("Unsupported v4.19 or before")
             return
 
@@ -58450,7 +58611,10 @@ class KernelBpfCommand(GenericCommand):
 
         # dump
         self.out = []
-        self.dump_bpf(progs, maps)
+        if not args.only_maps:
+            self.dump_bpf_progs(progs)
+        if not args.only_progs:
+            self.dump_bpf_maps(maps)
 
         # print
         gef_print("\n".join(self.out), less=not args.no_pager)
