@@ -121,14 +121,13 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * Supported kernel versions are not only before v6.1, but also after v6.2 (slightly changed structure in memory).
     * Supported kernel after v6.4 (changed structure in memory again).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote.png)
-* `ksymaddr-remote-apply`: applies kallsyms information obtained by `ksymaddr-remote` to gdb.
+* `ksymaddr-remote-apply`/`vmlinux-to-elf-apply`: applies kallsyms information obtained by `ksymaddr-remote` or `vmlinux-to-elf` to gdb.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote-apply.png)
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmlinux-to-elf-apply.png)
     * Once you get symboled pseudo ELF file, you can reuse and apply it automatically even after rebooting qemu-system.
-* `vmlinux-to-elf-apply`: applies kallsyms information obtained by `vmlinux-to-elf` to gdb.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmlinux-to-elf-apply1.png)
-    * Once you get symboled vmlinux file, you can reuse and apply it automatically even after rebooting qemu-system.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmlinux-to-elf-apply2.png)
-    * TIPS: `vmlinux-to-elf-apply` and `ksymaddr-remote-apply` provide almost the same functionality.
+    * `vmlinux-to-elf-apply` and `ksymaddr-remote-apply` provide almost the same functionality.
+        * `vmlinux-to-elf-apply`: Requires installation of external tools. Create `vmlinux` with symbols.
+        * `ksymaddr-remote-apply`: Requires no external tools. Create an blank ELF with only embedded symbols.
 * `slub-dump`: dumps slub free-list.
     * Supported on x64/x86/ARM64/ARM + SLUB + no-symbol + kASLR.
     * Supported on both `CONFIG_SLAB_FREELIST_HARDENED` is `y` or `n`.
@@ -400,7 +399,9 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
 * `dumpargs`: dumps arguments of current function.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dumpargs.png)
 * `vdso`: disassembles the text area of vdso smartly.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vdso.png)
 * `vvar`: dumps the area of vvar.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vvar.png)
 * `gdtinfo`: pretty prints GDT entries. If user-land, show sample entries.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gdtinfo.png)
 * `idtinfo`: pretty prints IDT entries. If user-land, show sample entries.
@@ -533,11 +534,13 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/srop-hint.png)
 * `smart-memory-dump`: dumps all regions of the memory to each file.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/smart-memory-dump.png)
-* `search-cfi-gadgets`: searches CFI-valid and controllable generally gadgets from executable area.
+* `search-cfi-gadgets`: searches CFI-valid (for CET IBT) and controllable generally gadgets from executable area.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-cfi-gadgets.png)
 * `symbols`: lists up all symbols with coloring.
     * It is shortcut for `maintenance print msymbols`.
-* `save-output`/`diff-output`: save and diff the outputs.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/symbols.png)
+* `save-output`/`diff-output`: saves and diffs the command outputs.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/save-output-diff-output.png)
 
 ### Other
 * The category is introduced in `gef help`.

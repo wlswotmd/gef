@@ -115,6 +115,13 @@ The currently known combinations are as follows.
 This problem occurs when you try to use newer glibc in an Ubuntu 22.04 environment using `patchelf` etc.
 The workaround is to build and install new `binutils` from source code.
 
+## Can I switch to a mode that references physical memory?
+Yes. It is possible if you are using qemu-system. You can switch with `pi enable_phys()` and `pi disable_phys()`.
+
+GEF uses this function internally to switch.
+If the mode remains switched due to an interruption during command execution, etc., you will need to fix it manually.
+
+
 # About python
 
 ## Can I access each GEF command object from `python-interactive`?
