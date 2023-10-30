@@ -541,6 +541,8 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/symbols.png)
 * `save-output`/`diff-output`: saves and diffs the command outputs.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/save-output-diff-output.png)
+* `search-length`: searches consecutive lengths of the same value.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-length.png)
 
 ### Other
 * The category is introduced in `gef help`.

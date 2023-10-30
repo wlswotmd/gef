@@ -53903,6 +53903,100 @@ class IsMemoryZeroCommand(GenericCommand):
 
 
 @register_command
+class SearchLengthCommand(GenericCommand):
+    """Search consecutive lengths of the same value."""
+    _cmdline_ = "search-length"
+    _category_ = "03-d. Memory - Calculation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("--phys", action="store_true", help="treat ADDRESS as a physical address.")
+    parser.add_argument("addr", metavar="ADDRESS", type=parse_address, help="target address for checking.")
+    parser.add_argument("unit", metavar="UNIT", nargs="?", type=parse_address, default=1,
+                        help="the size for a target value (default: %(default)s).")
+    _syntax_ = parser.format_help()
+
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        return
+
+    def memsearch(self, phys_mode, addr, unit):
+        target = None
+        data = b""
+        count = 0
+        current = addr
+        while True:
+            # calc read_size
+            if current & 0xfff:
+                read_size = align_address_to_size(current, 0x1000) - current
+            else:
+                read_size = 0x1000
+            while read_size < unit:
+                read_size += 0x1000
+            # read
+            try:
+                if phys_mode:
+                    data += read_physmem(current, read_size)
+                else:
+                    data += read_memory(current, read_size)
+            except (gdb.MemoryError, ValueError, OverflowError):
+                err("Read error {:#x}".format(addr))
+                return None
+            # init target
+            if target is None:
+                target = data[:unit]
+            # count
+            for elem in slicer(data, unit):
+                if elem == target:
+                    # Equal in length and content
+                    count += 1
+                elif len(elem) == len(target):
+                    # The length is sufficient, but the content is different.
+                    return count, target
+            # Consider the case where the length of the final element is insufficient
+            if len(elem) != len(target):
+                data = elem
+            else:
+                data = b""
+            # goto next
+            current += read_size
+        return None
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if args.phys:
+            if not is_qemu_system():
+                err("Unsupported")
+                return
+
+        if args.unit >= 0x100000:
+            err("Too large unit size")
+            return
+
+        colored_addr = str(lookup_address(args.addr))
+        colored_unit = Color.boldify("{:#x}".format(args.unit))
+        info("Search from {:s} in units of {:s} bytes".format(colored_addr, colored_unit))
+
+        ret = self.memsearch(args.phys, args.addr, args.unit)
+        if ret is None:
+            return
+
+        count, target = ret
+        size = args.unit * count
+        end = args.addr + size
+        if len(target) > 0x100:
+            target = target[:0x100] + b"..."
+        colored_count = Color.boldify("{:#x}".format(count))
+        colored_size = Color.boldify("{:#x}".format(size))
+        colored_end = str(lookup_address(end))
+        gef_print("{:s} - {:s} is same value".format(colored_addr, colored_end))
+        gef_print("{} is found {:s} times, {:s} bytes".format(target, colored_count, colored_size))
+        return
+
+
+@register_command
 class MultiLineCommand(GenericCommand):
     """Execute multiple GDB commands in sequence."""
     _cmdline_ = "multi-line"
