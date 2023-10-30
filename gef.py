@@ -68589,12 +68589,13 @@ class PagewalkWithHintsCommand(GenericCommand):
         return
 
     class Region:
-        def __init__(self, addr_start, addr_end, perm, description=""):
+        def __init__(self, addr_start, addr_end, perm, description="", merge=True):
             self.addr_start = addr_start
             self.addr_end = addr_end
             self.size = addr_end - addr_start
             self.perm = perm
             self.description = description
+            self.merge = merge
             return
 
         def add_description(self, description):
@@ -68615,7 +68616,7 @@ class PagewalkWithHintsCommand(GenericCommand):
         else:
             return x
 
-    def insert_region(self, to_insert_address, to_insert_size, description):
+    def insert_region(self, to_insert_address, to_insert_size, description, merge=True):
         target_address_start = to_insert_address
         target_address_end = to_insert_address + to_insert_size
 
@@ -68671,7 +68672,7 @@ class PagewalkWithHintsCommand(GenericCommand):
             if size_1st > 0:
                 addr_start_1st = r.addr_start
                 addr_end_1st = addr_start_1st + size_1st
-                self.regions[addr_start_1st] = self.Region(addr_start_1st, addr_end_1st, r.perm, r.description)
+                self.regions[addr_start_1st] = self.Region(addr_start_1st, addr_end_1st, r.perm, r.description, merge)
             if size_2nd > 0:
                 addr_start_2nd = max(target_address_start, r.addr_start)
                 addr_end_2nd = addr_start_2nd + size_2nd
@@ -68682,11 +68683,11 @@ class PagewalkWithHintsCommand(GenericCommand):
                         new_description = r.description + ", " + description
                 else:
                     new_description = description
-                self.regions[addr_start_2nd] = self.Region(addr_start_2nd, addr_end_2nd, r.perm, new_description)
+                self.regions[addr_start_2nd] = self.Region(addr_start_2nd, addr_end_2nd, r.perm, new_description, merge)
             if size_3rd > 0:
                 addr_start_3rd = target_address_end
                 addr_end_3rd = addr_start_3rd + size_3rd
-                self.regions[addr_start_3rd] = self.Region(addr_start_3rd, addr_end_3rd, r.perm, r.description)
+                self.regions[addr_start_3rd] = self.Region(addr_start_3rd, addr_end_3rd, r.perm, r.description, merge)
 
             if r.addr_end < target_address_end:
                 target_address_start = r.addr_end
@@ -68698,6 +68699,17 @@ class PagewalkWithHintsCommand(GenericCommand):
         for key, r in sorted(self.regions.items()):
             # for 1st element
             if prev_key is None:
+                prev_key, prev_r = key, r
+                continue
+
+            # no_merge flag
+            if not r.merge:
+                new_regions[prev_key] = prev_r
+                prev_key, prev_r = key, r
+                continue
+
+            if prev_r and not prev_r.merge:
+                new_regions[prev_key] = prev_r
                 prev_key, prev_r = key, r
                 continue
 
@@ -68849,7 +68861,7 @@ class PagewalkWithHintsCommand(GenericCommand):
             size = int(size_str[5:], 16)
             virt = int(virt_str[5:].split("-")[0], 16)
             description = "free page in buddy allocator"
-            self.insert_region(virt, size, description)
+            self.insert_region(virt, size, description, merge=False)
         return
 
     def resolve_kstack(self):
@@ -68910,7 +68922,7 @@ class PagewalkWithHintsCommand(GenericCommand):
                 description = "slab cache ({:s}; full)".format(name)
                 total_page_size = gef_getpagesize() * num_pages
 
-                self.insert_region(current, total_page_size, description)
+                self.insert_region(current, total_page_size, description, merge=False)
                 current += total_page_size
         return
 
@@ -68934,7 +68946,7 @@ class PagewalkWithHintsCommand(GenericCommand):
                 size = int(r.group(1)) * gef_getpagesize()
                 description = "slab cache ({:s})".format(name)
                 if address:
-                    self.insert_region(address, size, description)
+                    self.insert_region(address, size, description, merge=False)
                 address, size = None, None # for detect logic error. name will be reused
                 continue
 
@@ -68964,7 +68976,7 @@ class PagewalkWithHintsCommand(GenericCommand):
                 size = int(r.group(1)) * gef_getpagesize()
                 description = "slab cache ({:s})".format(name)
                 if address:
-                    self.insert_region(address, size, description)
+                    self.insert_region(address, size, description, merge=False)
                 address, size = None, None # for detect logic error. name will be reused
                 continue
         return
@@ -68985,7 +68997,7 @@ class PagewalkWithHintsCommand(GenericCommand):
                 size = int(r.group(1)) * gef_getpagesize()
                 description = "slab cache"
                 if address:
-                    self.insert_region(address, size, description)
+                    self.insert_region(address, size, description, merge=False)
                 address, size = None, None # for detect logic error
                 continue
         return
@@ -69010,7 +69022,7 @@ class PagewalkWithHintsCommand(GenericCommand):
                 size = int(r.group(1)) * gef_getpagesize()
                 description = "slab cache ({:s})".format(name)
                 if address:
-                    self.insert_region(address, size, description)
+                    self.insert_region(address, size, description, merge=False)
                 address, size = None, None # for detect logic error. name will be reused
                 continue
         return
@@ -69067,9 +69079,11 @@ class PagewalkWithHintsCommand(GenericCommand):
             info("detect zero page")
         page_size = gef_getpagesize()
         z10 = b"\0" * 0x10
+        cc10 = b"\xcc" * 0x10
         ff10 = b"\xff" * 0x10
         z1000 = b"\0" * page_size
         ff1000 = b"\xff" * page_size
+        cc1000 = b"\xcc" * page_size
 
         for _key, r in self.regions.copy().items():
             if r.description != "":
@@ -69083,11 +69097,13 @@ class PagewalkWithHintsCommand(GenericCommand):
                     self.insert_region(addr, page_size, "can not access")
                     continue
 
-                if x not in [z10, ff10]:
+                if x not in [z10, ff10, cc10]:
                     continue
                 x = read_memory(addr, page_size)
                 if x == z1000:
                     self.insert_region(addr, page_size, "0x00-filled")
+                elif x == cc1000:
+                    self.insert_region(addr, page_size, "0xcc-filled")
                 elif x == ff1000:
                     self.insert_region(addr, page_size, "0xff-filled")
         return
