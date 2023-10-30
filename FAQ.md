@@ -21,6 +21,17 @@ Are you using an environment other than Ubuntu 22.04?
 This is probably because gdb does not support cooperation with python3.
 Consider building gdb from source with `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`.
 
+## What is `~/.gef.rc`?
+This is the gef config file. Not present by default.
+Executing the `gef save` command saves the current settings to disk.
+The next time gef is started, it will be automatically loaded and the settings will be reflected.
+This includes the current values of items configurable with `gef config` and alias settings for commands.
+
+## What is `/tmp/gef`?
+This is the directory where gef temporarily stores files.
+Since it is used for caching, there is no problem in deleting it.
+It will be created automatically the next time gef starts.
+
 ## Will each GEF command be more accurate if I have vmlinux with debug symbols?
 No, whether vmlinux includes debug information has no effect on GEF behavior.
 GEF always uses its own resolved address with `kallsyms-remote`.
