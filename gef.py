@@ -12085,12 +12085,24 @@ class ResetCacheCommand(GenericCommand):
     _category_ = "99. GEF Maintenance Command"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("--hard", action="store_true", help="also delete under {:s}.".format(GEF_TEMP_DIR))
     _syntax_ = parser.format_help()
 
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
         reset_gef_caches(all=True)
+
+        if args.hard:
+            for root, _dirs, files in os.walk(GEF_TEMP_DIR, followlinks=False):
+                for f in sorted(files):
+                    path = os.path.join(root, f)
+                    if os.path.islink(path):
+                        continue
+                    if os.path.isdir(path):
+                        continue
+                    os.unlink(path)
+                    gef_print("{:s} is deleted".format(path))
         return
 
 
