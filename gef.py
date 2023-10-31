@@ -52170,46 +52170,50 @@ class KernelDmesgCommand(GenericCommand):
         seq = 0
         while True:
             # prb_read
-            rdesc = read_desc_i(rb["desc_ring"]["descs"], seq & seq_mask)
-            rinfo = read_info_i(rb["desc_ring"]["infos"], seq & seq_mask)
-            id = rdesc["state_var"] & state_var_id_mask
+            # - Read prb_desc and printk_info based on seq number.
+            seq_based_desc = read_desc_i(rb["desc_ring"]["descs"], seq & seq_mask)
+            seq_based_info = read_info_i(rb["desc_ring"]["infos"], seq & seq_mask)
 
             # desc_read_finalized_seq, desc_read
-            desc = read_desc_i(rb["desc_ring"]["descs"], id & seq_mask)
-            info_tmp = read_info_i(rb["desc_ring"]["infos"], id & seq_mask)
-            if (desc["state_var"] & state_var_id_mask) != id: # desc_miss
+            # - Read prb_desc and printk_info based on id number.
+            id = seq_based_desc["state_var"] & state_var_id_mask
+            id_based_desc = read_desc_i(rb["desc_ring"]["descs"], id & seq_mask)
+            id_based_info = read_info_i(rb["desc_ring"]["infos"], id & seq_mask)
+            # - Determine whether it is the last entry based on the state and seq values.
+            if (id_based_desc["state_var"] & state_var_id_mask) != id: # desc_miss
                 break
-            if get_desc_state(desc["state_var"]) in [0, 1]: # desc_reserved, desc_commited
+            if get_desc_state(id_based_desc["state_var"]) in [0, 1]: # desc_reserved, desc_commited
                 break
-            if info_tmp["seq"] != seq:
+            if id_based_info["seq"] != seq:
                 if seq == 0:
                     # ring buffer is already looping
-                    seq = info_tmp["seq"]
+                    seq = id_based_info["seq"]
                 else:
                     break
-            if get_desc_state(desc["state_var"]) == 2: # desc_reusable
-                if (desc["text_blk_lpos"]["begin"], desc["text_blk_lpos"]["next"]) == (1, 1):
+            if get_desc_state(id_based_desc["state_var"]) == 2: # desc_reusable
+                if (id_based_desc["text_blk_lpos"]["begin"], id_based_desc["text_blk_lpos"]["next"]) == (1, 1):
                     break
 
             # copy_data, get_data
-            begin = desc["text_blk_lpos"]["begin"]
-            next = desc["text_blk_lpos"]["next"]
+            # - Calculates the start address of text data from the begin and next values.
+            begin = id_based_desc["text_blk_lpos"]["begin"]
+            next = id_based_desc["text_blk_lpos"]["next"]
             if (begin >> size_bits) == (next >> size_bits) and (begin < next):
                 src = rb["text_data_ring"]["data"] + (begin & data_size_mask)
             elif ((begin + (1 << size_bits)) >> size_bits) == (next >> size_bits):
                 src = rb["text_data_ring"]["data"]
             else:
                 raise
-            size = rinfo["text_len"]
+            size = seq_based_info["text_len"]
             src += current_arch.ptrsize
             entry = bytes2str(read_memory(src, size))
 
             # timestamp
-            sec = rinfo["ts_nsec"] // 1000 // 1000 // 1000
-            nsec = rinfo["ts_nsec"] % (1000 * 1000 * 1000)
+            sec = seq_based_info["ts_nsec"] // 1000 // 1000 // 1000
+            nsec = seq_based_info["ts_nsec"] % (1000 * 1000 * 1000)
             nsec_str = "{:09d}".format(nsec)[:6]
             # thread id. This is displayed when CONFIG_PRINTK_CALLER=y, but always displayed because it is useful.
-            caller_id_str = "T{:d}".format(rinfo["caller_id"])
+            caller_id_str = "T{:d}".format(seq_based_info["caller_id"])
             # output
             formatted_entry = "[{:5d}.{:s}] [{:>6s}] {:s}".format(sec, nsec_str, caller_id_str, entry)
             self.out.append(formatted_entry)
@@ -52236,6 +52240,7 @@ class KernelDmesgCommand(GenericCommand):
 
         CONFIG_PRINTK_CALLER = get_ksymaddr("print_caller") is not None
         length_of_caller_id = 4 if CONFIG_PRINTK_CALLER else 0
+        sizeof_printk_log = 16 + length_of_caller_id
 
         pos = buf_start + log_first_idx
         log_end_pos = buf_start + log_end_idx
@@ -52254,7 +52259,7 @@ class KernelDmesgCommand(GenericCommand):
             #facility = u8(x[14:15])
             #flags = (u8(x[15:16]) >> 0) & 0b11111
             #level = (u8(x[15:16]) >> 5) & 0b111
-            text = read_memory(pos + 16 + length_of_caller_id, text_len)
+            text = read_memory(pos + sizeof_printk_log, text_len)
 
             sec = ts_nsec // 1000 // 1000 // 1000
             nsec = ts_nsec % (1000 * 1000 * 1000)
