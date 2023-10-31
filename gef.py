@@ -54239,6 +54239,7 @@ class DiffOutputDiffCommand(DiffOutputCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("n1", metavar="N", type=int, help="first diff target got from `diff-output list`.")
     parser.add_argument("n2", metavar="M", type=int, help="second diff target got from `diff-output list`.")
+    parser.add_argument("--full", action="store_true", help="full diff output.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
@@ -54252,13 +54253,18 @@ class DiffOutputDiffCommand(DiffOutputCommand):
 
     def make_diff(self, path1, path2):
         width = get_gef_setting("diff_output.colordiff_output_width")
-        cmd = "{:s} -y -W {:d} '{:s}' '{:s}'".format(self.colordiff, width, path1, path2)
+        if self.full:
+            cmd = "{:s} -y -W {:d} '{:s}' '{:s}'".format(self.colordiff, width, path1, path2)
+        else:
+            cmd = "{:s} -y --suppress-common-lines -W {:d} '{:s}' '{:s}'".format(self.colordiff, width, path1, path2)
         result = subprocess.getoutput(cmd)
         return result
 
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
+
+        self.full = args.full
 
         try:
             self.colordiff = which("colordiff")
@@ -54283,7 +54289,10 @@ class DiffOutputDiffCommand(DiffOutputCommand):
 
         output = self.make_diff(f1, f2)
 
-        gef_print(output, less=not args.no_pager)
+        if output:
+            gef_print(output, less=not args.no_pager)
+        else:
+            gef_print("No difference")
         return
 
 
