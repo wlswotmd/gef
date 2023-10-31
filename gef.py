@@ -26355,7 +26355,7 @@ class Ret2dlHintCommand(GenericCommand):
         self.dont_repeat()
 
         s = ""
-        s += "  +---.got/.got.plt @ itself-------+\n"
+        s += "  +-.got/.got.plt @ itself---------+\n"
         s += "  | GOT[0]: _DYNAMIC               |\n"
         s += "  | GOT[1]: link_map               |\n"
         s += "  | GOT[2]: _dl_runtime_resolve@ld |\n"
@@ -26368,7 +26368,7 @@ class Ret2dlHintCommand(GenericCommand):
         s += "If `link_map` and `_dl_runtime_resolve` are non-zero, just use them.\n"
         s += "If they are zero, you have to resolve them from DT_DEBUG entry of _DYNAMIC.\n"
         s += "\n"
-        s += "  +---_DYNAMIC @ itself------+     +---->+---r_debug--------+\n"
+        s += "  +-_DYNAMIC @ itself--------+     +---->+-r_debug----------+\n"
         s += "  | QWORD tag                |     |     | QWORD r_version  |\n"
         s += "  | QWORD value              |     |     | QWORD link_map   |<--- HERE\n"
         s += "  +--------------------------+     |     | QWORD r_brk      |\n"
@@ -26379,7 +26379,7 @@ class Ret2dlHintCommand(GenericCommand):
         s += "  +--------------------------+\n"
         s += "\n"
         s += "  (binary itself)              (libc.so)                    (ld-linux.so)\n"
-        s += "  +---link_map---+     +------>+---link_map---+     +------>+---link_map---+\n"
+        s += "  +-link_map-----+     +------>+-link_map-----+     +------>+-link_map-----+\n"
         s += "  | QWORD l_addr |     |       | QWORD l_addr |     |       | QWORD l_addr |\n"
         s += "  | QWORD l_name |     |       | QWORD l_name |     |       | QWORD l_name |\n"
         s += "  | QWORD l_ld   |     |       | QWORD l_ld   |---+ |       | QWORD l_ld   |\n"
@@ -26389,7 +26389,7 @@ class Ret2dlHintCommand(GenericCommand):
         s += "                                                  |\n"
         s += "        +-----------------------------------------+\n"
         s += "        |\n"
-        s += "        +--->+---_DYNAMIC @ libc--------+     +---->+---.got/.got.plt @ libc---------+\n"
+        s += "        +--->+-_DYNAMIC @ libc----------+     +---->+-.got/.got.plt @ libc-----------+\n"
         s += "             | QWORD tag                |     |     | GOT[0]: _DYNAMIC               |\n"
         s += "             | QWORD value              |     |     | GOT[1]: link_map               |\n"
         s += "             +--------------------------+     |     | GOT[2]: _dl_runtime_resolve@ld |<--- HERE\n"
@@ -26408,7 +26408,7 @@ class Ret2dlHintCommand(GenericCommand):
             s = s.replace("QWORD", "DWORD")
             s += "  +-------reloc_arg as offset------+\n"
             s += "  |\n"
-            s += "  |      +---.rel.plt-----------------------+                        +---.dynsym----------+          +---.dynstr-------+\n"
+            s += "  |      +-.rel.plt-------------------------+                        +-.dynsym------------+          +-.dynstr---------+\n"
             s += "  |      | DWORD r_offset                   |                        | DWORD st_name      |          | char[] symbol   |\n"
             s += "  |      | DWORD r_info                     |                        | DWORD st_value     |     +--->| char[] symbol   |\n"
             s += "  |      +----------------------------------+                        | DWORD st_size      |     |    | char[] symbol   |\n"
@@ -26428,7 +26428,7 @@ class Ret2dlHintCommand(GenericCommand):
         else:
             s += "  +---reloc_arg * 0x18 as offset---+\n"
             s += "  |\n"
-            s += "  |      +---.rela.plt----------------------+                        +---.dynsym----------+          +---.dynstr-------+\n"
+            s += "  |      +-.rela.plt------------------------+                        +-.dynsym------------+          +-.dynstr---------+\n"
             s += "  |      | QWORD r_offset                   |                        | DWORD st_name      |          | char[] symbol   |\n"
             s += "  |      | QWORD r_info                     |                        | BYTE  st_info      |     +--->| char[] symbol   |\n"
             s += "  |      | QWORD r_addend                   |                        | BYTE  st_other     |     |    | char[] symbol   |\n"
@@ -46975,7 +46975,54 @@ class KernelTaskCommand(GenericCommand):
 
     _example_ = "{:s} -q".format(_cmdline_)
 
-    _note_ = "This command needs CONFIG_RANDSTRUCT=n."
+    _note_ = "This command needs CONFIG_RANDSTRUCT=n.\n"
+    _note_ += "\n"
+    _note_ += "Simplified task_struct structure:\n"
+    _note_ += "    +-init_task---+      +-->+-kstack----+    +--->+-vm_area_struct--+\n"
+    _note_ += "    | list_head   |--+   |   | ...       |    |    | vm_start        |\n"
+    _note_ += "    +-------------+  |   |   | ...       |    |    | vm_end          |\n"
+    _note_ += "                     |   |   | ...       |    |    | vm_next (~6.1)  |\n"
+    _note_ += "+--------------------+   |   | ...       |    |    | ...             |\n"
+    _note_ += "|                        |   | ...       |    |    | vm_flags        |\n"
+    _note_ += "|   +-task_struct--+     |   | ...       |    |    | vm_file         |-----+\n"
+    _note_ += "|   | ...          |     |   | pt_regs   |    |    | ...             |     |\n"
+    _note_ += "|   | stack        |-----+   +-----------+    |    +-----------------+     |\n"
+    _note_ += "|   | ...          |                          |                            |\n"
+    _note_ += "+-->| tasks        |-->...               +----+<------------------------+  |\n"
+    _note_ += "    | ...          |                     |                              |  |\n"
+    _note_ += "    | mm           |-->+-mm_struct----+  |  +--->+-maple_node(6.1~)--+  |  |\n"
+    _note_ += "    | ...          |   | mmap (~6.1)  |--+  |    | ...               |  |  |\n"
+    _note_ += "    | pid          |   | ...          |     |    | mr64|ma64|alloc   |  |  |\n"
+    _note_ += "    | tid          |   | mm_mt (6.1~) |     |    |   ...             |  |  |\n"
+    _note_ += "    | ...          |   |   ma_root    |-----+    |   slot[]          |--+  |\n"
+    _note_ += "    | stack_canary |   | ...          |          +-------------------+     |\n"
+    _note_ += "    | ...          |   +--------------+                                    |\n"
+    _note_ += "    | group_leader |                                          +------------+\n"
+    _note_ += "    | ...          |                                          |\n"
+    _note_ += "    | thread_group |-->...                                    |\n"
+    _note_ += "    | ...          |                                          |                        +-mount----------+\n"
+    _note_ += "    | cred         |------>+-cred--------+                    |                        | ...            |\n"
+    _note_ += "    | ...          |      | ...          |                    |                        | mnt_parent     |-->mount\n"
+    _note_ += "    | comm[16]     |      | uid, gid     |                    |                        | mnt_mountpoint |-->dentry\n"
+    _note_ += "    | ...          |      | suid, sgid   |                    |                  +---->| mnt (vfsmount) |\n"
+    _note_ += "    | files        |--+   | euid, egid   |                    |                  |     |   mnt_root     |-->dentry\n"
+    _note_ += "    | ...          |  |   | fsuid, fsgid |                    |                  |     |   ...          |\n"
+    _note_ += "    +--------------+  |   | securebits   |                    |                  |     | ...            |\n"
+    _note_ += "                      |   | ...          |                    |                  |     +----------------+\n"
+    _note_ += "+---------------------+   +--------------+                    |                  |\n"
+    _note_ += "|                                                             v                  | +-->+-dentry-----+\n"
+    _note_ += "+-->+-files_struct-+  +-->+-fdtable---+  +-->+-file*[]-----+  +-->+-file------+  | |   | ...        |\n"
+    _note_ += "    | ...          |  |   | max_fds   |  |   | [0]         |--+   | ...       |  | |   | d_parent   |\n"
+    _note_ += "    | fdt          |--+   | fd        |--+   | ...         |      | f_path    |  | |   | ...        |\n"
+    _note_ += "    | ...          |      | ...       |      | [max_fds-1] |      |   mnt     |--+ |   | d_iname    |\n"
+    _note_ += "    +--------------+      +-----------+      +-------------+      |   dentry  |----+   | ...        |\n"
+    _note_ += "                                                                  | f_inode   |--+     +------------+\n"
+    _note_ += "                                                                  | ...       |  |\n"
+    _note_ += "                                                                  +-----------+  +---->+-inode------+\n"
+    _note_ += "                                                                                       | ...        |\n"
+    _note_ += "                                                                                       | i_ino      |\n"
+    _note_ += "                                                                                       | ...        |\n"
+    _note_ += "                                                                                       +------------+"
 
     def __init__(self):
         super().__init__()
@@ -46990,6 +47037,7 @@ class KernelTaskCommand(GenericCommand):
         self.offset_comm = None
         self.offset_cred = None
         self.offset_files = None
+        # files_struct
         self.offset_fdt = None
         # kstack
         self.offset_ptregs = None
@@ -47739,7 +47787,7 @@ class KernelTaskCommand(GenericCommand):
                 union {
                     struct {
                         struct maple_pnode *parent;
-                        void __rcu *slot[MAPLE_NODE_SLOTS];
+                        void __rcu *slot[MAPLE_NODE_SLOTS]; // 64-bit: 31; 32-bit: 63
                     };
                     struct {
                         void *pad;
@@ -47750,9 +47798,30 @@ class KernelTaskCommand(GenericCommand):
                         unsigned char slot_len;
                         unsigned int ma_flags;
                     };
-                    struct maple_range_64 mr64;
-                    struct maple_arange_64 ma64;
-                    struct maple_alloc alloc;
+                    struct maple_range_64 {
+                        struct maple_pnode *parent;
+                        unsigned long pivot[MAPLE_RANGE64_SLOTS - 1];     // 64-bit: 15; 32-bit: 31
+                        union {
+                            void __rcu *slot[MAPLE_RANGE64_SLOTS];        // 64-bit: 16; 32-bit: 32
+                            struct {
+                                void __rcu *pad[MAPLE_RANGE64_SLOTS - 1]; // 64-bit: 15; 32-bit: 31
+                                struct maple_metadata meta;
+                            };
+                        };
+                    } mr64;
+                    struct maple_arange_64 {
+                        struct maple_pnode *parent;
+                        unsigned long pivot[MAPLE_ARANGE64_SLOTS - 1]; // 64-bit: 9;  32-bit: 20
+                        void __rcu *slot[MAPLE_ARANGE64_SLOTS];        // 64-bit: 10; 32-bit: 21
+                        unsigned long gap[MAPLE_ARANGE64_SLOTS];       // 64-bit: 10; 32-bit: 21
+                        struct maple_metadata meta;
+                    } ma64;
+                    struct maple_alloc {
+                        unsigned long total;
+                        unsigned char node_count;
+                        unsigned int request_count;
+                        struct maple_alloc *slot[MAPLE_ALLOC_SLOTS]; // 64-bit: 30; 32-bit: 31
+                    } alloc;
                 };
             };
             """
@@ -47901,7 +47970,6 @@ class KernelTaskCommand(GenericCommand):
             ...
         };
 
-
         [v6.5~]
         struct file {
             union {
@@ -47983,6 +48051,8 @@ class KernelTaskCommand(GenericCommand):
             void *i_security;
         #endif
             unsigned long i_ino;
+            ...
+        };
         """
         current = inode + 2 + 2 + 4 + 4 + 4
 
@@ -48018,7 +48088,7 @@ class KernelTaskCommand(GenericCommand):
                         HASH_LEN_DECLARE;
                     };
                     u64 hash_len;
-                }
+                };
                 const unsigned char *name; // this points d_iname
             } d_name;
             struct inode *d_inode;
@@ -48653,7 +48723,7 @@ class KernelModuleCommand(GenericCommand):
             struct module_sect_attrs *sect_attrs;
             struct module_notes_attrs *notes_attrs;
         #endif
-        }
+        };
 
         struct module_memory {
             void *base;
@@ -48756,7 +48826,7 @@ class KernelModuleCommand(GenericCommand):
             struct module_notes_attrs *notes_attrs;
         #endif
             ...
-        }
+        };
 
         struct module_layout {
             /* The actual code + data. */
@@ -48902,6 +48972,7 @@ class KernelModuleCommand(GenericCommand):
             struct module_notes_attrs *notes_attrs;
         #endif
             ...
+        };
         """
         for i in range(300):
             offset_module_core = i * current_arch.ptrsize
@@ -49417,7 +49488,7 @@ class KernelBlockDevicesCommand(GenericCommand):
         struct block_device {
             dev_t                       bd_dev;
             ...
-        }
+        };
 
         [v5.11~]
         struct block_device {
@@ -49430,7 +49501,7 @@ class KernelBlockDevicesCommand(GenericCommand):
             bool                        bd_read_only;       // 1byte + 3byte padding
             dev_t                       bd_dev;
             ...
-        }
+        };
         """
         if self.offset_bd_dev is None:
             kversion = KernelVersionCommand.kernel_version()
@@ -51099,35 +51170,33 @@ class KernelSysctlCommand(GenericCommand):
     _note_ = "This command needs CONFIG_RANDSTRUCT=n.\n"
     _note_ += "\n"
     _note_ += "Simplified sysctl_table structure:\n"
-    _note_ += "   sysctl_table_root                     ctl_dir\n"
-    _note_ += "   +-----------------+            +----->+--------------+\n"
-    _note_ += "   | default_set     |            |      | header       |\n"
-    _note_ += "   |   ...           |            |      |   ctl_table  |---+\n"
-    _note_ += "   |   dir           |            |      |   ...        |   |\n"
-    _note_ += "   |     header      |            |      |   parent     |---|--> parent ctl_node\n"
-    _note_ += "   |       ctl_table |            |      |   ...        |   |\n"
-    _note_ += "   |       ...       |            |      | root         |   |\n"
-    _note_ += "   |       parent    |            |      |   rb_node    |---|--> ctl_node\n"
-    _note_ += "   |       ...       |            |      +--------------+   |\n"
-    _note_ += "   |     root        |            |                         |\n"
-    _note_ += "   |       rb_node   |----+       |   +---------------------+\n"
-    _note_ += "   |   ...           |    |       |   |\n"
-    _note_ += "   +-----------------+    |       |   |  ctl_table (array)\n"
-    _note_ += "                          |       |   +->+--------------+\n"
-    _note_ += "+-------------------------+       |      | procname     |--> name[]\n"
-    _note_ += "|                                 |      | data         |--> data[max_len]\n"
-    _note_ += "|  ctl_node                       |      | maxlen       |\n"
-    _note_ += "+->+--------------+               |      | mode         |\n"
-    _note_ += "   | rb_node      |               |      | proc_handler |\n"
-    _note_ += "   |   color      |               |      +--------------+\n"
-    _note_ += "   |   right      |---> ctl_node  |      | procname     |--> name[]\n"
-    _note_ += "   |   left       |---> ctl_node  |      | data         |--> data[max_len]\n"
-    _note_ += "   | header       |---------------+      | maxlen       |\n"
-    _note_ += "   +--------------+                      | mode         |\n"
-    _note_ += "                                         | proc_handler |\n"
-    _note_ += "                                         +--------------+\n"
-    _note_ += "                                         | ...          |\n"
-    _note_ += "                                         +--------------+"
+    _note_ += "   +-sysctl_table_root-+          +----->+-ctl_dir------+\n"
+    _note_ += "   | default_set       |          |      | header       |\n"
+    _note_ += "   |   ...             |          |      |   ctl_table  |---+\n"
+    _note_ += "   |   dir             |          |      |   ...        |   |\n"
+    _note_ += "   |     header        |          |      |   parent     |---|-->parent ctl_node\n"
+    _note_ += "   |       ctl_table   |          |      |   ...        |   |\n"
+    _note_ += "   |       ...         |          |      | root         |   |\n"
+    _note_ += "   |       parent      |          |      |   rb_node    |---|-->ctl_node\n"
+    _note_ += "   |       ...         |          |      +--------------+   |\n"
+    _note_ += "   |     root          |          |                         |\n"
+    _note_ += "   |       rb_node     |----+     |   +---------------------+\n"
+    _note_ += "   |   ...             |    |     |   |\n"
+    _note_ += "   +-------------------+    |     |   +->+-ctl_table(array)-+\n"
+    _note_ += "                            |     |      | procname         |-->name[]\n"
+    _note_ += "+---------------------------+     |      | data             |-->data[max_len]\n"
+    _note_ += "|                                 |      | maxlen           |\n"
+    _note_ += "+->+-ctl_node-----+               |      | mode             |\n"
+    _note_ += "   | rb_node      |               |      | proc_handler     |\n"
+    _note_ += "   |   color      |               |      +------------------+\n"
+    _note_ += "   |   right      |--->ctl_node   |      | procname         |-->name[]\n"
+    _note_ += "   |   left       |--->ctl_node   |      | data             |-->data[max_len]\n"
+    _note_ += "   | header       |---------------+      | maxlen           |\n"
+    _note_ += "   +--------------+                      | mode             |\n"
+    _note_ += "                                         | proc_handler     |\n"
+    _note_ += "                                         +------------------+\n"
+    _note_ += "                                         | ...              |\n"
+    _note_ += "                                         +------------------+"
 
     def __init__(self):
         super().__init__()
@@ -51476,7 +51545,7 @@ class KernelSysctlCommand(GenericCommand):
 
 @register_command
 class KernelFileSystemsCommand(GenericCommand):
-    """Dump /proc/filesystems."""
+    """Dump filesystems."""
     _cmdline_ = "kfilesystems"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -51485,7 +51554,36 @@ class KernelFileSystemsCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
+    _note_ = "Simplified file_systems structure:\n"
+    _note_ += "                  +-->+-file_system_type-+  +-->file_system_type\n"
+    _note_ += "                  |   | name             |  |\n"
+    _note_ += "+--------------+  |   | ...              |  |\n"
+    _note_ += "| file_systems |--+   | next             |--+\n"
+    _note_ += "+--------------+      | ...              |\n"
+    _note_ += "                      +------------------+"
+
     def get_offset_next(self, file_systems):
+        """
+        struct file_system_type {
+            const char *name;
+            int fs_flags;
+            int (*init_fs_context)(struct fs_context *);
+            const struct fs_parameter_spec *parameters;
+            struct dentry *(*mount) (struct file_system_type *, int, const char *, void *);
+            void (*kill_sb) (struct super_block *);
+            struct module *owner;
+            struct file_system_type * next;
+            struct hlist_head fs_supers;
+            struct lock_class_key s_lock_key;
+            struct lock_class_key s_umount_key;
+            struct lock_class_key s_vfs_rename_key;
+            struct lock_class_key s_writers_key[SB_FREEZE_LEVELS];
+            struct lock_class_key i_lock_key;
+            struct lock_class_key i_mutex_key;
+            struct lock_class_key invalidate_lock_key;
+            struct lock_class_key i_mutex_dir_key;
+        };
+        """
         for i in range(10):
             offset_next = i * current_arch.ptrsize
             valid = True
@@ -51569,7 +51667,48 @@ class KernelClockSourceCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
+    _note_ = "Simplified clocksource structure:\n"
+    _note_ += "                        +-clocksource-+\n"
+    _note_ += "                        | read        |\n"
+    _note_ += "+-clocksource_list-+    | ...         |\n"
+    _note_ += "| list_head        |--->| list        |--->...\n"
+    _note_ += "+------------------+    | ...         |\n"
+    _note_ += "                        +-------------+"
+
     def get_offset_list(self, clocksource):
+        """
+        struct clocksource {
+            u64 (*read)(struct clocksource *cs);
+            u64 mask;
+            u32 mult;
+            u32 shift;
+            u64 max_idle_ns;
+            u32 maxadj;
+            u32 uncertainty_margin;
+        #ifdef CONFIG_ARCH_CLOCKSOURCE_DATA
+            struct arch_clocksource_data archdata;
+        #endif
+            u64 max_cycles;
+            const char *name;
+            struct list_head list;
+            int rating;
+            enum clocksource_ids id;
+            enum vdso_clock_mode vdso_clock_mode;
+            unsigned long flags;
+            int (*enable)(struct clocksource *cs);
+            void (*disable)(struct clocksource *cs);
+            void (*suspend)(struct clocksource *cs);
+            void (*resume)(struct clocksource *cs);
+            void (*mark_unstable)(struct clocksource *cs);
+            void (*tick_stable)(struct clocksource *cs);
+        #ifdef CONFIG_CLOCKSOURCE_WATCHDOG
+            struct list_head wd_list;
+            u64 cs_last;
+            u64 wd_last;
+        #endif
+            struct module *owner;
+        };
+        """
         current = read_int_from_memory(clocksource)
         for i in range(7, 20):
             candidate_offset = i * current_arch.ptrsize
@@ -51828,27 +51967,91 @@ class KernelDmesgCommand(GenericCommand):
 
     _note_ = "The information such as [T1] is the thread ID.\n"
     _note_ += "Originally, this information is displayed when CONFIG_PRINTK_CALLER=y.\n"
-    _note_ += "However it is always displayed because it is useful."
+    _note_ += "However it is always displayed because it is useful.\n"
+    _note_ += "\n"
+    _note_ += "Simplified dmesg structure (5.10~):\n"
+    _note_ += "+-----+\n"
+    _note_ += "| prb |--+\n"
+    _note_ += "+-----+  |\n"
+    _note_ += "         |\n"
+    _note_ += "+--------+\n"
+    _note_ += "|\n"
+    _note_ += "+->+-printk_rb_static-+  +-------------------------->+-prb_desc[]----+\n"
+    _note_ += "   | desc_ring        |  |                       +---| state_var     |---+\n"
+    _note_ += "   |   count_bits     |  | +->+-printk_info[]-+  |   | ...           |   |\n"
+    _note_ += "   |   descs          |--+ |  | seq           |  |   +---------------+   |\n"
+    _note_ += "   |   infos          |----+  | ts_nsec       |  |   | state_var     |   |\n"
+    _note_ += "   |   head_id        |       | text_len      |  |   | ...           |   |\n"
+    _note_ += "   |   tail_id        |       | facility      |  |   +---------------+   |\n"
+    _note_ += "   |   ...            |       | flags, level  |  |   | ...           |   |\n"
+    _note_ += "   | text_data_ring   |       | caller_id     |  |   +---------------+<--+\n"
+    _note_ += "   |   size_bits      |       | dev_info      |  |   | state_var     |\n"
+    _note_ += "   |   data           |--+    +---------------+  |   | text_blk_lpos |\n"
+    _note_ += "   |   head_lpos      |  |    | seq           |  |   |   begin       |(=Text block start offset)\n"
+    _note_ += "   |   tail_lpos      |  |    | ts_nsec       |  |   |   next        |(=Text block end offset)\n"
+    _note_ += "   | fail             |  |    | text_len      |  |   +---------------+\n"
+    _note_ += "   +------------------+  |    | facility      |  |   | state_var     |\n"
+    _note_ += "                         |    | flags, level  |  |   | text_blk_lpos |\n"
+    _note_ += "+------------------------+    | caller_id     |  |   |   begin       |\n"
+    _note_ += "|                             | dev_info      |  |   |   next        |\n"
+    _note_ += "+->+-printk_record-+          +---------------+  |   +---------------+\n"
+    _note_ += "   | info          |          | ...           |  |\n"
+    _note_ += "   | text_buf      |-->text   +---------------+<-+\n"
+    _note_ += "   | text_buf_size |          | seq           |\n"
+    _note_ += "   +---------------+          | ...           |\n"
+    _note_ += "                              +---------------+\n"
+    _note_ += "* prb_desc and printk_info are accessed in two ways. One is seq number based access which is simply incremented\n"
+    _note_ += "  and the other is id number based access by lower bit of state_var.\n"
+    _note_ += "  1-A. (Seq-based prb_desc): Preserving entry state and entry index (=id).\n"
+    _note_ += "  1-B. (Id-based prb_desc): Preserving begin and next.\n"
+    _note_ += "  2-A. (Seq-based printk_info): Preserving text data length, time, thread ID, etc. for each entry.\n"
+    _note_ += "  2-B. (Id-based printk_info): Preserving seq for ring buffer reuse.\n"
+    _note_ += "\n"
+    _note_ += "Simplified dmesg structure (~5.10):\n"
+    _note_ += "+-----------+\n"
+    _note_ += "| __log_buf |-------->+-log_buffer-----+   ^     ^\n"
+    _note_ += "+-----------+         | ts_nsec        |   |     |\n"
+    _note_ += "                      | len            |-->|     |\n"
+    _note_ += "                      | text_len       |   |     |\n"
+    _note_ += "                      | ...            |   |     |\n"
+    _note_ += "                      | text[text_len] |   |     |\n"
+    _note_ += "                      +----------------+   v     |\n"
+    _note_ += "+---------------+     | ...            |         |\n"
+    _note_ += "| log_first_idx |---->+----------------+         |\n"
+    _note_ += "+---------------+     | ts_nsec        |         |\n"
+    _note_ += " =start               | len            |         |    +-------------+\n"
+    _note_ += "                      | text_len       |         |<---| log_buf_len |\n"
+    _note_ += "                      | ...            |         |    +-------------+\n"
+    _note_ += "                      | text[text_len] |         |\n"
+    _note_ += "                      +----------------+         |\n"
+    _note_ += "+---------------+     | ...            |         |\n"
+    _note_ += "| log_next_idx  |---->+----------------+         |\n"
+    _note_ += "+---------------+     | ts_nsec        |         |\n"
+    _note_ += " =end                 | len            |         |\n"
+    _note_ += "                      | text_len       |         |\n"
+    _note_ += "                      | ...            |         |\n"
+    _note_ += "                      | text[text_len] |         |\n"
+    _note_ += "                      +----------------+         v"
 
     def dump_printk_ringbuffer(self, ring_buffer_name, ring_buffer_address):
         """
         # linux 5.10.x ~
         struct printk_ringbuffer {
             struct prb_desc_ring {
-                unsigned int        count_bits;
-                struct prb_desc*    descs;
+                unsigned int count_bits;
+                struct prb_desc* descs;
                 struct printk_info* infos;
-                atomic_long_t       head_id;
-                atomic_long_t       tail_id;
-                atomic_long_t       last_finalized_id; // v5.18~
+                atomic_long_t head_id;
+                atomic_long_t tail_id;
+                atomic_long_t last_finalized_id; // v5.18~
             } desc_ring;
             struct prb_data_ring {
-                unsigned int        size_bits;
-                char*               data;
-                atomic_long_t       head_lpos;
-                atomic_long_t       tail_lpos;
+                unsigned int size_bits;
+                char* data;
+                atomic_long_t head_lpos;
+                atomic_long_t tail_lpos;
             } text_data_ring;
-            atomic_long_t           fail;
+            atomic_long_t fail;
         };
         """
 
@@ -51897,10 +52100,10 @@ class KernelDmesgCommand(GenericCommand):
         def read_desc_i(descs_addr, seq):
             """
             struct prb_desc {
-                atomic_long_t           state_var;
+                atomic_long_t state_var;
                 struct prb_data_blk_lpos {
-                    unsigned long       begin;
-                    unsigned long       next;
+                    unsigned long begin;
+                    unsigned long next;
                 } text_blk_lpos;
             };
             """
@@ -51921,14 +52124,14 @@ class KernelDmesgCommand(GenericCommand):
         def read_info_i(infos_addr, seq):
             """
             struct printk_info {
-                u64                     seq;        /* sequence number */
-                u64                     ts_nsec;    /* timestamp in nanoseconds */
-                u16                     text_len;   /* length of text message */
-                u8                      facility;   /* syslog facility */
-                u8                      flags:5;    /* internal record flags */
-                u8                      level:3;    /* syslog level */
-                u32                     caller_id;  /* thread id or processor id */
-                struct dev_printk_info  dev_info;
+                u64 seq;        /* sequence number */
+                u64 ts_nsec;    /* timestamp in nanoseconds */
+                u16 text_len;   /* length of text message */
+                u8 facility;    /* syslog facility */
+                u8 flags:5;     /* internal record flags */
+                u8 level:3;     /* syslog level */
+                u32 caller_id;  /* thread id or processor id */
+                struct dev_printk_info dev_info;
             };
             """
             sizeof_info = 8 + 8 + 2 + 1 + 1 + 4 + 16 + 48
@@ -51976,7 +52179,7 @@ class KernelDmesgCommand(GenericCommand):
             info_tmp = read_info_i(rb["desc_ring"]["infos"], id & seq_mask)
             if (desc["state_var"] & state_var_id_mask) != id: # desc_miss
                 break
-            if get_desc_state(desc["state_var"]) == [0, 1]: # desc_reserved, desc_commited
+            if get_desc_state(desc["state_var"]) in [0, 1]: # desc_reserved, desc_commited
                 break
             if info_tmp["seq"] != seq:
                 if seq == 0:
@@ -52028,7 +52231,7 @@ class KernelDmesgCommand(GenericCommand):
         #ifdef CONFIG_PRINTK_CALLER
             u32 caller_id;      /* thread id or processor id */
         #endif
-        }
+        };
         """
 
         CONFIG_PRINTK_CALLER = get_ksymaddr("print_caller") is not None
@@ -54640,7 +54843,7 @@ class SlubDumpCommand(GenericCommand):
         unsigned int useroffset;
         unsigned int usersize;
         struct kmem_cache_node *node[MAX_NUMNODES];
-    }
+    };
 
     struct kmem_cache_cpu {
         void **freelist;
@@ -54651,7 +54854,7 @@ class SlubDumpCommand(GenericCommand):
         struct page *partial;                    // if kernel < 5.17-rc1 && CONFIG_SLUB_CPU_PARTIAL=y
         local_lock_t lock;                       // if kernel >= 5.15-rc1
         unsigned stat[NR_SLUB_STAT_ITEMS];       // if CONFIG_SLUB_STATS=y
-    }
+    };
 
     struct page {                                // if kernel < 4.18-rc1
         unsigned long flags;
@@ -54664,7 +54867,7 @@ class SlubDumpCommand(GenericCommand):
         int pobjects;                            // if 64bit else `short pobjects`
         struct kmem_cache *slab_cache;
         ...
-    }
+    };
 
     struct page {                                // if 4.18-rc1 <= kernel < 5.17-rc1
         unsigned long flags;
@@ -54675,7 +54878,7 @@ class SlubDumpCommand(GenericCommand):
         void *freelist;
         unsigned inuse:16, objects:15, frozen:1;
         ...
-    }
+    };
 
     struct slab {                                // if kernel >= 5.17-rc1
         unsigned long __page_flags;
@@ -54686,7 +54889,7 @@ class SlubDumpCommand(GenericCommand):
         void *freelist;
         unsigned inuse:16, objects:15, frozen:1;
         ...
-    }
+    };
 
     struct kmem_cache_node {
         spinlock_t list_lock;
@@ -55638,7 +55841,7 @@ class SlubTinyDumpCommand(GenericCommand):
         unsigned int useroffset;
         unsigned int usersize;
         struct kmem_cache_node *node[MAX_NUMNODES];
-    }
+    };
 
     struct slab {
         unsigned long __page_flags;
@@ -55647,7 +55850,7 @@ class SlubTinyDumpCommand(GenericCommand):
         void *freelist;
         unsigned inuse:16, objects:15, frozen:1;
         ...
-    }
+    };
 
     struct kmem_cache_node {
         spinlock_t list_lock;
@@ -56287,7 +56490,7 @@ class SlabDumpCommand(GenericCommand):
         atomic_t refcount;                       // if kernel < 4.16-rc1
         struct rcu_head rcu_head;
         ...
-    }
+    };
 
     struct page {                                // if 4.18-rc1 <= kernel < 5.17-rc1
         unsigned long flags;
@@ -56297,7 +56500,7 @@ class SlabDumpCommand(GenericCommand):
         void *s_mem;
         unsigned int active;
         ...
-    }
+    };
 
     struct slab {                                // if kernel >= 5.17-rc1
         unsigned long __page_flags;
@@ -56308,7 +56511,7 @@ class SlabDumpCommand(GenericCommand):
         void *s_mem;
         unsigned int active;
         ...
-    }
+    };
     """
 
     def init_offset(self, force=False):
@@ -57010,7 +57213,7 @@ class SlobDumpCommand(GenericCommand):
         atomic_t refcount;                       // if kernel < 4.16-rc1
         struct list_head lru;
         ...
-    }
+    };
 
     struct page {                                // if 4.18-rc1 <= kernel < 5.17-rc1
         unsigned long flags;
@@ -57020,7 +57223,7 @@ class SlobDumpCommand(GenericCommand):
         void *__unused_2;
         int units;
         ...
-    }
+    };
 
     struct slab {                                // if kernel >= 5.17-rc1
         unsigned long __page_flags;
@@ -57029,7 +57232,7 @@ class SlobDumpCommand(GenericCommand):
         void *freelist
         long units;
         unsigned int __unused_2;
-    }
+    };
     """
 
     def init_offset(self, force=False):
@@ -57643,7 +57846,7 @@ class BuddyDumpCommand(GenericCommand):
         typedef struct pglist_data {
             struct zone node_zones[MAX_NR_ZONES];
             ...
-        }
+        };
 
         struct zone {
             ...
@@ -57658,7 +57861,7 @@ class BuddyDumpCommand(GenericCommand):
             ZONE_PADDING(_pad1_)
             struct free_area free_area[MAX_ORDER];
             ...
-        }
+        };
 
         static char * const zone_names[MAX_NR_ZONES] = {
         #ifdef CONFIG_ZONE_DMA
@@ -57988,7 +58191,30 @@ class KernelPipeCommand(GenericCommand):
 
     _example_ = "{:s} -q".format(_cmdline_)
 
-    _note_ = "This command needs CONFIG_RANDSTRUCT=n."
+    _note_ = "This command needs CONFIG_RANDSTRUCT=n.\n"
+    _note_ += "\n"
+    _note_ += "Simplified pipe structure:\n"
+    _note_ += "+-task_struct-+  +->+-files_struct-+  +->+-fdtable---+  +->+-files*[]----+  +->+-file------+\n"
+    _note_ += "| ...         |  |  | ...          |  |  | max_fds   |  |  | [0]         |--+  | ...       |\n"
+    _note_ += "| files       |--+  | fdt          |--+  | fd        |--+  | ...         |     | f_inode   |---+\n"
+    _note_ += "| ...         |     | ...          |     | ...       |     | [max_fds-1] |     | ...       |   |\n"
+    _note_ += "+-------------+     +--------------+     +-----------+     +-------------+     +-----------+   |\n"
+    _note_ += "                                                                                               |\n"
+    _note_ += "+----------------------------------------------------------------------------------------------+\n"
+    _note_ += "|\n"
+    _note_ += "|  +-inode-----+  +->+-pipe_inode_info-+  +->+-pipe_buffer-+\n"
+    _note_ += "|  | ...       |  |  | ...             |  |  | page        |--->page\n"
+    _note_ += "+->| i_pipe    |--+  | head            |  |  | offset      |\n"
+    _note_ += "   | ...       |     | tail            |  |  | len         |\n"
+    _note_ += "   +-----------+     | max_usage       |  |  | ...         |\n"
+    _note_ += "                     | ring_size       |  |  +-------------+\n"
+    _note_ += "                     | ...             |  |  | page        |--->page\n"
+    _note_ += "                     | bufs            |--+  | offset      |\n"
+    _note_ += "                     | ...             |     | len         |\n"
+    _note_ += "                     +-----------------+     | ...         |\n"
+    _note_ += "                                             +-------------+\n"
+    _note_ += "                                             | ...         |\n"
+    _note_ += "                                             +-------------+\n"
 
     def initialize(self):
         # kbase
@@ -58159,6 +58385,15 @@ class KernelPipeCommand(GenericCommand):
             return False
 
         # pipe_buffer->{page, offset, len, flags}
+        """
+        struct pipe_buffer {
+            struct page *page;
+            unsigned int offset, len;
+            const struct pipe_buf_operations *ops;
+            unsigned int flags;
+            unsigned long private;
+        };
+        """
         self.offset_page = 0
         if not self.quiet:
             info("offsetof(pipe_buffer, page): {:#x}".format(self.offset_page))
@@ -58312,7 +58547,41 @@ class KernelBpfCommand(GenericCommand):
 
     _example_ = "{:s} -q".format(_cmdline_)
 
-    _note_ = "This command needs CONFIG_RANDSTRUCT=n."
+    _note_ = "This command needs CONFIG_RANDSTRUCT=n.\n"
+    _note_ += "\n"
+    _note_ += "Simplified bpf structure:\n"
+    _note_ += "+-prog_idr--+   +--->+-xa_node----------+   +-------->+-bpf_prog-------------+\n"
+    _note_ += "| xa_head   |   |    | shift            |   |         | ...                  |\n"
+    _note_ += "| xa_flags  |   |    | ...              |   |         | type                 |\n"
+    _note_ += "| xa_head   |---+    | count            |   |         | expected_attach_type |\n"
+    _note_ += "+-----------+        | ...              |   |         | len                  |\n"
+    _note_ += "                     | slots[0]         |---+         | jited_len            |\n"
+    _note_ += "                     | slots[1]         |--->xa_node  | tag[8]               |\n"
+    _note_ += "                     | ...              |    or       | ...                  |\n"
+    _note_ += "                     | slots[15 or 63]  |--->bpf_prog | bpf_func             |---> BPF-code\n"
+    _note_ += "                     | ...              |             | ...                  |\n"
+    _note_ += "                     +------------------+             | aux                  |\n"
+    _note_ += "                                                      | ...                  |\n"
+    _note_ += "                                                      +----------------------+\n"
+    _note_ += "\n"
+    _note_ += "+-map_idr---+   +--->+-xa_node----------+   +-------->+-bpf_map--------------+\n"
+    _note_ += "| xa_head   |   |    | shift            |   |         | map                  |\n"
+    _note_ += "| xa_flags  |   |    | ...              |   |         |   ...                |\n"
+    _note_ += "| xa_head   |---+    | count            |   |         |   map_type           |\n"
+    _note_ += "+-----------+        | ...              |   |         |   key_size           |\n"
+    _note_ += "                     | slots[0]         |---+         |   value_size         |\n"
+    _note_ += "                     | slots[1]         |--->xa_node  |   max_entries        |\n"
+    _note_ += "                     | ...              |    or       |   ...                |\n"
+    _note_ += "                     | slots[15 or 63]  |--->bpf_prog | elem_size            |\n"
+    _note_ += "                     | ...              |             | index_mask           |\n"
+    _note_ += "                     +------------------+             | ...                  |\n"
+    _note_ += "                                                      +----------------------+\n"
+    _note_ += "                                                      | value[0]             |\n"
+    _note_ += "                                                      | value[1]             |\n"
+    _note_ += "                                                      | ...                  |\n"
+    _note_ += "                                                      | value[max_entries-1] |\n"
+    _note_ += "                                                      +----------------------+\n"
+
 
     def parse_xarray(self, ptr, root=False):
         if ptr == 0:
@@ -60531,12 +60800,10 @@ class PartitionAllocDumpCommand(GenericCommand):
     _note_ += " | head                 |    |     +-------------------+      +-------------------+\n"
     _note_ += " | slot_size            |    |\n"
     _note_ += " | ...                  |    |\n"
-    _note_ += " +----------------------+    |\n"
-    _note_ += " | ...                  |    |\n"
-    _note_ += " |                      |    +---->+-slot--------------+\n"
-    _note_ += " |                      |          | next              |---+\n"
-    _note_ += " +----------------------+          | (freed)           |   |\n"
-    _note_ += "                                   +-slot--------------+   |\n"
+    _note_ += " +----------------------+    +---->+-slot--------------+\n"
+    _note_ += " | ...                  |          | next              |---+\n"
+    _note_ += " |                      |          | (freed)           |   |\n"
+    _note_ += " +----------------------+          +-slot--------------+   |\n"
     _note_ += "                                   |                   |   |\n"
     _note_ += "                                   | (used)            |   |\n"
     _note_ += "                                   +-slot--------------+<--+\n"
@@ -60797,7 +61064,7 @@ class PartitionAllocDumpCommand(GenericCommand):
             uintptr_t inverted_self = 0;
             std::atomic<int> thread_caches_being_constructed_{0};
             bool quarantine_always_for_testing = false;
-        }
+        };
         """
         current += 64 # sizeof(struct Settings)
 
@@ -61008,7 +61275,7 @@ class PartitionAllocDumpCommand(GenericCommand):
           uint16_t in_empty_cache_ : 1;
           uint16_t empty_cache_index_ : kEmptyCacheIndexBits; // 7 bits
           uint16_t unused2_ : (16 - 1 - kEmptyCacheIndexBits); // 8 bits
-        }
+        };
         """
         _slot_span["freelist_head"] = read_int_from_memory(current)
         current += ptrsize
@@ -61628,7 +61895,7 @@ class MuslHeapDumpCommand(GenericCommand):
             unsigned char slot_index:5;
             unsigned char reserved:3;
             unsigned short slot_offset16;
-        }
+        };
         """
         _group["meta"] = read_int_from_memory(current)
         current += ptrsize
@@ -62927,8 +63194,8 @@ class OpteeBgetDumpCommand(GenericCommand):
 
     _example_ = "{:s} 0x2a408".format(_cmdline_)
 
-    _note_ = "Simplified heap structure\n"
-    _note_ += "+-malloc_ctx-------------------+         +-free-ed chunk----------+\n"
+    _note_ = "Simplified heap structure:\n"
+    _note_ += "+-malloc_ctx-------------------+         +-freed chunk------------+\n"
     _note_ += "| bufsize prevfree             |<--+ +-->| bufsize prevfree       |= 0 (if upper chunk is used)  +--> ...\n"
     _note_ += "| bufsize bsize                |   | |   | bufsize bsize          |= the size of this chunk      |\n"
     _note_ += "| struct bfhead *flink         |-----+   | struct bfhead *flink   |------------------------------+\n"
