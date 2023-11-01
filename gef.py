@@ -54130,9 +54130,9 @@ class IsMemoryZeroCommand(GenericCommand):
 
 
 @register_command
-class SearchLengthCommand(GenericCommand):
-    """Search consecutive lengths of the same value."""
-    _cmdline_ = "search-length"
+class SequenceLengthCommand(GenericCommand):
+    """Detect consecutive lengths of the same value."""
+    _cmdline_ = "seq-length"
     _category_ = "03-d. Memory - Calculation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -54146,7 +54146,7 @@ class SearchLengthCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
-    def memsearch(self, phys_mode, addr, unit):
+    def check(self, phys_mode, addr, unit):
         target = None
         data = b""
         count = 0
@@ -54204,9 +54204,9 @@ class SearchLengthCommand(GenericCommand):
 
         colored_addr = str(lookup_address(args.addr))
         colored_unit = Color.boldify("{:#x}".format(args.unit))
-        info("Search from {:s} in units of {:s} bytes".format(colored_addr, colored_unit))
+        info("Check from {:s} in units of {:s} bytes".format(colored_addr, colored_unit))
 
-        ret = self.memsearch(args.phys, args.addr, args.unit)
+        ret = self.check(args.phys, args.addr, args.unit)
         if ret is None:
             return
 
