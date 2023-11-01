@@ -73772,6 +73772,7 @@ class GefCommand(GenericCommand):
     subparsers.add_parser("reload")
     subparsers.add_parser("arch-list")
     subparsers.add_parser("raise-exception")
+    subparsers.add_parser("pyobj-list")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -74352,10 +74353,121 @@ class GefRaiseExceptionCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
+
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
         raise
+
+
+@register_command
+class GefPyObjListCommand(GenericCommand):
+    """Display defined global python object."""
+    _cmdline_ = "gef pyobj-list"
+    _category_ = "99. GEF Maintenance Command"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        skip_name_list = [
+            "__name__",
+            "__loader__",
+            "__doc__",
+            "__spec__",
+            "__package__",
+            "__annotations__",
+            "GdbRemoveReadlineFinder",
+        ]
+
+        skip_type_list = [
+            type(re.compile("")), # regex object
+            type(sys), # module
+        ]
+
+        function_type = type(lambda x:x)
+        class_type = type(GefCommand)
+        lru_cache_type = type(functools.lru_cache(lambda x:x))
+
+        arch_list = []
+        queue = Architecture.__subclasses__()
+        while queue:
+            cls = queue.pop(0)
+            arch_list.append(cls)
+            queue = cls.__subclasses__() + queue
+
+        global_configs = []
+        classes = []
+        command_classes = []
+        bp_classes = []
+        arch_classes = []
+        decorators = []
+        syscall_defines = []
+        others = []
+
+        for mod in dir(sys.modules["__main__"]): # for global object
+            # skip specific
+            if mod in skip_name_list:
+                continue
+
+            # skip specific type
+            obj = getattr(sys.modules["__main__"], mod)
+            if type(obj) in skip_type_list:
+                continue
+
+            # <class 'functools._lru_cache_wrapper'> -> <class 'function'>
+            if type(obj) == lru_cache_type:
+                t = function_type
+            else:
+                t = type(obj)
+
+            # classify
+            if mod.startswith("__") and t != function_type:
+                global_configs.append("{!s} {!s}".format(t, mod))
+            elif mod in ["current_elf", "current_arch"]:
+                global_configs.append("{!s} {!s}".format(t, mod))
+            elif mod.upper() == mod and type(obj) != class_type:
+                global_configs.append("{!s} {!s}".format(t, mod))
+            elif type(obj) == class_type:
+                if mod.endswith("Command"):
+                    command_classes.append("{!s} {!s}".format(t, mod))
+                elif mod.endswith("Breakpoint"):
+                    bp_classes.append("{!s} {!s}".format(t, mod))
+                elif obj in arch_list:
+                    arch_classes.append("{!s} {!s}".format(t, mod))
+                else:
+                    classes.append("{!s} {!s}".format(t, mod))
+            elif obj.__doc__ and obj.__doc__.startswith("Decorator"):
+                decorators.append("{!s} {!s}".format(t, mod))
+            elif mod.endswith(("syscall_tbl", "syscall_list")) or mod.startswith("syscall_defs"):
+                syscall_defines.append("{!s} {!s}".format(t, mod))
+            else:
+                others.append("{!s} {!s}".format(t, mod))
+
+        # print
+        output = []
+        output.append(titlify("GEF global configs"))
+        output.extend(sorted(global_configs))
+        output.append(titlify("Command classes"))
+        output.extend(sorted(command_classes))
+        output.append(titlify("Breakpoint classes"))
+        output.extend(sorted(bp_classes))
+        output.append(titlify("Architecture classes"))
+        output.extend(sorted(arch_classes))
+        output.append(titlify("Classes"))
+        output.extend(sorted(classes))
+        output.append(titlify("Syscall defines"))
+        output.extend(sorted(syscall_defines))
+        output.append(titlify("Decorators"))
+        output.extend(sorted(decorators))
+        output.append(titlify("Othres"))
+        output.extend(sorted(others))
+        gef_print("\n".join(output), less=not args.no_pager)
+        return
 
 
 class GefAlias(gdb.Command):
