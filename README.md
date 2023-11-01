@@ -543,6 +543,8 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/saveo-diffo.png)
 * `seq-length`: detects consecutive length of the same value.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/seq-length.png)
+* `gef arch-list`: displays defined architecture information.
+* `gef pyobj-list`: displays defined global python object.
 
 ### Other
 * The category is introduced in `gef help`.
