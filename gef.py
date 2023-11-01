@@ -2688,7 +2688,7 @@ class GlibcChunk:
         except gdb.MemoryError:
             return None
 
-    # if free-ed functions
+    # if freed functions
     def get_fwd_ptr(self, sll):
         try:
             # Not a single-linked-list (sll) or no Safe-Linking support yet
@@ -2728,7 +2728,7 @@ class GlibcChunk:
     @property
     def bk_nextsize(self):
         return self.get_bk_nextsize_ptr()
-    # endif free-ed functions
+    # endif freed functions
 
     def has_p_bit(self):
         return read_int_from_memory(self.size_addr) & 0x01
@@ -27862,7 +27862,7 @@ class TraceMallocRetBreakpoint(gdb.FinishBreakpoint):
         ok("{} - {}({})={:#x}".format(Color.colorify("Heap-Analysis", "bold yellow"), self.name, size, loc))
         check_heap_overlap = get_gef_setting("heap_analysis_helper.check_heap_overlap")
 
-        # pop from free-ed list if it was in it
+        # pop from freed list if it was in it
         if __heap_freed_list__:
             idx = 0
             for item in __heap_freed_list__:
@@ -28000,7 +28000,7 @@ class TraceFreeBreakpoint(gdb.Breakpoint):
         if addr in [x for (x, y) in __heap_freed_list__]:
             if check_double_free:
                 msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
-                fmt = "Double-free detected {} free({:#x}) is called at {:#x} but is already in the free-ed list"
+                fmt = "Double-free detected {} free({:#x}) is called at {:#x} but is already in the freed list"
                 msg.append(fmt.format(RIGHT_ARROW, addr, current_arch.pc))
                 msg.append("Execution will likely crash...")
                 push_context_message("warn", "\n".join(msg))
@@ -28023,7 +28023,7 @@ class TraceFreeBreakpoint(gdb.Breakpoint):
                 return True
             return False
 
-        # 2. add it to free-ed list
+        # 2. add it to freed list
         __heap_freed_list__.append(item)
 
         self.retbp = None
@@ -28157,7 +28157,7 @@ class HeapAnalysisCommand(GenericCommand):
             ok("No malloc() chunk tracked")
 
         if __heap_freed_list__:
-            ok("Tracked as free-ed chunks:")
+            ok("Tracked as freed chunks:")
             for addr, _sz in __heap_freed_list__:
                 gef_print("free({:#x})".format(addr))
         else:
@@ -41606,9 +41606,9 @@ class KernelMagicCommand(GenericCommand):
         self.resolve_and_print_kernel(["iounmap", "__iounmap"], kbase, maps)
         if is_x86_64():
             gef_print(titlify("Memory base"))
-            self.resolve_and_print_kernel("vmemmap_base", kbase, maps, KernelAddressHeuristicFinder.get_vmemmap_base)
-            self.resolve_and_print_kernel("vmalloc_base", kbase, maps, KernelAddressHeuristicFinder.get_vmalloc_base)
-            self.resolve_and_print_kernel("page_offset_base (physmap_start)", kbase, maps, KernelAddressHeuristicFinder.get_page_offset_base)
+            self.resolve_and_print_kernel("vmemmap_base", None, maps, KernelAddressHeuristicFinder.get_vmemmap)
+            self.resolve_and_print_kernel("vmalloc_base", None, maps, KernelAddressHeuristicFinder.get_vmalloc_start)
+            self.resolve_and_print_kernel("page_offset (physmap_start)", None, maps, KernelAddressHeuristicFinder.get_page_offset)
             self.resolve_and_print_kernel("phys_base", kbase, maps, KernelAddressHeuristicFinder.get_phys_base)
         if is_x86():
             gef_print(titlify("Automatically called function pointer"))
@@ -44630,67 +44630,74 @@ class KernelAddressHeuristicFinder:
 
     @staticmethod
     @switch_to_intel_syntax
-    def get_vmalloc_base():
+    def get_page_offset():
+        if not is_x86_64():
+            return None
+
+        page_offset_base = KernelAddressHeuristicFinder.get_page_offset_base()
+        if page_offset_base:
+            return read_int_from_memory(page_offset_base)
+        return None
+
+    @staticmethod
+    @switch_to_intel_syntax
+    def get_vmalloc_start():
         if not is_x86_64():
             return None
 
         # plan 1 (directly)
         vmalloc_base = get_ksymaddr("vmalloc_base")
         if vmalloc_base:
-            return vmalloc_base
+            return read_int_from_memory(vmalloc_base)
 
         # plan 2 (from result of pagewalk)
         page_offset_base = KernelAddressHeuristicFinder.get_page_offset_base()
         if page_offset_base:
-            return page_offset_base - current_arch.ptrsize
+            vmalloc_base = page_offset_base - current_arch.ptrsize
+            return read_int_from_memory(vmalloc_base)
         return None
 
     @staticmethod
     @switch_to_intel_syntax
-    def get_vmemmap_base():
+    def get_vmemmap(from_slub_dump=False):
         if not is_x86_64():
             return None
 
         # plan 1 (directly)
         vmemmap_base = get_ksymaddr("vmemmap_base")
         if vmemmap_base:
-            return vmemmap_base
+            return read_int_from_memory(vmemmap_base)
 
         # plan 2 (from result of pagewalk)
         page_offset_base = KernelAddressHeuristicFinder.get_page_offset_base()
         if page_offset_base:
-            return page_offset_base - current_arch.ptrsize * 2
-        return None
+            vmemmap_base = page_offset_base - current_arch.ptrsize * 2
+            return read_int_from_memory(vmemmap_base)
 
-    @staticmethod
-    @switch_to_intel_syntax
-    def get_vmemmap():
-        if not is_x86_64():
-            return None
-
-        # plan 1 (from result of slub-dump)
-        allocator = KernelChecksecCommand.get_slab_type()
-        if allocator == "SLUB":
-            command = "slub-dump"
-        elif allocator == "SLUB_TINY":
-            command = "slub-tiny-dump"
-        else:
-            return None
-        for n in [8, 16, 32, 64, 96, 128, 192, 256, 512]:
-            ret = gdb.execute("{:s} --no-pager --quiet kmalloc-{:d}".format(command, n), to_string=True)
-            lines = ret.splitlines()
-            for i in range(len(lines) - 1):
-                if ("active page" in lines[i] or "node[0] page" in lines[i]) and "virtual address" in lines[i+1]:
-                    page = int(Color.remove_color(lines[i]).split()[-1], 16)
-                    vaddr = int(Color.remove_color(lines[i + 1]).split()[-1], 16)
-                    ret = gdb.execute("monitor gva2gpa {:#x}".format(vaddr), to_string=True)
-                    r = re.search(r"gpa: (0x\S+)", ret)
-                    if not r:
-                        ret = gdb.execute("v2p {:#x}".format(vaddr), to_string=True)
-                        r = re.search(r"Virt: 0x\S+ -> Phys: (0x\S+)", ret)
-                    if r:
-                        paddr = int(r.group(1), 16)
-                        return page - (paddr >> 6)
+        # plan 3 (from result of slub-dump)
+        if not from_slub_dump:
+            allocator = KernelChecksecCommand.get_slab_type()
+            if allocator == "SLUB":
+                command = "slub-dump"
+            elif allocator == "SLUB_TINY":
+                command = "slub-tiny-dump"
+            else:
+                return None
+            for n in [8, 16, 32, 64, 96, 128, 192, 256, 512]:
+                ret = gdb.execute("{:s} --no-pager --quiet kmalloc-{:d}".format(command, n), to_string=True)
+                lines = ret.splitlines()
+                for i in range(len(lines) - 1):
+                    if ("active page" in lines[i] or "node[0] page" in lines[i]) and "virtual address" in lines[i+1]:
+                        page = int(Color.remove_color(lines[i]).split()[-1], 16)
+                        vaddr = int(Color.remove_color(lines[i + 1]).split()[-1], 16)
+                        ret = gdb.execute("monitor gva2gpa {:#x}".format(vaddr), to_string=True)
+                        r = re.search(r"gpa: (0x\S+)", ret)
+                        if not r:
+                            ret = gdb.execute("v2p {:#x}".format(vaddr), to_string=True)
+                            r = re.search(r"Virt: 0x\S+ -> Phys: (0x\S+)", ret)
+                        if r:
+                            paddr = int(r.group(1), 16)
+                            return page - (paddr >> 6)
         return None
 
     @staticmethod
@@ -51987,8 +51994,8 @@ class KernelDmesgCommand(GenericCommand):
     _note_ += "   | text_data_ring   |       | caller_id     |  |   +---------------+<--+\n"
     _note_ += "   |   size_bits      |       | dev_info      |  |   | state_var     |\n"
     _note_ += "   |   data           |--+    +---------------+  |   | text_blk_lpos |\n"
-    _note_ += "   |   head_lpos      |  |    | seq           |  |   |   begin       |(=Text block start offset)\n"
-    _note_ += "   |   tail_lpos      |  |    | ts_nsec       |  |   |   next        |(=Text block end offset)\n"
+    _note_ += "   |   head_lpos      |  |    | seq           |  |   |   begin       |(=text block start offset)\n"
+    _note_ += "   |   tail_lpos      |  |    | ts_nsec       |  |   |   next        |(=text block end offset)\n"
     _note_ += "   | fail             |  |    | text_len      |  |   +---------------+\n"
     _note_ += "   +------------------+  |    | facility      |  |   | state_var     |\n"
     _note_ += "                         |    | flags, level  |  |   | text_blk_lpos |\n"
@@ -62077,7 +62084,7 @@ class uClibcChunk:
         except gdb.MemoryError:
             return None
 
-    # if free-ed functions
+    # if freed functions
     def get_fwd_ptr(self, sll):
         try:
             # Not a single-linked-list (sll) or no Safe-Linking support yet
@@ -62103,7 +62110,7 @@ class uClibcChunk:
         return self.get_bkw_ptr()
 
     bk = bck # for compat
-    # endif free-ed functions
+    # endif freed functions
 
     def has_p_bit(self):
         return read_int_from_memory(self.size_addr) & 0x01
@@ -63209,7 +63216,7 @@ class OpteeBgetDumpCommand(GenericCommand):
     _note_ += "| (long numget)                |         |                        |\n"
     _note_ += "| (long numrel)                |         |                        |\n"
     _note_ += "| (long numpblk)               |         +-used chunk-------------+\n"
-    _note_ += "| (long numpget)               |         | bufsize prevfree       |= the size of upper chunk (if upper chunk is free-ed)\n"
+    _note_ += "| (long numpget)               |         | bufsize prevfree       |= the size of upper chunk (if upper chunk is freed)\n"
     _note_ += "| (long numprel)               |         | bufsize bsize          |= the size of this chunk (negative number)\n"
     _note_ += "| (long numdget)               |         | uchar user_data[bsize] |\n"
     _note_ += "| (long numdrel)               |         |                        |\n"
@@ -69192,16 +69199,15 @@ class PagewalkWithHintsCommand(GenericCommand):
     def resolve_direct_map(self):
         if not self.quiet:
             info("resolve direct map")
-        page_offset_base = KernelAddressHeuristicFinder.get_page_offset_base()
-        if not page_offset_base:
+        page_offset = KernelAddressHeuristicFinder.get_page_offset()
+        if not page_offset:
             return
-        vmalloc_base = KernelAddressHeuristicFinder.get_vmalloc_base()
-        if not vmalloc_base:
+        vmalloc_start = KernelAddressHeuristicFinder.get_vmalloc_start()
+        if not vmalloc_start:
             return
 
-        phys_page_start = read_int_from_memory(page_offset_base)
-        vmalloc_start_addr = read_int_from_memory(vmalloc_base)
-        phys_mem_size = vmalloc_start_addr - phys_page_start
+        phys_page_start = page_offset
+        phys_mem_size = vmalloc_start - phys_page_start
 
         self.insert_region(phys_page_start, phys_mem_size, "physmem direct map")
         return
@@ -69209,10 +69215,9 @@ class PagewalkWithHintsCommand(GenericCommand):
     def resolve_vmalloc(self):
         if not self.quiet:
             info("resolve vmalloc")
-        vmalloc_base = KernelAddressHeuristicFinder.get_vmalloc_base()
-        if not vmalloc_base:
+        vmalloc_start = KernelAddressHeuristicFinder.get_vmalloc_start()
+        if not vmalloc_start:
             return
-        vmalloc_start_addr = read_int_from_memory(vmalloc_base)
 
         cr4 = get_register("cr4", use_monitor=True)
         if (cr4 >> 12) & 1: # PML5T check
@@ -69221,19 +69226,15 @@ class PagewalkWithHintsCommand(GenericCommand):
             VMALLOC_SIZE_TB = 32
 
         vmalloc_region_size = VMALLOC_SIZE_TB << 40
-        self.insert_region(vmalloc_start_addr, vmalloc_region_size, "vmalloc area")
+        self.insert_region(vmalloc_start, vmalloc_region_size, "vmalloc area")
         return
 
     def resolve_page(self):
         if not self.quiet:
             info("resolve page")
-        vmemmap_base = KernelAddressHeuristicFinder.get_vmemmap_base()
-        if vmemmap_base:
-            vmemmap = read_int_from_memory(vmemmap_base)
-        else:
-            vmemmap = KernelAddressHeuristicFinder.get_vmemmap()
-            if vmemmap is None:
-                return
+        vmemmap = KernelAddressHeuristicFinder.get_vmemmap()
+        if vmemmap is None:
+            return
 
         self.regions[vmemmap].add_description("struct page area")
         return
@@ -69562,11 +69563,7 @@ class Page2VirtCommand(GenericCommand):
     def initialize(self):
         if is_x86_64():
             if self.vmemmap is None:
-                vmemmap_base = KernelAddressHeuristicFinder.get_vmemmap_base()
-                if vmemmap_base:
-                    self.vmemmap = read_int_from_memory(vmemmap_base)
-                if not self.from_slub_dump and vmemmap_base is None:
-                    self.vmemmap = KernelAddressHeuristicFinder.get_vmemmap()
+                self.vmemmap = KernelAddressHeuristicFinder.get_vmemmap(self.from_slub_dump)
             if self.vmemmap:
                 info("vmemmap: {:#x}".format(self.vmemmap))
             if self.maps is None:
