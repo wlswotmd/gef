@@ -54347,13 +54347,15 @@ class TimeCommand(GenericCommand):
 @register_command
 class SaveOutputCommand(GenericCommand):
     """Save the command outputs."""
-    _cmdline_ = "save-output"
+    _cmdline_ = "saveo"
     _category_ = "09-g. Misc - Diff"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("cmd", metavar="GDB_CMD", help="gdb command.")
     parser.add_argument("arg", metavar="ARG", nargs="*", help="arguments of gdb command.")
     _syntax_ = parser.format_help()
+
+    _note_ = "Saving the output of external commands is unsupported (e.g.: pipe, !ls)."
 
     def __init__(self):
         super().__init__(prefix=False, complete=gdb.COMPLETE_COMMAND)
@@ -54407,7 +54409,7 @@ class SaveOutputCommand(GenericCommand):
 @register_command
 class DiffOutputCommand(GenericCommand):
     """The base command to diff of the command outputs."""
-    _cmdline_ = "diff-output"
+    _cmdline_ = "diffo"
     _category_ = "09-g. Misc - Diff"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -54415,7 +54417,8 @@ class DiffOutputCommand(GenericCommand):
         subparsers = parser.add_subparsers(title="command", required=True)
     else:
         subparsers = parser.add_subparsers(title="command")
-    subparsers.add_parser("diff")
+    subparsers.add_parser("colordiff")
+    subparsers.add_parser("git-diff")
     subparsers.add_parser("list")
     subparsers.add_parser("clear")
     _syntax_ = parser.format_help()
@@ -54446,40 +54449,34 @@ class DiffOutputCommand(GenericCommand):
 
 
 @register_command
-class DiffOutputDiffCommand(DiffOutputCommand):
-    """Diff the two outputs."""
-    _cmdline_ = "diff-output diff"
+class DiffOutputColordiffCommand(DiffOutputCommand):
+    """Diff the two outputs by colordiff."""
+    _cmdline_ = "diffo colordiff"
     _category_ = "09-g. Misc - Diff"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("n1", metavar="N", type=int, help="first diff target got from `diff-output list`.")
-    parser.add_argument("n2", metavar="M", type=int, help="second diff target got from `diff-output list`.")
-    parser.add_argument("--full", action="store_true", help="full diff output.")
+    parser.add_argument("n1", metavar="N", type=int, help="first diff target got from `diffo list`.")
+    parser.add_argument("n2", metavar="M", type=int, help="second diff target got from `diffo list`.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0 1   # diff between 0 and 1".format(_cmdline_)
 
-    _note_ = "You can check the available indexes with `diff-output list`."
+    _note_ = "You can check the available indexes with `diffo list`."
 
     def __init__(self):
         super().__init__(prefix=False)
         return
 
     def make_diff(self, path1, path2):
-        width = get_gef_setting("diff_output.colordiff_output_width")
-        if self.full:
-            cmd = "{:s} -y -W {:d} '{:s}' '{:s}'".format(self.colordiff, width, path1, path2)
-        else:
-            cmd = "{:s} -y --suppress-common-lines -W {:d} '{:s}' '{:s}'".format(self.colordiff, width, path1, path2)
+        width = get_gef_setting("diffo.colordiff_output_width")
+        cmd = "{:s} -y -W {:d} '{:s}' '{:s}'".format(self.colordiff, width, path1, path2)
         result = subprocess.getoutput(cmd)
         return result
 
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
-
-        self.full = args.full
 
         try:
             self.colordiff = which("colordiff")
@@ -54512,11 +54509,70 @@ class DiffOutputDiffCommand(DiffOutputCommand):
 
 
 @register_command
+class DiffOutputGitDiffCommand(DiffOutputCommand):
+    """Diff the two outputs by git."""
+    _cmdline_ = "diffo git-diff"
+    _category_ = "09-g. Misc - Diff"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("n1", metavar="N", type=int, help="first diff target got from `diffo list`.")
+    parser.add_argument("n2", metavar="M", type=int, help="second diff target got from `diffo list`.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0 1   # diff between 0 and 1".format(_cmdline_)
+
+    _note_ = "You can check the available indexes with `diffo list`."
+
+    def __init__(self):
+        super().__init__(prefix=False)
+        return
+
+    def make_diff(self, path1, path2):
+        cmd = "{:s} diff --color=always '{:s}' '{:s}'".format(self.git, path1, path2)
+        result = subprocess.getoutput(cmd)
+        return result
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        try:
+            self.git = which("git")
+        except FileNotFoundError as e:
+            err("{}".format(e))
+            return
+
+        saved_files = self.get_saved_files()
+        try:
+            f1 = saved_files[args.n1]
+            f2 = saved_files[args.n2]
+        except IndexError:
+            err("Out of index error")
+            return
+
+        if not os.path.exists(f1):
+            err("{:s} is not found".format(f1))
+            return
+        if not os.path.exists(f1):
+            err("{:s} is not found".format(f2))
+            return
+
+        output = self.make_diff(f1, f2)
+
+        if output:
+            gef_print(output, less=not args.no_pager)
+        else:
+            gef_print("No difference")
+        return
+
+
+@register_command
 class DiffOutputListCommand(DiffOutputCommand):
     """List up saved outputs."""
-    _cmdline_ = "diff-output list"
+    _cmdline_ = "diffo list"
     _category_ = "09-g. Misc - Diff"
-    _aliases_ = ["diff-output ls"]
+    _aliases_ = ["diffo ls"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -54546,9 +54602,9 @@ class DiffOutputListCommand(DiffOutputCommand):
 @register_command
 class DiffOutputClearCommand(DiffOutputCommand):
     """Clear all saved outputs."""
-    _cmdline_ = "diff-output clear"
+    _cmdline_ = "diffo clear"
     _category_ = "09-g. Misc - Diff"
-    _aliases_ = ["diff-output del", "diff-output rm"]
+    _aliases_ = ["diffo del", "diffo rm"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("n", metavar="N", type=int, nargs="*", help="index to be deleted.")
