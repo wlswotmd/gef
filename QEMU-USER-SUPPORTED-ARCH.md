@@ -118,7 +118,7 @@ I also list the tools I used in my Ubuntu 22.04 environment.
 * arc32 (HS38; ARCv2)
     * toolchain: `arcle-hs38--glibc--bleeding-edge-2023.08-1` from https://toolchains.bootlin.com/
     * qemu: https://github.com/foss-for-synopsys-dwc-arc-processors/qemu
-        * `./configure --target-list=arc-linux-user`.
+        * `./configure --target-list=arc-linux-user`
     * gdb: build from latest.
         * `./configure --enable-targets=all --with-python=/usr/bin/python3`
 * arc32 (HS58; ARCv3)

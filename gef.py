@@ -52893,7 +52893,7 @@ class ExecSyscall(ExecAsm):
 
 @register_command
 class TlsCommand(GenericCommand):
-    """Display TLS base address."""
+    """Display TLS base address. Some architectures only support glibc."""
     _cmdline_ = "tls"
     _category_ = "02-b. Process Information - Base Address"
 
@@ -54131,7 +54131,7 @@ class IsMemoryZeroCommand(GenericCommand):
 
 @register_command
 class SequenceLengthCommand(GenericCommand):
-    """Detect consecutive lengths of the same value."""
+    """Detect consecutive lengths of the same sequence."""
     _cmdline_ = "seq-length"
     _category_ = "03-d. Memory - Calculation"
 

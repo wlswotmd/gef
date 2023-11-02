@@ -23,8 +23,8 @@
 This is a fork of [GEF](https://github.com/hugsy/gef).
 However, there are two major improvements.
 
-1. Added many heuristic commands for kernel debugging __WITHOUT symboled vmlinux__.
-2. Added support for [many userland architectures](https://github.com/bata24/gef/blob/dev/QEMU-USER-SUPPORTED-ARCH.md) (for qemu-user).
+1. Added many heuristic commands for kernel debugging __WITHOUT symboled vmlinux__ (for qemu-system).
+2. Added support for [many architectures](https://github.com/bata24/gef/blob/dev/QEMU-USER-SUPPORTED-ARCH.md) (for qemu-user).
 
 Many other commands have been added and improved. Enjoy!
 
@@ -114,7 +114,7 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/v2p-p2v.png)
 * `xp`: is a shortcut for physical memory dump.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xp.png)
-* `qemu-device-info`: dumps device information for qemu-escape.
+* `qemu-device-info`: dumps device information for qemu-escape (WIP).
 
 ### Qemu-system cooperation - Linux specific
 * `ksymaddr-remote`: displays kallsyms information from scanning kernel memory.
@@ -141,7 +141,7 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * Supported on x64 + SLOB + no-symbol + kASLR.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slob-dump.png)
 * `slub-tiny-dump`: dumps slub-tiny free-list.
-    * Supported on x64/x86 + SLUB_TINY + no-symbol + kASLR.
+    * Supported on x64/x86 + SLUB-TINY + no-symbol + kASLR.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-tiny-dump.png)
 * `kbase`: displays the kernel base address.
 * `kversion`: displays the debugged kernel version.
@@ -150,11 +150,11 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbase-kversion-kcmdline-kcurrent.png)
 * `ktask`: displays each task address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask.png)
-    * It also displays the memory map of the user-land process.
+    * It also displays the memory map of the userland process.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask-maps.png)
-    * It also displays the register values saved on kstack of the user-land process.
+    * It also displays the register values saved on kstack of the userland process.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask-regs.png)
-    * It also displays the file descriptors of the user-land process.
+    * It also displays the file descriptors of the userland process.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask-fd.png)
 * `kmod`: displays each module address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmod.png)
@@ -402,11 +402,11 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vdso.png)
 * `vvar`: dumps the area of vvar.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vvar.png)
-* `gdtinfo`: pretty prints GDT entries. If user-land, show sample entries.
+* `gdtinfo`: pretty prints GDT entries. If userland, show sample entries.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gdtinfo.png)
-* `idtinfo`: pretty prints IDT entries. If user-land, show sample entries.
+* `idtinfo`: pretty prints IDT entries. If userland, show sample entries.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/idtinfo.png)
-* `tls`: pretty prints TLS area.
+* `tls`: pretty prints TLS area. Some architectures only support glibc.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tls.png)
 * `fsbase`/`gsbase`: pretty prints `$fs_base`, `$gs_base`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/fsbase_gsbase.png)
@@ -519,7 +519,7 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-mangled-ptr.png)
 * `strings`: searches ASCII string from specific location.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/strings.png)
-* `read-system-register`: reads system register for old qemu.
+* `read-system-register`: reads system register for old qemu (ARM32 only).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/read-system-register.png)
 * `v8`: displays v8 tagged object.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/v8.png)
@@ -541,7 +541,7 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/symbols.png)
 * `saveo`/`diffo`: saves and diffs the command outputs.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/saveo-diffo.png)
-* `seq-length`: detects consecutive length of the same value.
+* `seq-length`: detects consecutive length of the same sequence.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/seq-length.png)
 * `gef arch-list`: displays defined architecture information.
 * `gef pyobj-list`: displays defined global python object.

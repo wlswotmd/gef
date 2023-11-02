@@ -32,6 +32,11 @@ This is the directory where gef temporarily stores files.
 Since it is used for caching, there is no problem in deleting it.
 It will be created automatically the next time gef starts.
 
+## Will this GEF work as a plugin for hugsy/gef?
+No, it doesn't work. It replaces hugsy/gef.
+However, compatibility with hugsy/gef has already been lost. You should be considered a completely different product.
+
+
 ## Will each GEF command be more accurate if I have vmlinux with debug symbols?
 No, whether vmlinux includes debug information has no effect on GEF behavior.
 GEF always uses its own resolved address with `kallsyms-remote`.
@@ -40,6 +45,15 @@ It also performs its own heuristic structure member detection in each command.
 ## Does GEF support i386 16-bit mode (real mode)?
 No, GEF does not support real mode.
 Please consider using other scripts, such as [here](https://astralvx.com/debugging-16-bit-in-qemu-with-gdb-on-windows/).
+
+## Does GEF support Android?
+I've never tried it, so I don't know.
+
+I think it will work for userland debugging.
+However, Android does not use glibc, so the heap structure is different.
+Therefore, I think at least `heap` related commands will not work.
+
+Regarding kernel debugging, I haven't been able to confirm how much the structure is different.
 
 ## Is it possible to debug userland with GEF when using qemu-system?
 Partially yes. I think it can be used when you want to track before and after a system call.
@@ -121,7 +135,7 @@ The `got` command uses `objdump` internally to obtain the PLT address.
 However, with certain combinations of `binutils` and `glibc` versions, `objdump` does not display the PLT address.
 
 The currently known combinations are as follows.
-- `binutils 2.38` + `glibc 2.37 or later` (`binutils 2.38` is default of Ubuntu 22.04)
+- `binutils 2.38` (Ubuntu 22.04 default) + `glibc 2.37 or later`
 
 This problem occurs when you try to use newer glibc in an Ubuntu 22.04 environment using `patchelf` etc.
 The workaround is to build and install new `binutils` from source code.
@@ -139,7 +153,7 @@ If the mode remains switched due to an interruption during command execution, et
 Yes, you can access by `__LCO__` that means loaded command objects. For example, `pi __LCO__["vmmap"]`.
 
 ## I want to call the function in `KernelAddressHeuristicFinder` class from `python-interactive`, but the class name is too long and I often forget it.
-Yes, you can access by `KF`. For example. `pi KF.get_slab_caches()`.
+You can access by `KF`. For example, `pi KF.get_slab_caches()`.
 
 ## How can I get the instruction object?
 You can get instruction object by `pi get_insn(addr=None)`.
@@ -165,6 +179,8 @@ There are also similar functions. Here are the list.
     - `slicer(data, n)`, `slice_unpack(data, n)`
     - `p8`, `p16`, `p32`, `p64`
     - `u8`, `u16`, `u32`, `u64`, `u128`
+
+If you want the complete list, run `gef pyobj-list`.
 
 
 # About development schedule
@@ -197,6 +213,8 @@ But this is a personal development, so I have the final decision. I appreciate y
 ## Is there any information that should be provided when reporting?
 You will need a screenshot or a copy of the terminal string when the problem occurred.
 In addition, I am glad if there are the results of the `version` command and `arch-info` command.
+
+Additionally, if the issue is related to kernel debugging, please provide a set of environments (`run.sh`, `bzImage`, `rootfs`, etc.) or where to get them.
 
 ## Is it okay to fork and modify?
 Yes, however, please follow the license.
