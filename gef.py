@@ -44654,7 +44654,7 @@ class KernelAddressHeuristicFinder:
         if vmalloc_base:
             return read_int_from_memory(vmalloc_base)
 
-        # plan 2 (from result of pagewalk)
+        # plan 2 (from result of get_page_offset_base)
         page_offset_base = KernelAddressHeuristicFinder.get_page_offset_base()
         if page_offset_base:
             vmalloc_base = page_offset_base - current_arch.ptrsize
@@ -44672,7 +44672,7 @@ class KernelAddressHeuristicFinder:
         if vmemmap_base:
             return read_int_from_memory(vmemmap_base)
 
-        # plan 2 (from result of pagewalk)
+        # plan 2 (from result of get_page_offset_base)
         page_offset_base = KernelAddressHeuristicFinder.get_page_offset_base()
         if page_offset_base:
             vmemmap_base = page_offset_base - current_arch.ptrsize * 2
@@ -46271,13 +46271,14 @@ class KernelAddressHeuristicFinder:
     @staticmethod
     @switch_to_intel_syntax
     def get_prog_idr():
+        # plan 1 (directly)
         prog_idr = get_ksymaddr("prog_idr")
         if prog_idr:
             return prog_idr
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 1 (available v4.13 or later)
+        # plan 2 (available v4.13 or later)
         if kversion and kversion >= "4.13":
             bpf_prog_free_id = get_ksymaddr("bpf_prog_free_id.part.0") or get_ksymaddr("bpf_prog_free_id")
             if bpf_prog_free_id:
@@ -46323,20 +46324,25 @@ class KernelAddressHeuristicFinder:
                         m = re.search(r"ldr\s+\S+,\s*\[pc,\s*#(\d+)\]", line)
                         if m:
                             ofs = int(m.group(1), 0)
-                            pos = int(line.split()[0], 16)
+                            pos = int(line.split()[0].replace(":", ""), 16)
                             return read_int_from_memory(pos + 4 * 2 + ofs)
+                        m = re.search(r"ldr\s+\S+,\s*\[pc\]", line)
+                        if m:
+                            pos = int(line.split()[0].replace(":", ""), 16)
+                            return read_int_from_memory(pos + 4 * 2)
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_map_idr():
+        # plan 1 (directly)
         map_idr = get_ksymaddr("map_idr")
         if map_idr:
             return map_idr
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 1 (available v4.13 or later)
+        # plan 2 (available v4.13 or later)
         if kversion and kversion >= "4.13":
             bpf_map_free_id = get_ksymaddr("bpf_map_free_id")
             if bpf_map_free_id:
@@ -46382,8 +46388,12 @@ class KernelAddressHeuristicFinder:
                         m = re.search(r"ldr\s+\S+,\s*\[pc,\s*#(\d+)\]", line)
                         if m:
                             ofs = int(m.group(1), 0)
-                            pos = int(line.split()[0], 16)
+                            pos = int(line.split()[0].replace(":", ""), 16)
                             return read_int_from_memory(pos + 4 * 2 + ofs)
+                        m = re.search(r"ldr\s+\S+,\s*\[pc\]", line)
+                        if m:
+                            pos = int(line.split()[0].replace(":", ""), 16)
+                            return read_int_from_memory(pos + 4 * 2)
         return None
 
 
