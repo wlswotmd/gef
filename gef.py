@@ -12822,7 +12822,7 @@ class PrintFormatCommand(GenericCommand):
     _aliases_ = ["pf"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-f", dest="format", default="py", choices=["py", "c", "js", "asm", "hex"],
+    parser.add_argument("-f", dest="format", default="py", choices=["py", "c", "js", "asm", "hex", "longhex"],
                         help="the output format. (default: %(default)s)")
     parser.add_argument("-b", dest="bitlen", type=int, default=8, choices=[8, 16, 32, 64],
                         help="the size of bit. (default: %(default)s)")
@@ -12846,8 +12846,8 @@ class PrintFormatCommand(GenericCommand):
         c_type = {8: "char", 16: "short", 32: "int", 64: "long long"}
         asm_type = {8: "db", 16: "dw", 32: "dd", 64: "dq"}
 
-        if args.format == "hex" and args.bitlen != 8:
-            err("hex must be bit == 8")
+        if args.format in ["hex", "longhex"] and args.bitlen != 8:
+            err("{:s} must be bit == 8".format(args.format))
             return
 
         unit_size = args.bitlen // 8
@@ -12873,6 +12873,9 @@ class PrintFormatCommand(GenericCommand):
                 sdata += "{:02x}".format(x)
                 if (i % 16) == 15:
                     sdata += "\n"
+        elif args.format == "longhex":
+            for x in data:
+                sdata += "{:02x}".format(x)
         else:
             for i, x in enumerate(data):
                 if (i % 8) == 0:
@@ -12891,7 +12894,7 @@ class PrintFormatCommand(GenericCommand):
             out = "var buf = [\n{:s}\n];".format(sdata)
         elif args.format == "asm":
             out = "buf {:s}\n{:s}".format(asm_type[args.bitlen], sdata)
-        elif args.format == "hex":
+        elif args.format in ["hex", "longhex"]:
             out = sdata
 
         gef_print(out)
