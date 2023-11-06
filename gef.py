@@ -53624,6 +53624,7 @@ class MemoryCompareCommand(GenericCommand):
     parser.add_argument("--phys2", action="store_true", help="treat LOCATION2 as a physical address.")
     parser.add_argument("location2", metavar="LOCATION2", type=parse_address, help="second address for comparison.")
     parser.add_argument("size", metavar="SIZE", type=parse_address, help="the size for comparison.")
+    parser.add_argument("-f", "--full", action="store_true", help="display the same line without omitting.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
@@ -53655,11 +53656,12 @@ class MemoryCompareCommand(GenericCommand):
         for pos in range(0, size, 16):
             f1_bin = from1data[pos : pos + 16]
             f2_bin = from2data[pos : pos + 16]
-            if f1_bin == f2_bin:
-                if asterisk is False:
-                    self.out.append("*")
-                    asterisk = True
-                continue
+            if not self.full:
+                if f1_bin == f2_bin:
+                    if asterisk is False:
+                        self.out.append("*")
+                        asterisk = True
+                    continue
 
             addr1 = from1 + pos
             addr2 = from2 + pos
@@ -53702,6 +53704,8 @@ class MemoryCompareCommand(GenericCommand):
 
         if args.size == 0:
             info("The size is zero, maybe wrong.")
+
+        self.full = args.full
 
         self.out = []
         self.memcmp(args.phys1, args.location1, args.phys2, args.location2, args.size)
