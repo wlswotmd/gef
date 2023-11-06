@@ -46396,6 +46396,152 @@ class KernelAddressHeuristicFinder:
                             return read_int_from_memory(pos + 4 * 2)
         return None
 
+    @staticmethod
+    @switch_to_intel_syntax
+    def get_vmap_area_list():
+        # plan 1 (directly)
+        vmap_area_list = get_ksymaddr("vmap_area_list")
+        if vmap_area_list:
+            return vmap_area_list
+
+        kversion = KernelVersionCommand.kernel_version()
+
+        # plan 2 (available v3.10 ~ v6.3: vread, v6.4~: vread_iter)
+        if kversion and kversion >= "3.17":
+            vread = get_ksymaddr("vread") or get_ksymaddr("vread_iter")
+            if vread:
+                res = gdb.execute("x/100i {:#x}".format(vread), to_string=True)
+                if is_x86_64():
+                    for line in res.splitlines():
+                        m = re.search(r"cmp\s+\S+,\s*(0x\w+)", line)
+                        if m:
+                            x = int(m.group(1), 16)
+                            if is_valid_addr(x):
+                                y = read_int_from_memory(x)
+                                if is_valid_addr(y):
+                                    return x
+                elif is_x86_32():
+                    for line in res.splitlines():
+                        m = re.search(r"cmp\s+\S+,\s*(0x\w+)", line)
+                        if m:
+                            x = int(m.group(1), 16)
+                            if is_valid_addr(x):
+                                y = read_int_from_memory(x)
+                                if is_valid_addr(y):
+                                    return x
+                elif is_arm64():
+                    # too difficult to implement
+                    pass
+                elif is_arm32():
+                    # too difficult to implement
+                    pass
+
+        # plan 3 (available v4.10~)
+        if kversion and kversion >= "4.10":
+            ret = gdb.execute("ksymaddr-remote --quiet --no-pager --exact s_next", to_string=True)
+            for line in ret.splitlines()[::-1]:
+                s_next = int(line.split()[0], 16)
+                res = gdb.execute("x/20i {:#x}".format(s_next), to_string=True)
+                if is_x86_64():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+rsi\s*,\s*(0x\S+)", line)
+                        if m:
+                            v = int(m.group(1), 16) & 0xffffffffffffffff
+                            if is_valid_addr(v):
+                                return v
+                elif is_x86_32():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+e.x\s*,\s*(0x\S+)", line)
+                        if m:
+                            v = int(m.group(1), 16) & 0xffffffff
+                            if is_valid_addr(v):
+                                return v
+                elif is_arm64():
+                    bases = {}
+                    x = None
+                    for line in res.splitlines():
+                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            base = int(m.group(2), 16)
+                            bases[reg] = base
+                            continue
+                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
+                        if m:
+                            dstreg = m.group(1)
+                            srcreg = m.group(2)
+                            v = int(m.group(3), 16)
+                            if srcreg in bases:
+                                x = bases[srcreg] + v
+                                y = read_int_from_memory(x)
+                                if is_valid_addr(y):
+                                    return x
+                                bases[dstreg] = x
+                elif is_arm32():
+                    for line in res.splitlines():
+                        m = re.search(r"ldr\s+\S+,\s*\[pc,\s*#(\d+)\]", line)
+                        if m:
+                            ofs = int(m.group(1), 0)
+                            pos = int(line.split()[0].replace(":", ""), 16)
+                            x = read_int_from_memory(pos + 4 * 2 + ofs)
+                            if is_valid_addr(x):
+                                return x
+                        m = re.search(r"ldr\s+\S+,\s*\[pc\]", line)
+                        if m:
+                            pos = int(line.split()[0].replace(":", ""), 16)
+                            x = read_int_from_memory(pos + 4 * 2)
+                            if is_valid_addr(x):
+                                return x
+
+        return None
+
+    @staticmethod
+    @switch_to_intel_syntax
+    def get_free_vmap_area_list():
+        # plan 1 (directly)
+        free_vmap_area_list = get_ksymaddr("free_vmap_area_list")
+        if free_vmap_area_list:
+            return free_vmap_area_list
+
+        kversion = KernelVersionCommand.kernel_version()
+
+        # plan 2 (from result of get_vmap_area_list; v5.2~)
+        if kversion and kversion >= "5.2":
+            if kversion >= "5.4":
+                offset_list = current_arch.ptrsize * 5 # offsetof(struct vmap_area, list)
+            elif kversion >= "5.2":
+                offset_list = current_arch.ptrsize * 7 # offsetof(struct vmap_area, list)
+
+            if is_32bit():
+                vend = 0xffffffff
+            else:
+                vend = 0xffffffffffffffff
+
+            if is_x86():
+                direction = -1
+            elif is_arm64() or is_arm32():
+                direction = 1
+
+            vmap_area_list = KernelAddressHeuristicFinder.get_vmap_area_list()
+            if vmap_area_list:
+                for i in range(2, 16): # 2: sizeof(list_head) / sizeof(long)
+                    x = vmap_area_list + current_arch.ptrsize * i * direction
+                    y = read_int_from_memory(x)
+                    z = read_int_from_memory(x + current_arch.ptrsize)
+                    if not is_valid_addr(y) or not is_valid_addr(z):
+                        continue
+                    ydata = read_int_from_memory(y - offset_list)
+                    zdata = read_int_from_memory(z - offset_list)
+                    if ydata == 0 or zdata == 0:
+                        continue
+                    if ydata != 1 and (ydata & 0xfff) != 0:
+                        continue
+                    if zdata != vend and (zdata & 0xfff) != 0:
+                        continue
+                    return x
+
+        return None
+
 
 KF = KernelAddressHeuristicFinder # for convenience using from python-interactive
 
@@ -59087,6 +59233,227 @@ class KernelBpfCommand(GenericCommand):
             self.dump_bpf_maps(maps)
 
         # print
+        gef_print("\n".join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
+class VmallocDumpCommand(GenericCommand):
+    """Dump vmalloc used list and freed list."""
+    _cmdline_ = "vmalloc-dump"
+    _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("--only-used", action="store_true", help="display only used area")
+    parser.add_argument("--only-freed", action="store_true", help="display only freed area")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} -q".format(_cmdline_)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.initialized = False
+        return
+
+    def initialize(self):
+        if self.initialized:
+            return True
+
+        """
+        struct vmap_area {
+            unsigned long va_start;
+            unsigned long va_end;
+            unsigned long subtree_max_size; // 5.2~5.3
+            unsigned long flags; // ~5.3
+            struct rb_node {
+                unsigned long __rb_parent_color;
+                struct rb_node *rb_right;
+                struct rb_node *rb_left;
+            } rb_node;
+            struct list_head list;
+            union {                             // 5.4~
+                unsigned long subtree_max_size; // 5.4~
+                struct vm_struct *vm;           // 5.4~
+                struct llist_node purge_list;   // 5.4~5.10
+            };                                  // 5.4~
+            struct llist_node purge_list; // ~5.3
+            struct vm_struct *vm;         // ~5.3
+            unsigned long flags; // 6.3~
+        };
+
+        struct vm_struct {
+            struct vm_struct *next;
+            void *addr;
+            unsigned long size;
+            unsigned long flags;
+            struct page **pages;
+        #ifdef CONFIG_HAVE_ARCH_HUGE_VMALLOC // 5.13~
+            unsigned int page_order;         // 5.13~
+        #endif                               // 5.13~
+            unsigned int nr_pages;
+            phys_addr_t phys_addr;
+            const void *caller;
+        };
+        """
+
+        kversion = KernelVersionCommand.kernel_version()
+
+        self.vmap_area_list = KernelAddressHeuristicFinder.get_vmap_area_list()
+        if not self.vmap_area_list:
+            if not self.quiet:
+                err("Not found vmap_area_list")
+        else:
+            if not self.quiet:
+                info("vmap_area_list: {:#x}".format(self.vmap_area_list))
+
+        if kversion and kversion >= "5.2":
+            self.free_vmap_area_list = KernelAddressHeuristicFinder.get_free_vmap_area_list()
+            if not self.free_vmap_area_list:
+                if not self.quiet:
+                    err("Not found free_vmap_area_list")
+            else:
+                if not self.quiet:
+                    info("free_vmap_area_list: {:#x}".format(self.free_vmap_area_list))
+
+        if not self.vmap_area_list and not self.free_vmap_area_list:
+            return False
+
+        # vmap_area->list
+        if kversion and kversion >= "5.4":
+            self.offset_list = current_arch.ptrsize * 5
+        elif kversion and kversion >= "5.2":
+            self.offset_list = current_arch.ptrsize * 7
+        else:
+            self.offset_list = current_arch.ptrsize * 6
+        if not self.quiet:
+            info("offsetof(vmap_area, list): {:#x}".format(self.offset_list))
+
+        # vmap_area->vm
+        if kversion and kversion >= "5.4":
+            self.offset_vm = self.offset_list + current_arch.ptrsize * 2
+        else:
+            self.offset_vm = self.offset_list + current_arch.ptrsize * 3
+        if not self.quiet:
+            info("offsetof(vmap_area, vm): {:#x}".format(self.offset_vm))
+
+        # vm_struct->flags
+        self.offset_flags = current_arch.ptrsize * 3
+        if not self.quiet:
+            info("offsetof(vm_struct, flags): {:#x}".format(self.offset_flags))
+
+        self.initialized = True
+        return True
+
+    def parse_vmap_area_list(self, head, used):
+        if head is None or not is_valid_addr(head):
+            return []
+
+        seen = [head]
+        current = read_int_from_memory(head)
+        idx = 0
+        areas = []
+        while True:
+            if current in seen:
+                break
+            seen.append(current)
+
+            vmap_area = current - self.offset_list
+            va_start = read_int_from_memory(vmap_area)
+            va_end = read_int_from_memory(vmap_area + current_arch.ptrsize)
+            va_size = va_end - va_start
+
+            flags = None
+            if used:
+                vm = read_int_from_memory(vmap_area + self.offset_vm)
+                flags = read_int_from_memory(vm + self.offset_flags)
+            areas.append([used, va_start, va_end, va_size, flags])
+
+            try:
+                current = read_int_from_memory(current)
+            except gdb.MemoryError:
+                break
+
+            idx += 1
+        return areas
+
+    def get_flags(self, flags_value):
+        _flags = {
+            "VM_IOREMAP":           0x00000001,
+            "VM_ALLOC":             0x00000002,
+            "VM_MAP":               0x00000004,
+            "VM_USERMAP":           0x00000008,
+            "VM_DMA_COHERENT":      0x00000010,
+            "VM_UNINITIALIZED":     0x00000020,
+            "VM_NO_GUARD":          0x00000040,
+            "VM_KASAN":             0x00000080,
+            "VM_FLUSH_RESET_PERMS": 0x00000100,
+            "VM_MAP_PUT_PAGES":     0x00000200,
+        }
+        flags = []
+        for k, v in _flags.items():
+            if flags_value & v:
+                flags.append(k)
+        return "|".join(flags)
+
+    def dump_areas(self, areas):
+        fmt = "{:4s} {:6s} {:37s} {:18s} {:s}"
+        legend = ["#", "state", "virtual address", "size", "flags"]
+        self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
+        used_address_color = get_gef_setting("theme.heap_chunk_address_used")
+        freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
+        chunk_size_color = get_gef_setting("theme.heap_chunk_size")
+
+        for idx, (used, va_start, va_end, va_size, flags) in enumerate(areas):
+            size_str = "{:<#18x}".format(va_size)
+            size_str = Color.colorify(size_str, chunk_size_color)
+            virt_str = "{:#018x}-{:#018x}".format(va_start, va_end)
+            if used:
+                virt_str = Color.colorify(virt_str, used_address_color)
+                state = "in-use"
+                flags_str = " " + self.get_flags(flags)
+            else:
+                virt_str = Color.colorify(virt_str, freed_address_color)
+                state = "freed"
+                flags_str = ""
+            self.out.append("{:<4d} {:6s} {:s} {:s}{:s}".format(idx, state, virt_str, size_str, flags_str))
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        self.quiet = args.quiet
+        if not args.quiet:
+            info("Wait for memory scan")
+
+        kversion = KernelVersionCommand.kernel_version()
+        if kversion < "3.10":
+            err("Unsupported kernel version")
+            return
+
+        ret = self.initialize()
+        if ret is False:
+            return
+
+        self.out = []
+        areas = []
+
+        if not args.only_freed:
+            areas += self.parse_vmap_area_list(self.vmap_area_list, used=True)
+
+        if kversion and kversion >= "5.2":
+            if not args.only_used:
+                areas += self.parse_vmap_area_list(self.free_vmap_area_list, used=False)
+
+        self.dump_areas(sorted(areas, key=lambda x:x[1]))
+
         gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
