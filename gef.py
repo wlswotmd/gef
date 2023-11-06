@@ -23878,6 +23878,7 @@ class ContextCommand(GenericCommand):
             # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
             selected_frame = None
 
+        lines = []
         for thread in threads:
             if thread == selected_thread:
                 line = "[{:s}] ".format(Color.colorify("Thread Id:{:d}".format(thread.num), "bold green"))
@@ -23909,6 +23910,9 @@ class ContextCommand(GenericCommand):
                 sym = get_symbol_string(pc, nosymbol_string=" <NO_SYMBOL>")
                 line += " at {!s}{:s}".format(lookup_address(pc), sym)
                 line += ", reason: {}".format(Color.colorify(reason(), "bold magenta"))
+            lines.append([thread.num, line])
+
+        for _, line in sorted(lines):
             gef_print(line)
 
         selected_thread.switch()
