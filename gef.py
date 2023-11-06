@@ -59338,6 +59338,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 return False
 
         position = unique_bytes_offset[0][0]
+        self.verbose_info("unique_bytes: {:#x}".format(self.krobase + position))
 
         # second, backward search the top
         prev_x = None
@@ -60051,6 +60052,13 @@ class KsymaddrRemoteCommand(GenericCommand):
         if not ret:
             return False
 
+        # the case of both kernel version string are same, but offset are different.
+        version_string_offset = self.version_string_offset
+        if self.get_saved_config(["version_string_offset"]):
+            if self.version_string_offset != version_string_offset:
+                cfg_file_name = self.get_cfg_name()
+                os.remove(cfg_file_name)
+
         ret = self.find_kallsyms_token_table()
         if not ret:
             return False
@@ -60203,7 +60211,7 @@ class KsymaddrRemoteCommand(GenericCommand):
 
         ret = self.parse_kallsyms()
         if not ret:
-            self.quiet_err("Failed to parse")
+            self.quiet_err("Failed to parse; try `ks -rv`.")
             return
 
         self.print_kallsyms(args.keyword)
