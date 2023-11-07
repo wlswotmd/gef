@@ -46,7 +46,7 @@ It also performs its own heuristic structure member detection in each command.
 No, GEF does not support real mode.
 Please consider using other scripts, such as [here](https://astralvx.com/debugging-16-bit-in-qemu-with-gdb-on-windows/).
 
-## Does GEF support Android?
+## Does GEF support to debug Android?
 I've never tried it, so I don't know.
 
 I think it will work for userland debugging.
@@ -182,6 +182,16 @@ There are also similar functions. Here are the list.
 
 If you want the complete list, run `gef pyobj-list`.
 
+## I want to add a command, how do I get started?
+Copy and paste the TemplateCommand class and edit it as you like. Below are some notes.
+- Create it by inheriting the `GenericCommand` class. Each method must be overridden as needed.
+- `_cmdline_`, `_category_`, `_aliases_`, `_syntax_`, `_example_` and `_note_` are used by `help` or `gef help`.
+- The `__init__()` method is executed only once, when GEF starts.
+- The command begins with the `do_invoke()` method.
+- Arguments to command should be controlled with the `argparse` module. It is handled by the `parse_args` decorator of the `do_invoke()` method.
+- You can check the list of decorators that can be added to the `do_invoke()` method with `gef pyobj-list`.
+- If you do not want to execute the same command again when you press ENTER on a blank line after executing the command, please write `self.dont_repeat()`.
+- Use the `gef_print()` function instead of the `print()` function whenever possible.
 
 # About development schedule
 
