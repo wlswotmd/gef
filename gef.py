@@ -58507,7 +58507,7 @@ class BuddyDumpCommand(GenericCommand):
                 if prev_page is None:
                     virt = self.page2virt(page)
                     if virt:
-                        phys = self.virt2phys(virt)
+                        phys = Virt2PhysCommand.v2p(virt, self.maps)
                         if phys:
                             out.append("    used:{:{:d}s}  size:{:#08x}".format("", align, phys))
                     out.append(msg)
