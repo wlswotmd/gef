@@ -122,7 +122,6 @@ import urllib.request
 
 LEFT_ARROW = " <- "
 RIGHT_ARROW = " -> "
-DOWN_ARROW = "v"
 HORIZONTAL_LINE = "-"
 VERTICAL_LINE = "|"
 BP_GLYPH = "*"
@@ -205,7 +204,8 @@ current_arch                    = None
 
 DEFAULT_PAGE_ALIGN_SHIFT        = 12
 DEFAULT_PAGE_SIZE               = 1 << DEFAULT_PAGE_ALIGN_SHIFT
-DEFAULT_PAGE_SIZE_MASK          = ~ (DEFAULT_PAGE_SIZE - 1)
+DEFAULT_PAGE_SIZE_MASK_LOW      = DEFAULT_PAGE_SIZE - 1
+DEFAULT_PAGE_SIZE_MASK_HIGH     = ~DEFAULT_PAGE_SIZE_MASK_LOW
 GEF_RC                          = os.getenv("GEF_RC") or os.path.join(os.getenv("HOME") or "~", ".gef.rc")
 GEF_TEMP_DIR                    = os.path.join(tempfile.gettempdir(), "gef")
 
@@ -2992,7 +2992,7 @@ def show_last_exception():
 
         filename_c = Color.yellowify(filename)
         method_c = Color.greenify(method)
-        gef_print('{} File "{}", line {:d}, in {}()'.format(DOWN_ARROW, filename_c, lineno, method_c))
+        gef_print('File "{}", line {:d}, in {}()'.format(filename_c, lineno, method_c))
         gef_print("   {}    {}".format(RIGHT_ARROW, code))
 
     gef_print(" Last 10 GDB commands ".center(80, HORIZONTAL_LINE))
@@ -3551,7 +3551,7 @@ def capstone_disassemble(location, nb_insn, **kwargs):
 
     # split raeding by page_size
     read_addr = location
-    read_size = gef_getpagesize() - (location & (gef_getpagesize() - 1))
+    read_size = gef_getpagesize() - (location & gef_getpagesize_mask_low())
 
     # fix for arm thumb2 mode
     if is_arm32() and read_addr & 1:
@@ -9947,10 +9947,8 @@ def timeout(duration):
 
 def to_unsigned_long(v):
     """Cast a gdb.Value to unsigned long."""
-    if is_32bit():
-        mask = (1 << 32) - 1
-    else:
-        mask = (1 << 64) - 1
+    bits = get_memory_alignment(in_bits=True)
+    mask = (1 << bits) - 1
     return int(v.cast(gdb.Value(mask).type)) & mask
 
 
@@ -10373,7 +10371,7 @@ def __get_explored_regions():
     regions = []
 
     def get_region_start_end(addr):
-        addr &= gef_getpagesize_mask()
+        addr &= gef_getpagesize_mask_high()
         if not is_valid_addr(addr):
             return None, None
         region_start = addr
@@ -10393,7 +10391,7 @@ def __get_explored_regions():
                 break
             region_start -= gef_getpagesize()
 
-        upper_bound = (1 << 32) if is_32bit() else (1 << 64)
+        upper_bound = 1 << get_memory_alignment(in_bits=True)
         # down search
         while True:
             if region_end >= upper_bound:
@@ -10421,7 +10419,7 @@ def __get_explored_regions():
         return [sect]
 
     def get_ehdr(addr):
-        upper_bound = (1 << 32) if is_32bit() else (1 << 64)
+        upper_bound = 1 << get_memory_alignment(in_bits=True)
         for _ in range(128):
             if addr < 0 or addr > upper_bound:
                 return None
@@ -10434,7 +10432,7 @@ def __get_explored_regions():
         return None
 
     def parse_region_from_ehdr(addr, label):
-        elf = get_ehdr(addr & gef_getpagesize_mask())
+        elf = get_ehdr(addr & gef_getpagesize_mask_high())
         if elf is None:
             return []
 
@@ -10452,9 +10450,9 @@ def __get_explored_regions():
             flags = phdr.p_flags
 
             # align
-            vaddr &= gef_getpagesize_mask()
-            offset &= gef_getpagesize_mask()
-            vaddr_end = (vaddr_end + (gef_getpagesize() - 1)) & gef_getpagesize_mask()
+            vaddr &= gef_getpagesize_mask_high()
+            offset &= gef_getpagesize_mask_high()
+            vaddr_end = (vaddr_end + gef_getpagesize_mask_low()) & gef_getpagesize_mask_high()
 
             # add per pages
             for page_addr in range(vaddr, vaddr_end, gef_getpagesize()):
@@ -10504,7 +10502,7 @@ def __get_explored_regions():
         return sects
 
     def get_linker(addr):
-        elf = get_ehdr(addr & gef_getpagesize_mask())
+        elf = get_ehdr(addr & gef_getpagesize_mask_high())
         phdrs = [phdr for phdr in elf.phdrs if phdr.p_type == Phdr.PT_INTERP]
         if len(phdrs) != 1:
             return None
@@ -10518,7 +10516,7 @@ def __get_explored_regions():
         if addr is None:
             return None
 
-        elf = get_ehdr(addr & gef_getpagesize_mask())
+        elf = get_ehdr(addr & gef_getpagesize_mask_high())
 
         # get dynamic
         phdrs = [phdr for phdr in elf.phdrs if phdr.p_type == Phdr.PT_DYNAMIC]
@@ -10604,7 +10602,7 @@ def __get_explored_regions():
         # stack registers
         stack_permission = "rw-"
         if auxv and "AT_PHDR" in auxv:
-            elf = get_ehdr(auxv["AT_PHDR"] & gef_getpagesize_mask())
+            elf = get_ehdr(auxv["AT_PHDR"] & gef_getpagesize_mask_high())
             for phdr in elf.phdrs:
                 if phdr.p_type != Phdr.PT_GNU_STACK:
                     continue
@@ -10636,7 +10634,7 @@ def __get_explored_regions():
     data = None
     if sp is not None:
         try:
-            data = read_memory(sp & gef_getpagesize_mask(), gef_getpagesize())
+            data = read_memory(sp & gef_getpagesize_mask_high(), gef_getpagesize())
         except gdb.MemoryError:
             pass
     if data:
@@ -11667,7 +11665,9 @@ def parse_string_range(s):
 def get_auxiliary_walk(offset=0):
     """Find AUXV by walking stack"""
 
-    addr = current_arch.sp & ~(DEFAULT_PAGE_SIZE - 1)
+    # do not use gef_getpagesize(), gef_getpagesize_mask_high(), etc.
+    # because gef_getpagesize() -> gef_get_auxiliary_values() -> get_auxiliary_walk()
+    addr = current_arch.sp & DEFAULT_PAGE_SIZE_MASK_HIGH
 
     # check readable or not
     if not is_valid_addr(addr):
@@ -11810,11 +11810,20 @@ def gef_getpagesize():
 
 
 @functools.lru_cache(maxsize=None)
-def gef_getpagesize_mask():
+def gef_getpagesize_mask_low():
     """Get the page size mask from auxiliary values."""
     auxval = gef_get_auxiliary_values()
     if not auxval or "AT_PAGESZ" not in auxval:
-        return DEFAULT_PAGE_SIZE_MASK
+        return DEFAULT_PAGE_SIZE_MASK_LOW
+    return auxval["AT_PAGESZ"] - 1
+
+
+@functools.lru_cache(maxsize=None)
+def gef_getpagesize_mask_high():
+    """Get the page size mask from auxiliary values."""
+    auxval = gef_get_auxiliary_values()
+    if not auxval or "AT_PAGESZ" not in auxval:
+        return DEFAULT_PAGE_SIZE_MASK_HIGH
     return ~(auxval["AT_PAGESZ"] - 1)
 
 
@@ -13387,7 +13396,7 @@ class VvarCommand(GenericCommand):
             # print
             for i in range(len(regs)):
                 gef_print("{:#x}: {:#x}".format(addr + i * current_arch.ptrsize, values[i]))
-            print()
+            gef_print()
         return
 
 
@@ -16997,7 +17006,7 @@ class GlibcHeapArenaCommand(GenericCommand):
 
         try:
             out = []
-            cmd = "p ((struct _heap_info*) {:#x})[0]".format(arena.addr & ~0xfff)
+            cmd = "p ((struct _heap_info*) {:#x})[0]".format(arena.addr & gef_getpagesize_mask_high())
             title = titlify("[heap_info] ----- {:s}".format(cmd))
             out.append(title)
             result = gdb.execute(cmd, to_string=True)
@@ -24180,7 +24189,7 @@ class HexdumpCommand(GenericCommand):
         # If you get an error, you probably read outside a valid memory page.
         # Read in page size units.
         read_end = read_from + read_len
-        read_end &= gef_getpagesize_mask()
+        read_end &= gef_getpagesize_mask_high()
         while read_end - read_from > 0:
             try:
                 if self.phys_mode:
@@ -27192,12 +27201,11 @@ class DestructorDumpCommand(GenericCommand):
                 err("Not found {:s} section".format(section_name))
                 return
             entries = []
+            vend = (1 << get_memory_alignment(in_bits=True)) - 1
             for i in range(shdr.sh_size // current_arch.ptrsize):
                 addr = shdr.sh_addr + current_arch.ptrsize * i
                 func = read_int_from_memory(addr)
-                if is_32bit() and func in [0, 0xffffffff]:
-                    continue
-                if is_64bit() and func in [0, 0xffffffffffffffff]:
+                if func in [0, vend]:
                     continue
                 entries.append([addr, func])
             if not entries:
@@ -46518,10 +46526,8 @@ class KernelAddressHeuristicFinder:
             elif kversion >= "5.2":
                 offset_list = current_arch.ptrsize * 7 # offsetof(struct vmap_area, list)
 
-            if is_32bit():
-                vend = 0xffffffff
-            else:
-                vend = 0xffffffffffffffff
+            bits = get_memory_alignment(in_bits=True)
+            vend = (1 << bits) - 1
 
             if is_x86():
                 direction = -1
@@ -46671,7 +46677,7 @@ class KernelbaseCommand(GenericCommand):
             res = Color.remove_color(res)
             r = re.search(r"VBAR\s+=\s+(0x\S+)", res)
             vbar = int(r.group(1), 16)
-            vbar &= gef_getpagesize_mask()
+            vbar &= gef_getpagesize_mask_high()
 
             if vbar and is_valid_addr(vbar):
                 for i, (vaddr, size, _perm) in enumerate(dic["maps"]):
@@ -47731,10 +47737,7 @@ class KernelTaskCommand(GenericCommand):
             ...
         };
         """
-        if is_32bit():
-            MAX_FDS_DEFAULT = 0x20
-        else:
-            MAX_FDS_DEFAULT = 0x40
+        MAX_FDS_DEFAULT = get_memory_alignment(in_bits=True)
         files = read_int_from_memory(task_addrs[0] + offset_files)
         for i in range(0x100):
             v = read_int_from_memory(files + current_arch.ptrsize * i)
@@ -55514,7 +55517,7 @@ class SlubDumpCommand(GenericCommand):
 
         # heuristic detection pattern 1
         # freed chunks are scattered and can be confirmed on each of the pages
-        page_heads = [x & ~0xfff for x in freelist]
+        page_heads = [x & gef_getpagesize_mask_high() for x in freelist]
         uniq_page_heads = set(page_heads)
         if page["num_pages"] == len(uniq_page_heads):
             return min(uniq_page_heads)
@@ -55531,8 +55534,8 @@ class SlubDumpCommand(GenericCommand):
         # 0xXXXX6000                                                      |v pattern 2
         # 0xXXXX7000                                                      v pattern 1
         chunk_size = kmem_cache["size"]
-        min_page = min(freelist) & gef_getpagesize_mask()
-        max_page = max(freelist) & gef_getpagesize_mask()
+        min_page = min(freelist) & gef_getpagesize_mask_high()
+        max_page = max(freelist) & gef_getpagesize_mask_high()
         known_num_pages = ((max_page - min_page) // gef_getpagesize()) + 1
         unknown_num_pages = page["num_pages"] - known_num_pages
         most_top_page = min_page - (unknown_num_pages * gef_getpagesize())
@@ -55643,7 +55646,7 @@ class SlubDumpCommand(GenericCommand):
                 active_page["frozen"] = (x >> 31) & 1
                 active_chunk = read_int_from_memory(page + self.page_offset_freelist)
                 active_page["freelist"] = self.walk_freelist(active_chunk, kmem_cache)
-                active_page["num_pages"] = (chunk_size * objects + (gef_getpagesize() - 1)) // gef_getpagesize()
+                active_page["num_pages"] = (chunk_size * objects + gef_getpagesize_mask_low()) // gef_getpagesize()
                 active_page["virt_addr"] = self.page2virt(active_page, kmem_cache, kmem_cache["kmem_cache_cpu"]["freelist"])
             kmem_cache["kmem_cache_cpu"]["active_page"] = active_page
 
@@ -55665,7 +55668,7 @@ class SlubDumpCommand(GenericCommand):
                     partial_page["frozen"] = (x >> 31) & 1
                     partial_chunk = read_int_from_memory(current_partial_page + self.page_offset_freelist)
                     partial_page["freelist"] = self.walk_freelist(partial_chunk, kmem_cache)
-                    partial_page["num_pages"] = (chunk_size * objects + (gef_getpagesize() - 1)) // gef_getpagesize()
+                    partial_page["num_pages"] = (chunk_size * objects + gef_getpagesize_mask_low()) // gef_getpagesize()
                     partial_page["virt_addr"] = self.page2virt(partial_page, kmem_cache)
                     kmem_cache["kmem_cache_cpu"]["partial_pages"].append(partial_page)
                     next_partial_page = read_int_from_memory(current_partial_page + self.page_offset_next)
@@ -55703,7 +55706,7 @@ class SlubDumpCommand(GenericCommand):
                         node_page["frozen"] = (x >> 31) & 1
                         node_chunk = read_int_from_memory(node_page["address"] + self.page_offset_freelist)
                         node_page["freelist"] = self.walk_freelist(node_chunk, kmem_cache)
-                        node_page["num_pages"] = (chunk_size * objects + (gef_getpagesize() - 1)) // gef_getpagesize()
+                        node_page["num_pages"] = (chunk_size * objects + gef_getpagesize_mask_low()) // gef_getpagesize()
                         node_page["virt_addr"] = self.page2virt(node_page, kmem_cache)
                         node_page_list.append(node_page)
                         current_node_page = read_int_from_memory(node_page["address"] + self.page_offset_next)
@@ -56305,7 +56308,7 @@ class SlubTinyDumpCommand(GenericCommand):
 
         # heuristic detection pattern 1
         # freed chunks are scattered and can be confirmed on each of the pages
-        page_heads = [x & ~0xfff for x in freelist]
+        page_heads = [x & gef_getpagesize_mask_high() for x in freelist]
         uniq_page_heads = set(page_heads)
         if page["num_pages"] == len(uniq_page_heads):
             return min(uniq_page_heads)
@@ -56322,8 +56325,8 @@ class SlubTinyDumpCommand(GenericCommand):
         # 0xXXXX6000                                                      |v pattern 2
         # 0xXXXX7000                                                      v pattern 1
         chunk_size = kmem_cache["size"]
-        min_page = min(freelist) & gef_getpagesize_mask()
-        max_page = max(freelist) & gef_getpagesize_mask()
+        min_page = min(freelist) & gef_getpagesize_mask_high()
+        max_page = max(freelist) & gef_getpagesize_mask_high()
         known_num_pages = ((max_page - min_page) // gef_getpagesize()) + 1
         unknown_num_pages = page["num_pages"] - known_num_pages
         most_top_page = min_page - (unknown_num_pages * gef_getpagesize())
@@ -56413,7 +56416,7 @@ class SlubTinyDumpCommand(GenericCommand):
                     node_page["frozen"] = (x >> 31) & 1
                     node_chunk = read_int_from_memory(node_page["address"] + self.page_offset_freelist)
                     node_page["freelist"] = self.walk_freelist(node_chunk, kmem_cache)
-                    node_page["num_pages"] = (chunk_size * objects + (gef_getpagesize() - 1)) // gef_getpagesize()
+                    node_page["num_pages"] = (chunk_size * objects + gef_getpagesize_mask_low()) // gef_getpagesize()
                     node_page["virt_addr"] = self.page2virt(node_page, kmem_cache)
                     node_page_list.append(node_page)
                     current_node_page = read_int_from_memory(node_page["address"] + self.page_offset_next)
@@ -57124,7 +57127,7 @@ class SlabDumpCommand(GenericCommand):
                 node_page_list.append(node_page)
                 break
             s_mem = read_int_from_memory(node_page["address"] + self.page_offset_s_mem)
-            node_page["s_mem"] = s_mem & gef_getpagesize_mask()
+            node_page["s_mem"] = s_mem & gef_getpagesize_mask_high()
 
             freelist_addr = read_int_from_memory(node_page["address"] + self.page_offset_freelist)
             if is_valid_addr(freelist_addr):
@@ -57646,7 +57649,7 @@ class SlobDumpCommand(GenericCommand):
         freelist = []
         current = head
         while True:
-            base = current & gef_getpagesize_mask()
+            base = current & gef_getpagesize_mask_high()
             units = struct.unpack("<h", read_memory(current, 2))[0]
             if units < 0:
                 next = -units
@@ -57669,7 +57672,7 @@ class SlobDumpCommand(GenericCommand):
             page["address"] = current - self.page_offset_next
             page["units"] = u32(read_memory(page["address"] + self.page_offset_units, 4))
             freelist_head = read_int_from_memory(page["address"] + self.page_offset_freelist)
-            page["virt_addr"] = freelist_head & gef_getpagesize_mask()
+            page["virt_addr"] = freelist_head & gef_getpagesize_mask_high()
             page["num_pages"] = 1
             page["freelist"] = self.walk_freelist(freelist_head, page)
             page["next"] = next = read_int_from_memory(current)
@@ -57920,7 +57923,7 @@ class SlubContainsCommand(GenericCommand):
                 err("Failed to initialize")
             return
 
-        current = args.address & gef_getpagesize_mask()
+        current = args.address & gef_getpagesize_mask_high()
         chunk_label_color = get_gef_setting("theme.heap_chunk_label")
 
         kversion = KernelVersionCommand.kernel_version()
@@ -57947,7 +57950,7 @@ class SlubContainsCommand(GenericCommand):
                 if not args.quiet:
                     gef_print("kmem_cache: {:#x}".format(kmem_cache))
 
-                if (kmem_cache & ~0xfff) == 0xdead000000000000:
+                if (kmem_cache & gef_getpagesize_mask_high()) == 0xdead000000000000:
                     current -= gef_getpagesize()
                     continue
 
@@ -57970,7 +57973,7 @@ class SlubContainsCommand(GenericCommand):
 
             x = read_int_from_memory(page + self.page_offset_inuse_objects_frozen)
             objects = (x >> 16) & 0x7fff
-            num_pages = (slub_cache_size * objects + (gef_getpagesize() - 1)) // gef_getpagesize()
+            num_pages = (slub_cache_size * objects + gef_getpagesize_mask_low()) // gef_getpagesize()
 
             msg = ("name: {:s}  size: {:#x}  num_pages: {:#x}".format(slub_cache_name_c, slub_cache_size, num_pages))
             if (args.address - current) % slub_cache_size != 0:
@@ -60323,7 +60326,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             position -= address_byte_size
             relative_base_address = int.from_bytes(self.kernel_img[position:position + address_byte_size], endian_str)
 
-            if relative_base_address and (relative_base_address & (gef_getpagesize() - 1)) == 0:
+            if relative_base_address and (relative_base_address & gef_getpagesize_mask_low()) == 0:
                 """
                 some environment has invalid address as relative_base_address.
                 so don't use the logic of is_valid_addr(relative_base_address).
@@ -60346,7 +60349,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             position_relative_base = align_address_to_size(position + self.num_symbols * offset_byte_size, 8) # TODO: 0x8? 0x10? ptrsize?
             relative_base_address_data = self.kernel_img[position_relative_base:position_relative_base + address_byte_size]
             relative_base_address = int.from_bytes(relative_base_address_data, endian_str)
-            if not (relative_base_address and (relative_base_address & (gef_getpagesize() - 1)) == 0):
+            if not (relative_base_address and (relative_base_address & gef_getpagesize_mask_low()) == 0):
                 return False
 
         # Getting here means that the relative_address and position have been detected correctly.
@@ -61740,8 +61743,8 @@ class PartitionAllocDumpCommand(GenericCommand):
         ptrsize = current_arch.ptrsize
         _slot_span = {}
         _slot_span["addr"] = current = addr
-        _slot_span["super_page_addr"] = (_slot_span["addr"] & gef_getpagesize_mask()) - gef_getpagesize()
-        _slot_span["partition_page_index"] = (_slot_span["addr"] & (gef_getpagesize() - 1)) // 0x20
+        _slot_span["super_page_addr"] = (_slot_span["addr"] & gef_getpagesize_mask_high()) - gef_getpagesize()
+        _slot_span["partition_page_index"] = (_slot_span["addr"] & gef_getpagesize_mask_low()) // 0x20
         _slot_span["partition_page_start"] = _slot_span["super_page_addr"] + _slot_span["partition_page_index"] * gef_getpagesize() * 4
         """
         https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_page.h
@@ -69473,11 +69476,11 @@ class PagewalkWithHintsCommand(GenericCommand):
             return
 
     def page_start_align(self, x):
-        return x & gef_getpagesize_mask()
+        return x & gef_getpagesize_mask_high()
 
     def page_end_align(self, x):
-        if x & (gef_getpagesize() - 1):
-            return (x & gef_getpagesize_mask()) + gef_getpagesize()
+        if x & gef_getpagesize_mask_low():
+            return (x & gef_getpagesize_mask_high()) + gef_getpagesize()
         else:
             return x
 
@@ -70210,7 +70213,7 @@ class Virt2PageCommand(Page2VirtCommand):
         virt = args.virt
         if args.virt & 0xfff:
             warn("The address must be 0x1000 aligned, round down and then calculate.")
-            virt = args.virt & ~0xfff
+            virt = args.virt & gef_getpagesize_mask_high()
 
         if not self.initialized:
             info("Wait for memory scan")
@@ -73523,10 +73526,8 @@ class AddSymbolTemporaryCommand(GenericCommand):
         self.dont_repeat()
 
         # check address validity
-        if is_32bit():
-            max_address = (1 << 32) - 1
-        else:
-            max_address = (1 << 64) - 1
+        bits = get_memory_alignment(in_bits=True)
+        max_address = (1 << bits) - 1
 
         if args.function_start > max_address:
             if not args.quiet:
@@ -73543,7 +73544,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
                 return
 
         # make blank elf
-        text_base = args.function_start & ~0xfff
+        text_base = args.function_start & gef_getpagesize_mask_high()
         sym_elf = self.create_blank_elf(text_base, args.function_end or args.function_start + 1)
         if sym_elf is None:
             err("Failed to create blank elf")
