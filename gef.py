@@ -43068,14 +43068,9 @@ class TransCommand(GenericCommand):
     _example_ = "{:s} 0xdeadbeef\n".format(_cmdline_)
     _example_ += '{:s} "\\\\x41\\\\x42\\\\x43\\\\x44"'.format(_cmdline_)
 
-    @parse_args
-    def do_invoke(self, args):
-        self.dont_repeat()
-
-        self.out = []
-
+    def pack(self, value):
         try:
-            value = int(args.value, 0)
+            value = int(value, 0)
             self.out.append(titlify("pack"))
             self.out.append("pack8:         {}".format(p8(value & 0xff)))
             self.out.append("pack16:        {}".format(p16(value & 0xffff)))
@@ -43094,9 +43089,11 @@ class TransCommand(GenericCommand):
             self.out.append("pack128-hex:   {}".format(val128.hex()))
         except ValueError:
             pass
+        return
 
+    def unpack(self, value):
         try:
-            value = codecs.escape_decode(args.value)[0] + b"\0" * 16
+            value = codecs.escape_decode(value)[0] + b"\0" * 16
             self.out.append(titlify("unpack"))
             self.out.append("unpack8:       {:#04x}".format(u8(value[:1])))
             self.out.append("unpack16:      {:#06x}".format(u16(value[:2])))
@@ -43106,9 +43103,11 @@ class TransCommand(GenericCommand):
             self.out.append("unpack128:     {:#034x}".format((u64(high) << 64) | u64(low)))
         except binascii.Error:
             pass
+        return
 
+    def tohex(self, value):
         try:
-            value = codecs.escape_decode(args.value)[0]
+            value = codecs.escape_decode(value)[0]
             self.out.append(titlify("tohex"))
             hexed = binascii.hexlify(value)
             self.out.append("tohex:         {}".format(hexed))
@@ -43116,21 +43115,25 @@ class TransCommand(GenericCommand):
             self.out.append("tohex w/NULL:  {}".format(hexed_null))
         except binascii.Error:
             pass
+        return
 
+    def unhex(self, value):
         try:
-            if args.value.startswith("0x"):
-                value = binascii.unhexlify(args.value[2:])
+            if value.startswith("0x"):
+                value = binascii.unhexlify(value[2:])
             else:
-                value = binascii.unhexlify(args.value)
+                value = binascii.unhexlify(value)
             self.out.append(titlify("unhex"))
             self.out.append("unhex:         {}".format(value))
             value_null = b"\x00".join(slicer(value, 1)) + b"\x00"
             self.out.append("unhex w/NULL:  {}".format(value_null))
         except binascii.Error:
             pass
+        return
 
+    def byteswap(self, value):
         try:
-            value = int(args.value, 0)
+            value = int(value, 0)
             converted32 = byteswap(value, 4)
             converted64 = byteswap(value, 8)
             self.out.append(titlify("byteswap"))
@@ -43138,9 +43141,11 @@ class TransCommand(GenericCommand):
             self.out.append("byteswap-32:   {:#010x}".format(converted32))
         except ValueError:
             pass
+        return
 
+    def integer(self, value):
         try:
-            value = int(args.value, 0)
+            value = int(value, 0)
             self.out.append(titlify("integer"))
             self.out.append("hex:           {:#x}".format(value))
             self.out.append("dec:           {:d}".format(value))
@@ -43156,42 +43161,43 @@ class TransCommand(GenericCommand):
                 if (len(out) + 1) % 5 == 0:
                     out = "_" + out
                 x >>= 1
-            splitted_value = "0b" + out[1:]
+            splitted_value = "0b" + out.lstrip("_")
             self.out.append("bin w/sep:     {:s}".format(splitted_value))
         except ValueError:
             pass
+        return
 
+    def signed(self, value):
+        pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
+        uq = lambda a: struct.unpack("<q", a)[0]
+        p = lambda a: struct.pack("<I", a & 0xffffffff)
+        ui = lambda a: struct.unpack("<i", a)[0]
         try:
-            value = int(args.value, 0)
+            value = int(value, 0)
             self.out.append(titlify("signed"))
-            pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
-            uq = lambda a: struct.unpack("<q", a)[0]
             self.out.append("u2i-64:        {:#018x}".format(uq(pQ(value))))
-            p = lambda a: struct.pack("<I", a & 0xffffffff)
-            ui = lambda a: struct.unpack("<i", a)[0]
             self.out.append("u2i-32:        {:#010x}".format(ui(p(value))))
         except ValueError:
             pass
+        return
 
+    def string(self, value):
         try:
-            value = codecs.escape_decode(args.value)[0]
+            value = codecs.escape_decode(value)[0]
             self.out.append(titlify("string"))
             self.out.append("str:           {}".format(value))
             value_null = b"\x00".join(slicer(value, 1)) + b"\x00"
             self.out.append("str w/NULL:    {}".format(value_null))
         except ValueError:
             pass
+        return
 
-        if not args.verbose:
-            gef_print("\n".join(self.out), less=not args.no_pager)
-            return
-
-        # verbose mode
+    def unhex_xor_add(self, value):
         try:
-            if args.value.startswith("0x"):
-                value = binascii.unhexlify(args.value[2:])
+            if value.startswith("0x"):
+                value = binascii.unhexlify(value[2:])
             else:
-                value = binascii.unhexlify(args.value)
+                value = binascii.unhexlify(value)
             self.out.append(titlify("unhex - XOR/ADD"))
             ln = len(value) * 4 + 3
             for i in range(0x100):
@@ -43215,16 +43221,24 @@ class TransCommand(GenericCommand):
                 self.out.append("caesar-{:02d}:     {}".format(i, bytes(slided)))
         except binascii.Error:
             pass
+        return
 
+    def string_xor_add(self, value):
         try:
-            value = codecs.escape_decode(args.value)[0]
+            value = codecs.escape_decode(value)[0]
             self.out.append(titlify("str - XOR/ADD"))
             ln = len(value) * 4 + 3
             for i in range(0x100):
                 xored = b"".join(bytes([x ^ i]) for x in value)
                 added = b"".join(bytes([(x + i) & 0xff]) for x in value)
                 self.out.append("xor/add-{:02X}:    {:{:d}s} {:{:d}s}".format(i, str(xored), ln, str(added), ln))
+        except ValueError:
+            pass
+        return
 
+    def caesar(self, value):
+        try:
+            value = codecs.escape_decode(value)[0]
             self.out.append(titlify("str - caesar"))
             for i in range(26):
                 slided = []
@@ -43241,6 +43255,89 @@ class TransCommand(GenericCommand):
                 self.out.append("caesar-{:02d}:     {}".format(i, bytes(slided)))
         except ValueError:
             pass
+        return
+
+    def morse(self, value):
+        MORSE_CODE_DICT = {
+            b".-"     : b"A",
+            b"-..."   : b"B",
+            b"-.-."   : b"C",
+            b"-.."    : b"D",
+            b"."      : b"E",
+            b"..-."   : b"F",
+            b"--."    : b"G",
+            b"...."   : b"H",
+            b".."     : b"I",
+            b".---"   : b"J",
+            b"-.-"    : b"K",
+            b".-.."   : b"L",
+            b"--"     : b"M",
+            b"-."     : b"N",
+            b"---"    : b"O",
+            b".--."   : b"P",
+            b"--.-"   : b"Q",
+            b".-."    : b"R",
+            b"..."    : b"S",
+            b"-"      : b"T",
+            b"..-"    : b"U",
+            b"...-"   : b"V",
+            b".--"    : b"W",
+            b"-..-"   : b"X",
+            b"-.--"   : b"Y",
+            b"--.."   : b"Z",
+            b".----"  : b"1",
+            b"..---"  : b"2",
+            b"...--"  : b"3",
+            b"....-"  : b"4",
+            b"....."  : b"5",
+            b"-...."  : b"6",
+            b"--..."  : b"7",
+            b"---.."  : b"8",
+            b"----."  : b"9",
+            b"-----"  : b"0",
+            b"--..--" : b",",
+            b".-.-.-" : b".",
+            b"..--.." : b"?",
+            b"-..-."  : b"/",
+            b"-....-" : b"-",
+            b"-.--."  : b"(",
+            b"-.--.-" : b")",
+        }
+        try:
+            encoded = codecs.escape_decode(value)[0]
+            decoded = b""
+            for elem in encoded.split():
+                if elem.replace(b".", b"").replace(b"-", b"") != b"":
+                    decoded += elem
+                    continue
+                decoded += MORSE_CODE_DICT.get(elem, elem)
+
+            if encoded != decoded:
+                self.out.append(titlify("str - morse"))
+                self.out.append("morse-decode:  {}".format(decoded))
+        except ValueError:
+            pass
+        return
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        self.out = []
+        self.pack(args.value)
+        self.unpack(args.value)
+        self.tohex(args.value)
+        self.unhex(args.value)
+        self.byteswap(args.value)
+        self.integer(args.value)
+        self.signed(args.value)
+        self.string(args.value)
+
+        if args.verbose:
+            self.unhex_xor_add(args.value)
+            self.string_xor_add(args.value)
+            self.caesar(args.value)
+            self.morse(args.value)
 
         gef_print("\n".join(self.out), less=not args.no_pager)
         return
