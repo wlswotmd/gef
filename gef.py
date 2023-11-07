@@ -2470,7 +2470,10 @@ class GlibcArena:
 
     def __str__(self):
         arena = Color.colorify("Arena", get_gef_setting("theme.heap_arena_label"))
-        heap_base = str(lookup_address(self.heap_base))
+        if self.heap_base is None:
+            heap_base = "uninitialized"
+        else:
+            heap_base = str(lookup_address(self.heap_base))
         arena_addr = str(lookup_address(self.__addr))
         top = str(lookup_address(self.top))
         last_remainder = str(lookup_address(self.last_remainder))
