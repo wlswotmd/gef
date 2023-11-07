@@ -54837,28 +54837,44 @@ class IiCommand(GenericCommand):
             return
         addrs = []
         for line in res.splitlines():
+            # [x64]
+            # "=> 0x55555555aac0:      endbr64"
+            # "   0x55555555aac4:      xor    ebp,ebp"
+            # [arm]
+            # "=> 0x10340 <_start>:    mov.w   r11, #0"
+            # "   0x10344 <_start+4>:  mov.w   lr, #0"
             r = re.search("^(?:=>|  ) (0x[0-9a-f]+)", line)
             if r:
                 addrs.append(int(r.group(1), 16))
-        size_info = [(x, y - x) for x, y in zip(addrs[:-1], addrs[1:])]
-        max_with = max(x[1] for x in size_info) * 2
+        insn_sizes = [(x, y - x) for x, y in zip(addrs[:-1], addrs[1:])]
+        max_insn_width = max(x[1] for x in insn_sizes) * 2
 
         # print
         for i, line in enumerate(res.splitlines()[:-1]):
-            addr, size = size_info[i]
+            addr, size = insn_sizes[i]
             bytecode = read_memory(addr, size)
-            bytecode_hex = "{:{:d}s}".format(bytecode.hex(), max_with)
+            bytecode_hex = "{:{:d}s}".format(bytecode.hex(), max_insn_width)
 
             line = line.rstrip()
+            line = line.expandtabs(8)
+
+            # get position to split
+            # [x64]
+            # "0x55555555aac0:      endbr64"
+            # "0x55555555aac4:      xor    ebp,ebp"
+            #                ^
+            # [arm]
+            # "0x10340 <_start>:    mov.w   r11, #0"
+            # "0x10344 <_start+4>:  mov.w   lr, #0"
+            #         ^
+            # Since it depends on the presence or absence of symbols, it must be calculated line by line each time.
             pos = None
-            x = line[3:].find(" ")
-            if x >= 0:
-                pos = x + 3
-            y = line[3:].find(":")
-            if y >= 0 and (pos is None or pos > y):
-                pos = y + 3
+            r = re.search("[: ]", line[3:])
+            if r:
+                pos = 3 + r.span()[0]
 
             if pos is None:
+                # somethinig is wrong
                 gef_print(line)
             else:
                 gef_print(line[:pos] + ": " + bytecode_hex + " " + line[pos:])
