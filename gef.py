@@ -45045,7 +45045,7 @@ class KernelAddressHeuristicFinder:
 
         # plan 2 (available v3.4-rc1 or later)
         if kversion and kversion >= "3.4":
-            register_sysctl = get_ksymaddr("register_sysctl")
+            register_sysctl = get_ksymaddr("register_sysctl") or get_ksymaddr("register_sysctl_sz")
             if register_sysctl:
                 res = gdb.execute("x/20i {:#x}".format(register_sysctl), to_string=True)
                 if is_x86_64():
