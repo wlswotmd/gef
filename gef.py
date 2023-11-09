@@ -47903,35 +47903,57 @@ class KernelTaskCommand(GenericCommand):
         def __init__(self, mm, quiet):
             self.quiet = quiet
             kversion = KernelVersionCommand.kernel_version()
-            if kversion < "6.4":
-                offset_mm_mt = 0
-            else:
-                """
-                # ____cacheline_aligned_in_smp attribute can be different size in each environment or situation,
-                # so search heuristically.
-                struct mm_struct {
+            """
+            struct mm_struct {
+                struct {
                     struct {
-                        struct {
-                            atomic_t mm_count;
-                        } ____cacheline_aligned_in_smp; // v6.4~
-                    struct maple_tree mm_mt;
+                        atomic_t mm_count;
+                    } ____cacheline_aligned_in_smp; // ~6.4
+                    struct maple_tree {
+                        union {
+                            spinlock_t ma_lock;
+                            lockdep_map_p ma_external_lock;
+                        };
+                        unsigned int ma_flags; // v6.6~
+                        void __rcu *ma_root; // this points root maple_node. (lower 8-bits are some flags)
+                        unsigned int ma_flags; // ~v6.6
+                    } mm_mt;
                     ...
-                };
-                """
-                for i in range(0x10):
-                    a = read_int_from_memory(mm + current_arch.ptrsize * (i + 0))
-                    b = read_int_from_memory(mm + current_arch.ptrsize * (i + 1))
-                    c = read_int_from_memory(mm + current_arch.ptrsize * (i + 2))
-                    if not is_valid_addr(a) and is_valid_addr(b) and not is_valid_addr(c):
-                        offset_mm_mt = current_arch.ptrsize * i
-                        break
-                else:
-                    raise
+                } __randomize_layout;
+                ...
+            };
+            """
 
-            self.ma_root_raw = read_int_from_memory(mm + offset_mm_mt + current_arch.ptrsize)
-            self.ma_flags = read_int_from_memory(mm + offset_mm_mt + current_arch.ptrsize * 2)
+            # ____cacheline_aligned_in_smp attribute, spinlock_t and lockdep_map_p can be different size
+            # in each environment or situation, so search heuristically.
+            for i in range(0x10):
+                x = read_int_from_memory(mm + current_arch.ptrsize * i)
+                """
+                [x64 v6.4.2]
+                0xffff8bedc104db00|+0x0000|+000: 0x0000000000000000   // union  <--- mm_mt
+                0xffff8bedc104db08|+0x0008|+001: 0xffff8bedc1a6601e   // ma_root
+                0xffff8bedc104db10|+0x0010|+002: 0x000000000000030b   // ma_flags
+
+                [x64 v6.6.1]
+                0xffff972801b78a38|+0x0040|+008: 0x0000000000000000   // (the end of cacheline?)
+                0xffff972801b78a40|+0x0040|+008: 0x0000030b00000000   // ma_flags || union  <--- mm_mt
+                0xffff972801b78a48|+0x0048|+009: 0xffff972801b0cc1e   // ma_root
+                """
+                if is_valid_addr(x) and (x & 0xff) == 0x1e:
+                    offset_ma_root = current_arch.ptrsize * i
+                    if kversion < "6.6":
+                        offset_ma_flags = offset_ma_root + current_arch.ptrsize
+                    else:
+                        offset_ma_flags = offset_ma_root - 4
+                        if is_64bit() and u32(read_memory(mm + offset_ma_flags, 4)) == 0:
+                            offset_ma_flags = offset_ma_root - 8
+                    break
+            else:
+                raise
+
+            self.ma_root_raw = read_int_from_memory(mm + offset_ma_root)
+            self.ma_flags = read_int_from_memory(mm + offset_ma_flags)
             self.max_depth = (self.ma_flags & self.MT_FLAGS_HEIGHT_MASK) >> self.MT_FLAGS_HEIGHT_OFFSET
-            self.seen = set()
 
             if is_64bit():
                 self.MAPLE_NODE_SLOTS = 31
@@ -47950,6 +47972,7 @@ class KernelTaskCommand(GenericCommand):
                 self.maple_arange_64_offset_slot = current_arch.ptrsize * self.MAPLE_ARANGE64_SLOTS
                 self.maple_alloc_offset_slot = current_arch.ptrsize * 3
 
+            self.seen = set()
             self.iters = self.parse_node(self.ma_root_raw, 1)
             return
 
@@ -48049,11 +48072,13 @@ class KernelTaskCommand(GenericCommand):
                             spinlock_t ma_lock;
                             lockdep_map_p ma_external_lock;
                         };
+                        unsigned int ma_flags; // v6.6~
                         void __rcu *ma_root; // this points root maple_node. (lower 8-bits are some flags)
-                        unsigned int ma_flags;
+                        unsigned int ma_flags; // ~v6.6
                     } mm_mt;
                     ...
                 } __randomize_layout;
+                ...
             };
 
             struct maple_node {
@@ -48287,16 +48312,22 @@ class KernelTaskCommand(GenericCommand):
 
         else: # kversion >= "6.5"
             for i in range(0x40):
-                cand_offset_cred = current_arch.ptrsize * i
-                f_cred = read_int_from_memory(file + cand_offset_cred)
-                ret = gdb.execute("slub-contains --quiet {:#x}".format(f_cred), to_string=True)
-                if "cred_jar" not in Color.remove_color(ret):
-                    continue
-                break
+                cand_offset_mnt = current_arch.ptrsize * i
+                mnt = read_int_from_memory(file + cand_offset_mnt)
+                """
+                gef> slub-contains 0xffff9f49811d33e0
+                slab: 0xfffff93f800474c0
+                kmem_cache: 0xffff9f4981048c00
+                base: 0xffff9f49811d3000
+                name: mnt_cache  size: 0x140  num_pages: 0x1 (unaligned?)
+                """
+                # f_path.mnt points in the middle of mnt_cache, so the "unaligned?" warning is not a problem.
+                ret = gdb.execute("slub-contains --quiet {:#x}".format(mnt), to_string=True)
+                if "mnt_cache" in Color.remove_color(ret):
+                    offset_mnt = cand_offset_mnt
+                    break
             else:
                 raise
-            # now, f_cred is found
-            offset_mnt = cand_offset_cred + current_arch.ptrsize * 2 + 4 * 4 + current_arch.ptrsize
         return offset_mnt
 
     def get_offset_dentry(self, offset_mnt):
