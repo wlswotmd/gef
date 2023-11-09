@@ -22,23 +22,23 @@ This is probably because gdb does not support cooperation with python3.
 Consider building gdb from source with `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`.
 
 ## What is `~/.gef.rc`?
-This is the gef config file. Not present by default.
+This is the GEF config file. Not present by default.
 Executing the `gef save` command saves the current settings to disk.
-The next time gef is started, it will be automatically loaded and the settings will be reflected.
+The next time GEF is started, it will be automatically loaded and the settings will be reflected.
 This includes the current values of items configurable with `gef config` and alias settings for commands.
 
 ## What is `/tmp/gef`?
-This is the directory where gef temporarily stores files.
+This is the directory where GEF temporarily stores files.
 Since it is used for caching, there is no problem in deleting it.
-It will be created automatically the next time gef starts.
+It will be created automatically the next time GEF starts.
 
 ## Will this GEF work as a plugin for hugsy/gef?
-No, it doesn't work. It replaces hugsy/gef.
-However, compatibility with hugsy/gef has already been lost. You should be considered a completely different product.
+No, it doesn't work. It replaces `hugsy/gef`.
+The compatibility with `hugsy/gef` has already been lost. You should be considered a completely different product.
 
 
 ## Will each GEF command be more accurate if I have vmlinux with debug symbols?
-No, whether vmlinux includes debug information has no effect on GEF behavior.
+No, whether `vmlinux` includes debug information has no effect on GEF behavior.
 GEF always uses its own resolved address with `kallsyms-remote`.
 It also performs its own heuristic structure member detection in each command.
 
@@ -183,15 +183,31 @@ There are also similar functions. Here are the list.
 If you want the complete list, run `gef pyobj-list`.
 
 ## I want to add a command, how do I get started?
-Copy and paste the TemplateCommand class and edit it as you like. Below are some notes.
-- Create it by inheriting the `GenericCommand` class. Each method must be overridden as needed.
-- `_cmdline_`, `_category_`, `_aliases_`, `_syntax_`, `_example_` and `_note_` are used by `help` or `gef help`.
-- The `__init__()` method is executed only once, when GEF starts.
-- The command begins with the `do_invoke()` method.
-- Arguments to command should be controlled with the `argparse` module. It is handled by the `parse_args` decorator of the `do_invoke()` method.
-- You can check the list of decorators that can be added to the `do_invoke()` method with `gef pyobj-list`.
-- If you do not want to execute the same command again when you press ENTER on a blank line after executing the command, please write `self.dont_repeat()`.
-- Use the `gef_print()` function instead of the `print()` function whenever possible.
+Copy and paste the `TemplateCommand` class and edit it as you like. Followings are some notes.
+- Class name
+    - Rename the newly added command class to any name you like.
+    - Make sure to end it with `...Command`.
+- Inheritance
+    - Make sure you inherit the `GenericCommand` class.
+    - This is the condition for registering the command.
+- Help strings
+    - `_cmdline_`, `_category_`, `_aliases_`, `_syntax_`, `_example_` and `_note_` are used by `help` or `gef help`.
+- `__init__()`
+    - This method is executed only once, when GEF starts.
+    - There is usually no need to override this method.
+    - Delete it if you don't need to do anything special.
+- `do_invoke()`
+    - It is important to override this method.
+    - When a command is executed, it starts from this method.
+- Arguments to command
+    - They should be controlled with the `argparse` module.
+    - They are handled by the `parse_args` decorator of the `do_invoke()` method.
+- Command execution conditions
+    - Add decorators to the `do_invoke()` method as needed.
+    - You can check the list of decorators that can be added with `gef pyobj-list`.
+- Other
+    - If you do not want to execute the same command again when you press ENTER on a blank line after executing the command, please write `self.dont_repeat()`.
+    - Use the `gef_print()` function instead of the `print()` function whenever possible.
 
 # About development schedule
 
@@ -199,7 +215,7 @@ Copy and paste the TemplateCommand class and edit it as you like. Below are some
 There are no plans.
 
 ## Are there any plans to support more architectures with qemu-user?
-Yes, however, it is becoming difficult to find new support targets.
+Yes. However, it is becoming difficult to find new support targets.
 This is because three things are required:
 
 1. toolchain
@@ -227,7 +243,7 @@ In addition, I am glad if there are the results of the `version` command and `ar
 Additionally, if the issue is related to kernel debugging, please provide a set of environments (`run.sh`, `bzImage`, `rootfs`, etc.) or where to get them.
 
 ## Is it okay to fork and modify?
-Yes, however, please follow the license.
+Yes. However, please follow the license.
 
 
 # About me
@@ -238,7 +254,7 @@ I am using a test environment built with buildroot while viewing the Linux kerne
 I also use images of kernel exploit task from various CTFs.
 
 ## Why is there no master branch?
-I'm a git beginner, so one dev branch is the best I can do.
+I'm a `git` beginner, so one `dev` branch is the best I can do.
 
 ## Are you bad at English?
 Yes, I mostly use Google Translate. This is the reason for the inconsistent writing style.
