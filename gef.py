@@ -26117,7 +26117,7 @@ class PatternSearchCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("pattern", metavar="PATTERN", help="the pattern you want to offset search.")
-    parser.add_argument("size", metavar="SIZE", type=parse_address, nargs="?", help="the size of pattern. (default: 1024)")
+    parser.add_argument("size", metavar="SIZE", type=parse_address, nargs="?", help="the size of pattern. (default: 0x10000)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $pc\n".format(_cmdline_)
@@ -26130,7 +26130,7 @@ class PatternSearchCommand(GenericCommand):
         self.dont_repeat()
 
         if args.size is None:
-            size = get_gef_setting("pattern.length")
+            size = get_gef_setting("pattern.length") * 64
         else:
             size = args.size
 
@@ -26165,8 +26165,9 @@ class PatternSearchCommand(GenericCommand):
         pattern_be = pattern_be.strip(b"\0")
         pattern_le = pattern_le.strip(b"\0")
 
-        cyclic_pattern = generate_cyclic_pattern(size)
         found = False
+        cyclic_pattern = generate_cyclic_pattern(size)
+
         off = cyclic_pattern.find(pattern_le)
         if off >= 0:
             fmt = "Found at offset {:d} (little-endian search) {:s}"
