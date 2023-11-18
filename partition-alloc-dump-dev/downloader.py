@@ -55,18 +55,19 @@ def download_binary(channel):
   r = re.findall(r"<title>(\S+) .*?</title>", res)
   if r:
     commit = r[0]
-    url_base = "https://source.chromium.org/chromium/chromium/src/+/main:"
+    url_base = "https://source.chromium.org/chromium/chromium/src/+/main:base"
+    dir_base = "allocator/partition_allocator/src/partition_alloc"
     print("[*] commit hash: {:s}".format(commit))
     print("[*] struct base::PartitionRoot")
-    print("    {:s}base/allocator/partition_allocator/partition_root.h;drc={:s}".format(url_base, commit))
+    print("    {:s}/{:s}/partition_root.h;drc={:s}".format(url_base, dir_base, commit))
     print("[*] struct base::internal::PartitionBucket:")
-    print("    {:s}base/allocator/partition_allocator/partition_bucket.h;drc={:s}".format(url_base, commit))
+    print("    {:s}/{:s}/partition_bucket.h;drc={:s}".format(url_base, dir_base, commit))
     print("[*] struct PartitionSuperPageExtentEntry:")
-    print("    {:s}base/allocator/partition_allocator/partition_superpage_extent_entry.h;drc={:s}".format(url_base, commit))
+    print("    {:s}/{:s}/partition_superpage_extent_entry.h;drc={:s}".format(url_base, dir_base, commit))
     print("[*] struct PartitionDirectMapExtent:")
-    print("    {:s}base/allocator/partition_allocator/partition_direct_map_extent.h;drc={:s}".format(url_base, commit))
+    print("    {:s}/{:s}/partition_direct_map_extent.h;drc={:s}".format(url_base, dir_base, commit))
     print("[*] struct SlotSpanMetadata:")
-    print("    {:s}base/allocator/partition_allocator/partition_page.h;drc={:s}".format(url_base, commit))
+    print("    {:s}/{:s}/partition_page.h;drc={:s}".format(url_base, dir_base, commit))
     print("[*] v{:s}.x / {:s} / {:s}".format(current_version.split(".")[0], pos, commit))
 
   print()

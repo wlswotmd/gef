@@ -249,8 +249,8 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
 * `partition-alloc-dump`: dumps partition-alloc free-list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/partition-alloc-dump.png)
     * This command is reserved for the implementation of latest version of chromium.
-        * Currently tested: v117.x / 1176938 / f1dd439f69f177c9081dbe4f6b7e9d396388da8f
-        * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/1176938/
+        * Currently tested: v121.x / 1225457 / dce8d804887f7f941b8bb78ae6ad6419a04038f2
+        * https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/1225457/
     * Supported on only x64 (maybe it works on x86/ARM/ARM64, but not tested).
     * It will try heuristic search if binary has no symbol.
     * How to test:

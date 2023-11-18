@@ -62238,7 +62238,7 @@ class PartitionAllocDumpCommand(GenericCommand):
         _root["name"] = name
         _root["addr"] = current = read_int_from_memory(addr)
         """
-        https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_root.h
+        https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/src/partition_alloc/partition_root.h
         struct base::PartitionRoot {
             struct alignas(internal::kPartitionCachelineSize) Settings {
                 QuarantineMode quarantine_mode = QuarantineMode::kAlwaysDisabled; // uint8_t
@@ -62253,8 +62253,10 @@ class PartitionAllocDumpCommand(GenericCommand):
                 size_t mac11_malloc_size_hack_usable_size_ = 0;
                 bool use_configurable_pool = false;
                 bool memory_tagging_enabled_ = false;
+                TagViolationReportingMode memory_tagging_reporting_mode_ = TagViolationReportingMode::kUndefined;
                 size_t ref_count_size = 0;
                 ThreadIsolationOption thread_isolation;
+                bool use_pool_offset_freelists = false;
                 uint32_t extras_size = 0;
                 uint32_t extras_offset = 0;
             } settings; // 64 bytes
@@ -62288,6 +62290,7 @@ class PartitionAllocDumpCommand(GenericCommand):
             uintptr_t inverted_self = 0;
             std::atomic<int> thread_caches_being_constructed_{0};
             bool quarantine_always_for_testing = false;
+            internal::base::NoDestructor<internal::SchedulerLoopQuarantine> scheduler_loop_quarantine;
         };
         """
         current += 64 # sizeof(struct Settings)
@@ -62376,6 +62379,8 @@ class PartitionAllocDumpCommand(GenericCommand):
         current += 4
         _root["quarantine_always_for_testing"] = u32(read_memory(current, 4)) & 0xff
         current += 4
+        _root["scheduler_loop_quarantine"] = read_int_from_memory(current)
+        current += ptrsize
 
         Root = collections.namedtuple("Root", _root.keys())
         root = Root(*_root.values())
@@ -62386,7 +62391,7 @@ class PartitionAllocDumpCommand(GenericCommand):
         _bucket = {}
         _bucket["addr"] = current = addr
         """
-        https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_bucket.h
+        https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/src/partition_alloc/partition_bucket.h
         struct base::internal::PartitionBucket {
             SlotSpanMetadata* active_slot_spans_head;
             SlotSpanMetadata* empty_slot_spans_head;
@@ -62426,7 +62431,7 @@ class PartitionAllocDumpCommand(GenericCommand):
         _extent["addr"] = current = addr
         _extent["super_page_base"] = current - 0x1000
         """
-        https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_superpage_extent_entry.h
+        https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/src/partition_alloc/partition_superpage_extent_entry.h
         struct PartitionSuperPageExtentEntry {
           PartitionRootBase* root;
           PartitionSuperPageExtentEntry* next;
@@ -62453,7 +62458,7 @@ class PartitionAllocDumpCommand(GenericCommand):
         _direct_map = {}
         _direct_map["addr"] = current = addr
         """
-        https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_direct_map_extent.h
+        https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/src/partition_alloc/partition_direct_map_extent.h
         struct PartitionDirectMapExtent {
           PartitionDirectMapExtent* next_extent;
           PartitionDirectMapExtent* prev_extent;
@@ -62485,9 +62490,9 @@ class PartitionAllocDumpCommand(GenericCommand):
         _slot_span["partition_page_index"] = (_slot_span["addr"] & gef_getpagesize_mask_low()) // 0x20
         _slot_span["partition_page_start"] = _slot_span["super_page_addr"] + _slot_span["partition_page_index"] * gef_getpagesize() * 4
         """
-        https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/partition_page.h
+        https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/src/partition_alloc/partition_page.h
         struct SlotSpanMetadata {
-          PartitionFreelistEntry* freelist_head = nullptr;
+          EncodedNextFreelistEntry* freelist_head = nullptr;
           SlotSpanMetadata* next_slot_span = nullptr;
           PartitionBucket* const bucket = nullptr;
           uint32_t marked_full : 1
@@ -62592,6 +62597,7 @@ class PartitionAllocDumpCommand(GenericCommand):
         self.out.append("uintptr_t inverted_self:                               {:#x} (=~{:s})".format(root.inverted_self, inv_inv))
         self.out.append("std::atomic<int> thread_caches_being_constructed_:     {:#x}".format(root.thread_caches_being_constructed_))
         self.out.append("bool quarantine_always_for_testing:                    {:#x}".format(root.quarantine_always_for_testing))
+        self.out.append("NoDestructor<...> scheduler_loop_quarantine:           {:#x}".format(root.scheduler_loop_quarantine))
         return
 
     def dump_extent_list(self, head):
