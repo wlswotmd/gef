@@ -213,6 +213,8 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/virt2page-page2virt.png)
 * `vmalloc-dump`: dumps vmalloc used list and freed list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmalloc-dump.png)
+* `ktimer`: dumps timer.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktimer.png)
 
 ### Qemu-system cooperation - Arch specific
 * `uefi-ovmf-info`: dumps addresses of some important structures in each boot phase of UEFI when OVMF is used.

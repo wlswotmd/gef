@@ -46652,6 +46652,179 @@ class KernelAddressHeuristicFinder:
 
         return None
 
+    @staticmethod
+    @switch_to_intel_syntax
+    def get_timer_bases():
+        # plan 1 (directly)
+        timer_bases = get_ksymaddr("timer_bases")
+        if timer_bases:
+            return timer_bases
+
+        kversion = KernelVersionCommand.kernel_version()
+
+        # plan 2 (available v4.8 or later)
+        if kversion and kversion >= "4.8":
+            run_timer_softirq = get_ksymaddr("run_timer_softirq")
+            if run_timer_softirq:
+                res = gdb.execute("x/20i {:#x}".format(run_timer_softirq), to_string=True)
+                if is_x86_64():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+r\S+\s*,\s*(0x\S+)", line)
+                        if m:
+                            return int(m.group(1), 16)
+                elif is_x86_32():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+e\S+\s*,\s*(0x\S+)", line)
+                        if m:
+                            return int(m.group(1), 16) & 0xffffffff
+                elif is_arm64():
+                    bases = {}
+                    for line in res.splitlines():
+                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            base = int(m.group(2), 16)
+                            bases[reg] = base
+                            continue
+                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
+                        if m:
+                            srcreg = m.group(2)
+                            v = int(m.group(3), 16)
+                            if srcreg in bases:
+                                return bases[srcreg] + v
+                elif is_arm32():
+                    bases = {}
+                    for line in res.splitlines():
+                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            base = int(m.group(2), 16)
+                            bases[reg] = base
+                            continue
+                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            v = int(m.group(2), 16) << 16
+                            if reg in bases:
+                                return bases[reg] + v
+        return None
+
+    @staticmethod
+    @switch_to_intel_syntax
+    def get_hrtimer_bases():
+        # plan 1 (directly)
+        hrtimer_bases = get_ksymaddr("hrtimer_bases")
+        if hrtimer_bases:
+            return hrtimer_bases
+
+        kversion = KernelVersionCommand.kernel_version()
+
+        # plan 2 (available v4.8 or later)
+        if kversion and kversion >= "4.8":
+            hrtimer_run_queues = get_ksymaddr("hrtimer_run_queues")
+            if hrtimer_run_queues:
+                res = gdb.execute("x/20i {:#x}".format(hrtimer_run_queues), to_string=True)
+                if is_x86_64():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+r\S+\s*,\s*(0x\S+)", line)
+                        if m:
+                            return int(m.group(1), 16)
+                elif is_x86_32():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+e\S+\s*,\s*(0x\S+)", line)
+                        if m:
+                            return int(m.group(1), 16) & 0xffffffff
+                elif is_arm64():
+                    bases = {}
+                    for line in res.splitlines():
+                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            base = int(m.group(2), 16)
+                            bases[reg] = base
+                            continue
+                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
+                        if m:
+                            srcreg = m.group(2)
+                            v = int(m.group(3), 16)
+                            if srcreg in bases:
+                                return bases[srcreg] + v
+                elif is_arm32():
+                    bases = {}
+                    for line in res.splitlines():
+                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            base = int(m.group(2), 16)
+                            bases[reg] = base
+                            continue
+                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            v = int(m.group(2), 16) << 16
+                            if reg in bases:
+                                return bases[reg] + v
+        return None
+
+    @staticmethod
+    @switch_to_intel_syntax
+    def get_jiffies():
+        # plan 1 (directly)
+        jiffies = get_ksymaddr("jiffies")
+        if jiffies:
+            return jiffies
+
+        kversion = KernelVersionCommand.kernel_version()
+
+        # plan 2 (available v2.6.18 or later)
+        if kversion and kversion >= "2.6.18":
+            jiffies_read = get_ksymaddr("jiffies_read")
+            if jiffies_read:
+                res = gdb.execute("x/20i {:#x}".format(jiffies_read), to_string=True)
+                if is_x86_64():
+                    for line in res.splitlines():
+                        m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                        if m:
+                            v = int(m.group(1), 16) & 0xffffffffffffffff
+                            return v
+                elif is_x86_32():
+                    for line in res.splitlines():
+                        m = re.search(r"ds:(0x\w+)", line)
+                        if m:
+                            v = int(m.group(1), 16) & 0xffffffff
+                            return v
+                elif is_arm64():
+                    bases = {}
+                    for line in res.splitlines():
+                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            base = int(m.group(2), 16)
+                            bases[reg] = base
+                            continue
+                        m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
+                        if m:
+                            reg = m.group(1)
+                            v = int(m.group(2), 0)
+                            if reg in bases:
+                                return bases[reg] + v
+                elif is_arm32():
+                    bases = {}
+                    for line in res.splitlines():
+                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            base = int(m.group(2), 16)
+                            bases[reg] = base
+                            continue
+                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            v = int(m.group(2), 16) << 16
+                            if reg in bases:
+                                return bases[reg] + v
+        return None
+
 
 KF = KernelAddressHeuristicFinder # for convenience using from python-interactive
 
@@ -52063,6 +52236,442 @@ class KernelClockSourceCommand(GenericCommand):
             self.out.append("{:#0{:d}x} {:20s} {:#0{:d}x}{:s}".format(cs, width, name, read, width, read_sym))
             current = read_int_from_memory(current)
 
+        if self.out:
+            gef_print("\n".join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
+class KernelTimerCommand(GenericCommand):
+    """Dump timer."""
+    _cmdline_ = "ktimer"
+    _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
+    _syntax_ = parser.format_help()
+
+    _note_ = "Simplified timer structure (per-cpu):\n"
+    _note_ += "\n"
+    _note_ += "+-timer_bases[0]----+    +-timer_list--+    +-timer_list--+\n"
+    _note_ += "| ...               |    | entry       |    | entry       |\n"
+    _note_ += "| vectors[0]        |--->|   next      |--->|   next      |--->...\n"
+    _note_ += "| ...               |    |   pprev     |    |   pprev     |\n"
+    _note_ += "| vectors[512or576] |    | expires     |    | expires     |\n"
+    _note_ += "| ...               |    | function    |    | function    |\n"
+    _note_ += "+-timer_bases[1]----+    | ...         |    | ...         |\n"
+    _note_ += "| ...               |    +-------------+    +-------------+\n"
+    _note_ += "| vectors[0]        |\n"
+    _note_ += "| ...               |\n"
+    _note_ += "| vectors[512or576] |\n"
+    _note_ += "| ...               |\n"
+    _note_ += "+-------------------+\n"
+    _note_ += "\n"
+    _note_ += "Simplified timer structure (per-cpu):\n"
+    _note_ += "\n"
+    _note_ += "+-hrtimer_cpu_bases-+\n"
+    _note_ += "| ...               |\n"
+    _note_ += "| clock_bases[0]    |   +--->+-hrtimer------+\n"
+    _note_ += "|   ...             |   |    | node         |\n"
+    _note_ += "|   clockid         |   |    |   node       |\n"
+    _note_ += "|   ...             |   |    |     color    |\n"
+    _note_ += "|   active          |   |    |     right    |--->hrtimer\n"
+    _note_ += "|      rb_root      |   |    |     left     |--->hrtimer\n"
+    _note_ += "|        rb_root    |---+    |   expires    |\n"
+    _note_ += "|        ...        |        | ...          |\n"
+    _note_ += "|   get_time        |        | function     |\n"
+    _note_ += "|   ...             |        | ...          |\n"
+    _note_ += "| ...               |        +--------------+\n"
+    _note_ += "| clock_bases[8]    |\n"
+    _note_ += "|   ...             |\n"
+    _note_ += "+-------------------+"
+
+    def __init__(self):
+        super().__init__()
+        self.initialized = False
+        return
+
+    def initialize(self):
+        if self.initialized:
+            return True
+
+        # resolve __per_cpu_offset
+        __per_cpu_offset = KernelAddressHeuristicFinder.get_per_cpu_offset()
+        if __per_cpu_offset is None:
+            if not self.quiet:
+                err("__per_cpu_offset: Not found")
+            self.cpu_offset = []
+        else:
+            if not self.quiet:
+                info("__per_cpu_offset: {:#x}".format(__per_cpu_offset))
+            # resolve each cpu_offset
+            self.cpu_offset = [read_int_from_memory(__per_cpu_offset)]
+            i = 1
+            while True:
+                off = read_int_from_memory(__per_cpu_offset + i * current_arch.ptrsize)
+                if off < 10:
+                    break
+                if off == self.cpu_offset[-1]:
+                    self.cpu_offset = self.cpu_offset[:-1]
+                    break
+                self.cpu_offset.append(off)
+                i += 1
+
+        ### classic timer (unit: tick)
+
+        # timer_bases
+        self.timer_bases = KernelAddressHeuristicFinder.get_timer_bases()
+        if not self.timer_bases:
+            if not self.quiet:
+                err("timer_bases: Not found")
+            return False
+        if not self.quiet:
+            info("timer_bases: {:#x}".format(self.timer_bases))
+
+        # per_cpu_timer_bases
+        if self.cpu_offset == []:
+            self.per_cpu_timer_bases = [self.timer_bases]
+        else:
+            self.per_cpu_timer_bases = [align_address(x + self.timer_bases) for x in self.cpu_offset]
+
+        # len(timer_bases)
+        if get_ksymaddr("sysctl_timer_migration"):
+            self.nr_bases = 2
+        else:
+            self.nr_bases = 1
+        if not self.quiet:
+            info("nr_bases: {:d}".format(self.nr_bases))
+
+        # sizeof(struct timer_base)
+        """
+        struct timer_base {
+            raw_spinlock_t lock;
+            struct timer_list *running_timer;
+        #ifdef CONFIG_PREEMPT_RT
+            spinlock_t expiry_lock;
+            atomic_t timer_waiters;
+        #endif
+            unsigned long clk;
+            unsigned long next_expiry;
+            unsigned int cpu;
+            bool next_expiry_recalc;
+            bool is_idle;
+            bool timers_pending;
+            DECLARE_BITMAP(pending_map, WHEEL_SIZE);
+            struct hlist_head vectors[WHEEL_SIZE];
+        } ____cacheline_aligned;
+        """
+        self.roughly_sizeof_timer_base = 0
+        if self.nr_bases == 2:
+            timer_base = self.per_cpu_timer_bases[0]
+
+            i = 512
+            while True:
+                v = read_int_from_memory(timer_base + current_arch.ptrsize * i)
+                if v != 0 and not is_valid_addr(v):
+                    self.roughly_sizeof_timer_base = current_arch.ptrsize * i
+                    break
+                i += 1
+
+        # jiffies
+        self.jiffies = KernelAddressHeuristicFinder.get_jiffies()
+        if not self.jiffies:
+            if not self.quiet:
+                err("jiffies: Not found")
+            return False
+        if not self.quiet:
+            info("jiffies: {:#x}".format(self.jiffies))
+
+        ### High-resolution kernel timer (unit: nano seconds)
+
+        # hrtimer_bases
+        self.hrtimer_bases = KernelAddressHeuristicFinder.get_hrtimer_bases()
+        if not self.hrtimer_bases:
+            if not self.quiet:
+                err("hrtimer_bases: Not found")
+            return False
+        if not self.quiet:
+            info("hrtimer_bases: {:#x}".format(self.hrtimer_bases))
+
+        # per_cpu_hrtimer_bases
+        if self.cpu_offset == []:
+            self.per_cpu_hrtimer_cpu_bases = [self.hrtimer_bases]
+        else:
+            self.per_cpu_hrtimer_cpu_bases = [align_address(x + self.hrtimer_bases) for x in self.cpu_offset]
+
+        """
+        struct hrtimer_cpu_base {
+            raw_spinlock_t lock;
+            unsigned int cpu;
+            unsigned int active_bases;
+            unsigned int clock_was_set_seq;
+            unsigned int hres_active : 1,
+                         in_hrtirq : 1,
+                         hang_detected : 1,
+                         softirq_activated : 1;
+        #ifdef CONFIG_HIGH_RES_TIMERS
+            unsigned int nr_events;
+            unsigned short nr_retries;
+            unsigned short nr_hangs;
+            unsigned int max_hang_time;
+        #endif
+        #ifdef CONFIG_PREEMPT_RT
+            spinlock_t softirq_expiry_lock;
+            atomic_t timer_waiters;
+        #endif
+            ktime_t expires_next;
+            struct hrtimer *next_timer;
+            ktime_t softirq_expires_next;
+            struct hrtimer *softirq_next_timer;
+            struct hrtimer_clock_base {
+                struct hrtimer_cpu_base *cpu_base;
+                unsigned int index;
+                clockid_t clockid;
+                seqcount_raw_spinlock_t seq;
+                struct hrtimer *running;
+                struct timerqueue_head {
+                    struct rb_root_cached {
+                        struct rb_root rb_root;
+                        struct rb_node *rb_leftmost;
+                    } rb_root;
+                } active;
+                ktime_t (*get_time)(void);
+                ktime_t offset;
+            } __hrtimer_clock_base_align clock_base[HRTIMER_MAX_CLOCK_BASES];
+        } ____cacheline_aligned;
+
+        DEFINE_PER_CPU(struct hrtimer_cpu_base, hrtimer_bases) =
+        {
+            .lock = __RAW_SPIN_LOCK_UNLOCKED(hrtimer_bases.lock),
+            .clock_base =
+            {
+                {
+                    .index = HRTIMER_BASE_MONOTONIC,
+                    .clockid = CLOCK_MONOTONIC,
+                    .get_time = &ktime_get,               -------
+                },                                              ^
+                {                                               |
+                    .index = HRTIMER_BASE_REALTIME,             |
+                    .clockid = CLOCK_REALTIME,                  |
+                    .get_time = &ktime_get_real,                |
+                },                                              |
+                {                                               |
+                    .index = HRTIMER_BASE_BOOTTIME,             | calc this then divided by 4
+                    .clockid = CLOCK_BOOTTIME,                  |
+                    .get_time = &ktime_get_boottime,            |
+                },                                              |
+                {                                               |
+                    .index = HRTIMER_BASE_TAI,                  |
+                    .clockid = CLOCK_TAI,                       |
+                    .get_time = &ktime_get_clocktai,            |
+                },                                              |
+                {                                               |
+                    .index = HRTIMER_BASE_MONOTONIC_SOFT,       |
+                    .clockid = CLOCK_MONOTONIC,                 v
+                    .get_time = &ktime_get,               -------
+                },
+                {
+                    .index = HRTIMER_BASE_REALTIME_SOFT,
+                    .clockid = CLOCK_REALTIME,
+                    .get_time = &ktime_get_real,
+                },
+                {
+                    .index = HRTIMER_BASE_BOOTTIME_SOFT,
+                    .clockid = CLOCK_BOOTTIME,
+                    .get_time = &ktime_get_boottime,
+                },
+                {
+                    .index = HRTIMER_BASE_TAI_SOFT,
+                    .clockid = CLOCK_TAI,
+                    .get_time = &ktime_get_clocktai,
+                },
+            }
+        };
+        """
+
+        hrtimer_cpu_base = self.per_cpu_hrtimer_cpu_bases[0]
+
+        ktime_get = get_ksymaddr("ktime_get")
+        ktime_get_ofs = []
+        i = 0
+        while len(ktime_get_ofs) != 2:
+            v = read_int_from_memory(hrtimer_cpu_base + current_arch.ptrsize * i)
+            if v == ktime_get:
+                ktime_get_ofs.append(current_arch.ptrsize * i)
+            i += 1
+        self.sizeof_hrtimer_clock_base = (ktime_get_ofs[1] - ktime_get_ofs[0]) // 4
+
+        clock_base_1 = ktime_get_ofs[0] + current_arch.ptrsize + 8
+        self.offset_clock_base = clock_base_1 - self.sizeof_hrtimer_clock_base
+        self.offset_clockid = current_arch.ptrsize + 4
+        self.offset_get_time = ktime_get_ofs[0] - self.offset_clock_base
+        self.offset_rb_root = self.offset_get_time - current_arch.ptrsize * 2
+
+        self.initialized = True
+        return True
+
+    def parse_rb_node(self, rb_node):
+        if not rb_node:
+            return []
+
+        right = read_int_from_memory(rb_node + current_arch.ptrsize * 1) & ~1 # remove RB_BLACK
+        left = read_int_from_memory(rb_node + current_arch.ptrsize * 2) & ~1 # remove RB_BLACK
+
+        ret = [rb_node]
+        if right:
+            ret += self.parse_rb_node(right)
+        if left:
+            ret += self.parse_rb_node(left)
+        return ret
+
+    def dump_hrtimer(self):
+        """
+        struct hrtimer {
+            struct timerqueue_node {
+                struct rb_node {
+                    unsigned long __rb_parent_color;
+                    struct rb_node *rb_right;
+                    struct rb_node *rb_left;
+                } node;
+                ktime_t expires;
+            } node;
+            ktime_t _softexpires;
+            enum hrtimer_restart (*function)(struct hrtimer *);
+            struct hrtimer_clock_base *base;
+            u8 state;
+            u8 is_rel;
+            u8 is_soft;
+            u8 is_hard;
+        };
+        """
+
+        clockid_dict = {
+            0: "CLOCK_REALTIME",
+            1: "CLOCK_MONOTONIC",
+            2: "CLOCK_PROCESS_CPUTIME_ID",
+            3: "CLOCK_THREAD_CPUTIME_ID",
+            4: "CLOCK_MONOTONIC_RAW",
+            5: "CLOCK_REALTIME_COARSE",
+            6: "CLOCK_MONOTONIC_COARSE",
+            7: "CLOCK_BOOTTIME",
+            8: "CLOCK_REALTIME_ALARM",
+            9: "CLOCK_BOOTTIME_ALARM",
+            10: "CLOCK_SGI_CYCLE",
+            11: "CLOCK_TAI",
+        }
+
+        for cpu, hrtimer_cpu_base in enumerate(self.per_cpu_hrtimer_cpu_bases):
+            clock_base = hrtimer_cpu_base + self.offset_clock_base
+            for base_n in range(8):
+                htb = clock_base + self.sizeof_hrtimer_clock_base * base_n
+                clockid = u32(read_memory(htb + self.offset_clockid, 4))
+                clockid_s = clockid_dict.get(clockid, "UNKNOWN")
+                get_time = read_int_from_memory(htb + self.offset_get_time)
+                sym = get_symbol_string(get_time, nosymbol_string=" <NO_SYMBOL>")
+                fmt = "cpu{:d} hrtimer_clock_base[{:d}]: {:#x}  [{:s}; get_time: {:#x}{:s}]"
+                self.out.append(titlify(fmt.format(cpu, base_n, htb, clockid_s, get_time, sym)))
+
+                # print legend
+                if not self.quiet:
+                    fmt = "{:18s}  {:18s}  {:23s}  {:18s} {:s}"
+                    legend = ["hrtimer", "expires", "time_to_expired", "function", "symbol"]
+                    self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
+                rb_node = read_int_from_memory(htb + self.offset_rb_root)
+                for hrtimer in self.parse_rb_node(rb_node):
+                    expires = u64(read_memory(hrtimer + current_arch.ptrsize * 3, 8))
+                    function = read_int_from_memory(hrtimer + current_arch.ptrsize * 3 + 8 * 2)
+                    if is_32bit() and not is_valid_addr(function):
+                        expires = u64(read_memory(hrtimer + current_arch.ptrsize * 3 + 4, 8))
+                        function = read_int_from_memory(hrtimer + current_arch.ptrsize * 3 + 4 + 8 * 2)
+                    sym = get_symbol_string(function, nosymbol_string=" <NO_SYMBOL>")
+                    tte = "? (too hard to calc)"
+                    self.out.append("{:#018x}  {:#018x}  {:23s}  {:#018x}{:s}".format(hrtimer, expires, tte, function, sym))
+        return
+
+    def dump_timer(self):
+        """
+        struct timer_list {
+            struct hlist_node entry;
+            unsigned long expires;
+            void (*function)(struct timer_list *);
+            u32 flags;
+        #ifdef CONFIG_LOCKDEP
+            struct lockdep_map lockdep_map;
+        #endif
+        };
+        """
+
+        jiffies = read_int_from_memory(self.jiffies)
+
+        for cpu, timer_base in enumerate(self.per_cpu_timer_bases):
+            # dump timer_list
+            for base_n in range(self.nr_bases):
+                tb = timer_base + self.roughly_sizeof_timer_base * base_n
+                self.out.append(titlify("cpu{:d} timer_base[{:d}]: {:#x}".format(cpu, base_n, tb)))
+
+                # print legend
+                if not self.quiet:
+                    fmt = "{:18s}  {:18s}  {:23s}  {:18s} {:s}"
+                    legend = ["timer_list", "expires", "time_to_expired", "function", "symbol"]
+                    self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
+                i = 0
+                while True:
+                    addr = tb + current_arch.ptrsize * i
+                    v = read_int_from_memory(addr)
+
+                    if v == 0:
+                        i += 1
+                        continue
+
+                    if i < 512:
+                        if not is_valid_addr(v):
+                            i += 1
+                            continue
+                        if read_int_from_memory(v + current_arch.ptrsize) != addr:
+                            i += 1
+                            continue
+                    else:
+                        if not is_valid_addr(v):
+                            break
+                        if read_int_from_memory(v + current_arch.ptrsize) != addr:
+                            break
+
+                    timer_list = v
+                    expires = read_int_from_memory(timer_list + current_arch.ptrsize * 2)
+                    function = read_int_from_memory(timer_list + current_arch.ptrsize * 3)
+                    sym = get_symbol_string(function, nosymbol_string=" <NO_SYMBOL>")
+                    tte = expires - jiffies
+                    self.out.append("{:#018x}  {:#018x}  {:#018x} tick  {:#018x}{:s}".format(v, expires, tte, function, sym))
+                    i += 1
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        kversion = KernelVersionCommand.kernel_version()
+        if kversion < "4.8":
+            err("Unsupported")
+            return
+
+        if not args.quiet:
+            info("Wait for memory scan")
+
+        self.quiet = args.quiet
+
+        if not self.initialize():
+            return
+
+        self.out = []
+        self.dump_timer()
+        self.dump_hrtimer()
         if self.out:
             gef_print("\n".join(self.out), less=not args.no_pager)
         return
