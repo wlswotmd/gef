@@ -10,9 +10,13 @@
 * [Supported mode](#supported-mode)
 * [Added / improved features](#added--improved-features)
     * [Qemu-system cooperation - General](#qemu-system-cooperation---general)
-    * [Qemu-system cooperation - Linux specific](#qemu-system-cooperation---linux-specific)
     * [Qemu-system cooperation - Arch specific](#qemu-system-cooperation---arch-specific)
-    * [Qemu-user cooperation - General](#qemu-user-cooperation---general)
+    * [Qemu-system cooperation - Linux specific - Basic](#qemu-system-cooperation---linux-specific---basic)
+    * [Qemu-system cooperation - Linux specific - Symbol](#qemu-system-cooperation---linux-specific---symbol)
+    * [Qemu-system cooperation - Linux specific - Allocator](#qemu-system-cooperation---linux-specific---allocator)
+    * [Qemu-system cooperation - Linux specific - Advanced](#qemu-system-cooperation---linux-specific---advanced)
+    * [Qemu-system cooperation - Linux specific - Other](#qemu-system-cooperation---linux-specific---other)
+    * [Qemu-user cooperation](#qemu-user-cooperation)
     * [Heap dump features](#heap-dump-features)
     * [Improved features](#improved-features)
     * [Added features](#added-features)
@@ -23,8 +27,8 @@
 This is a fork of [GEF](https://github.com/hugsy/gef).
 However, there are two major improvements.
 
-1. Added many heuristic commands for kernel debugging __WITHOUT symboled vmlinux__ (for qemu-system).
-2. Added support for [many architectures](https://github.com/bata24/gef/blob/dev/QEMU-USER-SUPPORTED-ARCH.md) (for qemu-user).
+1. Added many heuristic commands for kernel debugging __WITHOUT symboled vmlinux__ (for qemu-system; linux kernel 3.x ~ 6.6.1).
+2. Added support for [many architectures](https://github.com/bata24/gef/blob/dev/docs/QEMU-USER-SUPPORTED-ARCH.md) (for qemu-user).
 
 Many other commands have been added and improved. Enjoy!
 
@@ -77,7 +81,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 * Connect to the gdb stub of KGDB (over serial. currently, only gdb 12.x~ is supported)
 * Connect to the gdb stub of VMWare (via ipaddr:port)
 
-See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md) for detail.
+See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORTED-MODE.md) for detail.
 
 ## Added / improved features
 
@@ -116,7 +120,37 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xp.png)
 * `qemu-device-info`: dumps device information for qemu-escape (WIP).
 
-### Qemu-system cooperation - Linux specific
+### Qemu-system cooperation - Arch specific
+* `msr`: displays MSR (Model Specific Registers) values by embedding/executing dynamic assembly.
+    * Supported on only x64.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/msr.png)
+* `uefi-ovmf-info`: dumps addresses of some important structures in each boot phase of UEFI when OVMF is used.
+    * Supported on only x64.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uefi-ovmf-info.png)
+* `xsm`: dumps secure memory when gdb is in normal world.
+    * Supported on only ARM64 and ARM.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xsm.png)
+* `wsm`: writes the value to secure memory when gdb is in normal world.
+    * Supported on only ARM64 and ARM.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/wsm.png)
+* `bsm`: sets the breakpoint to secure memory when gdb is in normal world.
+    * Supported on only ARM64 and ARM.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/bsm.png)
+* `optee-break-ta`: sets the breakpoint to the offset of OPTEE-Trusted-App when gdb is in normal world.
+    * Supported on only ARM64 and ARM.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-break-ta.png)
+* `pac-keys`: pretty prints ARM64 PAC keys.
+    * Supported on only ARM64.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pac-keys.png)
+
+### Qemu-system cooperation - Linux specific - Basic
+* `kbase`: displays the kernel base address.
+* `kversion`: displays the debugged kernel version.
+* `kcmdline`: displays the debugged kernel startup cmdline.
+* `kcurrent`: displays current task address.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbase-kversion-kcmdline-kcurrent.png)
+
+### Qemu-system cooperation - Linux specific - Symbol
 * `ksymaddr-remote`: displays kallsyms information from scanning kernel memory.
     * Supported kernel versions are not only before v6.1, but also after v6.2 (slightly changed structure in memory).
     * Supported kernel after v6.4 (changed structure in memory again).
@@ -128,6 +162,8 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * `vmlinux-to-elf-apply` and `ksymaddr-remote-apply` provide almost the same functionality.
         * `vmlinux-to-elf-apply`: Requires installation of external tools. Create `vmlinux` with symbols.
         * `ksymaddr-remote-apply`: Requires no external tools. Create an blank ELF with only embedded symbols.
+
+### Qemu-system cooperation - Linux specific - Allocator
 * `slub-dump`: dumps slub free-list.
     * Supported on x64/x86/ARM64/ARM + SLUB + no-symbol + kASLR.
     * Supported on both `CONFIG_SLAB_FREELIST_HARDENED` is `y` or `n`.
@@ -143,11 +179,34 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
 * `slub-tiny-dump`: dumps slub-tiny free-list.
     * Supported on x64/x86 + SLUB-TINY + no-symbol + kASLR.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-tiny-dump.png)
-* `kbase`: displays the kernel base address.
-* `kversion`: displays the debugged kernel version.
-* `kcmdline`: displays the debugged kernel startup cmdline.
-* `kcurrent`: displays current task address.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbase-kversion-kcmdline-kcurrent.png)
+* `slub-contains`: resolves which `kmem_cache` certain address (object) belongs to.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-contains.png)
+    * If the chunk of `slub` that the address (object) belongs to is all used, it cannot be displayed with `slub-dump`.
+    * Even with such an address (object), this command may be able to resolve `kmem_cache`.
+* `buddy-dump`: dumps zone of page allocator (buddy allocator) freelist.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/buddy-dump.png)
+* `vmalloc-dump`: dumps vmalloc used list and freed list.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmalloc-dump.png)
+* `virt2page`/`page2virt`: displays transformation virtual address <-> struct page.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/virt2page-page2virt.png)
+* `kmalloc-tracer`: collects and displays information when kmalloc/kfree.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-tracer.png)
+* `kmalloc-allocated-by`: calls a predefined set of system calls and prints structures allocated by kmalloc or freed by kfree.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-allocated-by.png)
+
+### Qemu-system cooperation - Linux specific - Advanced
+* `kmagic`: displays useful addresses in kernel.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmagic.png)
+* `kchecksec`: checks kernel security.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kchecksec.png)
+* `kconfig`: dumps kernel config if available.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kconfig.png)
+* `syscall-table-view`: displays system call table.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/syscall-table-view.png)
+    * It also dumps ia32/x32 syscall table under x64.
+    * It also dumps compat syscall table under ARM64.
+* `ksysctl`: dumps sysctl parameters.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksysctl.png)
 * `ktask`: displays each task address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask.png)
     * It also displays the memory map of the userland process.
@@ -160,80 +219,39 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmod.png)
     * It also displays each module symbols.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmod-syms.png)
+* `kops`: displays each operations member.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kops.png)
 * `kcdev`: displays each character device information.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kcdev.png)
 * `kbdev`: displays each block device information.
     * If there are too many block devices, detection will not be successful.
     * This is because block devices are not managed in one place, so I use the list of `bdev_cache` obtained from the slub-dump results.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbdev.png)
-* `kops`: displays each operations member.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kops.png)
-* `syscall-table-view`: displays system call table.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/syscall-table-view.png)
-    * It also dumps ia32/x32 syscall table under x64.
-    * It also dumps compat syscall table under ARM64.
+* `kfilesystems`: dumps supported file systems.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kfilesystems.png)
+* `kclock-source`: dumps clocksource list.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kclock-source.png)
+* `kdmesg`: dumps the ring buffer of dmesg area.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kdmesg.png)
+* `kpipe`: displays each pipe information.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kpipe.png)
+* `kbpf`: dumps bpf information.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbpf.png)
+* `ktimer`: dumps timer.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktimer.png)
+
+### Qemu-system cooperation - Linux specific - Other
+* `ksearch-code-ptr`: searches the code pointer in kernel data area.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksearch-code-ptr.png)
+* `pagewalk-with-hints`: prints pagetables with description.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-with-hints.png)
 * `thunk-tracer`: collects and displays the thunk function addresses that are called automatically (only x64/x86).
     * If this address comes from RW area, this is useful for getting RIP.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/thunk-tracer.png)
 * `usermodehelper-tracer`: collects and displays the information that is executed by `call_usermodehelper_setup`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/usermodehelper-tracer.png)
-* `kmagic`: displays useful addresses in kernel.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmagic.png)
-* `kchecksec`: checks kernel security.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kchecksec.png)
-* `ksysctl`: dumps sysctl parameters.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksysctl.png)
-* `kfilesystems`: dumps supported file systems.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kfilesystems.png)
-* `kclock-source`: dumps clocksource list.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kclock-source.png)
-* `ksearch-code-ptr`: searches the code pointer in kernel data area.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksearch-code-ptr.png)
-* `kdmesg`: dumps the ring buffer of dmesg area.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kdmesg.png)
-* `pagewalk-with-hints`: prints pagetables with description.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-with-hints.png)
-* `slub-contains`: resolves which `kmem_cache` certain address (object) belongs to.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-contains.png)
-    * If the chunk of `slub` that the address (object) belongs to is all used, it cannot be displayed with `slub-dump`.
-    * Even with such an address (object), this command may be able to resolve `kmem_cache`.
-* `kmalloc-tracer`: collects and displays information when kmalloc/kfree.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-tracer.png)
-* `kmalloc-allocated-by`: calls a predefined set of system calls and prints structures allocated by kmalloc or freed by kfree.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-allocated-by.png)
-* `buddy-dump`: dumps zone of page allocator (buddy allocator) freelist.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/buddy-dump.png)
-* `kpipe`: displays each pipe information.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kpipe.png)
-* `kconfig`: dumps kernel config if available.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kconfig.png)
-* `kbpf`: dumps bpf information.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbpf.png)
-* `virt2page`/`page2virt`: displays transformation virtual address <-> struct page.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/virt2page-page2virt.png)
-* `vmalloc-dump`: dumps vmalloc used list and freed list.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmalloc-dump.png)
-* `ktimer`: dumps timer.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktimer.png)
 
-### Qemu-system cooperation - Arch specific
-* `uefi-ovmf-info`: dumps addresses of some important structures in each boot phase of UEFI when OVMF is used.
-    * Supported on only x64.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uefi-ovmf-info.png)
-* `msr`: displays MSR (Model Specific Registers) values by embedding/executing dynamic assembly.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/msr.png)
-* `xsm`: dumps secure memory when gdb is in normal world.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xsm.png)
-* `wsm`: writes the value to secure memory when gdb is in normal world.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/wsm.png)
-* `bsm`: sets the breakpoint to secure memory when gdb is in normal world.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/bsm.png)
-* `optee-break-ta`: sets the breakpoint to the offset of OPTEE-Trusted-App when gdb is in normal world.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-break-ta.png)
-* `pac-keys`: pretty prints ARM64 PAC keys.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pac-keys.png)
-
-### Qemu-user cooperation - General
+### Qemu-user cooperation
 * `si`/`ni`: are the wrapper for native `si`/`ni`.
     * On OpenRISC architecture, branch operations don't work well, so use breakpoints to simulate.
     * On Cris architecture, `stepi`/`nexti` commands don't work well, so use breakpoints to simulate.
@@ -254,7 +272,7 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
     * Supported on only x64 (maybe it works on x86/ARM/ARM64, but not tested).
     * It will try heuristic search if binary has no symbol.
     * How to test:
-        * See [partition-alloc-dump-dev/downloader.py](https://github.com/bata24/gef/blob/dev/partition-alloc-dump-dev/downloader.py).
+        * See [dev/partition-alloc-dump/downloader.py](https://github.com/bata24/gef/blob/dev/dev/partition-alloc-dump/downloader.py).
 * `tcmalloc-dump`: dumps tcmalloc free-list.
     * Supported on only x64, based on gperftools-2.9.1 (named `libgoogle-perftools{4,-dev}`)
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tcmalloc-dump.png)
@@ -563,4 +581,4 @@ See [SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/SUPPORTED-MODE.md
 * Many bugs fix / formatting / made it easy for me to use.
 
 ## FAQ
-* See [FAQ.md](https://github.com/bata24/gef/blob/dev/FAQ.md).
+* See [docs/FAQ.md](https://github.com/bata24/gef/blob/dev/docs/FAQ.md).

@@ -17,7 +17,7 @@
     * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
     * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'` (for old qemu).
 * Supported architectures
-    * See [QEMU-USER-SUPPORTED-ARCH.md](https://github.com/bata24/gef/blob/dev/QEMU-USER-SUPPORTED-ARCH.md)
+    * See [docs/QEMU-USER-SUPPORTED-ARCH.md](https://github.com/bata24/gef/blob/dev/docs/QEMU-USER-SUPPORTED-ARCH.md)
 * Note
     * It works with any version qemu-user, but qemu-6.x or higher is recommended.
 
