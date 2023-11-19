@@ -239,6 +239,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbpf.png)
 * `ktimer`: dumps timer.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktimer.png)
+* `kpcidev`: dumps PCI devices.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kpcidev.png)
 
 ### Qemu-system cooperation - Linux specific - Other
 * `ksearch-code-ptr`: searches the code pointer in kernel data area.

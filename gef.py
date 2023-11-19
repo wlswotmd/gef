@@ -46825,6 +46825,69 @@ class KernelAddressHeuristicFinder:
                                 return bases[reg] + v
         return None
 
+    @staticmethod
+    @switch_to_intel_syntax
+    def get_pci_root_buses():
+        # plan 1 (directly)
+        pci_root_buses = get_ksymaddr("pci_root_buses")
+        if pci_root_buses:
+            return pci_root_buses
+
+        kversion = KernelVersionCommand.kernel_version()
+
+        # plan 2 (available v2.5.71 or later)
+        if kversion and kversion >= "2.5.71":
+            pci_find_next_bus = get_ksymaddr("pci_find_next_bus")
+            if pci_find_next_bus:
+                res = gdb.execute("x/30i {:#x}".format(pci_find_next_bus), to_string=True)
+                if is_x86_64():
+                    for line in res.splitlines():
+                        m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+                        if m:
+                            v = int(m.group(1), 16) & 0xffffffffffffffff
+                            return v
+                elif is_x86_32():
+                    for line in res.splitlines():
+                        m = re.search(r"ds:(0x\w+)", line)
+                        if m:
+                            v = int(m.group(1), 16) & 0xffffffff
+                            return v
+                elif is_arm64():
+                    bases = {}
+                    for line in res.splitlines():
+                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            base = int(m.group(2), 16)
+                            bases[reg] = base
+                            continue
+                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
+                        if m:
+                            srcreg = m.group(2)
+                            v = int(m.group(3), 16)
+                            if srcreg in bases:
+                                x = bases[srcreg] + v
+                                if is_valid_addr(read_int_from_memory(x)):
+                                    return x
+                elif is_arm32():
+                    bases = {}
+                    for line in res.splitlines():
+                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            base = int(m.group(2), 16)
+                            bases[reg] = base
+                            continue
+                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            v = int(m.group(2), 16) << 16
+                            if reg in bases:
+                                x = bases[reg] + v
+                                if is_valid_addr(read_int_from_memory(x)):
+                                    return x
+        return None
+
 
 KF = KernelAddressHeuristicFinder # for convenience using from python-interactive
 
@@ -52672,6 +52735,485 @@ class KernelTimerCommand(GenericCommand):
         self.out = []
         self.dump_timer()
         self.dump_hrtimer()
+        if self.out:
+            gef_print("\n".join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
+class KernelPciDeviceCommand(GenericCommand):
+    """Dump PCI devices."""
+    _cmdline_ = "kpcidev"
+    _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
+    _syntax_ = parser.format_help()
+
+    def __init__(self):
+        super().__init__()
+        self.initialized = False
+        self.pci_ids = None
+        return
+
+    def initialize(self):
+        if self.initialized:
+            return True
+
+        # pci_root_buses
+        self.pci_root_buses = KernelAddressHeuristicFinder.get_pci_root_buses()
+        if not self.pci_root_buses:
+            if not self.quiet:
+                err("Not found pci_root_buses")
+            return False
+        if not self.quiet:
+            info("pci_root_buses: {:#x}".format(self.pci_root_buses))
+
+        # pci_bus->{node,children,devices}
+        """
+        struct pci_bus {
+            struct list_head node;
+            struct pci_bus *parent;
+            struct list_head children;
+            struct list_head devices;
+            struct pci_dev *self;
+            struct list_head slots;
+            struct resource *resource[PCI_BRIDGE_RESOURCE_NUM];
+            struct list_head resources;
+            struct resource busn_res;
+            struct pci_ops *ops;
+            struct msi_controller *msi;
+            void *sysdata;
+            struct proc_dir_entry *procdir;
+            unsigned char number;
+            unsigned char primary;
+            unsigned char max_bus_speed;
+            unsigned char cur_bus_speed;
+        #ifdef CONFIG_PCI_DOMAINS_GENERIC
+            int domain_nr;
+        #endif
+            char name[48];
+            unsigned short bridge_ctl;
+            pci_bus_flags_t bus_flags;
+            struct device *bridge;
+            struct device {
+                struct kobject {
+                    const char *name; <--- search this
+                    ...
+                } kobj;
+                ...
+            } dev;
+            struct bin_attribute *legacy_io;
+            struct bin_attribute *legacy_mem;
+            unsigned int is_added:1;
+        };
+        """
+
+        self.offset_pci_bus_node = 0
+        self.offset_pci_bus_children = current_arch.ptrsize * 3
+        self.offset_pci_bus_devices = current_arch.ptrsize * 5
+
+        # pci_bus->dev
+        first_root_bus = read_int_from_memory(self.pci_root_buses)
+        for i in range(100):
+            v = read_int_from_memory(first_root_bus + current_arch.ptrsize * i)
+            if is_valid_addr(v):
+                if read_cstring_from_memory(v) == "0000:00":
+                    self.offset_pci_bus_dev = current_arch.ptrsize * i
+                    if not self.quiet:
+                        info("offsetof(pci_bus, dev): {:#x}".format(self.offset_pci_bus_dev))
+                    break
+        else:
+            if not self.quiet:
+                err("Not found pci_bus->dev")
+            return False
+
+        # pci_dev->{bus_list,vendor,device,subsystem_vendor,subsystem_device,class,revision}
+        """
+        struct pci_dev {
+            struct list_head bus_list;
+            struct pci_bus *bus;
+            struct pci_bus *subordinate;
+            void *sysdata;
+            struct proc_dir_entry *procent;
+            struct pci_slot *slot;
+            unsigned int devfn;
+            unsigned short vendor;
+            unsigned short device;
+            unsigned short subsystem_vendor;
+            unsigned short subsystem_device;
+            unsigned int class;
+            u8 revision;
+            u8 hdr_type;
+            ...
+            struct device {
+                struct kobject {
+                    const char *name; <--- search this
+                    ...
+                } kobj;
+                ...
+            } dev;
+            int cfg_size;
+            unsigned int irq;
+            struct resource resource[DEVICE_COUNT_RESOURCE];
+            ...
+        };
+        """
+
+        self.offset_pci_dev_bus_list = 0
+        self.offset_pci_dev_vendor = current_arch.ptrsize * 7 + 4
+        self.offset_pci_dev_device = self.offset_pci_dev_vendor + 2
+        self.offset_pci_dev_subsystem_vendor = self.offset_pci_dev_device + 2
+        self.offset_pci_dev_subsystem_device = self.offset_pci_dev_subsystem_vendor + 2
+        self.offset_pci_dev_class = self.offset_pci_dev_subsystem_device + 2
+        self.offset_pci_dev_revision = self.offset_pci_dev_class + 4
+
+        # pci_dev->dev
+        first_dev = read_int_from_memory(first_root_bus + self.offset_pci_bus_devices)
+        for i in range(100):
+            v = read_int_from_memory(first_dev + current_arch.ptrsize * i)
+            if is_valid_addr(v):
+                if read_cstring_from_memory(v) == "0000:00:00.0":
+                    self.offset_pci_dev_dev = current_arch.ptrsize * i
+                    if not self.quiet:
+                        info("offsetof(pci_dev, dev): {:#x}".format(self.offset_pci_dev_dev))
+                    break
+        else:
+            if not self.quiet:
+                err("Not found pci_dev->dev")
+            return False
+
+        # pci_dev->resource
+        """
+        struct resource {
+            resource_size_t start;
+            resource_size_t end;
+            const char *name;
+            unsigned long flags;
+            unsigned long desc;
+            struct resource *parent, *sibling, *child;
+        };
+        """
+
+        ofs_base = self.offset_pci_dev_dev + current_arch.ptrsize
+        for i in range(200):
+            v = read_int_from_memory(first_dev + ofs_base + current_arch.ptrsize * i)
+            if is_valid_addr(v):
+                if read_cstring_from_memory(v) == "0000:00:00.0":
+                    self.offset_pci_dev_resource = ofs_base + current_arch.ptrsize * i - 0x10
+                    self.sizeof_resource = 0x10 + current_arch.ptrsize * 6
+                    if not self.quiet:
+                        info("offsetof(pci_dev, resource): {:#x}".format(self.offset_pci_dev_resource))
+                    break
+        else:
+            if not self.quiet:
+                err("Not found pci_dev->resource")
+            return False
+
+        # pci.ids
+        pci_ids_file_name = "/usr/share/misc/pci.ids"
+        if os.path.exists(pci_ids_file_name):
+            if not self.quiet:
+                info("use {:s}".format(pci_ids_file_name))
+            content = open(pci_ids_file_name).read()
+        else:
+            pci_ids_file_name = os.path.join(GEF_TEMP_DIR, "pci.ids")
+            if os.path.exists(pci_ids_file_name):
+                if not self.quiet:
+                    info("use {:s}".format(pci_ids_file_name))
+                content = open(pci_ids_file_name).read()
+            else:
+                url = "https://raw.githubusercontent.com/pciutils/pciids/master/pci.ids"
+                if not self.quiet:
+                    info("use {:s}".format(url))
+                content = bytes2str(http_get(url) or "")
+                if not content:
+                    if not self.quiet:
+                        info("Connection timed out: {:s}".format(url))
+                open(pci_ids_file_name, "w").write(content)
+        self.pci_ids = self.parse_pci_ids(content)
+
+        self.initialized = True
+        return True
+
+    def parse_pci_ids(self, content):
+        dic = {}
+        class_mode = False
+        for line in content.splitlines():
+            if not line or line.startswith("#"):
+                continue
+
+            if class_mode is False and line.startswith("C"):
+                class_mode = True
+
+            if class_mode is False:
+                # device mode
+                if not line.startswith("\t"):
+                    vendor, *desc = line.split("  ")
+                    vendor = int(vendor, 16)
+                    dic[vendor] = " ".join(desc)
+                    continue
+
+                if line.startswith("\t") and not line.startswith("\t\t"):
+                    device, *desc = line[1:].split("  ")
+                    device = int(device, 16)
+                    dic[vendor, device] = " ".join(desc) # Use the previous value for `vendor`.
+                    continue
+
+                if line.startswith("\t\t"):
+                    subsystem, *desc = line[2:].split("  ")
+                    subv, subd = subsystem.split()
+                    subv = int(subv, 16)
+                    subd = int(subd, 16)
+                    dic[vendor, device, subv, subd] = " ".join(desc) # Use the previous value for `vendor` and `device`.
+                    continue
+
+            else:
+                # class mode
+                if not line.startswith("\t"):
+                    base_class, *desc = line.split("  ")
+                    base_class = int(base_class[2:], 16)
+                    dic["C", base_class] = " ".join(desc)
+                    continue
+
+                if line.startswith("\t") and not line.startswith("\t\t"):
+                    sub_class, *desc = line[1:].split("  ")
+                    sub_class = int(sub_class, 16)
+                    dic["C", base_class, sub_class] = " ".join(desc) # Use the previous value for `base_class`.
+                    continue
+
+                if line.startswith("\t\t"):
+                    prgif, *desc = line[2:].split("  ")
+                    prgif = int(prgif, 16)
+                    dic["C", base_class, sub_class, prgif] = " ".join(desc) # Use the previous value for `base_class` and `sub_class`.
+                    continue
+        return dic
+
+    def get_description(self, base_class, sub_class, prgif, vendor, device, subv, subd):
+        # The information provided by the programming interface (prgif) is too detailed, 
+        # so I decided not to use it.
+        class_str = self.pci_ids.get(("C", base_class, sub_class), None)
+        if class_str is None:
+            class_str = self.pci_ids.get(("C", base_class), None)
+        if class_str is None:
+            class_str = "???"
+
+        device_str = self.pci_ids.get((vendor, device, subv, subd), None)
+        if device_str is None:
+            device_str = self.pci_ids.get((vendor, device), None)
+        if device_str is None:
+            device_str = self.pci_ids.get(vendor, None)
+        if device_str is None:
+            device_str = "???"
+
+        qemu_monitor_out = ""
+        if is_qemu_system():
+            dev = ""
+            res = gdb.execute("monitor info qtree", to_string=True)
+            target = "pci id {:04x}:{:04x} (sub {:04x}:{:04x})".format(vendor, device, subv, subd)
+            for line in res.splitlines():
+                m = re.search('dev: (.+), id ".*"', line)
+                if m:
+                    dev = m.group(1)
+                    continue
+                if target in line:
+                    qemu_monitor_out = " ({:s})".format(Color.boldify(dev))
+                    break
+
+        return "{:s} / {:s}".format(class_str, device_str) + qemu_monitor_out
+
+    def get_flags_str(self, flags_value):
+        _flags = {
+            "IORESOURCE_BUSY":                  0x80000000,
+            "IORESOURCE_AUTO":                  0x40000000,
+            "IORESOURCE_UNSET":                 0x20000000,
+            "IORESOURCE_DISABLED":              0x10000000,
+            "IORESOURCE_EXCLUSIVE":             0x08000000,
+            "IORESOURCE_SYSRAM_MERGEABLE":      0x04000000,
+            "IORESOURCE_SYSRAM_DRIVER_MANAGED": 0x02000000,
+            "IORESOURCE_SYSRAM":                0x01000000,
+            "IORESOURCE_MUXED":                 0x00400000,
+            "IORESOURCE_WINDOW":                0x00200000,
+            "IORESOURCE_MEM_64":                0x00100000,
+            "IORESOURCE_STARTALIGN":            0x00080000,
+            "IORESOURCE_SIZEALIGN":             0x00040000,
+            "IORESOURCE_SHADOWABLE":            0x00020000,
+            "IORESOURCE_RANGELENGTH":           0x00010000,
+            "IORESOURCE_CACHEABLE":             0x00008000,
+            "IORESOURCE_READONLY":              0x00004000,
+            "IORESOURCE_PREFETCH":              0x00002000,
+            "IORESOURCE_BUS":                   0x00001000,
+            "IORESOURCE_DMA":                   0x00000800,
+            "IORESOURCE_IRQ":                   0x00000400,
+            "IORESOURCE_MEM":                   0x00000200,
+            "IORESOURCE_IO":                    0x00000100,
+        }
+        flags = []
+        for k, v in _flags.items():
+            if flags_value & v:
+                flags.append(k)
+
+        if "IORESOURCE_IO" in flags and "IORESOURCE_MEM" in flags:
+            flags.remove("IORESOURCE_IO")
+            flags.remove("IORESOURCE_MEM")
+            flags.append("IORESOURCE_REG")
+
+        flags_str = "|".join(flags)
+        if flags_str == "":
+            flags_str = "none"
+        return flags_str.replace("IORESOURCE_", "")
+
+    def search_label(self, start, end):
+        if not is_qemu_system():
+            return []
+
+        label_list = []
+        res = gdb.execute("monitor info mtree -f", to_string=True)
+        for line in res.splitlines():
+            if not line.startswith("  "):
+                continue
+
+            m = re.search(r"  ([0-9a-f]+)-([0-9a-f]+)", line)
+            if not m:
+                continue
+
+            s = int(m.group(1), 16)
+            e = int(m.group(2), 16)
+            if not (start <= s and e <= end):
+                continue
+
+            line = "      -> " + line.lstrip()
+            if line not in label_list:
+                label_list.append(line)
+
+        if label_list == []:
+            label_list.append("      -> Not found from `monitor info mtree -f")
+        return label_list
+
+    def walk_devices(self, dev):
+        if not self.quiet:
+            fmt = "{:18s} {:12s} {:7s} {:10s} {:10s} {:3s} {:s}"
+            legend = ["pci_dev", "name", "class", "vendor:dev", "subsystem", "rev", "decription"]
+            self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
+        if not dev:
+            return
+
+        while dev not in self.seen_dev:
+            self.seen_dev.append(dev)
+
+            # parse device info
+            dev_name = read_cstring_from_memory(read_int_from_memory(dev + self.offset_pci_dev_dev))
+            vendor = u16(read_memory(dev + self.offset_pci_dev_vendor, 2))
+            device = u16(read_memory(dev + self.offset_pci_dev_device, 2))
+            sub_vendor = u16(read_memory(dev + self.offset_pci_dev_subsystem_vendor, 2))
+            sub_device = u16(read_memory(dev + self.offset_pci_dev_subsystem_device, 2))
+            revision = u8(read_memory(dev + self.offset_pci_dev_revision, 1))
+
+            # u32:class = u8:unused || u8:base_class || u8:sub_class || u8:programming-interface
+            class_val = u32(read_memory(dev + self.offset_pci_dev_class, 4))
+            prgif = class_val & 0xff
+            sub_class = (class_val >> 8) & 0xff
+            base_class = (class_val >> 16) & 0xff
+
+            desc = self.get_description(base_class, sub_class, prgif, vendor, device, sub_vendor, sub_device)
+            fmt = "{:#018x} {:s} {:02x}{:02x}:{:02x} {:04x}:{:04x}  {:04x}:{:04x}  {:02x}  {:s}"
+            self.out.append(fmt.format(dev, dev_name, base_class, sub_class, prgif, vendor, device, sub_vendor, sub_device, revision, desc))
+
+            if self.verbose:
+                # parse resouce
+                i = 0
+                while True:
+                    resource_i = dev + self.offset_pci_dev_resource + self.sizeof_resource * i
+
+                    # parse resouce name
+                    resource_i_name = read_int_from_memory(resource_i + 8 * 2)
+                    if not is_valid_addr(resource_i_name):
+                        break
+                    if read_cstring_from_memory(resource_i_name) != dev_name:
+                        break
+
+                    # parse resource address
+                    resource_i_start = read_int_from_memory(resource_i + 8 * 0)
+                    resource_i_end = read_int_from_memory(resource_i + 8 * 1)
+                    resource_i_size = resource_i_end - resource_i_start
+
+                    if resource_i_start != 0 and resource_i_end != 0:
+                        # parse resource flags
+                        resource_i_flags = read_int_from_memory(resource_i + 8 * 2 + current_arch.ptrsize)
+                        flag_str = self.get_flags_str(resource_i_flags)
+                        if (resource_i_flags & 0x300) == 0x300:
+                            type_str = "RegOffs"
+                        elif resource_i_flags & 0x100:
+                            type_str = "I/O-Mem"
+                        elif resource_i_flags & 0x200:
+                            type_str = "PhysMem"
+                        else:
+                            type_str = "???"
+
+                        fmt = "  [{:d}] {:7s}: {:#010x}-{:#010x} ({:#010x}) flags:{:#x} ({:s})"
+                        self.out.append(fmt.format(i, type_str, resource_i_start, resource_i_end, resource_i_size, resource_i_flags, flag_str))
+
+                        # add more details
+                        ret = self.search_label(resource_i_start, resource_i_end)
+                        self.out.extend(ret)
+                    i += 1
+
+            # goto next
+            dev = read_int_from_memory(dev + self.offset_pci_dev_bus_list)
+        return
+
+    def walk_pci_bus(self, bus):
+        if not bus:
+            return
+
+        while bus not in self.seen_bus:
+            self.seen_bus.append(bus)
+            bus_name = read_cstring_from_memory(read_int_from_memory(bus + self.offset_pci_bus_dev))
+            self.out.append(titlify("Bus {:s}: {:#x}".format(bus_name, bus)))
+
+            # parse device
+            self.seen_dev.append(bus + self.offset_pci_bus_devices)
+            dev = read_int_from_memory(bus + self.offset_pci_bus_devices)
+            self.walk_devices(dev)
+
+            # parse child
+            self.seen_bus.append(bus + self.offset_pci_bus_children)
+            first_child_bus = read_int_from_memory(bus + self.offset_pci_bus_children)
+            self.walk_pci_bus(first_child_bus)
+
+            # goto next
+            bus = read_int_from_memory(bus + self.offset_pci_bus_node)
+        return
+
+    def dump_pci(self):
+        first_root_bus = read_int_from_memory(self.pci_root_buses)
+        self.seen_bus = [self.pci_root_buses]
+        self.seen_dev = []
+        self.walk_pci_bus(first_root_bus)
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if not args.quiet:
+            info("Wait for memory scan")
+
+        self.quiet = args.quiet
+        self.verbose = args.verbose
+
+        if not self.initialize():
+            return
+
+        self.out = []
+        self.dump_pci()
         if self.out:
             gef_print("\n".join(self.out), less=not args.no_pager)
         return
