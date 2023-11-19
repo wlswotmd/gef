@@ -125,7 +125,7 @@ def get_new_defs(header_path):
 def get_gef_defs(start_kw, end_kw):
     gef = open(GEF_TMP_PATH, "rb").read().decode("ascii").splitlines()
     start_kw_pos = gef.index(start_kw)
-    end_kw_pos = gef.index('"""', start_kw_pos)
+    end_kw_pos = gef.index(end_kw, start_kw_pos)
     return gef[start_kw_pos + 1:end_kw_pos], start_kw_pos, end_kw_pos
 
 # replace line and add "!"
