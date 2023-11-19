@@ -74489,6 +74489,7 @@ class WalkLinkListCommand(GenericCommand):
             if flink == 0:
                 break
             if flink == head:
+                self.out[-1] += " (head)"
                 break
             if flink in seen[1:]:
                 self.err("loop detected")
