@@ -70506,7 +70506,13 @@ class PagewalkWithHintsCommand(GenericCommand):
         if not self.quiet:
             info("resolve slub (search full slab cache; skip if target region size >= 0x200000)")
         old_regions = list(self.regions.items())[::]
-        for _region_addr, region in old_regions:
+
+        try:
+            from tqdm import tqdm
+        except ImportError:
+            tqdm = lambda x, leave: x
+
+        for _region_addr, region in tqdm(old_regions, leave=False):
             if "slab cache" in region.description:
                 continue
             if region.perm != "rw-":
