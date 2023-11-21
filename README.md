@@ -556,6 +556,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ret2dl-hint.png)
 * `srop-hint`: shows the code for sigreturn-oriented-programming as hint.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/srop-hint.png)
+* `sigreturn`: displays stack values for sigreturn syscall.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/sigreturn.png)
 * `smart-memory-dump`: dumps all regions of the memory to each file.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/smart-memory-dump.png)
 * `search-cfi-gadgets`: searches CFI-valid (for CET IBT) and controllable generally gadgets from executable area.

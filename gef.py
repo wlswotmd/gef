@@ -26186,6 +26186,207 @@ class PatternSearchCommand(GenericCommand):
 
 
 @register_command
+class SigreturnCommand(GenericCommand):
+    """Display stack values for sigreturn syscall."""
+    _cmdline_ = "sigreturn"
+    _category_ = "03-b. Memory - View"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+                        help="the address you want to interpret as the beginning of a sigframe. (default: current_arch.sp)")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if args.location is None:
+            base = current_arch.sp
+        else:
+            base = args.location
+
+        if is_x86_64():
+            sigreturn_defines = [
+                "rt_sigframe.pretcode",
+                "rt_sigframe.uc.uc_flags",
+                "rt_sigframe.uc.uc_link",
+                "rt_sigframe.uc.uc_stack.ss_sp",
+                "rt_sigframe.uc.uc_stack.ss_flags|ss_size",
+                "rt_sigframe.uc.uc_mcontext.r8",
+                "rt_sigframe.uc.uc_mcontext.r9",
+                "rt_sigframe.uc.uc_mcontext.r10",
+                "rt_sigframe.uc.uc_mcontext.r11",
+                "rt_sigframe.uc.uc_mcontext.r12",
+                "rt_sigframe.uc.uc_mcontext.r13",
+                "rt_sigframe.uc.uc_mcontext.r14",
+                "rt_sigframe.uc.uc_mcontext.r15",
+                "rt_sigframe.uc.uc_mcontext.rdi",
+                "rt_sigframe.uc.uc_mcontext.rsi",
+                "rt_sigframe.uc.uc_mcontext.rbp",
+                "rt_sigframe.uc.uc_mcontext.rbx",
+                "rt_sigframe.uc.uc_mcontext.rdx",
+                "rt_sigframe.uc.uc_mcontext.rax",
+                "rt_sigframe.uc.uc_mcontext.rcx",
+                "rt_sigframe.uc.uc_mcontext.rsp",
+                "rt_sigframe.uc.uc_mcontext.rip",
+                "rt_sigframe.uc.uc_mcontext.rflags",
+                "rt_sigframe.uc.uc_mcontext.cs|gs|fs|__pad0",
+                "rt_sigframe.uc.uc_mcontext.err",
+                "rt_sigframe.uc.uc_mcontext.trapno",
+                "rt_sigframe.uc.uc_mcontext.oldmask",
+                "rt_sigframe.uc.uc_mcontext.cr2",
+                "rt_sigframe.uc.uc_mcontext.fpstate",
+                "rt_sigframe.uc.uc_mcontext.reserved[8]",
+                "rt_sigframe.uc.uc_sigmask",
+                "rt_sigframe.info",
+            ]
+        elif is_x86_32():
+            sigreturn_defines = [
+                "sigframe.sc.gs",
+                "sigframe.sc.fs",
+                "sigframe.sc.es",
+                "sigframe.sc.ds",
+                "sigframe.sc.edi",
+                "sigframe.sc.esi",
+                "sigframe.sc.ebp",
+                "sigframe.sc.esp",
+                "sigframe.sc.ebx",
+                "sigframe.sc.edx",
+                "sigframe.sc.ecx",
+                "sigframe.sc.eax",
+                "sigframe.sc.trapno",
+                "sigframe.sc.err",
+                "sigframe.sc.eip",
+                "sigframe.sc.cs",
+                "sigframe.sc.eflags",
+                "sigframe.sc.esp_at_signal",
+                "sigframe.sc.ss",
+                "sigframe.sc.fpstate",
+                "sigframe.sc.oldmask",
+                "sigframe.sc.cr2",
+            ]
+        elif is_arm32():
+            sigreturn_defines = [
+                "sigframe.uc.uc_flags",
+                "sigframe.uc.uc_link",
+                "sigframe.uc.uc_stack.ss_sp",
+                "sigframe.uc.uc_stack.ss_flags",
+                "sigframe.uc.uc_stack.ss_size",
+                "sigframe.uc.uc_mcontext.trapno",
+                "sigframe.uc.uc_mcontext.error_code",
+                "sigframe.uc.uc_mcontext.oldmask",
+                "sigframe.uc.uc_mcontext.arm_r0",
+                "sigframe.uc.uc_mcontext.arm_r1",
+                "sigframe.uc.uc_mcontext.arm_r2",
+                "sigframe.uc.uc_mcontext.arm_r3",
+                "sigframe.uc.uc_mcontext.arm_r4",
+                "sigframe.uc.uc_mcontext.arm_r5",
+                "sigframe.uc.uc_mcontext.arm_r6",
+                "sigframe.uc.uc_mcontext.arm_r7",
+                "sigframe.uc.uc_mcontext.arm_r8",
+                "sigframe.uc.uc_mcontext.arm_r9",
+                "sigframe.uc.uc_mcontext.arm_r10",
+                "sigframe.uc.uc_mcontext.arm_fp",
+                "sigframe.uc.uc_mcontext.arm_ip",
+                "sigframe.uc.uc_mcontext.arm_sp",
+                "sigframe.uc.uc_mcontext.arm_lr",
+                "sigframe.uc.uc_mcontext.arm_pc",
+                "sigframe.uc.uc_mcontext.arm_cpsr",
+                "sigframe.uc.uc_mcontext.fault_address",
+                "sigframe.uc.uc_sigmask",
+            ]
+        elif is_arm64():
+            sigreturn_defines = [
+                "rt_sigframe.info+0x00",
+                "rt_sigframe.info+0x08",
+                "rt_sigframe.info+0x10",
+                "rt_sigframe.info+0x18",
+                "rt_sigframe.info+0x20",
+                "rt_sigframe.info+0x28",
+                "rt_sigframe.info+0x30",
+                "rt_sigframe.info+0x38",
+                "rt_sigframe.info+0x40",
+                "rt_sigframe.info+0x48",
+                "rt_sigframe.info+0x50",
+                "rt_sigframe.info+0x58",
+                "rt_sigframe.info+0x60",
+                "rt_sigframe.info+0x68",
+                "rt_sigframe.info+0x70",
+                "rt_sigframe.info+0x78",
+                "rt_sigframe.uc.uc_flags",
+                "rt_sigframe.uc.uc_link",
+                "rt_sigframe.uc.uc_stack.ss_sp",
+                "rt_sigframe.uc.uc_stack.ss_flags",
+                "rt_sigframe.uc.uc_stack.ss_size",
+                "rt_sigframe.uc.uc_stack.__unused",
+                "rt_sigframe.uc.uc_sigmask",
+                "rt_sigframe.uc.__unused[120]+0x00",
+                "rt_sigframe.uc.__unused[120]+0x08",
+                "rt_sigframe.uc.__unused[120]+0x10",
+                "rt_sigframe.uc.__unused[120]+0x18",
+                "rt_sigframe.uc.__unused[120]+0x20",
+                "rt_sigframe.uc.__unused[120]+0x28",
+                "rt_sigframe.uc.__unused[120]+0x30",
+                "rt_sigframe.uc.__unused[120]+0x38",
+                "rt_sigframe.uc.__unused[120]+0x40",
+                "rt_sigframe.uc.__unused[120]+0x48",
+                "rt_sigframe.uc.__unused[120]+0x50",
+                "rt_sigframe.uc.__unused[120]+0x58",
+                "rt_sigframe.uc.__unused[120]+0x60",
+                "rt_sigframe.uc.__unused[120]+0x68",
+                "rt_sigframe.uc.__unused[120]+0x70",
+                "rt_sigframe.uc.uc_mcontext.fault_address",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x0",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x1",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x2",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x3",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x4",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x5",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x6",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x7",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x8",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x9",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x10",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x11",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x12",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x13",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x14",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x15",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x16",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x17",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x18",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x19",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x20",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x21",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x22",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x23",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x24",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x25",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x26",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x27",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x28",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x29",
+                "rt_sigframe.uc.uc_mcontext.regs[31].x30",
+                "rt_sigframe.uc.uc_mcontext.sp",
+                "rt_sigframe.uc.uc_mcontext.pc",
+                "rt_sigframe.uc.uc_mcontext.pstate",
+            ]
+
+        max_name_width = max(len(x) for x in sigreturn_defines)
+
+        out = []
+        for i, tag in enumerate(sigreturn_defines):
+            line = DereferenceCommand.pprint_dereferenced(base, i, tag.ljust(max_name_width))
+            out.append(line)
+
+        gef_print("\n".join(out), less=not args.no_pager)
+        return
+
+
+@register_command
 class SropHintCommand(GenericCommand):
     """Hint for sigreturn oriented programming."""
     _cmdline_ = "srop-hint"
