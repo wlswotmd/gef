@@ -485,6 +485,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hash-memory.png)
 * `memcmp`: compares the contents of the address A and B, whether virtual or physical.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/memcmp.png)
+* `memset`: sets the value to the memory range, whether virtual or physical.
 * `memcpy`: copies the contents from the address A to B, whether virtual or physical.
 * `memswap`: swaps the contents of the address A and B, whether virtual or physical.
 * `meminsert`: inserts the contents of the address A to B, whether virtual or physical.

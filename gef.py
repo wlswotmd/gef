@@ -55361,6 +55361,65 @@ class MemoryCompareCommand(GenericCommand):
 
 
 @register_command
+class MemorySetCommand(GenericCommand):
+    """Set the value to the memory range."""
+    _cmdline_ = "memset"
+    _category_ = "03-c. Memory - Patch"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("--phys", action="store_true", help="treat TO_ADDRESS as a physical address.")
+    parser.add_argument("to_addr", metavar="TO_ADDRESS", type=parse_address, help="destination of memset.")
+    parser.add_argument("value", metavar="VALUE", type=parse_address, help="the value to write.")
+    parser.add_argument("size", metavar="SIZE", type=parse_address, help="the size for memset.")
+    _syntax_ = parser.format_help()
+
+    _note_ = "If you want to specify a large value for `VALUE`, use the `patch string` command."
+
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        return
+
+    def memset(self, to_phys, to_addr, value, size):
+        data = bytes([value]) * size
+        try:
+            if to_phys:
+                before = read_physmem(to_addr, size)
+                written = write_physmem(to_addr, data)
+            else:
+                before = read_memory(to_addr, size)
+                written = write_memory(to_addr, data)
+        except (gdb.MemoryError, ValueError, OverflowError):
+            err("Write error {:#x}".format(to_addr))
+            return
+
+        info("Write count: {:#x}".format(written))
+
+        history_info = {"addr": to_addr, "before_data": before, "after_data": data, "physmode": to_phys}
+        PatchCommand.patch_insert(history_info)
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if args.phys:
+            if not is_qemu_system():
+                err("Unsupported")
+                return
+
+        if args.size == 0:
+            info("The size is zero, maybe wrong.")
+
+        if args.value < 0 or 256 <= args.value:
+            err("Wrong value (it must be 0x00-0xff)")
+            return
+
+        self.memset(args.phys, args.to_addr, args.value, args.size)
+        return
+
+
+@register_command
 class MemoryCopyCommand(GenericCommand):
     """Copy the contents of one memory to another."""
     _cmdline_ = "memcpy"
