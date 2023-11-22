@@ -13073,7 +13073,7 @@ class ArgvCommand(GenericCommand):
     _category_ = "02-d. Process Information - Trivial Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-v", "--verbose", action="store_true", help="print all elements. (default: outputs up to 100).")
+    parser.add_argument("-v", "--verbose", action="store_true", help="print all elements. (default: outputs up to 100)")
     _syntax_ = parser.format_help()
 
     def get_address_from_symbol(self, symbol):
@@ -75372,8 +75372,10 @@ class PeekPointersCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("address", metavar="ADDRESS", type=parse_address, nargs="?",
-                        help="search start address. (default: $sp)")
+                        help="search start address. (default: current_arch.sp)")
     parser.add_argument("name", metavar="NAME", nargs="?", help="what area to search. (default: all area)")
+    parser.add_argument("-b", "--nb-byte", type=lambda x: int(x, 0), default=0,
+                        help="the size to dump each area. (default: %(default)s)")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
@@ -75438,8 +75440,17 @@ class PeekPointersCommand(GenericCommand):
             found_offset = off * current_arch.ptrsize
             found_addr = lookup_address(start_addr.value + found_offset)
             perm = value.section.permission
-            fmt = "Found at {!s} (+{:#x}): {!s}{:s} ('{:s}', perm: {!s})"
+            fmt = "Found at {!s} (+{:#x}): {!s}{:s} ('{:s}' [{!s}])"
             out.append(fmt.format(found_addr, found_offset, value, sym, sec_name, perm))
+
+            # peek nbyte
+            if args.nb_byte:
+                try:
+                    peeked_data = read_memory(value.value, args.nb_byte)
+                    h = hexdump(peeked_data, 0x10, base=value.value, show_symbol=False)
+                    out.append(h)
+                except gdb.MemoryError:
+                    pass
 
         if len(out) > 0x10:
             gef_print("\n".join(out), less=not args.no_pager)
