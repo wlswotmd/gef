@@ -17228,7 +17228,7 @@ class GlibcHeapChunksCommand(GenericCommand):
         self.out = []
         self.print_heap_chunks(arena, dump_start, nb)
 
-        if len(self.out) > 60:
+        if len(self.out) > get_terminal_size()[0]:
             gef_print("\n".join(self.out), less=not args.no_pager)
         else:
             gef_print("\n".join(self.out), less=False)
@@ -25792,7 +25792,7 @@ class VMMapCommand(GenericCommand):
                 self.info("Searched from auxv, registers and stack values. There may be areas that cannot be detected.")
                 self.info("Permission is based on ELF header or default value `rw-`. Dynamic permission changes cannot be detected.")
 
-        if len(self.out) > 60:
+        if len(self.out) > get_terminal_size()[0]:
             gef_print("\n".join(self.out), less=not args.no_pager)
         else:
             gef_print("\n".join(self.out), less=False)
@@ -28530,7 +28530,7 @@ class SyscallSearchCommand(GenericCommand):
         self.out = []
         self.make_output(syscall_table, syscall_num, syscall_name_pattern)
 
-        if len(self.out) > 20:
+        if len(self.out) > get_terminal_size()[0]:
             gef_print("\n".join(self.out), less=not args.no_pager)
         else:
             gef_print("\n".join(self.out), less=False)
@@ -49978,7 +49978,7 @@ class KernelModuleCommand(GenericCommand):
 
                 self.out.append(titlify(""))
 
-        if len(self.out) > 20:
+        if len(self.out) > get_terminal_size()[0]:
             gef_print("\n".join(self.out), less=not args.no_pager)
         else:
             gef_print("\n".join(self.out), less=False)
@@ -50357,7 +50357,7 @@ class KernelBlockDevicesCommand(GenericCommand):
             self.out.append(fmt.format(bdev, name, major, minor))
 
         if self.out:
-            if len(self.out) > 20:
+            if len(self.out) > get_terminal_size()[0]:
                 gef_print("\n".join(self.out), less=not args.no_pager)
             else:
                 gef_print("\n".join(self.out), less=False)
@@ -62216,10 +62216,10 @@ class KsymaddrRemoteCommand(GenericCommand):
         self.print_kallsyms(args.keyword)
 
         if self.out:
-            if len(self.out) < 10:
-                gef_print("\n".join(self.out))
-            else:
+            if len(self.out) > get_terminal_size()[0]:
                 gef_print("\n".join(self.out), less=not args.no_pager)
+            else:
+                gef_print("\n".join(self.out), less=False)
         return
 
 
@@ -75460,7 +75460,7 @@ class PeekPointersCommand(GenericCommand):
                 except gdb.MemoryError:
                     pass
 
-        if len(out) > 0x10:
+        if len(out) > get_terminal_size()[0]:
             gef_print("\n".join(out), less=not args.no_pager)
         else:
             gef_print("\n".join(out), less=False)
