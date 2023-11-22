@@ -14539,15 +14539,16 @@ class SearchPatternCommand(GenericCommand):
         title = "In "
         if section.path:
             title += "'{}' ".format(Color.blueify(section.path))
-
         title += "({:#x}-{:#x} [{}])".format(section.page_start, section.page_end, section.permission)
+
         ok(title)
         return
 
     def print_loc(self, loc):
         if self.aligned and loc[0] % self.aligned:
             return
-        gef_print('  {:#x} - {:#x} {}  "{}"'.format(loc[0], loc[1], RIGHT_ARROW, Color.magentaify(loc[2]),))
+        h = hexdump(loc[1], 0x10, base=loc[0])
+        gef_print("  {:s}".format(h))
         return
 
     def search_pattern_by_address(self, pattern, start_address, end_address):
@@ -14580,17 +14581,23 @@ class SearchPatternCommand(GenericCommand):
 
             for match in re.finditer(pattern, mem):
                 start = chunk_addr + match.start()
-                ustr = gef_pystring(pattern)
-                end = start + len(pattern.decode("unicode-escape"))
                 if self.interval:
                     if len(locations) > 0:
                         if start < locations[-1][0] + self.interval:
                             continue
-                locations.append((start, end, ustr))
+
+                data = mem[match.start():][:0x10]
+                if len(data) < 0x10:
+                    try:
+                        data += read_memory(chunk_addr + chunk_size, 0x10 - len(data))
+                    except gdb.MemoryError:
+                        pass
+
+                locations.append((start, data))
+
                 self.found_count += 1
                 if self.limit and self.limit <= self.found_count:
-                    break
-            del mem
+                    return locations
         return locations
 
     @staticmethod
