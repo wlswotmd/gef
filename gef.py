@@ -43319,21 +43319,21 @@ class TransCommand(GenericCommand):
         try:
             value = int(value, 0)
             self.out.append(titlify("pack"))
-            self.out.append("pack8:         {}".format(p8(value & 0xff)))
-            self.out.append("pack16:        {}".format(p16(value & 0xffff)))
-            self.out.append("pack32:        {}".format(p32(value & 0xffffffff)))
-            self.out.append("pack64:        {}".format(p64(value & 0xffffffffffffffff)))
+            self.out.append("pack8:          {}".format(p8(value & 0xff)))
+            self.out.append("pack16:         {}".format(p16(value & 0xffff)))
+            self.out.append("pack32:         {}".format(p32(value & 0xffffffff)))
+            self.out.append("pack64:         {}".format(p64(value & 0xffffffffffffffff)))
             low = value & 0xffffffffffffffff
             high = (value >> 64) & 0xffffffffffffffff
             val128 = p64(low) + p64(high)
-            self.out.append("pack128:       {}".format(val128))
+            self.out.append("pack128:        {}".format(val128))
 
             self.out.append(titlify("pack-hex"))
-            self.out.append("pack8-hex:     {}".format(p8(value & 0xff).hex()))
-            self.out.append("pack16-hex:    {}".format(p16(value & 0xffff).hex()))
-            self.out.append("pack32-hex:    {}".format(p32(value & 0xffffffff).hex()))
-            self.out.append("pack64-hex:    {}".format(p64(value & 0xffffffffffffffff).hex()))
-            self.out.append("pack128-hex:   {}".format(val128.hex()))
+            self.out.append("pack8-hex:      {}".format(p8(value & 0xff).hex()))
+            self.out.append("pack16-hex:     {}".format(p16(value & 0xffff).hex()))
+            self.out.append("pack32-hex:     {}".format(p32(value & 0xffffffff).hex()))
+            self.out.append("pack64-hex:     {}".format(p64(value & 0xffffffffffffffff).hex()))
+            self.out.append("pack128-hex:    {}".format(val128.hex()))
         except ValueError:
             pass
         return
@@ -43342,12 +43342,12 @@ class TransCommand(GenericCommand):
         try:
             value = codecs.escape_decode(value)[0] + b"\0" * 16
             self.out.append(titlify("unpack"))
-            self.out.append("unpack8:       {:#04x}".format(u8(value[:1])))
-            self.out.append("unpack16:      {:#06x}".format(u16(value[:2])))
-            self.out.append("unpack32:      {:#010x}".format(u32(value[:4])))
-            self.out.append("unpack64:      {:#018x}".format(u64(value[:8])))
+            self.out.append("unpack8:        {:#04x}".format(u8(value[:1])))
+            self.out.append("unpack16:       {:#06x}".format(u16(value[:2])))
+            self.out.append("unpack32:       {:#010x}".format(u32(value[:4])))
+            self.out.append("unpack64:       {:#018x}".format(u64(value[:8])))
             low, high = value[:8], value[8:16]
-            self.out.append("unpack128:     {:#034x}".format((u64(high) << 64) | u64(low)))
+            self.out.append("unpack128:      {:#034x}".format((u64(high) << 64) | u64(low)))
         except binascii.Error:
             pass
         return
@@ -43357,9 +43357,9 @@ class TransCommand(GenericCommand):
             value = codecs.escape_decode(value)[0]
             self.out.append(titlify("tohex"))
             hexed = binascii.hexlify(value)
-            self.out.append("tohex:         {}".format(hexed))
+            self.out.append("tohex:          {}".format(hexed))
             hexed_null = b"00".join(slicer(hexed, 2)) + b"00"
-            self.out.append("tohex w/NULL:  {}".format(hexed_null))
+            self.out.append("tohex w/NULL:   {}".format(hexed_null))
         except binascii.Error:
             pass
         return
@@ -43371,9 +43371,9 @@ class TransCommand(GenericCommand):
             else:
                 value = binascii.unhexlify(value)
             self.out.append(titlify("unhex"))
-            self.out.append("unhex:         {}".format(value))
+            self.out.append("unhex:          {}".format(value))
             value_null = b"\x00".join(slicer(value, 1)) + b"\x00"
-            self.out.append("unhex w/NULL:  {}".format(value_null))
+            self.out.append("unhex w/NULL:   {}".format(value_null))
         except binascii.Error:
             pass
         return
@@ -43384,8 +43384,8 @@ class TransCommand(GenericCommand):
             converted32 = byteswap(value, 4)
             converted64 = byteswap(value, 8)
             self.out.append(titlify("byteswap"))
-            self.out.append("byteswap-64:   {:#018x}".format(converted64))
-            self.out.append("byteswap-32:   {:#010x}".format(converted32))
+            self.out.append("byteswap-64:    {:#018x}".format(converted64))
+            self.out.append("byteswap-32:    {:#010x}".format(converted32))
         except ValueError:
             pass
         return
@@ -43394,10 +43394,10 @@ class TransCommand(GenericCommand):
         try:
             value = int(value, 0)
             self.out.append(titlify("integer"))
-            self.out.append("hex:           {:#x}".format(value))
-            self.out.append("dec:           {:d}".format(value))
-            self.out.append("oct:           {:#o}".format(value))
-            self.out.append("bin:           {:#b}".format(value))
+            self.out.append("hex:            {:#x}".format(value))
+            self.out.append("dec:            {:d}".format(value))
+            self.out.append("oct:            {:#o}".format(value))
+            self.out.append("bin:            {:#b}".format(value))
             out = ""
             x = value
             while x:
@@ -43409,7 +43409,7 @@ class TransCommand(GenericCommand):
                     out = "_" + out
                 x >>= 1
             splitted_value = "0b" + out.lstrip("_")
-            self.out.append("bin w/sep:     {:s}".format(splitted_value))
+            self.out.append("bin w/sep:      {:s}".format(splitted_value))
         except ValueError:
             pass
         return
@@ -43422,8 +43422,8 @@ class TransCommand(GenericCommand):
         try:
             value = int(value, 0)
             self.out.append(titlify("signed"))
-            self.out.append("u2i-64:        {:#018x}".format(uq(pQ(value))))
-            self.out.append("u2i-32:        {:#010x}".format(ui(p(value))))
+            self.out.append("u2i-64:         {:#018x}".format(uq(pQ(value))))
+            self.out.append("u2i-32:         {:#010x}".format(ui(p(value))))
         except ValueError:
             pass
         return
@@ -43432,9 +43432,9 @@ class TransCommand(GenericCommand):
         try:
             value = codecs.escape_decode(value)[0]
             self.out.append(titlify("string"))
-            self.out.append("str:           {}".format(value))
+            self.out.append("str:            {}".format(value))
             value_null = b"\x00".join(slicer(value, 1)) + b"\x00"
-            self.out.append("str w/NULL:    {}".format(value_null))
+            self.out.append("str w/NULL:     {}".format(value_null))
         except ValueError:
             pass
         return
@@ -43450,7 +43450,10 @@ class TransCommand(GenericCommand):
             for i in range(0x100):
                 xored = b"".join(bytes([x ^ i]) for x in value)
                 added = b"".join(bytes([(x + i) & 0xff]) for x in value)
-                self.out.append("xor/add-{:02X}:    {!s:{:d}} {!s:{:d}}".format(i, xored, ln, added, ln))
+                if 0x20 <= i < 0x7f:
+                    self.out.append("xor/add-{:02X}({:s}):  {!s:{:d}} {!s:{:d}}".format(i, chr(i), xored, ln, added, ln))
+                else:
+                    self.out.append("xor/add-{:02X}:     {!s:{:d}} {!s:{:d}}".format(i, xored, ln, added, ln))
 
             self.out.append(titlify("unhex - caesar"))
             for i in range(26):
@@ -43465,7 +43468,7 @@ class TransCommand(GenericCommand):
                         if x > ord("z"):
                             x -= ord("z")
                     slided.append(x)
-                self.out.append("caesar-{:02d}:     {}".format(i, bytes(slided)))
+                self.out.append("caesar-{:02d}:      {}".format(i, bytes(slided)))
         except binascii.Error:
             pass
         return
@@ -43478,7 +43481,10 @@ class TransCommand(GenericCommand):
             for i in range(0x100):
                 xored = b"".join(bytes([x ^ i]) for x in value)
                 added = b"".join(bytes([(x + i) & 0xff]) for x in value)
-                self.out.append("xor/add-{:02X}:    {:{:d}s} {:{:d}s}".format(i, str(xored), ln, str(added), ln))
+                if 0x20 <= i < 0x7f:
+                    self.out.append("xor/add-{:02X}({:s}):  {:{:d}s} {:{:d}s}".format(i, chr(i), str(xored), ln, str(added), ln))
+                else:
+                    self.out.append("xor/add-{:02X}:     {:{:d}s} {:{:d}s}".format(i, str(xored), ln, str(added), ln))
         except ValueError:
             pass
         return
@@ -43499,7 +43505,7 @@ class TransCommand(GenericCommand):
                         if x > ord("z"):
                             x -= ord("z")
                     slided.append(x)
-                self.out.append("caesar-{:02d}:     {}".format(i, bytes(slided)))
+                self.out.append("caesar-{:02d}:      {}".format(i, bytes(slided)))
         except ValueError:
             pass
         return
@@ -43561,7 +43567,7 @@ class TransCommand(GenericCommand):
 
             if encoded != decoded:
                 self.out.append(titlify("str - morse"))
-                self.out.append("morse-decode:  {}".format(decoded))
+                self.out.append("morse-decode:   {}".format(decoded))
         except ValueError:
             pass
         return
