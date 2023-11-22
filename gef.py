@@ -17120,6 +17120,8 @@ class GlibcHeapChunksCommand(GenericCommand):
                         help="the address you want to interpret as the beginning of a contiguous chunk. (default: arena.heap_base)")
     parser.add_argument("-a", "--arena-addr", type=parse_address,
                         help="the address you want to interpret as an arena. (default: main_arena)")
+    parser.add_argument("-b", "--nb-byte", type=lambda x: int(x, 0), help="temporarily override `heap_chunks.peek_nb_byte`.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}\n".format(_cmdline_)
@@ -17128,6 +17130,69 @@ class GlibcHeapChunksCommand(GenericCommand):
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         self.add_setting("peek_nb_byte", 0, "Hexdump N first byte(s) inside the chunk data (0 to disable)")
+        return
+
+    def warn(self, msg):
+        msg = "{} {}".format(Color.colorify("[+]", "bold yellow"), msg)
+        self.out.append(msg)
+        return
+
+    def err(self, msg):
+        msg = "{} {}".format(Color.colorify("[+]", "bold red"), msg)
+        self.out.append(msg)
+        return
+
+    def print_heap_chunks(self, arena, dump_start, nb):
+        # Do not show if top is broken, as it affects exit conditions.
+        if is_32bit() and arena.top % 0x08:
+            self.err("arena.top is corrupted")
+            return
+        elif is_64bit() and arena.top % 0x10:
+            self.err("arena.top is corrupted")
+            return
+
+        # It continues even if last_remainder is broken because it doesn't affect the exit condition.
+        if arena.last_remainder % 0x10:
+            self.warn("arena.last_remainder is corrupted")
+
+        freelist_hint_color = get_gef_setting("theme.heap_freelist_hint")
+        current_chunk = GlibcChunk(dump_start, from_base=True)
+
+        arena.reset_bins_info()
+        while True:
+            if current_chunk.chunk_base_address == arena.top:
+                self.out.append("{!s} {:s}".format(current_chunk, Color.colorify("{:s} top".format(LEFT_ARROW), freelist_hint_color)))
+                break
+            if current_chunk.chunk_base_address > arena.top:
+                self.err("Corrupted: chunk > top")
+                break
+            if current_chunk.size == 0:
+                # EOF
+                break
+
+            line = str(current_chunk)
+
+            # in or not in free-list
+            info = arena.make_bins_info(current_chunk.address)
+            if info:
+                line += Color.colorify(" {:s} {:s}".format(LEFT_ARROW, ", ".join(info)), freelist_hint_color)
+
+            self.out.append(line)
+
+            # peek nbyte
+            if nb:
+                peeked_data = read_memory(current_chunk.chunk_base_address, nb)
+                h = hexdump(peeked_data, 0x10, base=current_chunk.chunk_base_address)
+                self.out.append(h)
+
+            # goto next
+            next_chunk = current_chunk.get_next_chunk()
+            if next_chunk is None:
+                break
+            if not Address(value=next_chunk.address).valid:
+                self.err("Corrupted: next_chunk_address is invalid")
+                break
+            current_chunk = next_chunk
         return
 
     @parse_args
@@ -17155,59 +17220,18 @@ class GlibcHeapChunksCommand(GenericCommand):
         else:
             dump_start = args.location
 
-        self.print_heap_chunks(arena, dump_start)
-        return
+        if args.nb_byte is not None:
+            nb = args.nb_byte
+        else:
+            nb = self.get_setting("peek_nb_byte")
 
-    def print_heap_chunks(self, arena, dump_start):
-        # Do not show if top is broken, as it affects exit conditions.
-        if is_32bit() and arena.top % 0x08:
-            err("arena.top is corrupted")
-            return
-        elif is_64bit() and arena.top % 0x10:
-            err("arena.top is corrupted")
-            return
+        self.out = []
+        self.print_heap_chunks(arena, dump_start, nb)
 
-        # It continues even if last_remainder is broken because it doesn't affect the exit condition.
-        if arena.last_remainder % 0x10:
-            warn("arena.last_remainder is corrupted")
-
-        nb = self.get_setting("peek_nb_byte")
-        freelist_hint_color = get_gef_setting("theme.heap_freelist_hint")
-        current_chunk = GlibcChunk(dump_start, from_base=True)
-
-        arena.reset_bins_info()
-        while True:
-            if current_chunk.chunk_base_address == arena.top:
-                gef_print("{!s} {:s}".format(current_chunk, Color.colorify("{:s} top".format(LEFT_ARROW), freelist_hint_color)))
-                break
-            if current_chunk.chunk_base_address > arena.top:
-                err("Corrupted: chunk > top")
-                break
-            if current_chunk.size == 0:
-                # EOF
-                break
-
-            line = str(current_chunk)
-
-            # in or not in free-list
-            info = arena.make_bins_info(current_chunk.address)
-            if info:
-                line += Color.colorify(" {:s} {:s}".format(LEFT_ARROW, ", ".join(info)), freelist_hint_color)
-
-            # peek nbyte
-            if nb:
-                peeked_data = read_memory(current_chunk.chunk_base_address, nb)
-                h = hexdump(peeked_data, 0x10, base=current_chunk.chunk_base_address)
-                line += "\n{:s}".format(h.replace("\n", "     \n"))
-
-            gef_print(line)
-            next_chunk = current_chunk.get_next_chunk()
-            if next_chunk is None:
-                break
-            if not Address(value=next_chunk.address).valid:
-                err("Corrupted: next_chunk_address is invalid")
-                break
-            current_chunk = next_chunk
+        if len(self.out) > 60:
+            gef_print("\n".join(self.out), less=not args.no_pager)
+        else:
+            gef_print("\n".join(self.out), less=False)
         return
 
 
