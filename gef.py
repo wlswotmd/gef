@@ -12800,8 +12800,9 @@ class ContCommand(GenericCommand):
 @register_command
 class BreakRelativeVirtualAddressCommand(GenericCommand):
     """Set a breakpoint at relative offset from codebase."""
-    _cmdline_ = "brva"
+    _cmdline_ = "breakrva"
     _category_ = "01-b. Debugging Support - Breakpoint"
+    _aliases_ = ["brva"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("offset", metavar="OFFSET", type=parse_address,  help="the offset from codebase you want to set a breakpoint.")
