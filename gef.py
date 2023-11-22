@@ -42885,12 +42885,18 @@ class FindFakeFastCommand(GenericCommand):
     parser.add_argument("--include-heap", action="store_true", help="heap is also included in the search target.")
     parser.add_argument("--aligned", action="store_true", help="search only aligned chunks.")
     parser.add_argument("size", metavar="SIZE", type=parse_address, help="search target size.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
+
+    def info(self, msg):
+        msg = "{} {}".format(Color.colorify("[+]", "bold blue"), msg)
+        self.out.append(msg)
+        return
 
     def print_result(self, m, pos, size_candidate):
         path = "unknown" if m.path == "" else m.path
         address = lookup_address(m.page_start + pos)
-        info("Found at {!s} in {!r} [{!s}]".format(address, path, m.permission))
+        self.info("Found at {!s} in {!r} [{!s}]".format(address, path, m.permission))
 
         if is_32bit():
             res = gdb.execute("x/6xw {:#x}".format(address.value), to_string=True)
@@ -42913,9 +42919,9 @@ class FindFakeFastCommand(GenericCommand):
         else:
             flag += ["PREV_INUSED"]
 
-        gef_print("    [{:s}]".format(" ".join(flag)))
+        self.out.append("    [{:s}]".format(" ".join(flag)))
         for line in res.splitlines():
-            gef_print("    {:s}".format(line))
+            self.out.append("    {:s}".format(line))
         return
 
     def find_fake_fast(self, target_size):
@@ -42953,9 +42959,23 @@ class FindFakeFastCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
         self.dont_repeat()
+
+        if is_64bit():
+            MIN_SIZE = 0x20
+        else:
+            MIN_SIZE = 0x10
+
+        if args.size < MIN_SIZE:
+            err("Wrong size")
+            return
+
         self.include_heap = args.include_heap
         self.aligned = args.aligned
+
+        self.out = []
         self.find_fake_fast(args.size)
+
+        gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
