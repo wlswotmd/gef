@@ -10336,7 +10336,7 @@ def get_process_maps_linux(pid, remote=False):
             pathname = ""
         else:
             pathname = rest[1].lstrip()
-        inode = rest[0]
+        inode = int(rest[0])
 
         for th_num, tls_addr, _ in extra_info:
             if tls_addr and addr_start <= tls_addr < addr_end:
@@ -25910,8 +25910,8 @@ class XInfoCommand(GenericCommand):
     _category_ = "02-c. Process Information - Memory/Section"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", nargs="+", type=parse_address,
-                        help="the memory address you want to show the map information.")
+    parser.add_argument("location", metavar="LOCATION", nargs="*", type=parse_address,
+                        help="the memory address to show the information. (default: current_arch.pc)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $pc".format(_cmdline_)
@@ -25920,54 +25920,56 @@ class XInfoCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
+    def xinfo(self, address):
+        addr = lookup_address(address)
+        if not addr.valid:
+            warn("Cannot reach {:#x} in memory space".format(address))
+            return
+
+        gdb.execute("vmmap {:#x}".format(address))
+
+        if addr.section:
+            page_start = lookup_address(addr.section.page_start)
+            gef_print("Offset (from mapped):  {!s} + {:#x}".format(page_start, addr.value - addr.section.page_start))
+
+            if addr.section.path and addr.section.path.startswith("/"):
+                base_start = lookup_address(get_section_base_address(addr.section.path))
+                gef_print("Offset (from base):    {!s} + {:#x}".format(base_start, addr.value - base_start.section.page_start))
+
+        if addr.info:
+            zone_start = lookup_address(addr.info.zone_start)
+            gef_print("Offset (from segment): {!s} ({:s}) + {:#x}".format(zone_start, addr.info.name, addr.value - addr.info.zone_start))
+
+        sym = gdb_get_location(address)
+        if sym:
+            name, offset = sym
+            msg = "Symbol:                {:s}".format(name)
+            if offset:
+                msg += "+{:#x}".format(offset)
+            gef_print(msg)
+
+        if addr.section and addr.section.inode:
+            gef_print("Inode:                 {:d}".format(addr.section.inode))
+
+        return
+
     @parse_args
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
         self.dont_repeat()
 
-        for location in args.location:
+        if args.location == []:
+            locations = [current_arch.pc]
+        else:
+            locations = args.location
+
+        for location in locations:
             try:
                 gef_print(titlify("xinfo: {:#x}".format(location)))
-                self.infos(location)
+                self.xinfo(location)
             except gdb.error as gdb_error:
                 err(str(gdb_error))
-        return
-
-    def infos(self, address):
-        addr = lookup_address(address)
-        if not addr.valid:
-            warn("Cannot reach {:#x} in memory space".format(address))
-            return
-
-        sect = addr.section
-        info = addr.info
-
-        if sect:
-            page_start = lookup_address(sect.page_start)
-            page_end = lookup_address(sect.page_end)
-            page_size = sect.page_end - sect.page_start
-            gef_print("Page: {!s}-{!s} (size={:#x})".format(page_start, page_end, page_size))
-            gef_print("Permissions: {}".format(sect.permission))
-            gef_print("Pathname: {:s}".format(sect.path))
-            gef_print("Offset (from page): {:#x}".format(addr.value - sect.page_start))
-            if sect.inode:
-                gef_print("Inode: {:s}".format(sect.inode))
-
-        if info:
-            zone_start = lookup_address(info.zone_start)
-            zone_end = lookup_address(info.zone_end)
-            gef_print("Segment: {:s} ({!s}-{!s})".format(info.name, zone_start, zone_end))
-            gef_print("Offset (from segment): {:#x}".format(addr.value - info.zone_start))
-
-        sym = gdb_get_location(address)
-        if sym:
-            name, offset = sym
-            msg = "Symbol: {:s}".format(name)
-            if offset:
-                msg += "+{:d}".format(offset)
-            gef_print(msg)
-
         return
 
 

@@ -350,6 +350,9 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * It supports parsing from memory.
     * It supports parsing remote binary (if download feature is available).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/elf-info.png)
+* `xinfo`: is improved.
+    * It shows more information.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xinfo.png)
 * `checksec`: is improved.
     * It shows whether Static or Dynamic.
     * It shows whether Stripped or not.
