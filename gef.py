@@ -75546,15 +75546,29 @@ class XRefTelescopeCommand(SearchPatternCommand):
     parser.add_argument("pattern", metavar="PATTERN", help="search pattern.")
     parser.add_argument("depth", metavar="DEPTH", nargs="?", type=int, default=3,
                         help="max recursive depth. (default: %(default)s)")
+    parser.add_argument("-v", "--verbose", action="store_true", help="shows the section you are currently searching.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} AAAAAAAA\n".format(_cmdline_)
     _example_ += "{:s} 0x555555554000 15".format(_cmdline_)
 
-    def xref_telescope(self, pattern, depth, tree_heading):
+    def xref_telescope(self, pattern, depth, history):
         """Recursively search a pattern within the whole userland memory."""
         if depth <= 0:
+            # print history
+            for i, h in enumerate(history):
+                if i == 0:
+                    prefix = ""
+                else:
+                    prefix = "  " * i + RIGHT_ARROW
+                if isinstance(h, int):
+                    addr = lookup_address(h)
+                    path = addr.section.path
+                    perm = addr.section.permission
+                    self.out.append("{:s}{!s} {:s} [{!s}]".format(prefix, addr, path, perm))
+                else:
+                    self.out.append("{:s}{:s}".format(prefix, h))
             return
 
         if is_hex(pattern):
@@ -75574,23 +75588,9 @@ class XRefTelescopeCommand(SearchPatternCommand):
             end = section.page_end
 
             locs += self.search_pattern_by_address(pattern, start, end)
-        if tree_heading == "":
-            self.out.append(" .")
-        for i, loc in enumerate(locs):
-            addr_loc_start = lookup_address(loc[0])
-            path = addr_loc_start.section.path
-            perm = addr_loc_start.section.permission
-            if i == len(locs) - 1:
-                tree_suffix_pre = " +--"
-                tree_suffix_post = "    "
-            else:
-                tree_suffix_pre = " +--"
-                tree_suffix_post = " |  "
 
-            fmt = '{} {:#x} {} {} "{}"'
-            msg = fmt.format(tree_heading + tree_suffix_pre, loc[0], Color.blueify(path), perm, Color.magentaify(loc[2]))
-            self.out.append(msg)
-            self.xref_telescope(hex(loc[0]), depth - 1, tree_heading + tree_suffix_post)
+        for loc, _ustr in locs:
+            self.xref_telescope(format_address(loc), depth - 1, [loc] + history)
         return
 
     @parse_args
@@ -75598,9 +75598,17 @@ class XRefTelescopeCommand(SearchPatternCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
         self.dont_repeat()
+
+        self.verbose = args.verbose
+        self.aligned = None
+        self.interval = None
+        self.limit = None
+        self.found_count = 0
+
         self.out = []
-        self.out.append("Recursively searching '{:s}' in memory".format(Color.yellowify(args.pattern)))
-        self.xref_telescope(args.pattern, args.depth, "")
+        self.out.append("Recursively searching '{:s}' in memory (depth: {:d})".format(Color.yellowify(args.pattern), args.depth))
+        self.xref_telescope(args.pattern, args.depth, [args.pattern])
+
         gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
