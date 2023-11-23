@@ -24034,7 +24034,11 @@ class ContextCommand(GenericCommand):
 
     def context_threads(self):
         def reason():
-            res = gdb.execute("info program", to_string=True).splitlines()
+            try:
+                res = gdb.execute("info program", to_string=True).splitlines()
+            except gdb.error:
+                return "STOPPED"
+
             if not res:
                 return "NOT RUNNING"
 
@@ -24079,10 +24083,11 @@ class ContextCommand(GenericCommand):
 
         lines = []
         for thread in threads:
+            tid = str(thread.ptid[1]) or str(thread.ptid[2]) or "???"
             if thread == selected_thread:
-                line = "[{:s}] ".format(Color.colorify("Thread Id:{:d}".format(thread.num), "bold green"))
+                line = "[{:s}] ".format(Color.colorify("Thread Id:{:d}, tid:{:s}".format(thread.num, tid), "bold green"))
             else:
-                line = "[{:s}] ".format(Color.colorify("Thread Id:{:d}".format(thread.num), "bold magenta"))
+                line = "[{:s}] ".format(Color.colorify("Thread Id:{:d}, tid:{:s}".format(thread.num, tid), "bold magenta"))
 
             if thread.name:
                 line += 'Name: "{:s}", '.format(thread.name)
