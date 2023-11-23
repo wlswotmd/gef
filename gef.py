@@ -12896,6 +12896,60 @@ class DownCommand(GenericCommand):
 
 
 @register_command
+class DisplayTypeCommand(GenericCommand):
+    """A wrapper for `ptype /ox TYPE` and `p ((TYPE*) ADDRESS)[0]`."""
+    _cmdline_ = "dt"
+    _category_ = "09-h. Misc - Type"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("type", metavar="TYPE", help="the type name.")
+    parser.add_argument("address", metavar="ADDRESS", nargs="?", type=parse_address, help="the address to apply the type.")
+    parser.add_argument("-r", action="count", default=0, help="remove '*' from type name.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} \"struct malloc_state\"          # shortcut for `ptype /ox struct malloc_state`\n".format(_cmdline_)
+    _example_ += "{:s} \"struct malloc_state\" $rsp     # shortcut for `p ((struct malloc_state*) $rsp)[0]`\n".format(_cmdline_)
+    _example_ += "{:s} -r mstate $rsp                 # mstate is typedef of `struct malloc_state*`, so need remove `*` once".format(_cmdline_)
+
+    _note_ = "You can remove any number of `*` by specifying multiple `-r` options."
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        stripped_type = cached_lookup_type(args.type) # un-typedef
+        if stripped_type is None:
+            err("Not found {:s}".format(args.type))
+            return
+        stripped_type = str(stripped_type)
+
+        for _ in range(args.r):
+            if stripped_type.endswith("*"):
+                stripped_type = stripped_type[:-1].strip()
+            else:
+                warn("The specified number of `*` characters were not found at the end of the type name. Skip removal.")
+                break
+
+        try:
+            if args.address is None:
+                ret = gdb.execute("ptype /ox {:s}".format(stripped_type), to_string=True)
+                ret = re.sub("([a-zA-Z_][a-zA-Z0-9_]*)(\[\d+\])?;", "\033[36m\\1\033[0m\\2;", ret)
+                ret = re.sub("([a-zA-Z_][a-zA-Z0-9_]*) : (\d+);", "\033[36m\\1\033[0m : \\2;", ret)
+                ret = re.sub("(/\* XXX\s+\d+-(bit|byte) (hole|padding)\s+\*/)", "\033[31m\\1\033[0m", ret)
+            else:
+                ret = gdb.execute("p (({:s}*) {:#x})[0]".format(stripped_type, args.address), to_string=True)
+                ret = re.sub("  ([a-zA-Z_][a-zA-Z0-9_]*) =", "  \033[36m\\1\033[0m =", ret)
+                ret = re.sub(" = (0x[0-9a-f]+)", " = \033[34m\\1\033[0m", ret)
+        except gdb.error as e:
+            err(e)
+
+        gef_print(ret, less=not args.no_pager)
+        return
+
+
+@register_command
 class BreakRelativeVirtualAddressCommand(GenericCommand):
     """Set a breakpoint at relative offset from codebase."""
     _cmdline_ = "breakrva"

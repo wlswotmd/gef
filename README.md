@@ -577,6 +577,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/seq-length.png)
 * `gef arch-list`: displays defined architecture information.
 * `gef pyobj-list`: displays defined global python object.
+* `dt`: is wrapper for `ptype /ox TYPE` and `p ((TYPE*) ADDRESS)[0]`.
 
 ### Other
 * The category is introduced in `gef help`.
