@@ -9680,7 +9680,7 @@ def switch_to_intel_syntax(f):
         if not is_x86():
             return f(*args, **kwargs)
 
-        att = '"att"' in gdb.execute("show disassembly-flavor", to_string=True)
+        att = gdb.parameter("disassembly-flavor") == "att"
         if att:
             gdb.execute("set disassembly-flavor intel", to_string=True)
         ret = f(*args, **kwargs)
@@ -19898,11 +19898,11 @@ class ChecksecCommand(GenericCommand):
             msg = Color.grayify("Ignored")
             gef_print("{:<40s}: {:s} (attached or remote process)".format("GDB ASLR setting", msg))
         else:
-            ret = gdb.execute("show disable-randomization", to_string=True)
-            if "virtual address space is on." in ret:
+            ret = gdb.parameter("disable-randomization")
+            if ret is True:
                 msg = Color.colorify("Disabled", "bold red")
                 gef_print("{:<40s}: {:s} (disable-randomization: on)".format("GDB ASLR setting", msg))
-            elif "virtual address space is off." in ret:
+            elif ret is False:
                 msg = Color.colorify("Enabled", "bold green")
                 gef_print("{:<40s}: {:s} (disable-randomization: off)".format("GDB ASLR setting", msg))
             else:
@@ -25715,16 +25715,15 @@ class ASLRCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
+        if is_attach() or is_remote_debug():
+            warn("ASLR setting is ignored because it is remote or attached process")
+
         if args.command is None:
-            ret = gdb.execute("show disable-randomization", to_string=True)
-            i = ret.find("virtual address space is ")
-            if i < 0:
-                return
-            msg = "ASLR is currently "
-            if ret[i + 25:].strip() == "on.":
-                msg += Color.redify("disabled")
+            aslr = gdb.parameter("disable-randomization")
+            if aslr:
+                msg = "ASLR is currently " + Color.redify("disabled")
             else:
-                msg += Color.greenify("enabled")
+                msg = "ASLR is currently " + Color.greenify("enabled")
             gef_print(msg)
         elif args.command == "on":
             info("Enabling ASLR")
@@ -25752,9 +25751,8 @@ class FollowCommand(GenericCommand):
         self.dont_repeat()
 
         if args.command is None:
-            ret = gdb.execute("show follow-fork-mode", to_string=True)
-            i = ret.find("\"child\"")
-            if i >= 0:
+            follow = gdb.parameter("follow-fork-mode")
+            if follow == "child":
                 msg = "follow " + Color.redify("Child")
             else:
                 msg = "follow " + Color.redify("Parent")
