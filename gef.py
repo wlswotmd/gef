@@ -180,6 +180,7 @@ __aliases__                     = []
 __config__                      = {}
 __watches__                     = {}
 __gef_convenience_vars_index__  = 0
+__context_comments__            = {}
 __context_messages__            = []
 __context_extra_commands__      = []
 __highlight_table__             = {}
@@ -23434,6 +23435,10 @@ class ContextCommand(GenericCommand):
             else:
                 line += "{}{}{}".format(bp_prefix, " " * len(RIGHT_ARROW[1:]), text)
 
+            # comment
+            if insn.address in __context_comments__:
+                line += "\t\t" + Color.grayify("// " + "; ".join(__context_comments__[insn.address]))
+
             gef_print(line)
 
             # add extra branch info
@@ -25933,6 +25938,128 @@ class ContextExtraRemoveCommand(ContextExtraCommand):
             __context_extra_commands__.pop(args.index)
         else:
             err("Out of index")
+        return
+
+
+@register_command
+class CommentCommand(GenericCommand):
+    """The base command to add, remove, list or clear the comment."""
+    _cmdline_ = "comment"
+    _category_ = "01-f. Debugging Support - Context Extension"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    if sys.version_info.minor >= 7:
+        subparsers = parser.add_subparsers(title="command", required=True)
+    else:
+        subparsers = parser.add_subparsers(title="command")
+    subparsers.add_parser("add")
+    subparsers.add_parser("remove")
+    subparsers.add_parser("list")
+    subparsers.add_parser("clear")
+    _syntax_ = parser.format_help()
+
+    _note_ = "Comments are temporary only. Note that it will be deleted when GDB exits."
+
+    def __init__(self, *args, **kwargs):
+        prefix = kwargs.get("prefix", True)
+        super().__init__(prefix=prefix)
+        return
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+        self.usage()
+        return
+
+
+@register_command
+class CommentAddCommand(CommentCommand):
+    """Add a comment to specific address."""
+    _cmdline_ = "comment add"
+    _category_ = "01-f. Debugging Support - Context Extension"
+    _aliases_ = ["comment set"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the address for comment.")
+    parser.add_argument("comment", metavar="COMMENT", help="the comment to print when hit.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+        global __context_comments__
+        comms = __context_comments__.get(args.location, [])
+        __context_comments__[args.location] = comms + [args.comment]
+        return
+
+
+@register_command
+class CommentLsCommand(CommentCommand):
+    """List the comments."""
+    _cmdline_ = "comment list"
+    _category_ = "01-f. Debugging Support - Context Extension"
+    _aliases_ = ["comment ls"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+        if not __context_comments__:
+            warn("Nothing to display")
+            return
+        for loc, comms in sorted(__context_comments__.items()):
+            for i, comm in enumerate(comms):
+                gef_print("{:#x}: [{:3d}] {:s}".format(loc, i, comm))
+        return
+
+
+@register_command
+class CommentRemoveCommand(CommentCommand):
+    """Remove the specified comment."""
+    _cmdline_ = "comment remove"
+    _category_ = "01-f. Debugging Support - Context Extension"
+    _aliases_ = ["comment del", "comment unset", "comment rm"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the address for comment.")
+    parser.add_argument("index", metavar="INDEX", nargs="?", type=int,
+                        help="the index of comment to remove. If omitted, all comments for that address will be deleted.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+        global __context_comments__
+        if args.location not in __context_comments__:
+            err("Invalid location")
+            return
+        if args.index is None:
+            __context_comments__[args.location] = []
+        else:
+            if args.index >= len(__context_comments__[args.location]):
+                err("Out of index")
+                return
+            __context_comments__[args.location].pop(args.index)
+        return
+
+
+@register_command
+class CommentClearCommand(CommentCommand):
+    """Clear all comments."""
+    _cmdline_ = "comment clear"
+    _category_ = "01-f. Debugging Support - Context Extension"
+    _aliases_ = ["comment reset"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+        global __context_comments__
+        __context_comments__ = {}
         return
 
 

@@ -505,6 +505,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * `arch-info`: shows architecture information used in gef.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/arch-info.png)
 * `context-extra`: manages user specified command to execute when each step.
+* `comment`: manages user specified temporary comment.
 * `seccomp`: invokes `seccomp-tools`.
 * `onegadget`: invokes `one_gadget`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/onegadget.png)
