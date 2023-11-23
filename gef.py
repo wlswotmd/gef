@@ -12953,7 +12953,7 @@ class DisplayTypeCommand(GenericCommand):
 @register_command
 class BreakRelativeVirtualAddressCommand(GenericCommand):
     """Set a breakpoint at relative offset from codebase."""
-    _cmdline_ = "breakrva"
+    _cmdline_ = "break-rva"
     _category_ = "01-b. Debugging Support - Breakpoint"
     _aliases_ = ["brva"]
 
