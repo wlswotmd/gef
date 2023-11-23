@@ -24010,11 +24010,6 @@ class ContextCommand(GenericCommand):
         if nb_backtrace <= 0:
             return
 
-        # backward compat for gdb (gdb < 7.10)
-        if not hasattr(gdb, "FrameDecorator"):
-            gdb.execute("backtrace {:d}".format(nb_backtrace))
-            return
-
         try:
             orig_frame = gdb.selected_frame()
             current_frame = gdb.newest_frame()
