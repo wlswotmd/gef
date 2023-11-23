@@ -53577,7 +53577,7 @@ class KernelPciDeviceCommand(GenericCommand):
     def walk_devices(self, dev):
         if not self.quiet:
             fmt = "{:18s} {:12s} {:7s} {:10s} {:10s} {:3s} {:s}"
-            legend = ["pci_dev", "name", "class", "vendor:dev", "subsystem", "rev", "decription"]
+            legend = ["pci_dev", "name", "class", "vendor:dev", "subsystem", "rev", "description"]
             self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
         if not dev:
