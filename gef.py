@@ -15631,6 +15631,8 @@ class CallSyscallCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     @exclude_specific_arch(arch=("CRIS",))
     def do_invoke(self, args):
+        self.dont_repeat()
+
         if current_arch is None:
             err("current_arch is not set.")
             return
