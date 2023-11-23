@@ -24199,6 +24199,7 @@ class ContextCommand(GenericCommand):
             return
 
         self.context_title("extra")
+
         for level, text in __context_messages__:
             if level == "error":
                 err(text)
@@ -25853,7 +25854,7 @@ class SmartCppFunctionNameCommand(GenericCommand):
 
 @register_command
 class ContextExtraCommand(GenericCommand):
-    """The base command to add, remove, or list context-extra."""
+    """The base command to add, remove, list or clear user specified command to context-extra."""
     _cmdline_ = "context-extra"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -25863,8 +25864,9 @@ class ContextExtraCommand(GenericCommand):
     else:
         subparsers = parser.add_subparsers(title="command")
     subparsers.add_parser("add")
-    subparsers.add_parser("rm")
-    subparsers.add_parser("ls")
+    subparsers.add_parser("remove")
+    subparsers.add_parser("list")
+    subparsers.add_parser("clear")
     _syntax_ = parser.format_help()
 
     def __init__(self, *args, **kwargs):
@@ -25884,6 +25886,7 @@ class ContextExtraAddCommand(ContextExtraCommand):
     """Add user specified command to execute when each step."""
     _cmdline_ = "context-extra add"
     _category_ = "01-f. Debugging Support - Context Extension"
+    _aliases_ = ["context-extra set"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("cmd", metavar="CMD", nargs="+", help="the command to execute when each step.")
@@ -25898,10 +25901,11 @@ class ContextExtraAddCommand(ContextExtraCommand):
 
 
 @register_command
-class ContextExtraLsCommand(ContextExtraCommand):
+class ContextExtraListCommand(ContextExtraCommand):
     """List user specified command to execute when each step."""
-    _cmdline_ = "context-extra ls"
+    _cmdline_ = "context-extra list"
     _category_ = "01-f. Debugging Support - Context Extension"
+    _aliases_ = ["context-extra ls"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -25909,11 +25913,9 @@ class ContextExtraLsCommand(ContextExtraCommand):
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
-
         if not __context_extra_commands__:
             warn("Nothing to display")
             return
-
         for i, command in enumerate(__context_extra_commands__):
             gef_print("[{:3d}] {:s}".format(i, command))
         return
@@ -25922,8 +25924,9 @@ class ContextExtraLsCommand(ContextExtraCommand):
 @register_command
 class ContextExtraRemoveCommand(ContextExtraCommand):
     """Remove user specified command to execute when each step."""
-    _cmdline_ = "context-extra rm"
+    _cmdline_ = "context-extra remove"
     _category_ = "01-f. Debugging Support - Context Extension"
+    _aliases_ = ["context-extra del", "context-extra unset", "context-extra rm"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("index", metavar="INDEX", type=int,
@@ -25938,6 +25941,24 @@ class ContextExtraRemoveCommand(ContextExtraCommand):
             __context_extra_commands__.pop(args.index)
         else:
             err("Out of index")
+        return
+
+
+@register_command
+class ContextExtraClearCommand(ContextExtraCommand):
+    """clear all user specified commands to execute when each step."""
+    _cmdline_ = "context-extra clear"
+    _category_ = "01-f. Debugging Support - Context Extension"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+    _aliases_ = ["context-extra reset"]
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+        global __context_extra_commands__
+        __context_extra_commands__ = []
         return
 
 
