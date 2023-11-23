@@ -414,6 +414,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * Supports many colors.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/theme.png)
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/theme-colors-sample.png)
+* `up`/`down`: are the wrapper for native `up`/`down`.
+    * It shows also backtrace.
 
 ### Added features
 * `pid`/`tid`: prints pid and tid.

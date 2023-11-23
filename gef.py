@@ -12798,6 +12798,104 @@ class ContCommand(GenericCommand):
 
 
 @register_command
+class UpCommand(GenericCommand):
+    """`up` wraper."""
+    _cmdline_ = "up"
+    _category_ = "01-c. Debugging Support - Basic Command Extension"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("n", metavar="N", nargs="*", default=1, help="Number of frames to move. (default: %(default)s)")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        try:
+            current_frame = gdb.selected_frame()
+        except gdb.error:
+            # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
+            err("Faild to get frame information.")
+            return
+
+        # check if target frame is available
+        n = args.n
+        while current_frame and n:
+            if not current_frame.is_valid():
+                break
+            current_frame = current_frame.older()
+            n -= 1
+
+        # go to target frame
+        if n == 0 and current_frame:
+            current_frame.select()
+
+        # back up
+        nb_lines_backtrace_before = get_gef_setting("context.nb_lines_backtrace_before")
+        nb_lines_backtrace = get_gef_setting("context.nb_lines_backtrace")
+
+        # change temporarily
+        set_gef_setting("context.nb_lines_backtrace_before", 0x100)
+        set_gef_setting("context.nb_lines_backtrace", 0x100)
+
+        # print
+        gdb.execute("context trace")
+
+        # restore
+        set_gef_setting("context.nb_lines_backtrace_before", nb_lines_backtrace_before)
+        set_gef_setting("context.nb_lines_backtrace", nb_lines_backtrace)
+        return
+
+
+@register_command
+class DownCommand(GenericCommand):
+    """`down` wraper."""
+    _cmdline_ = "down"
+    _category_ = "01-c. Debugging Support - Basic Command Extension"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("n", metavar="N", nargs="*", default=1, help="Number of frames to move. (default: %(default)s)")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        try:
+            current_frame = gdb.selected_frame()
+        except gdb.error:
+            # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
+            err("Faild to get frame information.")
+            return
+
+        # check if target frame is available
+        n = args.n
+        while current_frame and n:
+            if not current_frame.is_valid():
+                break
+            current_frame = current_frame.newer()
+            n -= 1
+
+        # go to target frame
+        if n == 0 and current_frame:
+            current_frame.select()
+
+        # back up
+        nb_lines_backtrace_before = get_gef_setting("context.nb_lines_backtrace_before")
+        nb_lines_backtrace = get_gef_setting("context.nb_lines_backtrace")
+
+        # change temporarily
+        set_gef_setting("context.nb_lines_backtrace_before", 0x100)
+        set_gef_setting("context.nb_lines_backtrace", 0x100)
+
+        # print
+        gdb.execute("context trace")
+
+        # restore
+        set_gef_setting("context.nb_lines_backtrace_before", nb_lines_backtrace_before)
+        set_gef_setting("context.nb_lines_backtrace", nb_lines_backtrace)
+        return
+
+
+@register_command
 class BreakRelativeVirtualAddressCommand(GenericCommand):
     """Set a breakpoint at relative offset from codebase."""
     _cmdline_ = "breakrva"
