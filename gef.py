@@ -15614,6 +15614,70 @@ class MprotectCommand(GenericCommand):
 
 
 @register_command
+class KillThreadsCommand(GenericCommand):
+    """Invoke pthread_exit(0) for specific THREAD_ID."""
+    _cmdline_ = "killthreads"
+    _category_ = "05-a. Syscall - Invoke"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("thread_id", metavar="THREAD_ID", nargs="*", type=int, help="the thread id (not TID) to kill.")
+    parser.add_argument("-a", "--all", action="store_true", help="kill all threads except current thread.")
+    parser.add_argument("-c", "--commit", action="store_true", help="commit to kill.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_arch(arch=("CRIS",))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        # print tid list and exit
+        if not args.all and not args.thread_id:
+            info("Among the threads shown below, `Thread Id` that is not the current thread can be used.")
+            # back up
+            nb_lines_threads = get_gef_setting("context.nb_lines_threads")
+            # change temporarily
+            set_gef_setting("context.nb_lines_threads", 0x100)
+            # print
+            gdb.execute("context threads")
+            # restore
+            set_gef_setting("context.nb_lines_threads", nb_lines_threads)
+            return
+
+        # list up target thread id
+        orig_thread = gdb.selected_thread()
+        target_threads = []
+        for th in gdb.selected_inferior().threads():
+            if th.num == orig_thread.num:
+                continue
+            if args.all or (th.num in args.thread_id):
+                target_threads.append(th)
+        target_threads = sorted(target_threads, key=lambda x: x.num)
+        gef_print("target Thread Id(s) to kill: {}".format([th.num for th in target_threads]))
+
+        # kill
+        if args.commit:
+            # backup
+            sched_lock = gdb.parameter("scheduler-locking")
+            # change temporarily
+            gdb.execute("set scheduler-locking on", to_string=True)
+            # kill
+            for th in target_threads:
+                th.switch()
+                try:
+                    gdb.execute("call pthread_exit(0)")
+                except gdb.error:
+                    pass
+            # restore
+            orig_thread.switch()
+            gdb.execute("set scheduler-locking {:s}".format(sched_lock), to_string=True)
+        else:
+            warn("This is dry run mode. Thread is not killed yet. To kill, please add \"--commit\".")
+        return
+
+
+@register_command
 class CallSyscallCommand(GenericCommand):
     """A wrapper for calling syscall easily."""
     _cmdline_ = "call-syscall"

@@ -513,6 +513,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * This is the syntax sugar of `call mmap(...)`.
 * `call-syscall`: calls system call with specified values.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/call-syscall.png)
+* `killthreads`: kill specific or all pthread.
 * `constgrep`: invokes `grep` under `/usr/include`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/constgrep.png)
 * `proc-dump`: dumps each file under `/proc/PID/`.
