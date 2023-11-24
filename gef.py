@@ -18530,7 +18530,7 @@ class AssembleCommand(GenericCommand):
 
         if args.overwrite_location is not None:
             hex_code = binascii.hexlify(raw).decode()
-            gdb.execute("patch hexstring {:#x} {:s}".format(args.overwrite_location, hex_code))
+            gdb.execute("patch hex {:#x} {:s}".format(args.overwrite_location, hex_code))
         return
 
 
@@ -24597,7 +24597,7 @@ class PatchCommand(GenericCommand):
     subparsers.add_parser("dword")
     subparsers.add_parser("qword")
     subparsers.add_parser("string")
-    subparsers.add_parser("hexstring")
+    subparsers.add_parser("hex")
     subparsers.add_parser("pattern")
     subparsers.add_parser("nop")
     subparsers.add_parser("inf")
@@ -24704,6 +24704,7 @@ class PatchQwordCommand(PatchCommand):
     """Write specified QWORD to the specified address."""
     _cmdline_ = "patch qword"
     _category_ = "03-c. Memory - Patch"
+    _aliases_ = ["patch q"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-e", dest="endian_reverse", action="store_true", help="reverse endian. (default: %(default)s)")
@@ -24726,6 +24727,7 @@ class PatchDwordCommand(PatchCommand):
     """Write specified DWORD to the specified address."""
     _cmdline_ = "patch dword"
     _category_ = "03-c. Memory - Patch"
+    _aliases_ = ["patch d"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-e", dest="endian_reverse", action="store_true", help="reverse endian. (default: %(default)s)")
@@ -24748,6 +24750,7 @@ class PatchWordCommand(PatchCommand):
     """Write specified WORD to the specified address."""
     _cmdline_ = "patch word"
     _category_ = "03-c. Memory - Patch"
+    _aliases_ = ["patch w"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-e", dest="endian_reverse", action="store_true", help="reverse endian. (default: %(default)s)")
@@ -24770,6 +24773,7 @@ class PatchByteCommand(PatchCommand):
     """Write specified BYTE to the specified address."""
     _cmdline_ = "patch byte"
     _category_ = "03-c. Memory - Patch"
+    _aliases_ = ["patch b"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-e", dest="endian_reverse", action="store_true", help="reverse endian. (default: %(default)s)")
@@ -24838,9 +24842,9 @@ class PatchStringCommand(PatchCommand):
 
 
 @register_command
-class PatchHexStringCommand(PatchCommand):
-    """Write specified string to the specified address."""
-    _cmdline_ = "patch hexstring"
+class PatchHexCommand(PatchCommand):
+    """Write specified hex string to the specified address."""
+    _cmdline_ = "patch hex"
     _category_ = "03-c. Memory - Patch"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -26449,7 +26453,7 @@ class XorMemoryPatchCommand(GenericCommand):
             return
         info("Patching XOR-ing {:#x}-{:#x} with '{:s}'".format(start_addr, end_addr, repr(args.key)))
         xored_block = bytearray([x ^ y for x, y in zip(block, itertools.cycle(args.key))])
-        gdb.execute("patch hexstring {:#x} {:s}".format(start_addr, xored_block.hex()))
+        gdb.execute("patch hex {:#x} {:s}".format(start_addr, xored_block.hex()))
         return
 
 

@@ -395,8 +395,9 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hexdump.png)
 * `patch`: is improved.
     * It supports physical memory if under qemu-system.
-    * Added some new modes: `pattern`, `hexstring`, `history`, `revert`, `nop`, `inf`, `trap`, `ret`, and `syscall`.
+    * Added some new modes: `pattern`, `hex`, `history`, `revert`, `nop`, `inf`, `trap`, `ret`, and `syscall`.
     * `nop` command has been integrated into `patch` command.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/patch.png)
 * `search-pattern`: is improved.
     * It supports when under qemu-system (in short, it works without `/proc/self/maps`)
     * It supports hex string specification, aligned search, search interval and search limit.
