@@ -12945,8 +12945,9 @@ class DisplayTypeCommand(GenericCommand):
                 ret = re.sub(" = (0x[0-9a-f]+)", " = \033[34m\\1\033[0m", ret)
         except gdb.error as e:
             err(e)
+            return
 
-        gef_print(ret, less=not args.no_pager)
+        gef_print(ret.rstrip(), less=not args.no_pager)
         return
 
 

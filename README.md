@@ -579,8 +579,11 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * `seq-length`: detects consecutive length of the same sequence.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/seq-length.png)
 * `gef arch-list`: displays defined architecture information.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-arch-list.png)
 * `gef pyobj-list`: displays defined global python object.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-pyobj-list.png)
 * `dt`: is wrapper for `ptype /ox TYPE` and `p ((TYPE*) ADDRESS)[0]`.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dt.png)
 
 ### Other
 * The category is introduced in `gef help`.
