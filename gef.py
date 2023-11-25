@@ -11582,9 +11582,13 @@ def de_bruijn(alphabet, n):
     return db(1, 1)
 
 
-def generate_cyclic_pattern(length):
+def generate_cyclic_pattern(length, charset=None):
     """Create a `length` byte bytearray of a de Bruijn cyclic pattern."""
-    charset = bytearray(b"abcdefghijklmnopqrstuvwxyz")
+    if charset is None:
+        charset = bytearray(b"abcdefghijklmnopqrstuvwxyz")
+    elif isinstance(charset, str):
+        charset = str2bytes(charset)
+
     cycle = get_memory_alignment()
     return bytearray(itertools.islice(de_bruijn(charset, cycle), length))
 
@@ -24899,6 +24903,8 @@ class PatchPatternCommand(PatchCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
+    parser.add_argument("-c", "--charset", help="the charset of pattern. (default: abc..z)")
+    parser.add_argument("-d", "--dry-run", action="store_true", help="only generates patterns.")
     parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to patch.")
     parser.add_argument("length", metavar="LENGTH", type=lambda x: int(x, 0), help="the length of repeat. (default: %(default)s)")
     _syntax_ = parser.format_help()
@@ -24923,7 +24929,10 @@ class PatchPatternCommand(PatchCommand):
             if orig_mode == "virt":
                 enable_phys()
 
-        pats = bytes(generate_cyclic_pattern(args.length))
+        pats = bytes(generate_cyclic_pattern(args.length, args.charset))
+        if args.dry_run:
+            info("Generated pattern: {}".format(pats))
+            return
 
         self.patch(args.location, pats, len(pats))
 
@@ -26492,6 +26501,7 @@ class PatternCreateCommand(GenericCommand):
     _aliases_ = ["pattc"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-c", "--charset", help="the charset of pattern. (default: abc..z)")
     parser.add_argument("size", metavar="SIZE", type=parse_address, nargs="?", help="the size of pattern. (default: 1024)")
     _syntax_ = parser.format_help()
 
@@ -26505,7 +26515,7 @@ class PatternCreateCommand(GenericCommand):
             size = args.size
 
         info("Generating a pattern of {:d} bytes".format(size))
-        pattern_str = gef_pystring(generate_cyclic_pattern(size))
+        pattern_str = gef_pystring(generate_cyclic_pattern(size, args.charset))
         gef_print(pattern_str)
         ok("Saved as '{:s}'".format(gef_convenience(pattern_str)))
         return
@@ -26519,6 +26529,7 @@ class PatternSearchCommand(GenericCommand):
     _aliases_ = ["patto"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-c", "--charset", help="the charset of pattern. (default: abc..z)")
     parser.add_argument("pattern", metavar="PATTERN", help="the pattern you want to offset search.")
     parser.add_argument("size", metavar="SIZE", type=parse_address, nargs="?", help="the size of pattern. (default: 0x10000)")
     _syntax_ = parser.format_help()
@@ -26526,6 +26537,37 @@ class PatternSearchCommand(GenericCommand):
     _example_ = "{:s} $pc\n".format(_cmdline_)
     _example_ += "{:s} 0x61616164\n".format(_cmdline_)
     _example_ += "{:s} aaab".format(_cmdline_)
+
+    def search(self, tag, cyclic_pattern, pattern):
+        gef_print(titlify(tag))
+
+        def search_pattern(pattern):
+            info("Searching {}".format(pattern))
+            found = 0
+            off = 0
+            while found < 10:
+                off = cyclic_pattern.find(pattern, off)
+                if off == -1:
+                    break
+                ok("Found at offset {:d} ({:#x})".format(off, off))
+                found += 1
+                off += 1
+
+            if found == 0:
+                err("Not found")
+
+            if found == 10:
+                ok("...")
+            return
+
+        # little endian
+        search_pattern(pattern)
+
+        # big endian
+        inv_pattern = pattern[::-1]
+        if pattern != inv_pattern:
+            search_pattern(inv_pattern)
+        return
 
     @parse_args
     @only_if_gdb_running
@@ -26537,54 +26579,28 @@ class PatternSearchCommand(GenericCommand):
         else:
             size = args.size
 
-        info("Searching '{:s}'".format(args.pattern))
-        self.search(args.pattern, size)
-        return
+        cyclic_pattern = generate_cyclic_pattern(size, args.charset)
+        pack = p32 if is_32bit() else p64
 
-    def search(self, pattern, size):
-        pattern_be, pattern_le = None, None
+        # 1. check if it's a symbol (like "$sp")
+        try:
+            address = parse_address(args.pattern)
+            value = read_int_from_memory(address)
+            self.search("As symbol (with dereference)", cyclic_pattern, pack(value))
+        except gdb.error:
+            pass
 
-        # 1. check if it's a symbol (like "$sp" or "0x1337")
-        symbol = safe_parse_and_eval(pattern)
-        if symbol:
-            addr = to_unsigned_long(symbol)
-            dereferenced_value = dereference(addr)
-            # 1-bis. try to dereference
-            if dereferenced_value:
-                addr = int(dereferenced_value)
+        # 2. check if it's a not symbol, but value (like "0x1337")
+        try:
+            value = parse_address(args.pattern)
+            self.search("As value (without dereference)", cyclic_pattern, pack(value))
+        except gdb.error:
+            pass
 
-            if current_arch.ptrsize == 4:
-                pattern_be = struct.pack(">I", addr)
-                pattern_le = struct.pack("<I", addr)
-            else:
-                pattern_be = struct.pack(">Q", addr)
-                pattern_le = struct.pack("<Q", addr)
-
-        else:
-            # 2. assume it's a plain string
-            pattern_be = gef_pybytes(pattern)
-            pattern_le = gef_pybytes(pattern[::-1])
-
-        pattern_be = pattern_be.strip(b"\0")
-        pattern_le = pattern_le.strip(b"\0")
-
-        found = False
-        cyclic_pattern = generate_cyclic_pattern(size)
-
-        off = cyclic_pattern.find(pattern_le)
-        if off >= 0:
-            fmt = "Found at offset {:d} (little-endian search) {:s}"
-            ok(fmt.format(off, Color.colorify("likely", "bold red") if is_little_endian() else ""))
-            found = True
-
-        off = cyclic_pattern.find(pattern_be)
-        if off >= 0:
-            fmt = "Found at offset {:d} (big-endian search) {:s}"
-            ok(fmt.format(off, Color.colorify("likely", "bold green") if is_big_endian() else ""))
-            found = True
-
-        if not found:
-            err("Pattern '{}' not found".format(pattern))
+        # 3. plain text
+        pattern = str2bytes(args.pattern)
+        if set(pattern) - set(cyclic_pattern) == set():
+            self.search("As string", cyclic_pattern, pattern)
         return
 
 
