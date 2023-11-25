@@ -20903,7 +20903,8 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
     _example_ += "{:s} -f /path/to/binary # parse specified binary\n".format(_cmdline_)
     _example_ += "{:s} -x                 # with hexdump".format(_cmdline_)
 
-    _note_ = "Simplified DWARF Exception structure:\n"
+    _note_ = "Simplified DWARF exception structure:\n"
+    _note_ += "\n"
     _note_ += "[OLD IMPLEMENTATION]\n"
     _note_ += " libgcc_s.so bss area               ELF Program Header (for .eh_frame_hdr)\n"
     _note_ += "+-----------------------+      +-->+----------------+\n"
@@ -48130,6 +48131,7 @@ class KernelTaskCommand(GenericCommand):
     _note_ = "This command needs CONFIG_RANDSTRUCT=n.\n"
     _note_ += "\n"
     _note_ += "Simplified task_struct structure:\n"
+    _note_ += "\n"
     _note_ += "    +-init_task---+      +-->+-kstack----+    +--->+-vm_area_struct--+\n"
     _note_ += "    | list_head   |--+   |   | ...       |    |    | vm_start        |\n"
     _note_ += "    +-------------+  |   |   | ...       |    |    | vm_end          |\n"
@@ -52350,6 +52352,7 @@ class KernelSysctlCommand(GenericCommand):
     _note_ = "This command needs CONFIG_RANDSTRUCT=n.\n"
     _note_ += "\n"
     _note_ += "Simplified sysctl_table structure:\n"
+    _note_ += "\n"
     _note_ += "   +-sysctl_table_root-+          +----->+-ctl_dir------+\n"
     _note_ += "   | default_set       |          |      | header       |\n"
     _note_ += "   |   ...             |          |      |   ctl_table  |---+\n"
@@ -52735,6 +52738,7 @@ class KernelFileSystemsCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     _note_ = "Simplified file_systems structure:\n"
+    _note_ += "\n"
     _note_ += "                  +-->+-file_system_type-+  +-->file_system_type\n"
     _note_ += "                  |   | name             |  |\n"
     _note_ += "+--------------+  |   | ...              |  |\n"
@@ -52848,6 +52852,7 @@ class KernelClockSourceCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     _note_ = "Simplified clocksource structure:\n"
+    _note_ += "\n"
     _note_ += "                        +-clocksource-+\n"
     _note_ += "                        | read        |\n"
     _note_ += "+-clocksource_list-+    | ...         |\n"
@@ -52970,7 +52975,7 @@ class KernelTimerCommand(GenericCommand):
     _note_ += "| ...               |\n"
     _note_ += "+-------------------+\n"
     _note_ += "\n"
-    _note_ += "Simplified timer structure (per-cpu):\n"
+    _note_ += "Simplified hrtimer structure (per-cpu):\n"
     _note_ += "\n"
     _note_ += "+-hrtimer_cpu_bases-+\n"
     _note_ += "| ...               |\n"
@@ -54065,6 +54070,7 @@ class KernelDmesgCommand(GenericCommand):
     _note_ += "However it is always displayed because it is useful.\n"
     _note_ += "\n"
     _note_ += "Simplified dmesg structure (5.10~):\n"
+    _note_ += "\n"
     _note_ += "+-----+\n"
     _note_ += "| prb |--+\n"
     _note_ += "+-----+  |\n"
@@ -54103,6 +54109,7 @@ class KernelDmesgCommand(GenericCommand):
     _note_ += "  2-B. (Id-based printk_info): Preserving seq for ring buffer reuse.\n"
     _note_ += "\n"
     _note_ += "Simplified dmesg structure (~5.10):\n"
+    _note_ += "\n"
     _note_ += "+-----------+\n"
     _note_ += "| __log_buf |-------->+-log_buffer-----+   ^     ^\n"
     _note_ += "+-----------+         | ts_nsec        |   |     |\n"
@@ -56970,6 +56977,7 @@ class SlubDumpCommand(GenericCommand):
     _example_ += "{:s} --list                                           # list up slub cache names".format(_cmdline_)
 
     _note_ = "Simplified SLUB structure:\n"
+    _note_ += "\n"
     _note_ += "                         +-kmem_cache--+          +-kmem_cache--+   +-kmem_cache--+\n"
     _note_ += "                         | cpu_slab    |---+      | cpu_slab    |   | cpu_slab    |\n"
     _note_ += "                         | flags       |   |      | flags       |   | flags       |\n"
@@ -57993,6 +58001,7 @@ class SlubTinyDumpCommand(GenericCommand):
     _example_ += "{:s} --list      # list up slub cache names".format(_cmdline_)
 
     _note_ = "Simplified SLUB structure:\n"
+    _note_ += "\n"
     _note_ += "                         +-kmem_cache--+     +-kmem_cache--+   +-kmem_cache--+\n"
     _note_ += "                         | flags       |     | flags       |   | flags       |\n"
     _note_ += "                         | size        |     | size        |   | size        |\n"
@@ -58609,6 +58618,7 @@ class SlabDumpCommand(GenericCommand):
     _example_ += "{:s} --list               # list up slab cache names".format(_cmdline_)
 
     _note_ = "Simplified SLAB structure:\n"
+    _note_ += "\n"
     _note_ += "                         +-kmem_cache--+         +-kmem_cache--+   +-kmem_cache--+\n"
     _note_ += "                         | cpu_cache   |---+     | cpu_cache   |   | cpu_cache   |\n"
     _note_ += "                         | limit       |   |     | limit       |   | limit       |\n"
@@ -59406,6 +59416,7 @@ class SlobDumpCommand(GenericCommand):
     _example_ += "{:s} --list       # list up slob cache names".format(_cmdline_)
 
     _note_ = "Simplified SLOB structure:\n"
+    _note_ += "\n"
     _note_ += "                         +-kmem_cache--+   +-kmem_cache--+   +-kmem_cache--+\n"
     _note_ += "                         | object_size |   | object_size |   | object_size |\n"
     _note_ += "                         | size        |   | size        |   | size        |\n"
@@ -59994,7 +60005,8 @@ class BuddyDumpCommand(GenericCommand):
     _example_ = "{:s} -z DMA32\n".format(_cmdline_)
     _example_ += "{:s} -o 1 -o 2 -n".format(_cmdline_)
 
-    _note_ = "Simplified Buddy Allocator structure:\n"
+    _note_ = "Simplified buddy allocator structure:\n"
+    _note_ += "\n"
     _note_ += "  +-node_data[MAX_NUMNODES]-+\n"
     _note_ += "  | *pglist_data (node 0)   |--+\n"
     _note_ += "  | *pglist_data (node 1)   |  |\n"
@@ -60436,6 +60448,7 @@ class KernelPipeCommand(GenericCommand):
     _note_ = "This command needs CONFIG_RANDSTRUCT=n.\n"
     _note_ += "\n"
     _note_ += "Simplified pipe structure:\n"
+    _note_ += "\n"
     _note_ += "+-task_struct-+  +->+-files_struct-+  +->+-fdtable---+  +->+-files*[]----+  +->+-file------+\n"
     _note_ += "| ...         |  |  | ...          |  |  | max_fds   |  |  | [0]         |--+  | ...       |\n"
     _note_ += "| files       |--+  | fdt          |--+  | fd        |--+  | ...         |     | f_inode   |---+\n"
@@ -60792,6 +60805,7 @@ class KernelBpfCommand(GenericCommand):
     _note_ = "This command needs CONFIG_RANDSTRUCT=n.\n"
     _note_ += "\n"
     _note_ += "Simplified bpf structure:\n"
+    _note_ += "\n"
     _note_ += "+-prog_idr--+   +--->+-xa_node----------+   +-------->+-bpf_prog-------------+\n"
     _note_ += "| xa_head   |   |    | shift            |   |         | ...                  |\n"
     _note_ += "| xa_flags  |   |    | ...              |   |         | type                 |\n"
@@ -63252,6 +63266,7 @@ class PartitionAllocDumpCommand(GenericCommand):
     _note_ = "Chromium mainline is too fast to develop. So if parse is failed, you need fix this gef.py.\n"
     _note_ += "\n"
     _note_ += "Simplified partition alloc structure:\n"
+    _note_ += "\n"
     _note_ += " +-root-----------------+\n"
     _note_ += " | ...                  |    +---->+-extent------------+  +-->+-extent------------+  +-> ...\n"
     _note_ += " | next_super_page      |    |     | next              |--+   | next              |--+\n"
@@ -65672,6 +65687,7 @@ class OpteeBgetDumpCommand(GenericCommand):
     _example_ = "{:s} 0x2a408".format(_cmdline_)
 
     _note_ = "Simplified heap structure:\n"
+    _note_ += "\n"
     _note_ += "+-malloc_ctx-------------------+         +-freed chunk------------+\n"
     _note_ += "| bufsize prevfree             |<--+ +-->| bufsize prevfree       |= 0 (if upper chunk is used)  +--> ...\n"
     _note_ += "| bufsize bsize                |   | |   | bufsize bsize          |= the size of this chunk      |\n"
