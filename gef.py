@@ -11593,15 +11593,6 @@ def generate_cyclic_pattern(length, charset=None):
     return bytearray(itertools.islice(de_bruijn(charset, cycle), length))
 
 
-def safe_parse_and_eval(value):
-    """GEF wrapper for gdb.parse_and_eval(): this function returns None instead of raising
-    gdb.error if the eval failed."""
-    try:
-        return gdb.parse_and_eval(value)
-    except gdb.error:
-        return None
-
-
 @functools.lru_cache(maxsize=512)
 def dereference(addr):
     """GEF wrapper for gdb dereference function."""
@@ -28448,7 +28439,9 @@ class FormatStringSearchCommand(GenericCommand):
 
         bp_count = 0
         for func_name, num_arg in dangerous_functions.items():
-            if safe_parse_and_eval(func_name) is None:
+            try:
+                parse_address(func_name)
+            except gdb.error:
                 continue
             gef_print(func_name + ": ", end="")
             FormatStringBreakpoint(func_name, num_arg)
