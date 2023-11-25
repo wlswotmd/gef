@@ -54563,100 +54563,107 @@ class SyscallTableViewCommand(GenericCommand):
         return
 
     @switch_to_intel_syntax
-    def syscall_table_view(self, _tag, sys_call_table_addr, syscall_list, nr_base=0):
+    def parse_syscall_table(self, sys_call_table_addr, syscall_list, nr_base):
+        # scan
+        cached_table = []
+        i = 0
+        while True:
+            addr = sys_call_table_addr + i * current_arch.ptrsize
+            if not is_valid_addr(addr):
+                break
+            syscall_function_addr = read_int_from_memory(addr)
+            if (is_arm32() or is_arm64()) and syscall_function_addr % 4: # should be aligned
+                break
+            if not is_valid_addr(syscall_function_addr): # if entry is valid, no error
+                break
+
+            # check symbol
+            symbol = get_symbol_string(syscall_function_addr)
+            if symbol is None:
+                symbol = get_ksymaddr_symbol(syscall_function_addr)
+                if symbol is None:
+                    symbol = " <NO_SYMBOL>"
+            elif "+" in symbol:
+                break
+
+            # check if valid insn or not
+            insn = get_insn(syscall_function_addr)
+            insn2 = get_insn_next(syscall_function_addr)
+            if insn is None or insn2 is None:
+                break
+
+            if is_x86():
+                # detect endbr, so slide
+                if insn.mnemonic in ["endbr64", "endbr32"]:
+                    codelen = len(insn.opcodes)
+                    insn2 = get_insn_next(insn.address + codelen)
+                    insn = get_insn(insn.address + codelen)
+
+                # detect `call non-essential-function` e.g.: perf, trace, debug, ...
+                while insn and insn2 and insn.mnemonic == "call":
+                    codelen = len(insn.opcodes)
+                    insn2 = get_insn_next(insn.address + codelen)
+                    insn = get_insn(insn.address + codelen)
+
+            elif is_arm64():
+                # detect bti, so slide
+                if insn.mnemonic in ["bti"]:
+                    codelen = len(insn.opcodes)
+                    insn2 = get_insn_next(insn.address + codelen)
+                    insn = get_insn(insn.address + codelen)
+
+                # detect `bl non-essential-function` e.g.: perf, trace, debug, ...
+                while insn and insn2 and insn.mnemonic == "bl":
+                    codelen = len(insn.opcodes)
+                    insn2 = get_insn_next(insn.address + codelen)
+                    insn = get_insn(insn.address + codelen)
+
+            elif is_arm32():
+                # detect `bl non-essential-function` e.g.: perf, trace, debug, ...
+                while insn and insn2 and insn.mnemonic in ["bl", "blx"]:
+                    codelen = len(insn.opcodes)
+                    insn2 = get_insn_next(insn.address + codelen)
+                    insn = get_insn(insn.address + codelen)
+
+            # check again
+            if insn is None or insn2 is None:
+                break
+
+            is_valid = True
+            if is_x86_64():
+                if len(insn.operands) == 2 and insn.operands[-1] == "0xffffffffffffffda" and \
+                   insn2.mnemonic == "ret":
+                    is_valid = False
+            elif is_x86_32():
+                if len(insn.operands) == 2 and insn.operands[-1] == "0xffffffda" and \
+                   insn2.mnemonic == "ret":
+                    is_valid = False
+            elif is_arm64():
+                if len(insn.operands) == 2 and insn.operands[-1].split("\t")[0].strip() == "#0xffffffffffffffda":
+                    is_valid = False
+                elif len(insn.operands) == 3 and insn.operands[-1] == "// #-38":
+                    is_valid = False
+
+            cached_table.append([i, addr, syscall_function_addr, symbol, is_valid])
+            i += 1
+        return cached_table
+
+    def syscall_table_view(self, orig_tag, sys_call_table_addr, syscall_list, nr_base=0):
         if sys_call_table_addr is None:
             if not self.quiet:
                 self.out.append("{} {}".format(Color.colorify("[+]", "bold red"), "Not found symbol"))
             return
 
-        if safe_parse_and_eval("_stext"):
-            tag = "symboled" + _tag
-        else:
-            tag = _tag
+        # It maintains the cache both when running with and without symbols.
+        try:
+            parse_address("_stext")
+            tag = "symboled_" + orig_tag
+        except gdb.error:
+            tag = orig_tag
 
+        # parse
         if tag not in self.cached_table:
-            # scan
-            self.cached_table[tag] = []
-            i = 0
-            while True:
-                addr = sys_call_table_addr + i * current_arch.ptrsize
-                if not is_valid_addr(addr):
-                    break
-                syscall_function_addr = read_int_from_memory(addr)
-                if (is_arm32() or is_arm64()) and syscall_function_addr % 4: # should be aligned
-                    break
-                if not is_valid_addr(syscall_function_addr): # if entry is valid, no error
-                    break
-
-                # check symbol
-                symbol = get_symbol_string(syscall_function_addr)
-                if symbol is None:
-                    symbol = get_ksymaddr_symbol(syscall_function_addr)
-                    if symbol is None:
-                        symbol = " <NO_SYMBOL>"
-                elif "+" in symbol:
-                    break
-
-                # check if valid insn or not
-                insn = get_insn(syscall_function_addr)
-                insn2 = get_insn_next(syscall_function_addr)
-                if insn is None or insn2 is None:
-                    break
-
-                if is_x86():
-                    # detect endbr, so slide
-                    if insn.mnemonic in ["endbr64", "endbr32"]:
-                        codelen = len(insn.opcodes)
-                        insn2 = get_insn_next(insn.address + codelen)
-                        insn = get_insn(insn.address + codelen)
-
-                    # detect `call non-essential-function` e.g.: perf, trace, debug, ...
-                    while insn and insn2 and insn.mnemonic == "call":
-                        codelen = len(insn.opcodes)
-                        insn2 = get_insn_next(insn.address + codelen)
-                        insn = get_insn(insn.address + codelen)
-
-                elif is_arm64():
-                    # detect bti, so slide
-                    if insn.mnemonic in ["bti"]:
-                        codelen = len(insn.opcodes)
-                        insn2 = get_insn_next(insn.address + codelen)
-                        insn = get_insn(insn.address + codelen)
-
-                    # detect `bl non-essential-function` e.g.: perf, trace, debug, ...
-                    while insn and insn2 and insn.mnemonic == "bl":
-                        codelen = len(insn.opcodes)
-                        insn2 = get_insn_next(insn.address + codelen)
-                        insn = get_insn(insn.address + codelen)
-
-                elif is_arm32():
-                    # detect `bl non-essential-function` e.g.: perf, trace, debug, ...
-                    while insn and insn2 and insn.mnemonic in ["bl", "blx"]:
-                        codelen = len(insn.opcodes)
-                        insn2 = get_insn_next(insn.address + codelen)
-                        insn = get_insn(insn.address + codelen)
-
-                # check again
-                if insn is None or insn2 is None:
-                    break
-
-                is_valid = True
-                if is_x86_64():
-                    if len(insn.operands) == 2 and insn.operands[-1] == "0xffffffffffffffda" and \
-                       insn2.mnemonic == "ret":
-                        is_valid = False
-                elif is_x86_32():
-                    if len(insn.operands) == 2 and insn.operands[-1] == "0xffffffda" and \
-                       insn2.mnemonic == "ret":
-                        is_valid = False
-                elif is_arm64():
-                    if len(insn.operands) == 2 and insn.operands[-1].split("\t")[0].strip() == "#0xffffffffffffffda":
-                        is_valid = False
-                    elif len(insn.operands) == 3 and insn.operands[-1] == "// #-38":
-                        is_valid = False
-
-                self.cached_table[tag].append([i, addr, syscall_function_addr, symbol, is_valid])
-                i += 1
+            self.cached_table[tag] = self.parse_syscall_table(sys_call_table_addr, syscall_list, nr_base)
 
         # print legend
         if not self.quiet:
@@ -54678,9 +54685,9 @@ class SyscallTableViewCommand(GenericCommand):
 
             fmt = "{:8s} [{:03d}] {:7s} {:30s} {:#018x} {:#018x}{:s}"
             if seen_count[syscall_function_addr] == 1 and is_valid: # valid entry
-                msg = fmt.format(_tag, i, "valid", expected_name, addr, syscall_function_addr, symbol)
+                msg = fmt.format(orig_tag, i, "valid", expected_name, addr, syscall_function_addr, symbol)
             if seen_count[syscall_function_addr] > 1 or not is_valid: # invalid entry
-                msg = fmt.format(_tag, i, "invalid", expected_name, addr, syscall_function_addr, symbol)
+                msg = fmt.format(orig_tag, i, "invalid", expected_name, addr, syscall_function_addr, symbol)
                 msg = Color.grayify(msg)
 
             if not self.filter:
