@@ -48119,6 +48119,8 @@ class KernelTaskCommand(GenericCommand):
                         help="display by thread (LWP), not by process.")
     parser.add_argument("-F", "--print-fd", action="store_true",
                         help="print file descriptors for each user process.")
+    parser.add_argument("-s", "--print-sighand", action="store_true",
+                        help="print signals for each user process.")
     parser.add_argument("-u", "--user-process-only", action="store_true",
                         help="display user-land process (+ thread) only.")
     parser.add_argument("--meta", action="store_true", help="display offset information.")
@@ -48151,19 +48153,21 @@ class KernelTaskCommand(GenericCommand):
     _note_ += "    | ...          |   |   ma_root    |-----+    |   slot[]          |--+  |\n"
     _note_ += "    | stack_canary |   | ...          |          +-------------------+     |\n"
     _note_ += "    | ...          |   +--------------+                                    |\n"
-    _note_ += "    | group_leader |                                          +------------+\n"
-    _note_ += "    | ...          |                                          |\n"
-    _note_ += "    | thread_group |-->...                                    |\n"
-    _note_ += "    | ...          |                                          |                        +-mount----------+\n"
-    _note_ += "    | cred         |------>+-cred--------+                    |                        | ...            |\n"
-    _note_ += "    | ...          |      | ...          |                    |                        | mnt_parent     |-->mount\n"
-    _note_ += "    | comm[16]     |      | uid, gid     |                    |                        | mnt_mountpoint |-->dentry\n"
-    _note_ += "    | ...          |      | suid, sgid   |                    |                  +---->| mnt (vfsmount) |\n"
-    _note_ += "    | files        |--+   | euid, egid   |                    |                  |     |   mnt_root     |-->dentry\n"
-    _note_ += "    | ...          |  |   | fsuid, fsgid |                    |                  |     |   ...          |\n"
-    _note_ += "    +--------------+  |   | securebits   |                    |                  |     | ...            |\n"
-    _note_ += "                      |   | ...          |                    |                  |     +----------------+\n"
-    _note_ += "+---------------------+   +--------------+                    |                  |\n"
+    _note_ += "    | group_leader |         +-->+-cred---------+             +------------+\n"
+    _note_ += "    | ...          |         |   | ...          |             |\n"
+    _note_ += "    | thread_group |-->...   |   | uid, gid     |             |\n"
+    _note_ += "    | ...          |         |   | suid, sgid   |             |\n"
+    _note_ += "    | cred         |---------+   | euid, egid   |             |\n"
+    _note_ += "    | ...          |             | fsuid, fsgid |             |                        +-mount----------+\n"
+    _note_ += "    | comm[16]     |             | securebits   |             |                        | ...            |\n"
+    _note_ += "    | ...          |             | ...          |             |                        | mnt_parent     |-->mount\n"
+    _note_ += "    | files        |--+          +--------------+             |                        | mnt_mountpoint |-->dentry\n"
+    _note_ += "    | ...          |  |                                       |                  +---->| mnt (vfsmount) |\n"
+    _note_ += "    | sighand      |------->+-sighand_struct----+             |                  |     |   mnt_root     |-->dentry\n"
+    _note_ += "    | ...          |  |     | ...               |             |                  |     |   ...          |\n"
+    _note_ += "    +--------------+  |     | action[64]        |             |                  |     | ...            |\n"
+    _note_ += "                      |     +-------------------+             |                  |     +----------------+\n"
+    _note_ += "+---------------------+                                       |                  |\n"
     _note_ += "|                                                             v                  | +-->+-dentry-----+\n"
     _note_ += "+-->+-files_struct-+  +-->+-fdtable---+  +-->+-file*[]-----+  +-->+-file------+  | |   | ...        |\n"
     _note_ += "    | ...          |  |   | max_fds   |  |   | [0]         |--+   | ...       |  | |   | d_parent   |\n"
@@ -48191,6 +48195,7 @@ class KernelTaskCommand(GenericCommand):
         self.offset_comm = None
         self.offset_cred = None
         self.offset_files = None
+        self.offset_sighand = None
         # files_struct
         self.offset_fdt = None
         # kstack
@@ -48210,6 +48215,9 @@ class KernelTaskCommand(GenericCommand):
         self.offset_d_parent = None
         # inode
         self.offset_i_ino = None
+        # sighand_struct
+        self.offset_action = None
+        self.sizeof_action = None
         return
 
     def quiet_info(self, msg):
@@ -49401,6 +49409,125 @@ class KernelTaskCommand(GenericCommand):
             lwp_task_addrs.extend(seen)
         return lwp_task_addrs
 
+    def get_offset_sighand(self, task_addr, offset_files):
+        """
+        struct task_struct {
+            ...
+            struct files_struct *files;
+        #ifdef CONFIG_IO_URING
+            struct io_uring_task *io_uring;
+        #endif
+            struct nsproxy *nsproxy;
+            struct signal_struct *signal;
+            struct sighand_struct __rcu *sighand;
+            sigset_t blocked;
+            ...
+        };
+        """
+        offset_sighand = offset_files + current_arch.ptrsize * 3
+        if not is_valid_addr(read_int_from_memory(task_addr + offset_sighand + current_arch.ptrsize)): # blocked
+            # CONFIG_IO_URING=n
+            return offset_sighand
+        # CONFIG_IO_URING=y
+        return offset_sighand + current_arch.ptrsize
+
+    def get_offset_action(self, sighand):
+        """
+        struct sighand_struct {
+            spinlock_t siglock;
+            refcount_t count;
+            struct wait_queue_head {
+                spinlock_t lock;
+                struct list_head head;
+            } signalfd_wqh;
+            struct k_sigaction {
+                struct sigaction {
+                    __sighandler_t sa_handler;
+                    unsigned long sa_flags;
+                #ifdef __ARCH_HAS_SA_RESTORER
+                    __sigrestore_t sa_restorer;
+                #endif
+                    sigset_t sa_mask;
+                } sa;
+            #ifdef __ARCH_HAS_KA_RESTORER
+                __sigrestore_t ka_restorer;
+            #endif
+            } action[_NSIG]; // 64
+        };
+        """
+        # search signalfd_wqh.list_head
+        found = False
+        for i in range(30):
+            offset_list_head = current_arch.ptrsize * (2 + i)
+            head = sighand + offset_list_head
+            if not is_valid_addr(head):
+                continue
+
+            current = read_int_from_memory(head)
+            while True:
+                if current == head:
+                    found = True
+                    break
+                if not is_valid_addr(current):
+                    break
+                current = read_int_from_memory(current)
+            if found:
+                break
+
+        if not found:
+            return None
+
+        offset_action = offset_list_head + current_arch.ptrsize * 2
+        return offset_action
+
+    def get_sizeof_action(self, task_addrs, offset_sighand, offset_action):
+        """
+        0xffff8f63011e4400|+0x0000|+000: 0x0000000100000000
+        0xffff8f63011e4408|+0x0008|+001: 0x0000000000000000
+        0xffff8f63011e4410|+0x0010|+002: 0xffff8f63593e11e0  ->  [loop detected]
+        0xffff8f63011e4418|+0x0018|+003: 0xffff8f63593e11e0  ->  0xffff8f63011e4410  ->  [loop detected]
+        0xffff8f63011e4420|+0x0020|+004: 0x0000000000000000 <- action[0]
+        0xffff8f63011e4428|+0x0028|+005: 0x0000000014000000
+        0xffff8f63011e4430|+0x0030|+006: 0x00007f3ec71d0d60
+        0xffff8f63011e4438|+0x0038|+007: 0x0000000000000000
+        0xffff8f63011e4440|+0x0040|+008: 0x0000000000000000 <- action[1]
+        0xffff8f63011e4448|+0x0048|+009: 0x0000000014000000
+        0xffff8f63011e4450|+0x0050|+010: 0x00007f3ec71d0d60
+        0xffff8f63011e4458|+0x0058|+011: 0x0000000000000000
+        0xffff8f63011e4460|+0x0060|+012: 0x0000562e3b34bdf0
+        0xffff8f63011e4468|+0x0068|+013: 0x0000000044000000
+        0xffff8f63011e4470|+0x0070|+014: 0x00007f3ec71d0d60
+        0xffff8f63011e4478|+0x0078|+015: 0x0000000000000000
+        0xffff8f63011e4480|+0x0080|+016: 0x0000562e3b34bdf0
+        0xffff8f63011e4488|+0x0088|+017: 0x0000000044000000
+        0xffff8f63011e4490|+0x0090|+018: 0x00007f3ec71d0d60
+        """
+        # calc sizeof(action[0])
+        sizeof_action = 0xffffffffffffffff
+        for task in task_addrs:
+            sighand = read_int_from_memory(task + offset_sighand)
+            current = sighand + offset_action
+            found_offset = []
+            for i in range(64 * 4):
+                offset = current_arch.ptrsize * i
+                v = read_int_from_memory(current + offset)
+                # SA_RESTORER, SA_RESTART, SA_NODEFER, SA_RESTART|SA_RESTORER, SA_NODEFER|SA_RESTORER
+                if v not in [0x4000000, 0x10000000, 0x40000000, 0x14000000, 0x44000000]:
+                    continue
+                found_offset.append(offset)
+            if len(found_offset) >= 2:
+                sizeof_action_tmp = min(y - x for x, y in zip(found_offset[:-1], found_offset[1:]))
+                # it is minimum size, so fast return
+                if is_32bit() and sizeof_action_tmp == 0x14:
+                    return sizeof_action_tmp
+                elif is_64bit() and sizeof_action_tmp == 0x20:
+                    return sizeof_action_tmp
+                # not minimum size, so check next task
+                sizeof_action = min(sizeof_action, sizeof_action_tmp)
+        if sizeof_action == 0xffffffffffffffff:
+            return None
+        return sizeof_action
+
     def initialize(self, args):
         # init_task
         init_task = KernelAddressHeuristicFinder.get_init_task()
@@ -49557,21 +49684,90 @@ class KernelTaskCommand(GenericCommand):
             self.quiet_info("offsetof(inode, i_ino): {:#x}".format(self.offset_i_ino))
 
         # task_struct->files
-        # files_struct->fdt
-        if args.print_fd:
+        if args.print_fd or args.print_sighand:
             if self.offset_files is None:
-                self.offset_files =self.get_offset_files(task_addrs, self.offset_comm)
+                self.offset_files = self.get_offset_files(task_addrs, self.offset_comm)
             if self.offset_files is None:
                 self.quiet_err("Not found task->files")
                 return False
             self.quiet_info("offsetof(task_struct, files): {:#x}".format(self.offset_files))
 
+        # files_struct->fdt
+        if args.print_fd:
             if self.offset_fdt is None:
                 self.offset_fdt = self.get_offset_fdt(task_addrs, self.offset_files)
             if self.offset_fdt is None:
                 self.quiet_err("Not found files_struct->fdt")
                 return False
             self.quiet_info("offsetof(files_struct, fdt): {:#x}".format(self.offset_fdt))
+
+        # task_struct->sighand
+        if args.print_sighand:
+            if self.offset_sighand is None:
+                self.offset_sighand = self.get_offset_sighand(task_addrs[0], self.offset_files)
+            if self.offset_sighand is None:
+                self.quiet_err("Not found task_struct->sighand")
+                return False
+            self.quiet_info("offsetof(task_struct, sighand): {:#x}".format(self.offset_sighand))
+
+            if self.offset_action is None:
+                sighand = read_int_from_memory(task_addrs[1] + self.offset_sighand)
+                self.offset_action = self.get_offset_action(sighand)
+                if self.offset_action is None:
+                    self.quiet_err("Not found sighand_struct->action")
+                    return False
+                self.quiet_info("offsetof(sighand_struct, action): {:#x}".format(self.offset_action))
+
+            if self.sizeof_action is None:
+                self.sizeof_action = self.get_sizeof_action(task_addrs, self.offset_sighand, self.offset_action)
+                if self.sizeof_action is None:
+                    self.quiet_err("Not found sizeof(action[0])")
+                    return False
+            self.quiet_info("sizeof(action[0]): {:#x}".format(self.sizeof_action))
+
+            self.signame_list = {
+                1: "SIGHUP",
+                2: "SIGINT",
+                3: "SIGQUIT",
+                4: "SIGILL",
+                5: "SIGTRAP",
+                6: "SIGABRT",
+                7: "SIGBUS",
+                8: "SIGFPE",
+                9: "SIGKILL",
+                10: "SIGUSR1",
+                11: "SIGSEGV",
+                12: "SIGUSR2",
+                13: "SIGPIPE",
+                14: "SIGALRM",
+                15: "SIGTERM",
+                16: "SIGSTKFLT",
+                17: "SIGCHLD",
+                18: "SIGCONT",
+                19: "SIGSTOP",
+                20: "SIGTSTP",
+                21: "SIGTTIN",
+                22: "SIGTTOU",
+                23: "SIGURG",
+                24: "SIGXCPU",
+                25: "SIGXFSZ",
+                26: "SIGVTALRM",
+                27: "SIGPROF",
+                28: "SIGWINCH",
+                29: "SIGIO",
+                30: "SIGPWR",
+                31: "SIGSYS",
+                32: "SIGCANCEL", # from glibc source code
+                33: "SIGSETXID", # from glibc source code
+                34: "SIGRTMIN",
+                # 35 ... 49: SIGRTMIN+i
+                # 50 ... 63: SIGRTMAX-i
+                64: "SIGRTMAX",
+            }
+            for i in range(35, 50):
+                self.signame_list[i] = "SIGRTMIN+{:d}".format(i - 34)
+            for i in range(63, 49, -1):
+                self.signame_list[i] = "SIGRTMAX-{:d}".format(64 - i)
 
         return init_task, task_addrs
 
@@ -49701,6 +49897,31 @@ class KernelTaskCommand(GenericCommand):
                         inode = read_int_from_memory(file + self.offset_f_inode)
                         filepath = self.get_filepath(file)
                         out.append("{:<3d} {:#018x} {:#018x} {:#018x} {:s}".format(i, file, dentry, inode, filepath))
+                    if not args.print_sighand:
+                        out.append(titlify(""))
+
+            # additional information 4
+            if proctype == "U" and args.print_sighand:
+                out.append(titlify("sighandlers of `{:s}`".format(comm_string)))
+                fmt = "{:14s} {:18s} {:18s} {:18s}"
+                legend = ["sig", "sigaction", "handler", "flags"]
+                out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
+                sighand = read_int_from_memory(task + self.offset_sighand)
+                for i in range(64):
+                    sigaction = sighand + self.offset_action + self.sizeof_action * i
+                    signame = self.signame_list.get(i + 1, "???")
+                    handler = read_int_from_memory(sigaction + current_arch.ptrsize * 0)
+                    if handler == 0:
+                        handler = "SIG_DFL"
+                    elif handler == 1:
+                        handler = "SIG_IGN"
+                    elif handler == -1:
+                        handler = "SIG_ERR"
+                    else:
+                        handler = "{:#018x}".format(handler)
+                    flags = read_int_from_memory(sigaction + current_arch.ptrsize * 1)
+                    out.append("{:<2d} {:11s} {:#018x} {:18s} {:#018x}".format(i + 1, signame, sigaction, handler, flags))
                 out.append(titlify(""))
         return out
 
@@ -49780,6 +50001,32 @@ class KernelSavedRegsCommand(GenericCommand):
         if args.no_pager:
             no_pager = "--no-pager"
         gdb.execute("ktask --user-process-only --print-regs --quiet {:s}".format(no_pager))
+        return
+
+
+@register_command
+class KernelSignalsCommand(GenericCommand):
+    """Display signal handlers of each process (shortcut for `ktask -qus`)."""
+    _cmdline_ = "ksighands"
+    _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
+    def do_invoke(self, args):
+        self.dont_repeat()
+        info("Redirect to `ktask -qus`")
+
+        no_pager = ""
+        if args.no_pager:
+            no_pager = "--no-pager"
+        gdb.execute("ktask --user-process-only --print-sighand --quiet {:s}".format(no_pager))
         return
 
 

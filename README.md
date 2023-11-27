@@ -215,6 +215,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask-regs.png)
     * It also displays the file descriptors of the userland process.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask-fd.png)
+    * It also displays the signal handlers of the userland process.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktask-sighands.png)
 * `kmod`: displays each module address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmod.png)
     * It also displays each module symbols.
