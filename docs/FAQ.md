@@ -10,7 +10,7 @@ I have used it on debian. Also it seems to be working fine on WSL2 (ubuntu) so f
 Some users are running it on Arch Linux.
 However, I have not confirmed that all commands work correctly.
 
-## What kernel versions does GEF support?
+## What Linux kernel versions does GEF support as guests in qemu-system?
 I have confirmed that most commands work on versions 3.x ~ 6.6.1.
 
 However, I have not verified every kernel version.
@@ -26,7 +26,7 @@ Consider building gdb from source with `./configure --enable-targets=all --with-
 ## What is `~/.gef.rc`?
 This is the GEF config file. Not present by default.
 
-Executing the `gef save` command saves the current settings to disk.
+Executing the `gef save` command saves the current settings to disk (`~/.gef.rc`).
 The next time GEF is started, it will be automatically loaded and the settings will be reflected.
 This includes the current values of items configurable with `gef config` and alias settings for commands.
 
@@ -42,7 +42,7 @@ No, it doesn't work. It replaces `hugsy/gef`.
 The compatibility with `hugsy/gef` has already been lost.
 Think of it as a completely different product.
 
-## Will each GEF command be more accurate if I have vmlinux with debug symbols?
+## Will each GEF command be more accurate if I have `vmlinux` with debug symbols?
 No, whether `vmlinux` includes debug information has no effect on GEF behavior.
 
 GEF always uses its own resolved address with `kallsyms-remote`.
@@ -63,7 +63,7 @@ Therefore, I think at least `heap` related commands will not work.
 Regarding kernel debugging, I haven't been able to confirm how much the structure is different.
 
 ## Does GEF support TEE OS other than OP-TEE?
-No, GEF does not support them.
+No, GEF does not support it.
 
 If there is publicly available test image, I consider developing to support that OS.
 
@@ -90,11 +90,11 @@ However, hardware breakpoints can be used without any problems.
 Internally, it consists of several steps.
 
 1. Identify the memory map from the page table structure.
-2. Identify the `.rodata` address of kernel from memory map.
-3. Parse `.rodata` to identify the kernel version.
-4. Parse the structure of `kallsyms` in `.rodata` and get the "symbol-address" pair.
-5. If a global variable symbol is available at this point, use it. (this pattern is `CONFIG_KALLSYMS_ALL=y`).
-    * If not, disassemble the function which uses that global variable in the functions.
+2. Identify `.rodata` area of kernel from memory map.
+3. Scan `.rodata` to identify the kernel version.
+4. Parse the structure of `kallsyms` in `.rodata` and get all "symbol-address" pairs.
+5. If global variable symbols are available at this point, use it. (= `CONFIG_KALLSYMS_ALL=y`).
+    * If not, disassemble the function which uses specified global variable.
     * By parsing the result, we obtain the address of the required global variable.
 6. Determine the offsets of the structure's members, if necessary.
     * Use facts such as whether a value in memory is an address or whether a structure in memory has a specific structure to identify it heuristically.
@@ -105,7 +105,7 @@ As you can see, it doesn't work well if the structures are arranged randomly (`C
 Also, depending on the assembly output by the compiler, it may not be possible to parse it correctly.
 
 ## What command should I start with when debugging the kernel?
-Try `ks-apply` or `vmlinux-to-elf-apply`, then `pagewalk` and `kchecksec`.
+Try `pagewalk` , `ks-apply` and `kchecksec`.
 After that, try `slub-dump`, `ktask` and `ksysctl` as well.
 Other commands are less important, so check them with `gef help` if necessary.
 
@@ -157,19 +157,14 @@ Yes, you can use built-in `pipe` command.
 For example, `pipe elf-info -n |grep .data` or `|pdisas |grep call`.
 
 ## `vmlinux-to-elf-apply` command causes an error of creating ELF.
-This command simply does the following:
-1. Memory dump of kernel `.text` + `.rodata`
-2. Run the `vmlinux-to-elf` command
-3. Load symbols with `add-symbol-file` command
+Please update `vmlinux-to-elf` to the latest version.
 
-If you are getting an error in step 2, it may be a `vmlinux-to-elf` issue, except in step 1 gave an inaccurate dump.
-Updating `vmlinux-to-elf` to the latest version may improve the issue.
-
-If the problem persists, try using the `ks-apply` command.
-The logic is different a little, so it might work.
+If the problem persists, try using the `ks-apply` command. The logic is different a little, so it might work.
+If it still doesn't work, please report it on the issue page.
 
 ## `got` command does not display PLT address well.
 This problem is probably caused by an outdated version of `binutils`.
+
 The `got` command uses `objdump` internally to obtain the PLT address.
 However, with certain combinations of `binutils` and `glibc` versions, `objdump` does not display the PLT address.
 
@@ -253,6 +248,7 @@ Followings are some notes.
 * Other
     * If you do not want to execute the same command again when you press ENTER on a blank line after executing the command, please write `self.dont_repeat()`.
     * Use the `gef_print()` function instead of the `print()` function whenever possible.
+
 
 # About development schedule
 
