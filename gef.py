@@ -14018,8 +14018,8 @@ class ProcDumpCommand(GenericCommand):
                     out.append(Color.colorify("{:s} -> {:s}".format(path, os.readlink(path)), "blue"))
                     continue
 
-                if f == "pagemap":
-                    # too large
+                if f in ["pagemap", "mem"]:
+                    out.append("{} skipped".format(Color.colorify("[*]", "bold yellow"))) # too large
                     continue
 
                 if f == "environ":
@@ -14047,6 +14047,77 @@ class ProcDumpCommand(GenericCommand):
                         out.append("{:#8x}: {:#x}".format(typ, val))
                     continue
 
+                if f == "syscall":
+                    try:
+                        data = open(path, "rb").read()
+                        out.append(bytes2str(data).strip())
+                    except OSError:
+                        continue
+                    tag = [
+                        "syscall num", "sp", "pc",
+                    ]
+                    max_width = max(len(x) for x in tag)
+                    for i, elem in enumerate(data.split()):
+                        if i <= len(tag):
+                            elem_name = tag[i]
+                        else:
+                            elem_name = "???"
+                        elem_name = Color.boldify("{:{:d}s}".format(elem_name, max_width))
+                        out.append("{:2d} {:s}: {:s}".format(i + 1, elem_name, bytes2str(elem)))
+                    continue
+
+                if f == "stat":
+                    try:
+                        data = open(path, "rb").read()
+                        out.append(bytes2str(data).strip())
+                    except OSError:
+                        continue
+                    tag = [
+                        "pid", "comm", "state", "ppid", "pgrp", "session", "tty_nr", "tpgid", "flags",
+                        "minflt", "cminflt", "majflt", "cmajflt", "utime", "stime", "cutime", "cstime",
+                        "priority", "nice", "num_threads", "itrealvalue", "starttime", "vsize",
+                        "rss", "rsslim", "startcode", "endcode", "startstack", "kstkesp", "kstkeip",
+                        "signal", "blocked", "sigignore", "sigcatch", "wchan", "nswap", "cnswap",
+                        "exit_signal", "processor", "rt_priority", "policy", "delayacct_blkio_ticks",
+                        "guest_time", "cguest_time", "start_data", "end_data", "start_brk",
+                        "arg_start", "arg_end", "env_startr", "env_end", "exit_code",
+                    ]
+                    max_width = max(len(x) for x in tag)
+                    lpos = data.find(b"(")
+                    rpos = data.rfind(b")") + 1
+                    data = [data[:lpos].strip(), data[lpos:rpos]] + data[rpos:].split()
+                    for i, elem in enumerate(data):
+                        if i + 1 in [25, 26, 27, 28, 29, 30, 45, 46, 47, 48, 49, 50, 51]:
+                            address = int(elem)
+                            sym = get_symbol_string(address)
+                            elem = "{!s}{:s}".format(lookup_address(address), sym)
+                        if i <= len(tag):
+                            elem_name = tag[i]
+                        else:
+                            elem_name = "???"
+                        elem_name = Color.boldify("{:{:d}s}".format(elem_name, max_width))
+                        out.append("{:2d} {:s}: {:s}".format(i + 1, elem_name, bytes2str(elem)))
+                    continue
+
+                if f == "statm":
+                    try:
+                        data = open(path, "rb").read()
+                        out.append(bytes2str(data).strip())
+                    except OSError:
+                        continue
+                    tag = [
+                        "size", "resident", "shared", "text", "lib", "data", "dt",
+                    ]
+                    max_width = max(len(x) for x in tag)
+                    for i, elem in enumerate(data.split()):
+                        if i <= len(tag):
+                            elem_name = tag[i]
+                        else:
+                            elem_name = "???"
+                        elem_name = Color.boldify("{:{:d}s}".format(elem_name, max_width))
+                        out.append("{:2d} {:s}: {:s}".format(i + 1, elem_name, bytes2str(elem)))
+                    continue
+
                 if f == "rt_acct":
                     ret = gef_execute_external(["hexdump", "-C", path], as_list=True)
                     out.extend(ret)
@@ -14061,9 +14132,43 @@ class ProcDumpCommand(GenericCommand):
                         out.append("{:30s} {:s}".format(k, v))
                     continue
 
-                if f in ["mounts", "mountinfo", "mountstats", "raw", "tcp", "udp", "icmp", "raw6", "tcp6", "udp6", "unix"]:
+                if f in ["mounts", "mountinfo", "mountstats", "unix", "protocols"]:
                     ret = gef_execute_external(["column", "-t", path], as_list=True)
                     out.extend(ret)
+                    continue
+
+                if f in ["raw", "tcp", "udp", "icmp", "raw6", "tcp6", "udp6", "icmp6", "udplite", "udplite6"]:
+                    data = open(path, "rb").read()
+                    data = data.replace(b"tx_queue ", b"tx_queue:")
+                    data = data.replace(b" tr ", b" tr:")
+                    tmp_fd, tmp_filename = tempfile.mkstemp(dir=GEF_TEMP_DIR, prefix="proc-dump-")
+                    os.write(tmp_fd, data)
+                    os.close(tmp_fd)
+                    ret = gef_execute_external(["column", "-t", tmp_filename], as_list=True)
+                    out.extend(ret)
+                    os.unlink(tmp_filename)
+                    continue
+
+                if f == "dev":
+                    data = open(path, "rb").read()
+                    data = data.replace(b"|", b" |")
+                    data = re.sub(rb"\|\s*Receive", b"|Receive", data)
+                    data = re.sub(rb"\|\s*Transmit", b"|Transmit", data)
+                    tmp_fd, tmp_filename = tempfile.mkstemp(dir=GEF_TEMP_DIR, prefix="proc-dump-")
+                    os.write(tmp_fd, data)
+                    os.close(tmp_fd)
+                    ret = gef_execute_external(["column", "-t", tmp_filename], as_list=True)
+                    wrong = ret[0].rfind("|")
+                    rright = ret[1].rfind("|")
+                    lright = ret[1].find("|")
+                    ret[0] = (ret[0][:wrong] + " " * (rright - wrong) + ret[0][wrong:]).rstrip()
+                    ret[0] = re.sub(r"\|(\S+)", "| \\1 ", ret[0])
+                    ret[1] = re.sub(r"\|(\S+)", "| \\1 ", ret[1])
+                    for i in range(2, len(ret)):
+                        ret[i] = ret[i][:lright] + "  " + ret[i][lright:]
+                        ret[i] = ret[i][:rright] + "  " + ret[i][rright:]
+                    out.extend(ret)
+                    os.unlink(tmp_filename)
                     continue
 
                 if f in ["igmp", "fib_trie", "wireless"]:
