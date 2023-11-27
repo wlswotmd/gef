@@ -2844,9 +2844,12 @@ class GlibcChunk:
         if (is_32bit() and self.size < 0x3f0) or (is_64bit() and self.size < 0x400):
             fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={:s}, bk={:s})"
             msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, bk)
-        else:
+        elif is_valid_addr(self.fd_nextsize) or is_valid_addr(self.bk_nextsize):
             fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={:s}, bk={:s}, fd_nextsize={:s}, bk_nextsize={:s})"
             msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, bk, fd_nextsize, bk_nextsize)
+        else:
+            fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={:s}, bk={:s})"
+            msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, bk)
         return msg
 
     def psprint(self):
