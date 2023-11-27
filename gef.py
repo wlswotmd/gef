@@ -24497,6 +24497,7 @@ class HexdumpFlexibleCommand(GenericCommand):
     """Display the hexdump with user defined format."""
     _cmdline_ = "hexdump-flexible"
     _category_ = "03-b. Memory - View"
+    _aliases_ = ["xxdf", "hdf"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("format", metavar="FORMAT", help="dump format.")
@@ -24544,6 +24545,7 @@ class HexdumpFlexibleCommand(GenericCommand):
             return
 
         each_type = self.extract_each_type(args.format)
+        base_address_color = get_gef_setting("theme.dereference_base_address")
 
         self.out = []
         for i in range(args.count):
@@ -24558,7 +24560,8 @@ class HexdumpFlexibleCommand(GenericCommand):
                 break
 
             values = struct.unpack(fmt.replace("-", ""), data)
-            line_elem = ["{:#x}:   ".format(address)]
+            colored_address = Color.colorify(format_address(address), base_address_color)
+            line_elem = ["{:s}|{:+#06x}|{:+04d}:   ".format(colored_address, size * i, i)]
             for t, v in zip(each_type, values):
                 if t.startswith("-"):
                     continue
