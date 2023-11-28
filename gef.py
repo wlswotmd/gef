@@ -27744,7 +27744,12 @@ class DestructorDumpCommand(GenericCommand):
     _category_ = "02-e. Process Information - Complex Structure Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("--tdl", type=parse_address, help="specify the offset of `tls_dtor_list` from TLS base.")
     _syntax_ = parser.format_help()
+
+    _example_ = "{:s}\n".format(_cmdline_)
+    _example_ += "{:s} --tdl 0x50                 # specify offset of tls_dtor_list\n".format(_cmdline_)
+    _example_ += "{:s} --tdl 0xffffffffffffffa8   # specify negative offset".format(_cmdline_)
 
     def C(self, addr):
         base_address_color = get_gef_setting("theme.dereference_base_address")
@@ -27755,45 +27760,310 @@ class DestructorDumpCommand(GenericCommand):
         except Exception:
             return a + "[???]"
 
-    def dump_tls_dtors(self):
+    """
+    glibc 2.37
+
+    x86_32: dynamic symboled: linkmap-relative
+    x86_32: dynamic stripped: linkmap-relative
+    x86_32: static symboled: msymbols
+    x86_32: static stripped: heuristic
+
+    x86_64: dynamic symboled: linkmap-relative
+    x86_64: dynamic stripped: linkmap-relative
+    x86_64: static symboled: msymbols
+    x86_64: static stripped: heuristic
+
+    arm32: dynamic symboled: linkmap-relative
+    arm32: dynamic stripped: linkmap-relative
+    arm32: static symboled: msymbols
+    arm32: static stripped: heuristic
+
+    arm64: dynamic symboled: linkmap-relative
+    arm64: dynamic stripped: linkmap-relative
+    arm64: static symboled: msymbols
+    arm64: static stripped: heuristic
+
+    sparc64: dynamic symboled: linkmap-relative
+    sparc64: dynamic stripped: linkmap-relative
+    sparc64: static symboled: msymbols
+    sparc64: static stripped: heuristic
+
+    s390x: dynamic symboled: linkmap-relative
+    s390x: dynamic stripped: linkmap-relative
+    s390x: static symboled: msymbols
+    s390x: static stripped: heuristic
+
+    loongarch64: dynamic symboled: linkmap-relative
+    loongarch64: dynamic stripped: linkmap-relative
+    loongarch64: static symboled: msymbols
+    loongarch64: static stripped: heuristic
+
+    ppc32: dynamic symboled: heuristic (link_map is not in TLS)
+    ppc32: dynamic stripped: heuristic (link_map is not in TLS)
+    ppc32: static symboled: heuristic
+    ppc32: static stripped: heuristic
+
+    ppc64: dynamic symboled: heuristic (link_map is not in TLS)
+    ppc64: dynamic stripped: heuristic (link_map is not in TLS)
+    ppc64: static symboled: msymbols
+    ppc64: static stripped: heuristic
+
+    nios2: dynamic symboled: heuristic (link_map is not in TLS)
+    nios2: dynamic stripped: heuristic (link_map is not in TLS)
+    nios2: static symboled: msymbols
+    nios2: static stripped: heuristic
+
+    alpha: dynamic symboled: heuristic (link_map is not in TLS)
+    alpha: dynamic stripped: heuristic (link_map is not in TLS)
+    alpha: static symboled: msymbols
+    alpha: static stripped: heuristic
+
+    riscv64: dynamic symboled: linkmap-relative
+    riscv64: dynamic stripped: linkmap-relative
+    riscv64: static symboled: msymbols
+    riscv64: static stripped: NG (PTR_MANGLE is no-XOR)
+
+    riscv32: dynamic symboled: linkmap-relative
+    riscv32: dynamic stripped: linkmap-relative
+    riscv32: static symboled: msymbols
+    riscv32: static stripped: NG (PTR_MANGLE is no-XOR)
+
+    or1k: dynamic symboled: linkmap-relative
+    or1k: dynamic stripped: linkmap-relative
+    or1k: static symboled: msymbols
+    or1k: static stripped: NG (PTR_MANGLE is no-XOR)
+
+    arc32: dynamic symboled: linkmap-relative
+    arc32: dynamic stripped: linkmap-relative
+    arc32: static symboled: msymbols
+    arc32: static stripped: NG (PTR_MANGLE is no-XOR)
+
+    m68k: dynamic symboled: NG (link_map is not in TLS and PTR_MANGLE is no-XOR)
+    m68k: dynamic stripped: NG (link_map is not in TLS and PTR_MANGLE is no-XOR)
+    m68k: static symboled: msymbols
+    m68k: static stripped: NG (PTR_MANGLE is no-XOR)
+
+    mips32: dynamic symboled: NG (link_map is not in TLS and PTR_MANGLE is no-XOR)
+    mips32: dynamic stripped: NG (link_map is not in TLS and PTR_MANGLE is no-XOR)
+    mips32: static symboled: msymbols
+    mips32: static stripped: NG (PTR_MANGLE is no-XOR)
+
+    mips64: dynamic symboled: NG (link_map is not in TLS and PTR_MANGLE is no-XOR)
+    mips64: dynamic stripped: NG (link_map is not in TLS and PTR_MANGLE is no-XOR)
+    mips64: static symboled: msymbols
+    mips64: static stripped: NG (PTR_MANGLE is no-XOR)
+
+    hppa32: dynamic symboled: NG (link_map is not in TLS and PTR_MANGLE is no-XOR)
+    hppa32: dynamic stripped: NG (link_map is not in TLS and PTR_MANGLE is no-XOR)
+    hppa32: static symboled: msymbols
+    hppa32: static stripped: NG (PTR_MANGLE is no-XOR)
+
+    microblaze: dynamic symboled: NG (link_map is not in TLS and PTR_MANGLE is no-XOR)
+    microblaze: dynamic stripped: NG (link_map is not in TLS and PTR_MANGLE is no-XOR)
+    microblaze: static symboled: msymbols
+    microblaze: static stripped: NG (PTR_MANGLE is no-XOR)
+
+    arc64: dynamic symboled: NG (link_map is not in TLS and PTR_MANGLE is no-XOR)
+    arc64: dynamic stripped: NG (link_map is not in TLS and PTR_MANGLE is no-XOR)
+    arc64: static symboled: msymbols
+    arc64: static stripped: NG (PTR_MANGLE is no-XOR)
+
+    csky: dynamic symboled: ???
+    csky: dynamic stripped: ???
+    csky: static symboled: msymbols
+    csky: static stripped: heuristic
+    """
+
+    def get_dtor_list_from_msymbols(self):
+        # Statically linked binaries cannot resolve the address of thread-local storage variables.
+        # Therefore, identify it from the output of the msymbols command and the offset of thread_arena.
+
+        # thread_arena address of main thread
+        main_thread_main_arena = saerch_for_main_arena_from_tls()
+        if main_thread_main_arena is None:
+            return None
+
+        # thread_arena offset from .tbss
+        ret = gdb.execute("maintenance print msymbols", to_string=True)
+        m = re.search(r"(0x\S+) thread_arena section .tbss", ret)
+        if not m:
+            return None
+        thread_arena_offset = int(m.group(1), 16)
+
+        # tls_dtor_list offset from .tbss
+        m = re.search(r"(0x\S+) tls_dtor_list section .tbss", ret)
+        if not m:
+            return None
+        tls_dtor_list_offset = int(m.group(1), 16)
+
+        # tls_dtor_list offset from TLS
+        main_thread_tbss_base = main_thread_main_arena - thread_arena_offset
+        main_thread_tls_dtor_list = main_thread_tbss_base + tls_dtor_list_offset
+
+        # TLS address of main thread
+        selected_thread = gdb.selected_thread()
+        threads = gdb.selected_inferior().threads()
+        main_thread = [th for th in threads if th.num == 1][0]
+        main_thread.switch() # switch temporarily
+        main_tls = current_arch.get_tls()
+        selected_thread.switch() # revert thread
+
+        # tls_dotr_list of current thread
+        tls_dtor_list = main_thread_tls_dtor_list - main_tls + current_arch.get_tls()
+        return tls_dtor_list
+
+    def get_dtor_list_from_linkmap_relative(self):
+        codebase = get_section_base_address(get_filepath(append_proc_root_prefix=False))
+        if codebase is None:
+            codebase = get_section_base_address(get_path_from_info_proc())
+        if codebase is None:
+            return None
+
+        if is_x86() or is_sparc64() or is_s390x():
+            direction = -1
+        else:
+            direction = 1
+
+        """
+        --- TLS-0x80 ---
+        0x7ffff7fa06c0|+0x0000|+000: 0x0000000000000000
+        0x7ffff7fa06c8|+0x0008|+001: 0x00007ffff7d9b4c0 <_nl_C_LC_CTYPE_tolower+0x200>  ->  0x0000000100000000
+        0x7ffff7fa06d0|+0x0010|+002: 0x00007ffff7d9bac0 <_nl_C_LC_CTYPE_toupper+0x200>  ->  0x0000000100000000
+        0x7ffff7fa06d8|+0x0018|+003: 0x00007ffff7d9c3c0 <_nl_C_LC_CTYPE_class+0x100>  ->  0x0002000200020002
+        0x7ffff7fa06e0|+0x0020|+004: 0x00007ffff7ffe2c0  ->  0x0000555555554000  ->  0x00010102464c457f <- link_map
+        0x7ffff7fa06e8|+0x0028|+005: 0x00005555555592a0  ->  0x3c56fdd6341540d8                         <- tls_dtor_list
+        0x7ffff7fa06f0|+0x0030|+006: 0x0000000000000000
+        0x7ffff7fa06f8|+0x0038|+007: 0x0000555555559010  ->  0x0000000000000000
+        0x7ffff7fa0700|+0x0040|+008: 0x0000000000000000
+        0x7ffff7fa0708|+0x0048|+009: 0x00007ffff7df6c80 <main_arena>  ->  0x0000000000000000
+        0x7ffff7fa0710|+0x0050|+010: 0x0000000000000000
+        0x7ffff7fa0718|+0x0058|+011: 0x0000000000000000
+        0x7ffff7fa0720|+0x0060|+012: 0x0000000000000000
+        0x7ffff7fa0728|+0x0068|+013: 0x0000000000000000
+        0x7ffff7fa0730|+0x0070|+014: 0x0000000000000000
+        0x7ffff7fa0738|+0x0078|+015: 0x0000000000000000
+        --- TLS ---
+        ...
+        """
+        tls = current_arch.get_tls()
+        for i in range(1, 16):
+            addr = tls + (current_arch.ptrsize * i) * direction
+
+            if not is_valid_addr(addr):
+                break
+
+            candidate_link_map = read_int_from_memory(addr)
+            if not is_valid_addr(candidate_link_map):
+                continue
+
+            candidate_codebase = read_int_from_memory(candidate_link_map)
+            if candidate_codebase == codebase:
+                # found
+                if is_s390x():
+                    tls_dtor_list = tls + (current_arch.ptrsize * (i + 1)) * direction
+                else:
+                    tls_dtor_list = tls + (current_arch.ptrsize * (i - 1)) * direction
+                if is_valid_addr(tls_dtor_list):
+                    # maybe valid
+                    return tls_dtor_list
+                else:
+                    # invalid
+                    return None
+        return None
+
+    def get_dtor_list_from_heuristic(self):
+        if is_x86() or is_sparc64() or is_s390x():
+            direction = -1
+        else:
+            direction = 1
+
+        """
+        --- TLS-0x80 ---
+        0x0000004af340|+0x0000|+000: 0x0000000000000000
+        0x0000004af348|+0x0008|+001: 0x0000000000000000
+        0x0000004af350|+0x0010|+002: 0x00000000004a83e0  ->  0x00000000004a4ae0  ->  0x000000000047e150  ->  ...
+        0x0000004af358|+0x0018|+003: 0x00000000004a83e8  ->  0x00000000004a5020  ->  0x000000000047e150  ->  ...
+        0x0000004af360|+0x0020|+004: 0x00000000004a83e0  ->  0x00000000004a4ae0  ->  0x000000000047e150  ->  ...
+        0x0000004af368|+0x0028|+005: 0x0000000000000000  <-  $r13
+        0x0000004af370|+0x0030|+006: 0x0000000000000000
+        0x0000004af378|+0x0038|+007: 0x0000000000000000
+        0x0000004af380|+0x0040|+008: 0x00000000004b0210  ->  0xac500ef775892689  <- tls_dtor_list
+        0x0000004af388|+0x0048|+009: 0x00000000004afd50  ->  0x0000000000000000
+        0x0000004af390|+0x0050|+010: 0x0000000000000000
+        0x0000004af398|+0x0058|+011: 0x00000000004a71e0  ->  0x0000000000000000
+        0x0000004af3a0|+0x0060|+012: 0x0000000000484e60  ->  0x0000000100000000
+        0x0000004af3a8|+0x0068|+013: 0x0000000000485460  ->  0x0000000100000000
+        0x0000004af3b0|+0x0070|+014: 0x0000000000485d60  ->  0x0002000200020002
+        0x0000004af3b8|+0x0078|+015: 0x0000000000000000
+        --- TLS ---
+        ...
+        """
+        tls = current_arch.get_tls()
+        for i in range(1, 16):
+            addr = tls + (current_arch.ptrsize * i) * direction
+
+            if not is_valid_addr(addr):
+                break
+
+            x = read_int_from_memory(addr)
+            if not is_valid_addr(x):
+                continue
+
+            y = read_int_from_memory(x)
+            if is_valid_addr(y):
+                continue
+
+            yb = bytearray(read_memory(x, 8))
+            if yb.count(b"\x00") <= 2:
+                # statistically ok
+                return addr
+        return None
+
+    def dump_tls_dtors(self, offset_tls_dtor_list):
         info("Probably only exists in glibc.")
         if not self.tls:
             err("TLS is not found")
             return
 
-        if is_x86_64():
-            head_p = self.tls - 0x60
-        elif is_x86_32():
-            head_p = self.tls - 0x3c
-        elif is_arm32():
-            head_p = self.tls + 0x20
-        elif is_arm64():
-            head_p = self.tls + 0x40
-        elif is_mips32() or is_ppc32() or is_m68k() or is_nios2():
-            head_p = self.tls + 0x1c
-        elif is_mips64() or is_ppc64():
-            head_p = self.tls + 0x38
-        elif is_sparc64():
-            head_p = self.tls - 0x48
-        elif is_riscv32() or is_or1k():
-            head_p = self.tls + 0x18
-        elif is_riscv64():
-            head_p = self.tls + 0x30
-        elif is_s390x():
-            head_p = self.tls - 0x50
-        elif is_alpha():
-            head_p = self.tls + 0x48
-        elif is_hppa32() or is_microblaze():
-            head_p = self.tls + 0x24
-        elif is_loongarch64():
-            head_p = self.tls + 0x28
-        elif is_arc32():
-            head_p = self.tls + 0x20
-        elif is_arc64():
-            head_p = self.tls + 0x40
-        elif is_csky():
-            head_p = self.tls + 0x1c
+        filepath = get_filepath()
+        if filepath is None:
+            err("filepath is not set")
+            return
 
+        # user specified
+        tls_dtor_list = None
+        if offset_tls_dtor_list:
+            tls_dtor_list = align_address(current_arch.get_tls() + offset_tls_dtor_list)
+
+        # method 1 (directly)
+        if tls_dtor_list is None:
+            try:
+                tls_dtor_list = parse_address("&tls_dtor_list")
+                if not is_valid_addr(tls_dtor_list):
+                    tls_dtor_list = None
+            except gdb.error:
+                pass
+
+        # method 2 (from msymbols)
+        if tls_dtor_list is None:
+            if is_static():
+                tls_dtor_list = self.get_dtor_list_from_msymbols()
+
+        # method 3 (from link-map)
+        if tls_dtor_list is None:
+            if not is_static():
+                tls_dtor_list = self.get_dtor_list_from_linkmap_relative()
+
+        # method 4 (from xxx)
+        if tls_dtor_list is None:
+            if current_arch.encode_cookie(0x1, 0xdeadbeef) != 0x1: # use cookie xor
+                tls_dtor_list = self.get_dtor_list_from_heuristic()
+
+        if tls_dtor_list is None:
+            err("Not found tls_dtor_list")
+            return
+
+        head_p = tls_dtor_list
         head = lookup_address(read_int_from_memory(head_p))
         current = head.value
         if head.section is None:
@@ -27902,6 +28172,8 @@ class DestructorDumpCommand(GenericCommand):
 
     def yield_link_map(self):
         link_map = LinkMapCommand.get_link_map(get_filepath(), silent=True)
+        if link_map is None:
+            return
         current = link_map.value
         while current:
             dic = {}
@@ -28025,7 +28297,7 @@ class DestructorDumpCommand(GenericCommand):
 
         # dump
         gef_print(titlify("tls_dtor_list: registered by __cxa_thread_atexit_impl()"))
-        self.dump_tls_dtors()
+        self.dump_tls_dtors(args.tdl)
 
         gef_print(titlify("__exit_funcs: registered by atexit(), on_exit()"))
         self.dump_exit_funcs("__exit_funcs")
@@ -28033,16 +28305,16 @@ class DestructorDumpCommand(GenericCommand):
         gef_print(titlify("__quick_exit_funcs: registered by at_quick_exit()"))
         self.dump_exit_funcs("__quick_exit_funcs")
 
-        gef_print(titlify(".fini_array"))
+        gef_print(titlify(".fini_array section"))
         self.dump_sections(".fini_array")
 
-        gef_print(titlify(".fini"))
+        gef_print(titlify(".fini section"))
         self.dump_sections_not_array(".fini")
 
-        gef_print(titlify(".dtors"))
+        gef_print(titlify(".dtors section"))
         self.dump_sections(".dtors")
 
-        gef_print(titlify("__libc_atexit"))
+        gef_print(titlify("__libc_atexit section")) # you can see at /bin/busybox
         self.dump_sections("__libc_atexit")
         return
 
