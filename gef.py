@@ -2601,7 +2601,14 @@ class GlibcArena:
         self.cached_largebins_list = self.largebins_list()
         return
 
-    def make_bins_info(self, address, skip_top=False):
+    def make_bins_info(self, address_or_chunk, skip_top=False):
+        if isinstance(address_or_chunk, GlibcChunk):
+            address = address_or_chunk.address
+            base_address = address_or_chunk.chunk_base_address
+        elif isinstance(address_or_chunk, int):
+            address = address_or_chunk
+            base_address = address_or_chunk
+
         info = []
         for k, v in self.cached_tcache_list.items():
             if address in v:
@@ -2616,24 +2623,25 @@ class GlibcArena:
                 m = "fastbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(k, sz, pos, len(v))
                 info.append(m)
         for _k, v in self.cached_unsortedbin_list.items():
-            if address in v:
-                pos = ",".join([str(i + 1) for i, x in enumerate(v) if x == address])
+            if base_address in v:
+                pos = ",".join([str(i + 1) for i, x in enumerate(v) if x == base_address])
                 m = "unsortedbins[{:s}/{:d}]".format(pos, len(v))
                 info.append(m)
         for k, v in self.cached_smallbins_list.items():
-            if address in v:
-                pos = ",".join([str(i + 1) for i, x in enumerate(v) if x == address])
+            if base_address in v:
+                pos = ",".join([str(i + 1) for i, x in enumerate(v) if x == base_address])
                 sz = get_binsize_table()["small_bins"][k]["size"]
                 m = "smallbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(k, sz, pos, len(v))
                 info.append(m)
         for k, v in self.cached_largebins_list.items():
-            if address in v:
-                pos = ",".join([str(i + 1) for i, x in enumerate(v) if x == address])
-                sz = get_binsize_table()["large_bins"][k]["size"]
-                m = "largebins[idx={:d},sz={:#x}][{:s}/{:d}]".format(k, sz, pos, len(v))
+            if base_address in v:
+                pos = ",".join([str(i + 1) for i, x in enumerate(v) if x == base_address])
+                sz_min = get_binsize_table()["large_bins"][k]["size_min"]
+                sz_max = get_binsize_table()["large_bins"][k]["size_max"]
+                m = "largebins[idx={:d},sz={:#x}-{:#x}][{:s}/{:d}]".format(k, sz_min, sz_max, pos, len(v))
                 info.append(m)
         if not skip_top:
-            if address == self.top:
+            if base_address == self.top:
                 info.append("top")
         return info
 
@@ -2838,15 +2846,18 @@ class GlibcChunk:
         addr_c = Color.colorify("{:#x}".format(self.chunk_base_address), get_gef_setting("theme.heap_chunk_address_freed"))
         flags = self.flags_as_string()
 
-        fd = str(lookup_address(self.fd))
+        if not is_valid_addr(self.fd):
+            fd = str(lookup_address(self.get_fwd_ptr(sll=True)))
+        else:
+            fd = str(lookup_address(self.fd))
         bk = str(lookup_address(self.bk))
-        fd_nextsize = str(lookup_address(self.fd_nextsize))
-        bk_nextsize = str(lookup_address(self.bk_nextsize))
 
         if (is_32bit() and self.size < 0x3f0) or (is_64bit() and self.size < 0x400):
             fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={:s}, bk={:s})"
             msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, bk)
         elif is_valid_addr(self.fd_nextsize) or is_valid_addr(self.bk_nextsize):
+            fd_nextsize = str(lookup_address(self.fd_nextsize))
+            bk_nextsize = str(lookup_address(self.bk_nextsize))
             fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={:s}, bk={:s}, fd_nextsize={:s}, bk_nextsize={:s})"
             msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, bk, fd_nextsize, bk_nextsize)
         else:
@@ -17448,7 +17459,7 @@ class GlibcHeapChunkCommand(GenericCommand):
         # extra information
         info = []
         arena.reset_bins_info()
-        info.extend(arena.make_bins_info(chunk.address, skip_top=True))
+        info.extend(arena.make_bins_info(chunk, skip_top=True))
         if chunk.chunk_base_address == arena.top:
             info.append("top")
 
@@ -17525,7 +17536,7 @@ class GlibcHeapChunksCommand(GenericCommand):
             line = str(current_chunk)
 
             # in or not in free-list
-            info = arena.make_bins_info(current_chunk.address)
+            info = arena.make_bins_info(current_chunk)
             if info:
                 line += Color.colorify(" {:s} {:s}".format(LEFT_ARROW, ", ".join(info)), freelist_hint_color)
 
