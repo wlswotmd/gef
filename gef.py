@@ -191,6 +191,8 @@ __patch_history__               = []
 __gef_prev_arch__               = None
 __gef_check_once__              = True
 __gef_context_hidden__          = False
+__gef_delayed_breakpoints__     = set()
+__gef_delayed_bp_set__          = False
 __libc_args_definitions__       = {}
 __cached_syscall_table__        = {}
 __cached_kernel_info__          = None
@@ -10903,6 +10905,18 @@ def new_objfile_handler(_event):
     if current_arch is None:
         set_arch(get_arch())
     load_libc_args()
+
+    # delayed breakpoint for brva
+    global __gef_delayed_bp_set__
+    if __gef_delayed_bp_set__ is False and is_alive():
+        if not (is_qemu_system() or is_kgdb() or is_vmware()):
+            codebase = get_section_base_address(get_filepath(append_proc_root_prefix=False))
+            if codebase is None:
+                codebase = get_section_base_address(get_path_from_info_proc())
+            if codebase:
+                for offset in __gef_delayed_breakpoints__:
+                    gdb.execute("b *{:#x}".format(codebase + offset))
+                __gef_delayed_bp_set__ = True
     return
 
 
@@ -12957,10 +12971,12 @@ class BreakRelativeVirtualAddressCommand(GenericCommand):
     _aliases_ = ["brva"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("offset", metavar="OFFSET", type=parse_address,  help="the offset from codebase you want to set a breakpoint.")
+    parser.add_argument("offset", metavar="OFFSET", type=parse_address,
+                        help="the offset from codebase you want to set a breakpoint.")
     _syntax_ = parser.format_help()
 
     @parse_args
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -12969,13 +12985,19 @@ class BreakRelativeVirtualAddressCommand(GenericCommand):
             err("No-PIE elf is unsupported")
             return
 
-        codebase = get_section_base_address(get_filepath(append_proc_root_prefix=False))
-        if codebase is None:
-            codebase = get_section_base_address(get_path_from_info_proc())
-        if codebase is None:
-            gef_print("Codebase is not found")
-            return
-        gdb.execute("b *{:#x}".format(codebase + args.offset))
+        if is_alive():
+            codebase = get_section_base_address(get_filepath(append_proc_root_prefix=False))
+            if codebase is None:
+                codebase = get_section_base_address(get_path_from_info_proc())
+            if codebase is None:
+                gef_print("Codebase is not found")
+                return
+            gdb.execute("b *{:#x}".format(codebase + args.offset))
+        else:
+            # use delayed breakpoints
+            global __gef_delayed_breakpoints__
+            __gef_delayed_breakpoints__.add(args.offset)
+            info("Add delayed breakpoint to codebase+{:#x}".format(args.offset))
         return
 
 
