@@ -52698,15 +52698,15 @@ class KernelOperationsCommand(GenericCommand):
                     sym = " {!r}".format(read_cstring_from_memory(address))
                 else:
                     sym = get_symbol_string(address)
-                self.out.append("[{:03d}] {:10s} {:20s} {:#0{:d}x}{:s}".format(idx, type, name, address, width, sym))
+                self.out.append("{:<5d} {:10s} {:20s} {:#0{:d}x}{:s}".format(idx, type, name, address, width, sym))
 
         else:
             if not args.quiet:
                 fmt = "{:5s} {:<10s} {:<20s}"
-                legend = ["Idx", "Type", "Name"]
+                legend = ["Index", "Type", "Name"]
                 self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
             for idx, (type, name) in enumerate(members):
-                self.out.append("[{:03d}] {:10s} {:20s}".format(idx, type, name))
+                self.out.append("{:<5d} {:10s} {:20s}".format(idx, type, name))
 
         if self.out:
             gef_print("\n".join(self.out), less=not args.no_pager)
