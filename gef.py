@@ -47774,8 +47774,8 @@ class KernelbaseCommand(GenericCommand):
             div0_handler = None
 
             if is_qemu_system():
-                # [000] #DE: Divide-by-zero 0x00000000ffffffffbd008e0000100870 0xe 0x0 0x0 0x1 0x0010:0xffffffffbd000870 <NO_SYMBOL>
-                res = gdb.execute("qreg --no-pager --verbose", to_string=True)
+                # 0   #DE: Divide-by-zero 0x00000000ffffffffbd008e0000100870 0xe 0x0 0x0 0x1 0x0010:0xffffffffbd000870 <NO_SYMBOL>
+                res = gdb.execute("idtinfo --verbose", to_string=True)
                 r = re.search(r"Divide-by-zero.+\S+:(\S+)\s+<", res)
                 div0_handler = int(r.group(1), 16)
             elif is_vmware():
@@ -55475,6 +55475,7 @@ class GdtInfoCommand(GenericCommand):
     _category_ = "04-a. Register - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     parser.add_argument("-v", "--verbose", action="store_true", help="also display bit information of gdt entries.")
     _syntax_ = parser.format_help()
 
@@ -55487,7 +55488,7 @@ class GdtInfoCommand(GenericCommand):
         4: "DEFAULT_USER32_CS",
         5: "DEFAULT_USER_DS",
         6: "DEFAULT_USER_CS",
-        7: "",
+        7: "???",
         8: "TSS-part1",
         9: "TSS-part2",
         10: "LDT-part1",
@@ -55643,12 +55644,12 @@ class GdtInfoCommand(GenericCommand):
 
     @staticmethod
     def gdtval2str_legend():
-        fmt = "[ #] {:20s} {:18s} {:18s} "
+        fmt = "{:2s} {:20s} {:18s} {:18s} "
         fmt += "{:s} {:s} {:s}      "
         fmt += "{:s} {:s} {:s} {:s}      "
         fmt += "{:s}      {:s}    {:s}    {:s}"
         legs = [
-            "segment name", "value", "base",
+            "#", "segment name", "value", "base",
             "limit/size", "gr", "dbl",
             "avl", "p", "dpl", "s",
             "ex", "dc", "rw", "ac",
@@ -55751,7 +55752,7 @@ class GdtInfoCommand(GenericCommand):
             is_part1 = segname in ["TSS-part1", "LDT-part1"]
             valstr = self.gdtval2str(value, value_only=is_part1)
 
-            gef_print("[{:02d}] {:20s} {:s} {:s}".format(i, segname, valstr, regstr))
+            gef_print("{:<2d} {:20s} {:s} {:s}".format(i, segname, valstr, regstr))
         return
 
     def print_gdt_real(self):
@@ -55815,7 +55816,7 @@ class GdtInfoCommand(GenericCommand):
                 regstr = ""
 
             segname = segm_desc.get(i, "Undefined")
-            gef_print("[{:02d}] {:20s} {:s} {:s}".format(i, segname, valstr, regstr))
+            gef_print("{:<2d} {:20s} {:s} {:s}".format(i, segname, valstr, regstr))
         return
 
     def print_gdt_entry_legend(self):
@@ -55871,7 +55872,8 @@ class GdtInfoCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        self.print_seg_info()
+        if not args.quiet:
+            self.print_seg_info()
 
         if is_qemu_system() or is_vmware():
             self.print_gdt_real()
@@ -55881,7 +55883,8 @@ class GdtInfoCommand(GenericCommand):
         if args.verbose:
             self.print_gdt_entry_legend()
         else:
-            info("for flags description, use `-v`")
+            if not args.quiet:
+                info("for flags description, use `-v`")
         return
 
 
@@ -55892,6 +55895,7 @@ class IdtInfoCommand(GenericCommand):
     _category_ = "04-a. Register - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     parser.add_argument("-v", "--verbose", action="store_true", help="also display bit information of idt entries.")
     _syntax_ = parser.format_help()
 
@@ -55962,8 +55966,8 @@ class IdtInfoCommand(GenericCommand):
     def idtval2str_legend():
         val_width = current_arch.ptrsize * 4 + 2
         ofs_width = current_arch.ptrsize * 2 + 2
-        fmt = "[  #] {:36s} {:{:d}s} {:3s} {:3s} {:3s} {:3s} {:6s}:{:{:d}s}"
-        return fmt.format("name", "value", val_width, "typ", "ist", "dpl", "p", "segm", "offset", ofs_width)
+        fmt = "{:3s} {:36s} {:{:d}s} {:3s} {:3s} {:3s} {:3s} {:6s}:{:{:d}s}"
+        return fmt.format("#", "name", "value", val_width, "typ", "ist", "dpl", "p", "segm", "offset", ofs_width)
 
     def print_idt_example(self):
         # print title
@@ -56037,7 +56041,7 @@ class IdtInfoCommand(GenericCommand):
         for i, value in entries:
             if value != 0:
                 int_name = self.INTERRUPT_DESCRIPTION.get(i, "User defined Interrupt {:#x}".format(i))
-                gef_print("[{:03d}] {:36s} {:s}".format(i, int_name, self.idtval2str(value)))
+                gef_print("{:<3d} {:36s} {:s}".format(i, int_name, self.idtval2str(value)))
         return
 
     def print_idt_real(self):
@@ -56063,7 +56067,7 @@ class IdtInfoCommand(GenericCommand):
             int_name = self.INTERRUPT_DESCRIPTION.get(i, "User defined Interrupt {:#x}".format(i))
             valstr = self.idtval2str(b)
             sym = get_symbol_string(self.idt_unpack(b).offset, nosymbol_string=" <NO_SYMBOL>")
-            gef_print("[{:03d}] {:36s} {:s}{:s}".format(i, int_name, valstr, sym))
+            gef_print("{:<3d} {:36s} {:s}{:s}".format(i, int_name, valstr, sym))
 
     def print_idt_entry_legend(self):
         gef_print(titlify("legend (Normal IDT entry)"))
@@ -56102,7 +56106,8 @@ class IdtInfoCommand(GenericCommand):
         if args.verbose:
             self.print_idt_entry_legend()
         else:
-            info("for flags description, use `-v`")
+            if not args.quiet:
+                info("for flags description, use `-v`")
         return
 
 
@@ -67784,35 +67789,8 @@ class QemuRegistersCommand(GenericCommand):
         self.out.append("base : {:s}: starting address of GDT (Global Descriptor Table)".format(Color.boldify("{:#x}".format(base))))
         self.out.append("limit: {:s}: (size of GDT) - 1".format(Color.boldify("{:#x}".format(limit))))
 
-        self.out.append(Color.colorify(GdtInfoCommand.gdtval2str_legend(), get_gef_setting("theme.table_heading")))
-
-        if is_x86_64():
-            segm_desc = GdtInfoCommand.SEGMENT_DESCRIPTION_64
-        else:
-            segm_desc = GdtInfoCommand.SEGMENT_DESCRIPTION_32
-        gdtinfo = slice_unpack(read_memory(base, limit + 1), 8)
-        regs = GdtInfoCommand.get_segreg_list()
-        tr_idx = trseg >> 3
-        for i, b in enumerate(gdtinfo):
-            reglist = regs.get(i, [])
-            if is_x86_64() and i == tr_idx: # for TSS x64
-                valstr = GdtInfoCommand.gdtval2str(b, value_only=True)
-                prev = b
-                reglist.append("TR")
-            elif is_x86_64() and i == tr_idx + 1: # for TSS x64
-                valstr = GdtInfoCommand.gdtval2str([prev, b])
-            elif is_x86_32() and i == tr_idx: # for TSS x86
-                valstr = GdtInfoCommand.gdtval2str(b)
-                reglist.append("TR")
-            else:
-                valstr = GdtInfoCommand.gdtval2str(b)
-
-            if reglist:
-                reglist = "{:s}{:s}".format(LEFT_ARROW, " ,".join(reglist))
-                regstr = Color.colorify(reglist, get_gef_setting("theme.dereference_register_value"))
-            else:
-                regstr = ""
-            self.out.append("[{:02d}] {:20s} {:s} {:s}".format(i, segm_desc.get(i), valstr, regstr))
+        ret = gdb.execute("gdtinfo -q", to_string=True)
+        self.out.append(ret.rstrip())
 
         # IDTR
         self.out.append(titlify("IDTR (Interrupt Descriptor Table Register)"))
@@ -67822,14 +67800,8 @@ class QemuRegistersCommand(GenericCommand):
         self.out.append("base : {:s}: starting address of IDT (Interrupt Descriptor Table)".format(Color.boldify("{:#x}".format(base))))
         self.out.append("limit: {:s}: (size of IDT) - 1".format(Color.boldify("{:#x}".format(limit))))
 
-        self.out.append(Color.colorify(IdtInfoCommand.idtval2str_legend(), get_gef_setting("theme.table_heading")))
-
-        idtinfo = slice_unpack(read_memory(base, limit + 1), current_arch.ptrsize * 2)
-        for i, b in enumerate(idtinfo):
-            int_name = IdtInfoCommand.INTERRUPT_DESCRIPTION.get(i, "User defined Interrupt {:#x}".format(i))
-            valstr = IdtInfoCommand.idtval2str(b)
-            sym = get_symbol_string(IdtInfoCommand.idt_unpack(b).offset, nosymbol_string=" <NO_SYMBOL>")
-            self.out.append("[{:03d}] {:36s} {:s}{:s}".format(i, int_name, valstr, sym))
+        ret = gdb.execute("idtinfo -q", to_string=True)
+        self.out.append(ret.rstrip())
 
         # LDTR
         self.out.append(titlify("LDTR (Local Descriptor Table Register)"))
