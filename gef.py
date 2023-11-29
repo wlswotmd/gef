@@ -12777,6 +12777,8 @@ class ContCommand(GenericCommand):
         thread_started = False
         thread_finished = False
 
+        pid = get_pid()
+
         def continue_thread():
             nonlocal thread_started, thread_finished
             thread_started = True
@@ -12789,7 +12791,10 @@ class ContCommand(GenericCommand):
             return
 
         def sig_handler(_signum, _frame):
-            os.kill(get_pid(), signal.SIGINT)
+            # do not use get_pid() in this func.
+            # get_pid() uses `maintenance packet` command internally,
+            # but it cannot be used when the non-static program is running.
+            os.kill(pid, signal.SIGINT)
             return
 
         th = threading.Thread(target=continue_thread, daemon=True)
