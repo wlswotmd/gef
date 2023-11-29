@@ -11778,7 +11778,7 @@ def __gef_get_auxiliary_values():
         for line in result.splitlines():
             tmp = line.split()
             auxv_type = tmp[1]
-            if auxv_type in ("AT_PLATFORM", "AT_EXECFN"):
+            if auxv_type in ("AT_PLATFORM", "AT_EXECFN", "AT_BASE_PLATFORM"):
                 m = re.match("^.+?(0x[0-9a-f]+)", line)
                 res[auxv_type] = int(m.group(1), 0)
             else:
