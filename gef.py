@@ -1270,7 +1270,7 @@ class Elf:
     EM_CLOUDSHIELD           = 192 # CloudShield architecture family
     EM_COREA_1ST             = 193 # KIPO-KAIST Core-A 1st generation processor family
     EM_COREA_2ND             = 194 # KIPO-KAIST Core-A 2nd generation processor family
-    EM_ARC_COMPACT2          = 195 # Synopsys ARCompact V2
+    EM_ARCV2                 = 195 # Synopsys ARCompact V2
     EM_OPEN8                 = 196 # Open8 8-bit RISC soft processor core
     EM_RL78                  = 197 # Renesas RL78 family
     EM_VIDEOCORE5            = 198 # Broadcom VideoCore V processor
@@ -1280,7 +1280,7 @@ class Elf:
     EM_BA2                   = 202 # Beyond BA2 CPU architecture
     EM_XCORE                 = 203 # XMOS xCORE processor family
     EM_MCHP_PIC              = 204 # Microchip 8-bit PIC(r) family
-    EM_INTEL205              = 205 # Reserved by Intel
+    EM_INTELGT               = 205 # Intel Graphics Technology
     EM_INTEL206              = 206 # Reserved by Intel
     EM_INTEL207              = 207 # Reserved by Intel
     EM_INTEL208              = 208 # Reserved by Intel
@@ -1485,6 +1485,7 @@ class Phdr:
     PT_GNU_EH_FRAME  = 0x6474e550
     PT_GNU_STACK     = 0x6474e551
     PT_GNU_RELRO     = 0x6474e552
+    PT_GNU_PROPERTY  = 0x6474e553
     #PT_LOSUNW        = 0x6ffffffa
     PT_SUNWBSS       = 0x6ffffffa
     PT_SUNWSTACK     = 0x6ffffffb
@@ -1568,13 +1569,12 @@ class Shdr:
     SHT_REL              = 9
     SHT_SHLIB            = 10
     SHT_DYNSYM           = 11
-    SHT_NUM              = 12
     SHT_INIT_ARRAY       = 14
     SHT_FINI_ARRAY       = 15
     SHT_PREINIT_ARRAY    = 16
     SHT_GROUP            = 17
     SHT_SYMTAB_SHNDX     = 18
-    SHT_NUM              = 19
+    SHT_RELR             = 19
     #SHT_LOOS             = 0x60000000
     SHT_GNU_ATTRIBUTES   = 0x6ffffff5
     SHT_GNU_HASH         = 0x6ffffff6
@@ -8645,7 +8645,7 @@ class ARC(Architecture):
     load_condition = [
         Elf.EM_ARC,
         Elf.EM_ARC_COMPACT,
-        Elf.EM_ARC_COMPACT2,
+        Elf.EM_ARCV2,
         "ARC600",
         "ARC601",
         "ARC700",
@@ -19403,7 +19403,7 @@ class ElfInfoCommand(GenericCommand):
             Elf.EM_CLOUDSHIELD           : "CloudShield architecture family",
             Elf.EM_COREA_1ST             : "KIPO-KAIST Core-A 1st generation processor family",
             Elf.EM_COREA_2ND             : "KIPO-KAIST Core-A 2nd generation processor family",
-            Elf.EM_ARC_COMPACT2          : "Synopsys ARCompact V2",
+            Elf.EM_ARCV2                 : "Synopsys ARCompact V2",
             Elf.EM_OPEN8                 : "Open8 8-bit RISC soft processor core",
             Elf.EM_RL78                  : "Renesas RL78 family",
             Elf.EM_VIDEOCORE5            : "Broadcom VideoCore V processor",
@@ -19413,7 +19413,7 @@ class ElfInfoCommand(GenericCommand):
             Elf.EM_BA2                   : "Beyond BA2 CPU architecture",
             Elf.EM_XCORE                 : "XMOS xCORE processor family",
             Elf.EM_MCHP_PIC              : "Microchip 8-bit PIC(r) family",
-            Elf.EM_INTEL205              : "Reserved by Intel",
+            Elf.EM_INTELGT               : "Intel Graphics Technology",
             Elf.EM_INTEL206              : "Reserved by Intel",
             Elf.EM_INTEL207              : "Reserved by Intel",
             Elf.EM_INTEL208              : "Reserved by Intel",
@@ -19540,6 +19540,7 @@ class ElfInfoCommand(GenericCommand):
             Phdr.PT_GNU_EH_FRAME  : "GNU_EH_FLAME",
             Phdr.PT_GNU_STACK     : "GNU_STACK",
             Phdr.PT_GNU_RELRO     : "GNU_RELRO",
+            Phdr.PT_GNU_PROPERTY  : "GNU_PROPERTY",
             Phdr.PT_SUNWBSS       : "SUNWBSS",
             Phdr.PT_SUNWSTACK     : "SUNWSTACK",
             Phdr.PT_MIPS_REGINFO  : "REGINFO",
@@ -19591,13 +19592,12 @@ class ElfInfoCommand(GenericCommand):
             Shdr.SHT_REL            : "REL",
             Shdr.SHT_SHLIB          : "SHLIB",
             Shdr.SHT_DYNSYM         : "DYNSYM",
-            Shdr.SHT_NUM            : "NUM",
             Shdr.SHT_INIT_ARRAY     : "INIT_ARRAY",
             Shdr.SHT_FINI_ARRAY     : "FINI_ARRAY",
             Shdr.SHT_PREINIT_ARRAY  : "PREINIT_ARRAY",
             Shdr.SHT_GROUP          : "GROUP",
             Shdr.SHT_SYMTAB_SHNDX   : "SYMTAB_SHNDX",
-            Shdr.SHT_NUM            : "NUM",
+            Shdr.SHT_RELR           : "RELR",
             Shdr.SHT_GNU_ATTRIBUTES : "GNU_ATTRIBUTES",
             Shdr.SHT_GNU_HASH       : "GNU_HASH",
             Shdr.SHT_GNU_LIBLIST    : "GNU_LIBLIST",
