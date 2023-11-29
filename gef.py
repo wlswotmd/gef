@@ -27605,6 +27605,12 @@ class DynamicCommand(GenericCommand):
             info("_DYNAMIC is not found.")
             return
 
+        width = get_format_address_width()
+
+        fmt = "{:{:d}s}  {:{:d}s} {:{:d}s}     {:s}"
+        legend = ["address", width, "tag", width, "value", width, "tag_name"]
+        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
         current = dynamic.value
         while True:
             addr = current
@@ -27620,10 +27626,9 @@ class DynamicCommand(GenericCommand):
                 remain_size -= current_arch.ptrsize * 2
 
             val = lookup_address(val)
-            width = get_format_address_width()
             tag_description = self.DT_TABLE.get(tag, "Unknown")
             colored_addr = Color.colorify("{:#0{:d}x}".format(addr, width), base_address_color)
-            gef_print("{:s}: {:#0{:d}x} {!s}  |  tag:{:s}".format(colored_addr, tag, width, val, tag_description))
+            gef_print("{:s}: {:#0{:d}x} {!s}  |  {:s}".format(colored_addr, tag, width, val, tag_description))
 
             if remain_size is not None and remain_size <= 0:
                 break
