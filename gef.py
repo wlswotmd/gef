@@ -20170,10 +20170,10 @@ class KernelChecksecCommand(GenericCommand):
             gef_print("{:<40s}: {:s}".format("Kernel cmdline", kcmdline.cmdline.strip()))
 
         kinfo = KernelbaseCommand.get_kernel_base()
-        if kinfo.kbase is None:
+        if kinfo.text_base is None:
             gef_print("{:<40s}: {:s}".format("Kernel base (heuristic)", "Not found"))
         else:
-            gef_print("{:<40s}: {:#x}".format("Kernel base (heuristic)", kinfo.kbase))
+            gef_print("{:<40s}: {:#x}".format("Kernel base (heuristic)", kinfo.text_base))
 
         ksymaddr_is_ok = _stext = get_ksymaddr("_stext")
         if _stext is None:
@@ -42333,11 +42333,11 @@ class KernelMagicCommand(GenericCommand):
 
         kinfo = KernelbaseCommand.get_kernel_base()
         maps = kinfo.maps
-        kbase = kinfo.kbase
-        kbase_size = kinfo.kbase_size
-        if maps is None or kbase is None or kbase_size is None:
+        text_base = kinfo.text_base
+        text_size = kinfo.text_size
+        if maps is None or text_base is None or text_size is None:
             return
-        gef_print("{:42s} {:#x} ({:#x} bytes)".format("kernel_base", kbase, kbase_size))
+        gef_print("{:42s} {:#x} ({:#x} bytes)".format("kernel_base", text_base, text_size))
 
         gef_print(titlify("Legend"))
         fmt = "{:42s} {:{:d}s} {:5s} (+{:10s}) -> {:{:d}s}"
@@ -42346,87 +42346,87 @@ class KernelMagicCommand(GenericCommand):
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
         gef_print(titlify("Credential"))
-        self.resolve_and_print_kernel("commit_creds", kbase, maps)
-        self.resolve_and_print_kernel("prepare_kernel_cred", kbase, maps)
-        self.resolve_and_print_kernel("init_cred", kbase, maps, KernelAddressHeuristicFinder.get_init_cred)
-        self.resolve_and_print_kernel(["sys_setuid", "__sys_setuid"], kbase, maps)
-        self.resolve_and_print_kernel("init_task", kbase, maps, KernelAddressHeuristicFinder.get_init_task)
+        self.resolve_and_print_kernel("commit_creds", text_base, maps)
+        self.resolve_and_print_kernel("prepare_kernel_cred", text_base, maps)
+        self.resolve_and_print_kernel("init_cred", text_base, maps, KernelAddressHeuristicFinder.get_init_cred)
+        self.resolve_and_print_kernel(["sys_setuid", "__sys_setuid"], text_base, maps)
+        self.resolve_and_print_kernel("init_task", text_base, maps, KernelAddressHeuristicFinder.get_init_task)
         gef_print(titlify("Usermode helper"))
-        self.resolve_and_print_kernel("call_usermodehelper", kbase, maps)
-        self.resolve_and_print_kernel("run_cmd", kbase, maps)
-        self.resolve_and_print_kernel("modprobe_path", kbase, maps, KernelAddressHeuristicFinder.get_modprobe_path, to_string=True)
-        self.resolve_and_print_kernel("orderly_poweroff", kbase, maps)
-        self.resolve_and_print_kernel("poweroff_cmd", kbase, maps, KernelAddressHeuristicFinder.get_poweroff_cmd, to_string=True)
-        self.resolve_and_print_kernel("orderly_reboot", kbase, maps)
-        self.resolve_and_print_kernel("reboot_cmd", kbase, maps, KernelAddressHeuristicFinder.get_reboot_cmd, to_string=True)
-        self.resolve_and_print_kernel("core_pattern", kbase, maps, KernelAddressHeuristicFinder.get_core_pattern, to_string=True)
+        self.resolve_and_print_kernel("call_usermodehelper", text_base, maps)
+        self.resolve_and_print_kernel("run_cmd", text_base, maps)
+        self.resolve_and_print_kernel("modprobe_path", text_base, maps, KernelAddressHeuristicFinder.get_modprobe_path, to_string=True)
+        self.resolve_and_print_kernel("orderly_poweroff", text_base, maps)
+        self.resolve_and_print_kernel("poweroff_cmd", text_base, maps, KernelAddressHeuristicFinder.get_poweroff_cmd, to_string=True)
+        self.resolve_and_print_kernel("orderly_reboot", text_base, maps)
+        self.resolve_and_print_kernel("reboot_cmd", text_base, maps, KernelAddressHeuristicFinder.get_reboot_cmd, to_string=True)
+        self.resolve_and_print_kernel("core_pattern", text_base, maps, KernelAddressHeuristicFinder.get_core_pattern, to_string=True)
         gef_print(titlify("ROP finalizer"))
         if is_x86_64():
-            self.resolve_and_print_kernel("swapgs_restore_regs_and_return_to_usermode", kbase, maps)
-        self.resolve_and_print_kernel("msleep", kbase, maps)
+            self.resolve_and_print_kernel("swapgs_restore_regs_and_return_to_usermode", text_base, maps)
+        self.resolve_and_print_kernel("msleep", text_base, maps)
         gef_print(titlify("Memory protection modifier"))
         if is_x86():
-            self.resolve_and_print_kernel("native_write_cr0", kbase, maps)
-            self.resolve_and_print_kernel("native_write_cr4", kbase, maps)
-        self.resolve_and_print_kernel("set_memory_rw", kbase, maps)
-        self.resolve_and_print_kernel("set_memory_x", kbase, maps)
+            self.resolve_and_print_kernel("native_write_cr0", text_base, maps)
+            self.resolve_and_print_kernel("native_write_cr4", text_base, maps)
+        self.resolve_and_print_kernel("set_memory_rw", text_base, maps)
+        self.resolve_and_print_kernel("set_memory_x", text_base, maps)
         gef_print(titlify("Memory patcher"))
         if is_x86():
-            self.resolve_and_print_kernel("text_poke", kbase, maps)
-        self.resolve_and_print_kernel("memcpy", kbase, maps)
+            self.resolve_and_print_kernel("text_poke", text_base, maps)
+        self.resolve_and_print_kernel("memcpy", text_base, maps)
         if is_x86():
-            self.resolve_and_print_kernel("_copy_to_user", kbase, maps)
-            self.resolve_and_print_kernel("_copy_from_user", kbase, maps)
+            self.resolve_and_print_kernel("_copy_to_user", text_base, maps)
+            self.resolve_and_print_kernel("_copy_from_user", text_base, maps)
         elif is_arm32():
-            self.resolve_and_print_kernel("arm_copy_to_user", kbase, maps)
-            self.resolve_and_print_kernel("arm_copy_from_user", kbase, maps)
+            self.resolve_and_print_kernel("arm_copy_to_user", text_base, maps)
+            self.resolve_and_print_kernel("arm_copy_from_user", text_base, maps)
         elif is_arm64():
-            self.resolve_and_print_kernel("__arch_copy_to_user", kbase, maps)
-            self.resolve_and_print_kernel("__arch_copy_from_user", kbase, maps)
+            self.resolve_and_print_kernel("__arch_copy_to_user", text_base, maps)
+            self.resolve_and_print_kernel("__arch_copy_from_user", text_base, maps)
         gef_print(titlify("Memory remapper"))
-        self.resolve_and_print_kernel(["ioremap", "__ioremap", "ioremap_cache"], kbase, maps)
-        self.resolve_and_print_kernel(["iounmap", "__iounmap"], kbase, maps)
+        self.resolve_and_print_kernel(["ioremap", "__ioremap", "ioremap_cache"], text_base, maps)
+        self.resolve_and_print_kernel(["iounmap", "__iounmap"], text_base, maps)
         if is_x86_64():
             gef_print(titlify("Memory base"))
             self.resolve_and_print_kernel("vmemmap_base", None, maps, KernelAddressHeuristicFinder.get_vmemmap)
             self.resolve_and_print_kernel("vmalloc_base", None, maps, KernelAddressHeuristicFinder.get_vmalloc_start)
             self.resolve_and_print_kernel("page_offset (physmap_start)", None, maps, KernelAddressHeuristicFinder.get_page_offset)
-            self.resolve_and_print_kernel("phys_base", kbase, maps, KernelAddressHeuristicFinder.get_phys_base)
+            self.resolve_and_print_kernel("phys_base", text_base, maps, KernelAddressHeuristicFinder.get_phys_base)
         if is_x86():
             gef_print(titlify("Automatically called function pointer"))
-            self.resolve_and_print_kernel("kvm_clock", kbase, maps)
-            self.resolve_and_print_kernel("clocksource_tsc", kbase, maps, KernelAddressHeuristicFinder.get_clocksource_tsc)
+            self.resolve_and_print_kernel("kvm_clock", text_base, maps)
+            self.resolve_and_print_kernel("clocksource_tsc", text_base, maps, KernelAddressHeuristicFinder.get_clocksource_tsc)
         gef_print(titlify("Function pointer table"))
-        self.resolve_and_print_kernel("ptmx_fops", kbase, maps, KernelAddressHeuristicFinder.get_ptmx_fops)
-        self.resolve_and_print_kernel("capability_hooks", kbase, maps)
-        self.resolve_and_print_kernel("n_tty_ops", kbase, maps, KernelAddressHeuristicFinder.get_n_tty_ops)
+        self.resolve_and_print_kernel("ptmx_fops", text_base, maps, KernelAddressHeuristicFinder.get_ptmx_fops)
+        self.resolve_and_print_kernel("capability_hooks", text_base, maps)
+        self.resolve_and_print_kernel("n_tty_ops", text_base, maps, KernelAddressHeuristicFinder.get_n_tty_ops)
         gef_print(titlify("Function pointer table array"))
-        self.resolve_and_print_kernel("tty_ldiscs", kbase, maps, KernelAddressHeuristicFinder.get_tty_ldiscs)
+        self.resolve_and_print_kernel("tty_ldiscs", text_base, maps, KernelAddressHeuristicFinder.get_tty_ldiscs)
         gef_print(titlify("Allocator"))
-        self.resolve_and_print_kernel("__kmalloc", kbase, maps)
-        self.resolve_and_print_kernel(["kzalloc", "kzalloc.constprop.0"], kbase, maps)
-        self.resolve_and_print_kernel("kfree", kbase, maps)
-        self.resolve_and_print_kernel(["kzfree", "kfree_sensitive"], kbase, maps)
-        self.resolve_and_print_kernel("slab_caches", kbase, maps, KernelAddressHeuristicFinder.get_slab_caches)
+        self.resolve_and_print_kernel("__kmalloc", text_base, maps)
+        self.resolve_and_print_kernel(["kzalloc", "kzalloc.constprop.0"], text_base, maps)
+        self.resolve_and_print_kernel("kfree", text_base, maps)
+        self.resolve_and_print_kernel(["kzfree", "kfree_sensitive"], text_base, maps)
+        self.resolve_and_print_kernel("slab_caches", text_base, maps, KernelAddressHeuristicFinder.get_slab_caches)
         gef_print(titlify("Dynamic resolver"))
-        self.resolve_and_print_kernel("kallsyms_lookup_name", kbase, maps)
+        self.resolve_and_print_kernel("kallsyms_lookup_name", text_base, maps)
         gef_print(titlify("vDSO"))
         if is_x86_64():
-            self.resolve_and_print_kernel("vdso_image_64", kbase, maps, KernelAddressHeuristicFinder.get_vdso_image_64)
-            self.resolve_and_print_kernel("vdso_image_32", kbase, maps, KernelAddressHeuristicFinder.get_vdso_image_32)
-            self.resolve_and_print_kernel("vdso_image_x32", kbase, maps, KernelAddressHeuristicFinder.get_vdso_image_x32)
+            self.resolve_and_print_kernel("vdso_image_64", text_base, maps, KernelAddressHeuristicFinder.get_vdso_image_64)
+            self.resolve_and_print_kernel("vdso_image_32", text_base, maps, KernelAddressHeuristicFinder.get_vdso_image_32)
+            self.resolve_and_print_kernel("vdso_image_x32", text_base, maps, KernelAddressHeuristicFinder.get_vdso_image_x32)
         elif is_x86_32():
-            self.resolve_and_print_kernel("vdso_image_32", kbase, maps, KernelAddressHeuristicFinder.get_vdso_image_32)
+            self.resolve_and_print_kernel("vdso_image_32", text_base, maps, KernelAddressHeuristicFinder.get_vdso_image_32)
         elif is_arm64():
-            self.resolve_and_print_kernel("vdso_info", kbase, maps, KernelAddressHeuristicFinder.get_vdso_info)
-            self.resolve_and_print_kernel("vdso_start", kbase, maps, KernelAddressHeuristicFinder.get_vdso_start)
-            self.resolve_and_print_kernel("vdso32_start", kbase, maps, KernelAddressHeuristicFinder.get_vdso32_start)
+            self.resolve_and_print_kernel("vdso_info", text_base, maps, KernelAddressHeuristicFinder.get_vdso_info)
+            self.resolve_and_print_kernel("vdso_start", text_base, maps, KernelAddressHeuristicFinder.get_vdso_start)
+            self.resolve_and_print_kernel("vdso32_start", text_base, maps, KernelAddressHeuristicFinder.get_vdso32_start)
         elif is_arm32():
-            self.resolve_and_print_kernel("vdso_start", kbase, maps)
+            self.resolve_and_print_kernel("vdso_start", text_base, maps)
         gef_print(titlify("Others"))
-        self.resolve_and_print_kernel(["do_fchmodat", "sys_fchmodat"], kbase, maps)
-        self.resolve_and_print_kernel("mmap_min_addr", kbase, maps, KernelAddressHeuristicFinder.get_mmap_min_addr)
-        self.resolve_and_print_kernel("__per_cpu_offset", kbase, maps, KernelAddressHeuristicFinder.get_per_cpu_offset)
+        self.resolve_and_print_kernel(["do_fchmodat", "sys_fchmodat"], text_base, maps)
+        self.resolve_and_print_kernel("mmap_min_addr", text_base, maps, KernelAddressHeuristicFinder.get_mmap_min_addr)
+        self.resolve_and_print_kernel("__per_cpu_offset", text_base, maps, KernelAddressHeuristicFinder.get_per_cpu_offset)
         if is_x86():
             gef_print(titlify("Descriptor Table"))
             self.resolve_and_print_kernel("IDT base (fixed address?)", None, maps, KernelAddressHeuristicFinder.get_idt_base)
@@ -45524,11 +45524,11 @@ class KernelAddressHeuristicFinder:
         # plan 2 (from result of pagewalk)
         kinfo = KernelbaseCommand.get_kernel_base()
         page_offset_base_raw = kinfo.maps[0][0]
-        krobase_data = read_memory(kinfo.krobase, kinfo.krobase_size)
-        krobase_data = slice_unpack(krobase_data, current_arch.ptrsize)
+        ro_data = read_memory(kinfo.ro_base, kinfo.ro_size)
+        ro_data = slice_unpack(ro_data, current_arch.ptrsize)
         try:
-            index = krobase_data.index(page_offset_base_raw)
-            return kinfo.krobase + index * current_arch.ptrsize
+            index = ro_data.index(page_offset_base_raw)
+            return kinfo.ro_base + index * current_arch.ptrsize
         except ValueError:
             pass
         return None
@@ -47753,12 +47753,15 @@ class KernelbaseCommand(GenericCommand):
 
         dic = {
             "maps": KernelbaseCommand.get_maps(),
-            "kbase": None,
-            "kbase_size": None,
-            "krobase": None,
-            "krobase_size": None,
-            "krwbase": None,
-            "krwbase_size": None,
+            "text_base": None,
+            "text_size": None,
+            "text_end": None,
+            "ro_base": None,
+            "ro_size": None,
+            "ro_end": None,
+            "rw_base": None,
+            "rw_size": None,
+            "rw_end": None,
             "rwx": False,
             "has_none": False,
         }
@@ -47790,9 +47793,10 @@ class KernelbaseCommand(GenericCommand):
             if div0_handler and is_valid_addr(div0_handler):
                 for i, (vaddr, size, _perm) in enumerate(dic["maps"]):
                     if vaddr <= div0_handler < vaddr + size:
-                        dic["kbase"] = vaddr
-                        dic["kbase_size"] = size
-                        kbase_map_index = i
+                        dic["text_base"] = vaddr
+                        dic["text_size"] = size
+                        dic["text_end"] = vaddr + size
+                        text_base_map_index = i
                         break
 
         elif is_arm64():
@@ -47805,30 +47809,33 @@ class KernelbaseCommand(GenericCommand):
             if vbar and is_valid_addr(vbar):
                 for i, (vaddr, size, _perm) in enumerate(dic["maps"]):
                     if vaddr <= vbar < vaddr + size:
-                        dic["kbase"] = vaddr
-                        dic["kbase_size"] = size
-                        kbase_map_index = i
+                        dic["text_base"] = vaddr
+                        dic["text_size"] = size
+                        dic["text_end"] = vaddr + size
+                        text_base_map_index = i
                         break
 
         # 1b. search kernel base heuristic way
-        if dic["kbase"] is None:
+        if dic["text_base"] is None:
             # .text is usually noticeably larger than other areas.
             # It just determines this size heuristically and detects it, but it works well in most cases.
             TEXT_REGION_MIN_SIZE = 0x100000
 
             for i, (vaddr, size, perm) in enumerate(dic["maps"]):
                 if perm == "R-X" and size >= TEXT_REGION_MIN_SIZE:
-                    dic["kbase"] = vaddr
-                    dic["kbase_size"] = size
-                    kbase_map_index = i
+                    dic["text_base"] = vaddr
+                    dic["text_size"] = size
+                    dic["text_end"] = vaddr + size
+                    text_base_map_index = i
                     break
             else:
                 # not found, maybe old kernel
                 for i, (vaddr, size, perm) in enumerate(dic["maps"]):
                     if perm == "RWX" and size >= TEXT_REGION_MIN_SIZE:
-                        dic["kbase"] = vaddr
-                        dic["kbase_size"] = size
-                        kbase_map_index = i
+                        dic["text_base"] = vaddr
+                        dic["text_size"] = size
+                        dic["text_end"] = vaddr + size
+                        text_base_map_index = i
                         break
                 else:
                     # Not found, so fast return
@@ -47842,24 +47849,26 @@ class KernelbaseCommand(GenericCommand):
         # Detecting by size seems well, but this algorithm sometimes failed. This is due to the difficulty of determining the threshold.
         # So I decided to also detect by the existence "Linux version" near the top of the .rodata page.
         RO_REGION_MIN_SIZE = 0x100000
-        for i, (vaddr, size, perm) in enumerate(dic["maps"][kbase_map_index + 1:]):
+        for i, (vaddr, size, perm) in enumerate(dic["maps"][text_base_map_index + 1:]):
             if perm == "R--":
-                if dic["krobase"] is None:
+                if dic["ro_base"] is None:
                     data = read_memory(vaddr, gef_getpagesize())
                     if size >= RO_REGION_MIN_SIZE or b"Linux version" in data:
-                        dic["krobase"] = vaddr
-                        dic["krobase_size"] = size
-                        krobase_map_index = kbase_map_index + i
-                elif dic["krobase"] + dic["krobase_size"] == vaddr:
+                        dic["ro_base"] = vaddr
+                        dic["ro_size"] = size
+                        dic["ro_end"] = vaddr + size
+                        ro_base_map_index = text_base_map_index + i
+                elif dic["ro_end"] == vaddr:
                     # merge contiguous region.
                     # This is important because .rodata may be split into areas for GLOBAL and non-GLOBAL attributes
-                    dic["krobase_size"] += size
-                    krobase_map_index = kbase_map_index + i
+                    dic["ro_size"] += size
+                    dic["ro_end"] += size
+                    ro_base_map_index = text_base_map_index + i
                 else:
                     break
 
         # 2b. search kernel RO base for old kernel
-        if dic["krobase"] is None:
+        if dic["ro_base"] is None:
             dic["rwx"] = True
             # If it can not detect .rodata, maybe it is an old kernel (32-bit?).
             # Old kernel is no-NX, so .rodata is RWX.
@@ -47871,8 +47880,8 @@ class KernelbaseCommand(GenericCommand):
             #   [ .rodata ] <- near the top of this area has "Linux version"
             #   [ .rodata ]
             #   [ .rodata ]
-            start = dic["kbase"] + gef_getpagesize() * 8
-            end = dic["kbase"] + dic["kbase_size"]
+            start = dic["ro_base"] + gef_getpagesize() * 8
+            end = dic["text_base"] + dic["text_size"]
             block_size = 0x20
             zero_data = b"\0" * block_size
             for addr in range(start, end, gef_getpagesize()):
@@ -47880,13 +47889,14 @@ class KernelbaseCommand(GenericCommand):
                 if data_prev == zero_data:
                     data = read_memory(addr, gef_getpagesize())
                     if b"Linux version" in data:
-                        dic["krobase"] = addr
-                        dic["krobase_size"] = end - addr
-                        dic["kbase_size"] -= dic["krobase_size"]
-                        # In this case, I chose not to detect krwbase.
+                        dic["ro_base"] = addr
+                        dic["ro_size"] = end - addr
+                        dic["ro_end"] = end
+                        dic["text_size"] -= dic["ro_size"]
+                        # In this case, I chose not to detect rw_base.
                         # Because ksymaddr-remote seems to give better results.
-                        dic["krwbase"] = 0
-                        dic["krwbase_size"] = 0
+                        dic["rw_base"] = 0
+                        dic["rw_size"] = 0
                         break
             else:
                 # Not found, so fast return
@@ -47895,16 +47905,17 @@ class KernelbaseCommand(GenericCommand):
 
         else:
             # 3. search kernel RW base
-            # If krobase can be detected, detect the RW area from after krobase.
+            # If ro_base can be detected, detect the RW area from after ro_base.
             # TODO: I used specified the size, but there may be more good algorithms.
             RW_REGION_MIN_SIZE = 0x20000
-            if dic["krobase"] is not None:
-                for vaddr, size, perm in dic["maps"][krobase_map_index + 1:]:
+            if dic["ro_base"] is not None:
+                for vaddr, size, perm in dic["maps"][ro_base_map_index + 1:]:
                     if perm == "RW-":
-                        if dic["krwbase"] is None:
+                        if dic["rw_base"] is None:
                             if size >= RW_REGION_MIN_SIZE:
-                                dic["krwbase"] = vaddr
-                                dic["krwbase_size"] = size
+                                dic["rw_base"] = vaddr
+                                dic["rw_size"] = size
+                                dic["rw_end"] = vaddr + size
                                 break
 
         dic["has_none"] = None in dic.values()
@@ -47924,22 +47935,22 @@ class KernelbaseCommand(GenericCommand):
             __cached_kernel_info__ = None
             reset_gef_caches()
 
-        # resolve kbase, krobase
+        # resolve text_base, ro_base
         if not args.quiet:
             info("Wait for memory scan")
         kinfo = self.get_kernel_base()
 
         self.out = []
-        if kinfo.kbase:
-            self.out.append("kernel text:   {:#x}-{:#x} ({:#x} bytes)".format(kinfo.kbase, kinfo.kbase + kinfo.kbase_size, kinfo.kbase_size))
+        if kinfo.text_base:
+            self.out.append("kernel text:   {:#x}-{:#x} ({:#x} bytes)".format(kinfo.text_base, kinfo.text_end, kinfo.text_size))
         else:
             err("Failed to resolve kernel text")
-        if kinfo.krobase:
-            self.out.append("kernel rodata: {:#x}-{:#x} ({:#x} bytes)".format(kinfo.krobase, kinfo.krobase + kinfo.krobase_size, kinfo.krobase_size))
+        if kinfo.ro_base:
+            self.out.append("kernel rodata: {:#x}-{:#x} ({:#x} bytes)".format(kinfo.ro_base, kinfo.ro_end, kinfo.ro_size))
         else:
             err("Failed to resolve kerel rodata")
-        if kinfo.krwbase:
-            self.out.append("kernel data:   {:#x}-{:#x} ({:#x} bytes)".format(kinfo.krwbase, kinfo.krwbase + kinfo.krwbase_size, kinfo.krwbase_size))
+        if kinfo.rw_base:
+            self.out.append("kernel data:   {:#x}-{:#x} ({:#x} bytes)".format(kinfo.rw_base, kinfo.rw_end, kinfo.rw_size))
         else:
             err("Failed to resolve kernel data")
         if self.out:
@@ -48019,9 +48030,9 @@ class KernelVersionCommand(GenericCommand):
             return None
         area = []
         for addr in kinfo.maps: # resolve search range
-            if addr[0] < kinfo.kbase:
+            if addr[0] < kinfo.text_base:
                 continue
-            if kinfo.krwbase and addr[0] >= kinfo.krwbase:
+            if kinfo.rw_base and addr[0] >= kinfo.rw_base:
                 continue
             area.append([addr[0], addr[0] + addr[1]])
         if area == []:
@@ -49236,7 +49247,7 @@ class KernelTaskCommand(GenericCommand):
             # now, `current` points vm_flags
             current += current_arch.ptrsize
             if is_32bit():
-                mask = KernelbaseCommand.get_kernel_base().kbase & 0xf0000000
+                mask = KernelbaseCommand.get_kernel_base().text_base & 0xf0000000
             else:
                 mask = 0xffff_0000_0000_0000
             while True:
@@ -49449,7 +49460,7 @@ class KernelTaskCommand(GenericCommand):
         # now, `current` points qstr.size
 
         if is_32bit():
-            mask = KernelbaseCommand.get_kernel_base().kbase & 0xf0000000
+            mask = KernelbaseCommand.get_kernel_base().text_base & 0xf0000000
         else:
             mask = 0xffff_0000_0000_0000
         while True:
@@ -54293,20 +54304,20 @@ class KernelConfigCommand(GenericCommand):
                 info("Wait for memory scan")
 
             kinfo = KernelbaseCommand.get_kernel_base()
-            if kinfo.krobase is None:
+            if kinfo.ro_base is None:
                 err("Not recognized .rodata")
                 return
-            krodata = read_memory(kinfo.krobase, kinfo.krobase_size)
+            ro_data = read_memory(kinfo.ro_base, kinfo.ro_size)
 
-            start_pos = krodata.find(b"IKCFG_ST")
+            start_pos = ro_data.find(b"IKCFG_ST")
             if start_pos == -1:
                 err("Not found IKCFG_ST. This kernel is built as CONFIG_IKCONFIG_PROC=n.")
                 return
-            end_pos = krodata.find(b"IKCFG_ED")
+            end_pos = ro_data.find(b"IKCFG_ED")
 
-            info("IKCFG_ST: {:#x}".format(kinfo.krobase + start_pos))
-            info("IKCFG_ED: {:#x}".format(kinfo.krobase + end_pos))
-            configz = krodata[start_pos + len("IKCFG_ST"):end_pos]
+            info("IKCFG_ST: {:#x}".format(kinfo.ro_base + start_pos))
+            info("IKCFG_ED: {:#x}".format(kinfo.ro_base + end_pos))
+            configz = ro_data[start_pos + len("IKCFG_ST"):end_pos]
 
             try:
                 self.configs = bytes2str(gzip.decompress(configz))
@@ -54424,13 +54435,13 @@ class KernelSearchCodePtrCommand(GenericCommand):
         if self.kinfo.has_none or self.kinfo.rwx:
             err("Unsupported")
             return
-        self.ktext_start = self.kinfo.kbase
-        self.ktext_end = self.kinfo.kbase + self.kinfo.kbase_size
+        self.ktext_start = self.kinfo.text_base
+        self.ktext_end = self.kinfo.text_end
 
         self.invalid_addrs = {}
         self.out = []
         self.cache = {}
-        rw_data = read_memory(self.kinfo.krwbase, self.kinfo.krwbase_size)
+        rw_data = read_memory(self.kinfo.rw_base, self.kinfo.rw_size)
         rw_data = slice_unpack(rw_data, current_arch.ptrsize)
 
         try:
@@ -54439,7 +54450,7 @@ class KernelSearchCodePtrCommand(GenericCommand):
             tqdm = lambda x, leave, total: x
 
         for i, rw_d in tqdm(enumerate(rw_data), leave=False, total=len(rw_data)):
-            rw_addr = self.kinfo.krwbase + i * current_arch.ptrsize
+            rw_addr = self.kinfo.rw_base + i * current_arch.ptrsize
             backtrack_info = [(rw_addr, 0)]
             self.search(backtrack_info, rw_d, args.max_range, args.depth - 1)
 
@@ -60925,12 +60936,12 @@ class KernelPipeCommand(GenericCommand):
             # i_pipe is valid addr
             if v < 0x10000 or not is_valid_addr(v):
                 continue
-            # i_pipe is not in kbase, krwbase, krobase
-            if self.kinfo.kbase <= v < self.kinfo.kbase + self.kinfo.kbase_size:
+            # i_pipe is not in text_base, ro_base, rw_base
+            if self.kinfo.text_base <= v < self.kinfo.text_end:
                 continue
-            if self.kinfo.krwbase <= v < self.kinfo.krwbase + self.kinfo.krwbase_size:
+            if self.kinfo.ro_base <= v < self.kinfo.ro_end:
                 continue
-            if self.kinfo.krobase <= v < self.kinfo.krobase + self.kinfo.krobase_size:
+            if self.kinfo.rw_base <= v < self.kinfo.rw_end:
                 continue
             # skip invalid chunk
             ret = gdb.execute("slub-contains --quiet {:#x}".format(v), to_string=True)
@@ -60982,12 +60993,12 @@ class KernelPipeCommand(GenericCommand):
             # bufs is valid addr
             if v < 0x10000 or not is_valid_addr(v):
                 continue
-            # bufs is not in kbase, krwbase, krobase
-            if self.kinfo.kbase <= v < self.kinfo.kbase + self.kinfo.kbase_size:
+            # bufs is not in text_base, ro_base, rw_base
+            if self.kinfo.text_base <= v < self.kinfo.text_end:
                 continue
-            if self.kinfo.krwbase <= v < self.kinfo.krwbase + self.kinfo.krwbase_size:
+            if self.kinfo.ro_base <= v < self.kinfo.ro_end:
                 continue
-            if self.kinfo.krobase <= v < self.kinfo.krobase + self.kinfo.krobase_size:
+            if self.kinfo.rw_base <= v < self.kinfo.rw_end:
                 continue
             # skip invalid chunk
             ret = gdb.execute("slub-contains {:#x}".format(v), to_string=True)
@@ -62017,7 +62028,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             return False
         self.version_string = r.group(0)
         self.version_string_offset = r.span()[0]
-        self.verbose_info("linux_banner: {:#x}".format(self.krobase + self.version_string_offset))
+        self.verbose_info("linux_banner: {:#x}".format(self.ro_base + self.version_string_offset))
         version_number = r.group(1).decode("ascii")
         major = int(version_number.split(".")[0])
         minor = int(version_number.split(".")[1])
@@ -62068,7 +62079,7 @@ class KsymaddrRemoteCommand(GenericCommand):
     def find_kallsyms_token_table(self):
         ret = self.get_saved_config(["offset_kallsyms_token_table"])
         if ret:
-            self.verbose_info("kallsyms_token_table: {:#x}".format(self.krobase + self.offset_kallsyms_token_table))
+            self.verbose_info("kallsyms_token_table: {:#x}".format(self.ro_base + self.offset_kallsyms_token_table))
             return True
 
         """
@@ -62144,7 +62155,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 return False
 
         position = unique_bytes_offset[0][0]
-        self.verbose_info("unique_bytes: {:#x}".format(self.krobase + position))
+        self.verbose_info("unique_bytes: {:#x}".format(self.ro_base + position))
 
         # second, backward search the top
         prev_x = None
@@ -62164,13 +62175,13 @@ class KsymaddrRemoteCommand(GenericCommand):
         position += -position % 4
         self.offset_kallsyms_token_table = position
         self.save_config("offset_kallsyms_token_table")
-        self.verbose_info("kallsyms_token_table: {:#x}".format(self.krobase + self.offset_kallsyms_token_table))
+        self.verbose_info("kallsyms_token_table: {:#x}".format(self.ro_base + self.offset_kallsyms_token_table))
         return True
 
     def find_kallsyms_token_index(self):
         ret = self.get_saved_config(["offset_kallsyms_token_index"])
         if ret:
-            self.verbose_info("kallsyms_token_index: {:#x}".format(self.krobase + self.offset_kallsyms_token_index))
+            self.verbose_info("kallsyms_token_index: {:#x}".format(self.ro_base + self.offset_kallsyms_token_index))
             return True
 
         """
@@ -62228,7 +62239,7 @@ class KsymaddrRemoteCommand(GenericCommand):
 
         self.offset_kallsyms_token_index = position
         self.save_config("offset_kallsyms_token_index")
-        self.verbose_info("kallsyms_token_index: {:#x}".format(self.krobase + self.offset_kallsyms_token_index))
+        self.verbose_info("kallsyms_token_index: {:#x}".format(self.ro_base + self.offset_kallsyms_token_index))
         return True
 
     def find_kallsyms_markers(self):
@@ -62239,9 +62250,9 @@ class KsymaddrRemoteCommand(GenericCommand):
                 "offset_kallsyms_seqs_of_names",
             ])
             if ret:
-                self.verbose_info("kallsyms_markers: {:#x}".format(self.krobase + self.offset_kallsyms_markers))
+                self.verbose_info("kallsyms_markers: {:#x}".format(self.ro_base + self.offset_kallsyms_markers))
                 self.verbose_info("kallsyms_markers_table_element_size: {:#x}".format(self.kallsyms_markers_table_element_size))
-                self.verbose_info("kallsyms_seqs_of_names: {:#x}".format(self.krobase + self.offset_kallsyms_seqs_of_names))
+                self.verbose_info("kallsyms_seqs_of_names: {:#x}".format(self.ro_base + self.offset_kallsyms_seqs_of_names))
                 return True
         else:
             ret = self.get_saved_config([
@@ -62249,7 +62260,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 "kallsyms_markers_table_element_size",
             ])
             if ret:
-                self.verbose_info("kallsyms_markers: {:#x}".format(self.krobase + self.offset_kallsyms_markers))
+                self.verbose_info("kallsyms_markers: {:#x}".format(self.ro_base + self.offset_kallsyms_markers))
                 self.verbose_info("kallsyms_markers_table_element_size: {:#x}".format(self.kallsyms_markers_table_element_size))
                 return True
 
@@ -62351,7 +62362,7 @@ class KsymaddrRemoteCommand(GenericCommand):
 
         self.offset_kallsyms_markers = needle
         self.save_config("offset_kallsyms_markers")
-        self.verbose_info("kallsyms_markers: {:#x}".format(self.krobase + self.offset_kallsyms_markers))
+        self.verbose_info("kallsyms_markers: {:#x}".format(self.ro_base + self.offset_kallsyms_markers))
 
         # find kallsyms_seqs_of_names
         if self.kernel_version >= (6, 2):
@@ -62365,7 +62376,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 position += 4
             self.offset_kallsyms_seqs_of_names = position
             self.save_config("offset_kallsyms_seqs_of_names")
-            self.verbose_info("kallsyms_seqs_of_names: {:#x}".format(self.krobase + self.offset_kallsyms_seqs_of_names))
+            self.verbose_info("kallsyms_seqs_of_names: {:#x}".format(self.ro_base + self.offset_kallsyms_seqs_of_names))
 
         return True
 
@@ -62431,7 +62442,7 @@ class KsymaddrRemoteCommand(GenericCommand):
 
         # This value is provisional. Corrected in the process of find_kallsyms_num_syms().
         self.offset_kallsyms_names = position
-        self.verbose_info("kallsyms_names: {:#x} (candidate)".format(self.krobase + self.offset_kallsyms_names))
+        self.verbose_info("kallsyms_names: {:#x} (candidate)".format(self.ro_base + self.offset_kallsyms_names))
         return True
 
     def find_kallsyms_num_syms(self):
@@ -62442,8 +62453,8 @@ class KsymaddrRemoteCommand(GenericCommand):
         ])
         if ret:
             self.verbose_info("num_symbols: {:#x}".format(self.num_symbols))
-            self.verbose_info("kallsyms_names: {:#x}".format(self.krobase + self.offset_kallsyms_names))
-            self.verbose_info("kallsyms_num_syms: {:#x}".format(self.krobase + self.offset_kallsyms_num_syms))
+            self.verbose_info("kallsyms_names: {:#x}".format(self.ro_base + self.offset_kallsyms_names))
+            self.verbose_info("kallsyms_num_syms: {:#x}".format(self.ro_base + self.offset_kallsyms_num_syms))
             return True
 
         """
@@ -62622,8 +62633,8 @@ class KsymaddrRemoteCommand(GenericCommand):
         self.num_symbols = num_symbols
         self.save_config("num_symbols")
         self.verbose_info("num_symbols: {:#x}".format(self.num_symbols))
-        self.verbose_info("kallsyms_names: {:#x}".format(self.krobase + self.offset_kallsyms_names))
-        self.verbose_info("kallsyms_num_syms: {:#x}".format(self.krobase + self.offset_kallsyms_num_syms))
+        self.verbose_info("kallsyms_names: {:#x}".format(self.ro_base + self.offset_kallsyms_names))
+        self.verbose_info("kallsyms_num_syms: {:#x}".format(self.ro_base + self.offset_kallsyms_num_syms))
         return True
 
     def find_kallsyms_offsets(self):
@@ -62786,7 +62797,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         # It seems ok.
         self.offset_kallsyms_addresses_or_offsets = position
         self.kernel_addresses = kernel_addresses
-        self.verbose_info("kallsyms_offsets: {:#x}".format(self.krobase + self.offset_kallsyms_addresses_or_offsets))
+        self.verbose_info("kallsyms_offsets: {:#x}".format(self.ro_base + self.offset_kallsyms_addresses_or_offsets))
         return True
 
     def find_kallsyms_addresses(self):
@@ -62850,7 +62861,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         kallsyms_addresses_data = self.kernel_img[position:position + self.num_symbols * address_byte_size]
         self.kernel_addresses = struct.unpack(fmt, kallsyms_addresses_data)
         self.offset_kallsyms_addresses_or_offsets = position
-        self.verbose_info("kallsyms_addresses: {:#x}".format(self.krobase + self.offset_kallsyms_addresses_or_offsets))
+        self.verbose_info("kallsyms_addresses: {:#x}".format(self.ro_base + self.offset_kallsyms_addresses_or_offsets))
         return True
 
     def initialize(self):
@@ -62895,25 +62906,25 @@ class KsymaddrRemoteCommand(GenericCommand):
 
         self.save_config("version_string")
         self.save_config("version_string_offset")
-        self.save_config("krobase_size")
+        self.save_config("ro_size")
         return True
 
     def arm64_fast_path(self):
         # This path is more faster because it does not use pagewalk.
-        # Instead of finding krobase from pagewalk results, it finds krobase by scanning the kernel version.
+        # Instead of finding ro_base from pagewalk results, it finds ro_base by scanning the kernel version.
         # It is especially beneficial for ARM64, because it tends to have a lot of pagetables and pagewalk take a long time.
         # It may work on other architectures, but it's limited to ARM64 because other architectures don't benefit much.
 
         # First, search the kernel version string from $pc.
-        # It is located at around top of krobase, and krobase is aligned by 0x10000.
-        current = (current_arch.pc & ~0xffff) + 0x10000 # Starting address to brute force krobase
+        # It is located at around top of ro_base, and ro_base is aligned by 0x10000.
+        current = (current_arch.pc & ~0xffff) + 0x10000 # Starting address to brute force ro_base
         step_size = 0x10000
         while True:
             try:
-                # As kernel version string is located at around top of krobase it is enough to check the first page.
+                # As kernel version string is located at around top of ro_base it is enough to check the first page.
                 candidate_rodata = read_memory(current, gef_getpagesize())
             except gdb.MemoryError:
-                # reached to the end of krobase
+                # reached to the end of ro_base
                 return False
 
             # '\n\0' is needed to avoid false positives in the dmesg buffer.
@@ -62929,19 +62940,19 @@ class KsymaddrRemoteCommand(GenericCommand):
         # At this point, following two parameters are enough.
         ret = self.get_saved_config([
             "version_string_offset",
-            "krobase_size",
+            "ro_size",
         ])
         if not ret:
             self.quiet_info("Use slow path")
             return False
 
-        # Restore krobase with considering kASLR.
+        # Restore ro_base with considering kASLR.
         self.quiet_info("Use fast path")
-        self.krobase = version_string_address - self.version_string_offset
-        self.verbose_info("krobase: {:#x}-{:#x}".format(self.krobase, self.krobase + self.krobase_size))
+        self.ro_base = version_string_address - self.version_string_offset
+        self.verbose_info("ro_base: {:#x}-{:#x}".format(self.ro_base, self.ro_base + self.ro_size))
 
         # doit
-        self.kernel_img = read_memory(self.krobase, self.krobase_size)
+        self.kernel_img = read_memory(self.ro_base, self.ro_size)
         ret = self.initialize()
         if not ret:
             self.quiet_info("Use slow path")
@@ -62971,26 +62982,26 @@ class KsymaddrRemoteCommand(GenericCommand):
             return False
 
         if not kinfo.rwx:
-            # On modern kernels, krobase_size can be trusted, so it only tries to parse once.
-            self.krobase = kinfo.krobase
-            self.krobase_size = kinfo.krobase_size
-            self.kernel_img = read_memory(self.krobase, self.krobase_size)
-            self.verbose_info("krobase: {:#x}-{:#x}".format(self.krobase, self.krobase + self.krobase_size))
+            # On modern kernels, ro_size can be trusted, so it only tries to parse once.
+            self.ro_base = kinfo.ro_base
+            self.ro_size = kinfo.ro_size
+            self.kernel_img = read_memory(self.ro_base, self.ro_size)
+            self.verbose_info("ro_base: {:#x}-{:#x}".format(self.ro_base, self.ro_base + self.ro_size))
             ret = self.initialize()
             if not ret:
                 return False
         else:
-            # Older kernel that has the RWX attribute don't trust krobase_size.
-            # Very large values of krobase_size can be detected.
+            # Older kernel that has the RWX attribute don't trust ro_size.
+            # Very large values of ro_size can be detected.
             # It will take a long time to parse if you just use it.
-            # Gradually increasing krobase_size while searching can speed up several times.
-            self.krobase = kinfo.krobase
+            # Gradually increasing ro_size while searching can speed up several times.
+            self.ro_base = kinfo.ro_base
             base_size = 0x100000
             step = 0x100000
-            for candidate_size in range(base_size, kinfo.krobase_size, step):
-                self.krobase_size = candidate_size
-                self.kernel_img = read_memory(self.krobase, self.krobase_size)
-                self.quiet_info("krobase: {:#x}-{:#x}".format(self.krobase, self.krobase + self.krobase_size))
+            for candidate_size in range(base_size, kinfo.ro_size, step):
+                self.ro_size = candidate_size
+                self.kernel_img = read_memory(self.ro_base, self.ro_size)
+                self.quiet_info("ro_base: {:#x}-{:#x}".format(self.ro_base, self.ro_base + self.ro_size))
                 ret = self.initialize()
                 if ret:
                     # found
@@ -63062,22 +63073,22 @@ class VmlinuxToElfApplyCommand(GenericCommand):
             info("A previously used file was found. reuse.")
             return symboled_vmlinux_file
 
-        # resolve kbase, krobase
+        # resolve text_base, ro_base
         kinfo = KernelbaseCommand.get_kernel_base()
-        if None in (kinfo.kbase, kinfo.kbase_size, kinfo.krobase, kinfo.krobase_size):
+        if None in (kinfo.text_base, kinfo.text_size, kinfo.ro_base, kinfo.ro_size):
             err("Failed to resolve")
             return None
-        gef_print("kernel base:   {:#x}-{:#x} ({:#x} bytes)".format(kinfo.kbase, kinfo.kbase + kinfo.kbase_size, kinfo.kbase_size))
-        gef_print("kernel rodata: {:#x}-{:#x} ({:#x} bytes)".format(kinfo.krobase, kinfo.krobase + kinfo.krobase_size, kinfo.krobase_size))
+        gef_print("kernel base:   {:#x}-{:#x} ({:#x} bytes)".format(kinfo.text_base, kinfo.text_end, kinfo.text_size))
+        gef_print("kernel rodata: {:#x}-{:#x} ({:#x} bytes)".format(kinfo.ro_base, kinfo.ro_end, kinfo.ro_size))
 
         info("Start memory dump")
         # rodata size detection may be inaccurate on kernels with RWX attribute regions.
         # Since they tend to be very large, we put a size cap on the rodata to make it faster.
         if kinfo.rwx:
             # The number 0x400000 has no basis.
-            fixed_krobase_size = min(0x400000, kinfo.krobase_size)
+            fixed_ro_base_size = min(0x400000, kinfo.ro_size)
         else:
-            fixed_krobase_size = kinfo.krobase_size
+            fixed_ro_base_size = kinfo.ro_size
 
         # delete old file
         if os.path.exists(dumped_mem_file):
@@ -63099,8 +63110,8 @@ class VmlinuxToElfApplyCommand(GenericCommand):
                 os.unlink(remove_file)
 
         # dump text
-        start = kinfo.kbase
-        end = start + kinfo.kbase_size
+        start = kinfo.text_base
+        end = start + kinfo.text_size
         gef_print("Dumping .text area:   {:#x} - {:#x}".format(start, end))
         try:
             gdb.execute("dump memory {} {:#x} {:#x}".format(dumped_mem_file, start, end), to_string=True)
@@ -63109,15 +63120,15 @@ class VmlinuxToElfApplyCommand(GenericCommand):
             return None
 
         # dump sparse
-        kbase_end = kinfo.kbase + kinfo.kbase_size
-        unmapped_size = kinfo.krobase - kbase_end
+        text_end = kinfo.text_end
+        unmapped_size = kinfo.ro_base - text_end
         if unmapped_size:
-            gef_print("Non-mapping area:     {:#x} - {:#x} (ZERO fill)".format(kbase_end, kinfo.krobase))
+            gef_print("Non-mapping area:     {:#x} - {:#x} (ZERO fill)".format(text_end, kinfo.ro_base))
             open(dumped_mem_file, "a").write("\0" * unmapped_size)
 
         # dump rodata
-        start = kinfo.krobase
-        end = start + fixed_krobase_size
+        start = kinfo.ro_base
+        end = start + fixed_ro_base_size
         gef_print("Dumping .rodata area: {:#x} - {:#x}".format(start, end))
         try:
             gdb.execute("append memory {} {:#x} {:#x}".format(dumped_mem_file, start, end), to_string=True)
@@ -63128,7 +63139,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
         gef_print("Dumped to {}".format(dumped_mem_file))
 
         # apply vmlinux-to-elf
-        cmd = "{} '{}' '{}' --base-address={:#x}".format(vmlinux2elf, dumped_mem_file, symboled_vmlinux_file, kinfo.kbase)
+        cmd = "{} '{}' '{}' --base-address={:#x}".format(vmlinux2elf, dumped_mem_file, symboled_vmlinux_file, kinfo.text_base)
         warn("Execute `{:s}`".format(cmd))
         os.system(cmd)
 
@@ -63150,7 +63161,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
         info("Wait for memory scan")
 
         kinfo = KernelbaseCommand.get_kernel_base()
-        if kinfo.kbase is None:
+        if kinfo.text_base is None:
             err("Failed to resolve kbase")
             return
 
@@ -63166,7 +63177,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
         #   gdb 8.x: Usage: add-symbol-file FILE ADDR [-readnow | -readnever | -s SECT-NAME SECT-ADDR]...
         # But the created ELF has no .text, only a .kernel
         # Applying an empty symbol has no effect, so tentatively specify the same address as the .kernel.
-        cmd = "add-symbol-file {} {:#x} -s .kernel {:#x}".format(symboled_vmlinux_file, kinfo.kbase, kinfo.kbase)
+        cmd = "add-symbol-file {} {:#x} -s .kernel {:#x}".format(symboled_vmlinux_file, kinfo.text_base, kinfo.text_base)
         warn("Execute `{:s}`".format(cmd))
         gdb.execute(cmd)
         return
@@ -72019,8 +72030,8 @@ class PagewalkWithHintsCommand(GenericCommand):
             _etext = self.page_end_align(_etext)
             self.insert_region(_stext, _etext - _stext, "kernel .text")
         else:
-            if kinfo.kbase in self.regions:
-                self.regions[kinfo.kbase].add_description("maybe kernel .text")
+            if kinfo.text_base in self.regions:
+                self.regions[kinfo.text_base].add_description("maybe kernel .text")
 
         # .rodata
         __start_rodata = get_ksymaddr("__start_rodata")
@@ -72030,8 +72041,8 @@ class PagewalkWithHintsCommand(GenericCommand):
             __end_rodata = self.page_end_align(__end_rodata)
             self.insert_region(__start_rodata, __end_rodata - __start_rodata, "kernel .rodata")
         else:
-            if kinfo.krobase in self.regions:
-                self.regions[kinfo.krobase].add_description("maybe kernel .rodata")
+            if kinfo.ro_base in self.regions:
+                self.regions[kinfo.ro_base].add_description("maybe kernel .rodata")
 
         # .data
         _sdata = get_ksymaddr("_sdata")
@@ -72041,8 +72052,8 @@ class PagewalkWithHintsCommand(GenericCommand):
             _edata = self.page_end_align(_edata)
             self.insert_region(_sdata, _edata - _sdata, "kernel .data")
         else:
-            if kinfo.krwbase in self.regions:
-                self.regions[kinfo.krwbase].add_description("maybe kernel .data")
+            if kinfo.rw_base in self.regions:
+                self.regions[kinfo.rw_base].add_description("maybe kernel .data")
         return
 
     def resolve_direct_map(self):
