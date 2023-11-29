@@ -27260,7 +27260,14 @@ class LinkMapCommand(GenericCommand):
         members = ["l_addr", "l_name", "l_ld", "l_next", "l_prev"]
 
         if self.verbose:
-            DT_NUM = 35
+            # elf/elf.h
+            # I assume that the glibc version can be identified.
+            # Note that there is no link-map in static binaries, so there is no need to consider it.
+            if get_libc_version() >= (2, 36):
+                DT_NUM = 38
+            else:
+                DT_NUM = 35
+            # Note that the number of elements in an array varies depending on the architecture.
             if is_arm64():
                 DT_THISPROCNUM = 6
                 ARCH_SPECIFIC_TABLE = DynamicCommand.DT_TABLE["arm64"]
@@ -27282,10 +27289,13 @@ class LinkMapCommand(GenericCommand):
             else:
                 DT_THISPROCNUM = 0
                 ARCH_SPECIFIC_TABLE = {}
+            # These values do not change between versions or architectures.
             DT_VERSIONTAGNUM = 16
             DT_EXTRANUM = 3
             DT_VALNUM = 12
             DT_ADDRNUM = 11
+
+            # include/link.h
             l_info_length = DT_NUM + DT_THISPROCNUM + DT_VERSIONTAGNUM + DT_EXTRANUM + DT_VALNUM + DT_ADDRNUM
 
             # include/link.h
