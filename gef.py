@@ -5815,6 +5815,12 @@ class SPARC64(SPARC):
         "SPARC64",
         "SPARC:V9",
         "SPARC:V9A",
+        "SPARC:V9B",
+        "SPARC:V9C",
+        "SPARC:V9D",
+        "SPARC:V9E",
+        "SPARC:V9M",
+        "SPARC:V9V",
     ]
 
     # http://math-atlas.sourceforge.net/devel/assembly/abi_sysV_sparc.pdf
