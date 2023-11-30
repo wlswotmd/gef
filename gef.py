@@ -1963,7 +1963,7 @@ class Instruction:
 class MallocStateStruct:
     """GEF representation of malloc_state"""
     def __init__(self, addr):
-        if is_x86_32() and get_libc_version() >= (2, 26):
+        if (is_x86_32() or is_riscv32()) and get_libc_version() >= (2, 26):
             # MALLOC_ALIGNMENT is changed from libc 2.26.
             # for x86_32, MALLOC_ALIGNMENT = 16, so NFASTBINS = 11.
             self.num_fastbins = 11
@@ -2200,6 +2200,7 @@ def saerch_for_main_arena_from_tls():
     0x0007d5a8|+0x0028|010: 0x00000000
 
     [ARM64]
+    -- TLS --
     0x0000004997c0|+0x0000|000: 0x0000000000493078 <_dl_static_dtv+0x10>  ->  0x0000000000000000
     0x0000004997c8|+0x0008|001: 0x0000000000000000
     0x0000004997d0|+0x0010|002: 0x0000000000492838 <_nl_global_locale>  ->  ...
@@ -2223,7 +2224,7 @@ def saerch_for_main_arena_from_tls():
     main_thread = [th for th in threads if th.num == 1][0]
     main_thread.switch()
 
-    if is_x86():
+    if is_x86() or is_sparc64() or is_s390x():
         direction = -1
     else:
         direction = 1
@@ -2328,11 +2329,10 @@ class GlibcArena:
                 pass
 
         # plan 3 (from TLS)
-        if is_x86() or is_arm32() or is_arm64():
-            ptr = saerch_for_main_arena_from_tls()
-            if ptr:
-                __cached_main_arena__ = read_int_from_memory(ptr)
-                return __cached_main_arena__
+        ptr = saerch_for_main_arena_from_tls()
+        if ptr:
+            __cached_main_arena__ = read_int_from_memory(ptr)
+            return __cached_main_arena__
 
         raise OSError("Cannot find main_arena for {}".format(current_arch.arch))
 
@@ -18105,7 +18105,9 @@ def __get_binsize_table():
         # MALLOC_ALIGNMENT is changed from libc 2.26.
         # for x86_32, tcache 0x8 align is no longer used.
         # but for ARM32, or maybe other arch, still 0x8 align is used.
-        if is_64bit() or (is_x86_32() and get_libc_version() >= (2, 26)):
+        if is_64bit():
+            size = MIN_SIZE + i * 0x10
+        elif (is_x86_32() or is_riscv32()) and get_libc_version() >= (2, 26):
             size = MIN_SIZE + i * 0x10
         else:
             size = MIN_SIZE + i * 0x8
@@ -18116,7 +18118,7 @@ def __get_binsize_table():
         for i in range(7):
             size = MIN_SIZE + i * 0x10
             table["fastbins"][i] = {"size": size}
-    elif is_x86_32() and get_libc_version() >= (2, 26):
+    elif (is_x86_32() or is_riscv32()) and get_libc_version() >= (2, 26):
         # MALLOC_ALIGNMENT is changed from libc 2.26.
         # for x86_32, fastbin exists every 8 bytes, but only used every 16 bytes.
         table["fastbins"][0] = {"size": 0x10}
