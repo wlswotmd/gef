@@ -143,6 +143,7 @@ I also list the tools I used in my Ubuntu 22.04 environment.
         * It fails if you build along with gdb, so add `--disable-gdb`.
     * qemu: https://github.com/T-head-Semi/qemu
         * `./configure --target-list=cskyv1-linux-user,cskyv1eb-linux-user,cskyv2-linux-user,cskyv2eb-linux-user`
+        * It needs `-cpu` option like `qemu-cskyv2 -cpu ck810 -g 1234 ./a.out`.
     * gdb: build from latest.
         * `./configure --enable-targets=all --with-python=/usr/bin/python3`
 
