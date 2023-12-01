@@ -1963,7 +1963,7 @@ class Instruction:
 class MallocStateStruct:
     """GEF representation of malloc_state"""
     def __init__(self, addr):
-        if (is_x86_32() or is_riscv32()) and get_libc_version() >= (2, 26):
+        if (is_x86_32() or is_riscv32() or is_ppc32()) and get_libc_version() >= (2, 26):
             # MALLOC_ALIGNMENT is changed from libc 2.26.
             # for x86_32, MALLOC_ALIGNMENT = 16, so NFASTBINS = 11.
             self.num_fastbins = 11
@@ -2148,7 +2148,7 @@ class MallocStateStruct:
 
 
 @functools.lru_cache(maxsize=None)
-def saerch_for_main_arena_from_tls():
+def search_for_main_arena_from_tls():
     """saerch main arena from TLS, then return &addr."""
 
     """
@@ -2232,6 +2232,9 @@ def saerch_for_main_arena_from_tls():
     tls = current_arch.get_tls()
     for i in range(1, 500):
         addr = tls + (current_arch.ptrsize * i) * direction
+
+        if is_m68k():
+            addr += 2
 
         if not is_valid_addr(addr):
             break
@@ -2329,7 +2332,7 @@ class GlibcArena:
                 pass
 
         # plan 3 (from TLS)
-        ptr = saerch_for_main_arena_from_tls()
+        ptr = search_for_main_arena_from_tls()
         if ptr:
             __cached_main_arena__ = read_int_from_memory(ptr)
             return __cached_main_arena__
@@ -2370,11 +2373,19 @@ class GlibcArena:
     def tcachebins_addr(self, i):
         if self.heap_base is None:
             return None
-        if get_libc_version() < (2, 30):
-            offset = 0x10 + self.TCACHE_MAX_BINS + i * current_arch.ptrsize
+
+        if (is_x86_32() or is_riscv32() or is_ppc32()) and not self.is_main_arena:
+            arch_offset = 0
+        elif is_32bit():
+            arch_offset = 0
         else:
-            offset = 0x10 + 2 * self.TCACHE_MAX_BINS + i * current_arch.ptrsize
-        return self.heap_base + offset
+            arch_offset = 0x10
+
+        if get_libc_version() < (2, 30):
+            offset = self.TCACHE_MAX_BINS + i * current_arch.ptrsize
+        else:
+            offset = 2 * self.TCACHE_MAX_BINS + i * current_arch.ptrsize
+        return self.heap_base + arch_offset + offset
 
     def fastbins_addr(self, i):
         if hasattr(self.__arena, "fastbins_addr"):
@@ -2434,13 +2445,10 @@ class GlibcArena:
 
     def tcachebin(self, i):
         """Return head chunk in tcache[i]."""
-        if self.heap_base is None:
+        tcache_i_head = self.tcachebins_addr(i)
+        if not tcache_i_head:
             return None
-        if get_libc_version() < (2, 30):
-            offset = 0x10 + self.TCACHE_MAX_BINS + i * current_arch.ptrsize
-        else:
-            offset = 0x10 + 2 * self.TCACHE_MAX_BINS + i * current_arch.ptrsize
-        addr = dereference(self.heap_base + offset)
+        addr = dereference(tcache_i_head)
         if not addr:
             return None
         return GlibcChunk(int(addr))
@@ -17588,9 +17596,10 @@ class GlibcHeapChunksCommand(GenericCommand):
 
         if args.location is None:
             dump_start = arena.heap_base
-            # specified pattern
-            if current_arch.ptrsize == 4 and arena.is_main_arena:
-                dump_start += 8
+            # specific pattern
+            if arena.is_main_arena:
+                if (is_x86_32() or is_riscv32() or is_ppc32()) and get_libc_version() >= (2, 26):
+                    dump_start += 8
         else:
             dump_start = args.location
 
@@ -17785,10 +17794,6 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
 
         nb_chunk = 0
         for i in range(GlibcArena.TCACHE_MAX_BINS):
-            if get_libc_version() < (2, 30):
-                count = ord(read_memory(tcache_perthread_struct + i, 1))
-            else:
-                count = u16(read_memory(tcache_perthread_struct + 2 * i, 2))
             chunk = arena.tcachebin(i)
             chunks = set()
             m = []
@@ -17816,6 +17821,10 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
                     m.append(Color.colorify(fmt.format(RIGHT_ARROW, chunk.address), corrupted_msg_color))
                     break
             if m or verbose:
+                if get_libc_version() < (2, 30):
+                    count = ord(read_memory(tcache_perthread_struct + i, 1))
+                else:
+                    count = u16(read_memory(tcache_perthread_struct + 2 * i, 2))
                 size = get_binsize_table()["tcache"][i]["size"]
                 colored_bins_addr = str(lookup_address(arena.tcachebins_addr(i)))
                 gef_print("tcachebins[idx={:d}, size={:#x}, @{:s}] count={:d}".format(i, size, colored_bins_addr, count))
@@ -18113,7 +18122,7 @@ def __get_binsize_table():
         # but for ARM32, or maybe other arch, still 0x8 align is used.
         if is_64bit():
             size = MIN_SIZE + i * 0x10
-        elif (is_x86_32() or is_riscv32()) and get_libc_version() >= (2, 26):
+        elif (is_x86_32() or is_riscv32() or is_ppc32()) and get_libc_version() >= (2, 26):
             size = MIN_SIZE + i * 0x10
         else:
             size = MIN_SIZE + i * 0x8
@@ -18124,7 +18133,7 @@ def __get_binsize_table():
         for i in range(7):
             size = MIN_SIZE + i * 0x10
             table["fastbins"][i] = {"size": size}
-    elif (is_x86_32() or is_riscv32()) and get_libc_version() >= (2, 26):
+    elif (is_x86_32() or is_riscv32() or is_ppc32()) and get_libc_version() >= (2, 26):
         # MALLOC_ALIGNMENT is changed from libc 2.26.
         # for x86_32, fastbin exists every 8 bytes, but only used every 16 bytes.
         table["fastbins"][0] = {"size": 0x10}
@@ -27879,7 +27888,7 @@ class DestructorDumpCommand(GenericCommand):
         # Therefore, identify it from the output of the msymbols command and the offset of thread_arena.
 
         # thread_arena address of main thread
-        main_thread_main_arena = saerch_for_main_arena_from_tls()
+        main_thread_main_arena = search_for_main_arena_from_tls()
         if main_thread_main_arena is None:
             return None
 
@@ -42183,19 +42192,34 @@ class HeapbaseCommand(GenericCommand):
                 pass
 
         # slow path
-        if is_x86() or is_arm32() or is_arm64():
-            main_arena_ptr = saerch_for_main_arena_from_tls()
+        # If glibc has tcache, there is tcache_perthread_struct* in TLS.
+        if get_libc_version() >= (2, 26):
+            main_arena_ptr = search_for_main_arena_from_tls()
+
             if main_arena_ptr:
-                if is_x86():
-                    # use prev prev pointer for x86/x64
+                # get first_chunk (=tcache_perthread_struct*)
+                first_chunk_p = None
+                if is_x86() or is_sparc64() or is_alpha() or is_mips32() or is_mips64() or \
+                   is_nios2() or is_microblaze() or is_arc32() or is_ppc32() or is_ppc64() or \
+                   is_hppa32():
                     first_chunk_p = main_arena_ptr - current_arch.ptrsize * 2
-                else:
-                    # use next pointer for ARM/ARM64
+                elif is_arm32() or is_arm64() or is_riscv32() or is_riscv64() or \
+                   is_loongarch64() or is_or1k() or is_s390x():
                     first_chunk_p = main_arena_ptr + current_arch.ptrsize
-                first_chunk = read_int_from_memory(first_chunk_p)
-                heap_base = first_chunk - 0x10
-                __cached_heap_base__ = heap_base
-                return __cached_heap_base__
+
+                if first_chunk_p:
+                    first_chunk = read_int_from_memory(first_chunk_p)
+
+                    # get heap_base
+                    if is_x86_32() or is_riscv32() or is_ppc32():
+                        first_chunk_offset = 0x10
+                    else:
+                        first_chunk_offset = current_arch.ptrsize * 2
+                    heap_base = first_chunk - first_chunk_offset
+
+                    # save cache
+                    __cached_heap_base__ = heap_base
+                    return __cached_heap_base__
 
         return None
 
@@ -43937,10 +43961,19 @@ class VisualHeapCommand(GenericCommand):
 
     def generate_visual_heap(self, arena, dump_start, max_count):
         sect = process_lookup_address(dump_start)
+        if sect:
+            end = sect.page_end
+        else:
+            # If qemu-user 8.1 or higher, the process_lookup_address to obtain the section list uses info proc mappings internally.
+            # This is fast, but does not return an accurate list in some cases.
+            # For example, sparc64 may not include the heap area.
+            # So it detects the end of the page from arena.top.
+            end = arena.top + GlibcChunk(arena.top).size
+
         addr = dump_start
         i = 0
         self.out = []
-        while addr < sect.page_end:
+        while addr < end:
             chunk = GlibcChunk(addr + current_arch.ptrsize * 2)
             # corrupt check
             if addr != arena.top and addr + chunk.size > arena.top:
@@ -43949,7 +43982,7 @@ class VisualHeapCommand(GenericCommand):
                 chunk.data = read_memory(addr, arena.top - addr + 0x10)
                 self.generate_visual_chunk(arena, chunk, i)
                 break
-            elif addr + chunk.size > sect.page_end:
+            elif addr + chunk.size > end:
                 msg = "{} Corrupted (addr + chunk.size > sect.page_end)".format(Color.colorify("[!]", "bold red"))
                 self.out.append(msg)
                 chunk.data = read_memory(addr, arena.top - addr + 0x10)
@@ -43989,13 +44022,14 @@ class VisualHeapCommand(GenericCommand):
             err("Heap is not initialized")
             return
 
-        if args.location:
-            dump_start = args.location
-        else:
+        if args.location is None:
             dump_start = arena.heap_base
             # specific pattern
-            if is_32bit() and arena.is_main_arena and get_libc_version() >= (2, 26):
-                dump_start += 8
+            if arena.is_main_arena:
+                if (is_x86_32() or is_riscv32() or is_ppc32()) and get_libc_version() >= (2, 26):
+                    dump_start += 8
+        else:
+            dump_start = args.location
 
         reset_gef_caches(all=True)
         arena.reset_bins_info()
