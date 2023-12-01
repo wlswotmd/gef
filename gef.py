@@ -2655,13 +2655,30 @@ class GlibcArena:
 
 
 def get_arena(address):
-    try:
-        arena = GlibcArena(address)
-        str(arena) # check memory error
-        return arena
-    except (OSError, AttributeError, gdb.MemoryError):
-        err("Failed to get the arena, heap commands may not work properly.")
-        return None
+    if address is None or is_valid_addr(address):
+        try:
+            arena = GlibcArena(address)
+            str(arena) # check memory error
+            return arena
+        except (OSError, AttributeError, gdb.MemoryError):
+            err("Failed to get the arena, heap commands may not work properly.")
+            return None
+    else:
+        # interpret `address` as the number following next from main_arena, not the address of arena.
+        arena_number = address
+
+        # main_arena
+        arenas = []
+        arena = get_main_arena()
+        while arena:
+            arenas.append(arena)
+            arena = arena.get_next()
+
+        if arena_number >= len(arenas):
+            err("Failed to get the arena, heap commands may not work properly.")
+            return None
+
+        return arenas[arena_number]
 
 
 def get_main_arena():
@@ -17251,7 +17268,7 @@ class GlibcHeapTopCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-a", "--arena-addr", type=parse_address,
-                        help="the address you want to interpret as an arena. (default: main_arena)")
+                        help="the address or number you want to interpret as an arena. (default: main_arena)")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -17322,7 +17339,7 @@ class GlibcHeapArenaCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-a", "--arena-addr", type=parse_address,
-                        help="the address you want to interpret as an arena. (default: main_arena)")
+                        help="the address or number you want to interpret as an arena. (default: main_arena)")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
@@ -17433,7 +17450,11 @@ class GlibcHeapArenaCommand(GenericCommand):
             out[i] = re.sub("  ([a-zA-Z_]+) =", "  \033[36m\\1\033[0m =", out[i])
             out[i] = re.sub(" = (0x[0-9a-f]+)", " = \033[34m\\1\033[0m", out[i])
 
-        gef_print("\n".join(out).rstrip(), less=not args.no_pager)
+        out = "\n".join(out)
+        if len(out.splitlines()) > get_terminal_size()[0]:
+            gef_print(out, less=not args.no_pager)
+        else:
+            gef_print(out, less=False)
         return
 
 
@@ -17447,7 +17468,7 @@ class GlibcHeapChunkCommand(GenericCommand):
     parser.add_argument("location", metavar="LOCATION", type=parse_address,
                         help="the address you want to interpret as a chunk.")
     parser.add_argument("-a", "--arena-addr", type=parse_address,
-                        help="the address you want to interpret as an arena. (default: main_arena)")
+                        help="the address or number you want to interpret as an arena. (default: main_arena)")
     parser.add_argument("-b", "--as-base", action="store_true",
                         help="use LOCATION as chunk base address (chunk_base_address = chunk_address - ptrsize * 2).")
     _syntax_ = parser.format_help()
@@ -17512,7 +17533,7 @@ class GlibcHeapChunksCommand(GenericCommand):
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
                         help="the address you want to interpret as the beginning of a contiguous chunk. (default: arena.heap_base)")
     parser.add_argument("-a", "--arena-addr", type=parse_address,
-                        help="the address you want to interpret as an arena. (default: main_arena)")
+                        help="the address or number you want to interpret as an arena. (default: main_arena)")
     parser.add_argument("-b", "--nb-byte", type=lambda x: int(x, 0), help="temporarily override `heap_chunks.peek_nb_byte`.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
@@ -17638,7 +17659,7 @@ class GlibcHeapBinsCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-a", "--arena-addr", type=parse_address,
-                        help="the address you want to interpret as an arena. (default: main_arena)")
+                        help="the address or number you want to interpret as an arena. (default: main_arena)")
     parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
@@ -17753,7 +17774,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-a", "--arena-addr", type=parse_address,
-                        help="the address you want to interpret as an arena. (default: main_arena)")
+                        help="the address or number you want to interpret as an arena. (default: main_arena)")
     parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
@@ -17855,7 +17876,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-a", "--arena-addr", type=parse_address,
-                        help="the address you want to interpret as an arena. (default: main_arena)")
+                        help="the address or number you want to interpret as an arena. (default: main_arena)")
     parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
@@ -17958,7 +17979,7 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-a", "--arena-addr", type=parse_address,
-                        help="the address you want to interpret as an arena. (default: main_arena)")
+                        help="the address or number you want to interpret as an arena. (default: main_arena)")
     parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
@@ -18008,7 +18029,7 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-a", "--arena-addr", type=parse_address,
-                        help="the address you want to interpret as an arena. (default: main_arena)")
+                        help="the address or number you want to interpret as an arena. (default: main_arena)")
     parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
@@ -18064,7 +18085,7 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-a", "--arena_addr", type=parse_address,
-                        help="the address you want to interpret as an arena. (default: main_arena)")
+                        help="the address or number you want to interpret as an arena. (default: main_arena)")
     parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
@@ -43885,7 +43906,7 @@ class VisualHeapCommand(GenericCommand):
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
                         help="the address you want to interpret as the beginning of a contiguous chunk. (default: arena.heap_base)")
     parser.add_argument("-a", dest="arena_addr", type=parse_address,
-                        help="the address you want to interpret as an arena. (default: main_arena)")
+                        help="the address or number you want to interpret as an arena. (default: main_arena)")
     parser.add_argument("-c", dest="max_count", type=parse_address,
                         help="Maximum count to parse. It is used when there is a very large amount of chunks.")
     parser.add_argument("-f", "--full", action="store_true", help="display the same line without omitting.")
