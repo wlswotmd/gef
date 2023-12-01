@@ -6598,7 +6598,7 @@ class SH4(Architecture):
     has_syscall_delay_slot = True
     has_ret_delay_slot = True
     stack_grow_down = False
-    tls_supported = False # no TLS, use stack
+    tls_supported = True
 
     keystone_support = False
     capstone_support = False
@@ -6657,6 +6657,15 @@ class SH4(Architecture):
         except gdb.error:
             pass
         return ra
+
+    def get_tls(self):
+        return get_register("$gbr")
+
+    def decode_cookie(self, value, cookie):
+        return value ^ cookie
+
+    def encode_cookie(self, value, cookie):
+        return value ^ cookie
 
     def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 125
@@ -15114,7 +15123,7 @@ class PtrDemangleCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
-    @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS"))
+    @exclude_specific_arch(arch=("SPARC32", "XTENSA", "CRIS"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -15154,7 +15163,7 @@ class PtrMangleCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
-    @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS"))
+    @exclude_specific_arch(arch=("SPARC32", "XTENSA", "CRIS"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -15251,7 +15260,7 @@ class SearchMangledPtrCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
-    @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS"))
+    @exclude_specific_arch(arch=("SPARC32", "XTENSA", "CRIS"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -27772,7 +27781,7 @@ class DestructorDumpCommand(GenericCommand):
             return a + "[???]"
 
     """
-    glibc 2.37
+    glibc 2.37~
 
     x86_32: dynamic symboled: linkmap-relative
     x86_32: dynamic stripped: linkmap-relative
@@ -27808,6 +27817,11 @@ class DestructorDumpCommand(GenericCommand):
     loongarch64: dynamic stripped: linkmap-relative
     loongarch64: static symboled: msymbols
     loongarch64: static stripped: heuristic
+
+    sh4: dynamic symboled: heuristic (link_map is not in TLS)
+    sh4: dynamic stripped: heuristic (link_map is not in TLS)
+    sh4: static symboled: msymbols
+    sh4: static stripped: heuristic
 
     ppc32: dynamic symboled: heuristic (link_map is not in TLS)
     ppc32: dynamic stripped: heuristic (link_map is not in TLS)
@@ -28289,7 +28303,7 @@ class DestructorDumpCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
-    @exclude_specific_arch(arch=("SPARC32", "SH4", "XTENSA", "CRIS"))
+    @exclude_specific_arch(arch=("SPARC32", "XTENSA", "CRIS"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -42195,7 +42209,7 @@ class HeapbaseCommand(GenericCommand):
 
         # slow path
         # If glibc has tcache, there is tcache_perthread_struct* in TLS.
-        if get_libc_version() >= (2, 26):
+        if get_libc_version() >= (2, 26) and current_arch.tls_supported:
             main_arena_ptr = search_for_main_arena_from_tls()
 
             if main_arena_ptr:
@@ -42203,7 +42217,7 @@ class HeapbaseCommand(GenericCommand):
                 first_chunk_p = None
                 if is_x86() or is_sparc64() or is_alpha() or is_mips32() or is_mips64() or \
                    is_nios2() or is_microblaze() or is_arc32() or is_ppc32() or is_ppc64() or \
-                   is_hppa32():
+                   is_hppa32() or is_sh4():
                     first_chunk_p = main_arena_ptr - current_arch.ptrsize * 2
                 elif is_arm32() or is_arm64() or is_riscv32() or is_riscv64() or \
                    is_loongarch64() or is_or1k() or is_s390x():
