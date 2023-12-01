@@ -55775,7 +55775,31 @@ class TlsCommand(GenericCommand):
     _category_ = "02-b. Process Information - Base Address"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-a", "--all", action="store_true", help="show all TLS address.")
     _syntax_ = parser.format_help()
+
+    def print_all_tls(self):
+        selected_thread = gdb.selected_thread()
+        threads = gdb.selected_inferior().threads()
+        threads = sorted(threads, key=lambda th: th.num)
+
+        if not threads:
+            err("No thread is detected")
+            return
+
+        for thread in threads:
+            msg = "Thread Id:{:d}".format(thread.num)
+            try:
+                thread.switch()
+            except gdb.error:
+                msg += " - Failed to switch to this thread"
+                continue
+            tls = current_arch.get_tls()
+            msg += " - {:#x}".format(tls)
+            gef_print(msg)
+
+        selected_thread.switch() # revert
+        return
 
     @parse_args
     @only_if_gdb_running
@@ -55785,6 +55809,10 @@ class TlsCommand(GenericCommand):
 
         if not current_arch.tls_supported:
             warn("This command cannot work under this architecture.")
+            return
+
+        if args.all:
+            self.print_all_tls()
             return
 
         tls = current_arch.get_tls()
