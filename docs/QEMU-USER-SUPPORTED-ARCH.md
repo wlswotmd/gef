@@ -1,5 +1,5 @@
 # Qemu-user supported architectures
-I also list the tools I used in my Ubuntu 22.04 environment.
+I also list the tools I used in my Ubuntu 23.10 environment.
 
 * x86
     * toolchain: `gcc` via apt with `-m32` option.
@@ -38,8 +38,7 @@ I also list the tools I used in my Ubuntu 22.04 environment.
     * qemu: `qemu-sparc` via apt.
     * gdb: `gdb-multiarch` via apt.
 * SPARC64
-    * toolchain: `sparc64--glibc--bleeding-edge-2023.08-1` from https://toolchains.bootlin.com/
-        * Because the toolchain obtained with apt seems to be broken since the built ELF always SIGSEGV.
+    * toolchain: `gcc-sparc64-linux-gnu` via apt.
     * qemu: `qemu-sparc64` via apt.
     * gdb: `gdb-multiarch` via apt.
 * RISCV32
@@ -55,9 +54,7 @@ I also list the tools I used in my Ubuntu 22.04 environment.
     * qemu: `qemu-s390x` via apt.
     * gdb: `gdb-multiarch` via apt.
 * sh4
-    * toolchain: `sh-sh4--uclibc--bleeding-edge-2023.08-1` from https://toolchains.bootlin.com/
-        * Because the toolchain obtained with apt seems to be broken since static build is failed.
-        * glibc version is broken. use uclibc version.
+    * toolchain: `gcc-sh4-linux-gnu` via apt.
     * qemu: `qemu-sh4` via apt.
     * gdb: `gdb-multiarch` via apt.
 * m68k
@@ -95,7 +92,7 @@ I also list the tools I used in my Ubuntu 22.04 environment.
     * gdb: `xtensa-lx60--uclibc--bleeding-edge-2023.08-1` from https://toolchains.bootlin.com/
         * Because `gdb` built from latest source will not work with `set architecture xtensa`.
         * The toolchain also includes `xtensa-linux-gdb`, so I used it.
-        * The readline seems to be broken so workaround is here: `LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libncurses.so.6 xtensa-linux-gdb`.
+        * The readline seems to be broken in Ubuntu 22.04, so workaround is here: `LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libncurses.so.6 xtensa-linux-gdb`.
 * Cris
     * lib: [cris-dist_1.64-1_i386.deb](https://www.axis.com/ftp/pub/axis/tools/cris/compiler-kit/cris-dist_1.64-1_i386.deb)
     * toolchain: [x86_64-gcc-7.3.0-nolibc_cris-linux.tar.xz](https://ftp.iij.ad.jp/pub/linux/kernel/tools/crosstool/files/bin/x86_64/7.3.0/x86_64-gcc-7.3.0-nolibc_cris-linux.tar.xz) from http://ftp.iij.ad.jp/pub/linux/kernel/tools/crosstool/
