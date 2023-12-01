@@ -1960,6 +1960,418 @@ class Instruction:
         return text
 
 
+class HeapInfo:
+    """GEF representation of heap_info"""
+
+    def __init__(self, addr):
+        self.__addr = addr
+
+        if is_64bit():
+            MALLOC_ALIGNMENT = 0x10
+        elif (is_x86_32() or is_riscv32() or is_ppc32()) and get_libc_version() >= (2, 26):
+            MALLOC_ALIGNMENT = 0x10
+        else:
+            MALLOC_ALIGNMENT = 0x8
+        self.MALLOC_ALIGN_MASK = MALLOC_ALIGNMENT - 1
+
+        self.char_t = cached_lookup_type("char")
+        self.size_t = cached_lookup_type("size_t")
+        if not self.size_t:
+            ptr_type = "unsigned long" if current_arch.ptrsize == 8 else "unsigned int"
+            self.size_t = cached_lookup_type(ptr_type)
+        return
+
+    # struct offsets
+    @property
+    def addr(self):
+        return self.__addr
+
+    @property
+    def ar_ptr_addr(self):
+        return self.__addr
+
+    @property
+    def prev_addr(self):
+        return self.ar_ptr_addr + self.char_t.pointer().sizeof
+
+    @property
+    def size_addr(self):
+        return self.prev_addr + self.char_t.pointer().sizeof
+
+    @property
+    def mprotect_size_addr(self):
+        return self.size_addr + self.size_t.sizeof
+
+    @property
+    def pagesize_addr(self):
+        if get_libc_version() >= (2, 35):
+            return self.mprotect_size_addr + self.size_t.sizeof
+        else:
+            return None
+
+    @property
+    def pad_addr(self):
+        if get_libc_version() >= (2, 35):
+            return self.pagesize_addr + self.size_t.sizeof
+        else:
+            return self.mprotect_size_addr + self.size_t.sizeof
+
+    @property
+    def sizeof(self):
+        if get_libc_version() >= (2, 35):
+            end = self.pad_addr + (-3 * self.size_t.sizeof) & self.MALLOC_ALIGN_MASK
+        else:
+            end = self.pad_addr + (-6 * self.size_t.sizeof) & self.MALLOC_ALIGN_MASK
+        return end - self.__addr
+
+    # struct members
+    @property
+    def ar_ptr(self):
+        return self.get_char_t_pointer(self.ar_ptr_addr)
+
+    @property
+    def prev(self):
+        return self.get_char_t_pointer(self.prev_addr)
+
+    @property
+    def size(self):
+        return self.get_size_t(self.size_addr)
+
+    @property
+    def mprotect_size(self):
+        return self.get_size_t(self.mprotect_size_addr)
+
+    @property
+    def pagesize(self):
+        if get_libc_version() >= (2, 35):
+            return self.get_size_t(self.pagesize_addr)
+        else:
+            return None
+
+    @property
+    def pad(self):
+        if get_libc_version() >= (2, 35):
+            length = (-3 * self.size_t.sizeof) & self.MALLOC_ALIGN_MASK
+        else:
+            length = (-6 * self.size_t.sizeof) & self.MALLOC_ALIGN_MASK
+        return self.get_char_t_array(self.pad_addr, length)
+
+    # helper methods
+    def get_size_t(self, addr):
+        return dereference(addr).cast(self.size_t)
+
+    def get_char_t_pointer(self, addr):
+        char_t_pointer = self.char_t.pointer()
+        return dereference(addr).cast(char_t_pointer)
+
+    def get_char_t_array(self, addr, length):
+        char_t_array = self.char_t.array(length)
+        return dereference(addr).cast(char_t_array)
+
+    def __getitem__(self, item):
+        return getattr(self, item)
+
+
+class MallocPar:
+    """GEF representation of malloc_par"""
+    def __init__(self, addr):
+        self.__addr = addr
+
+        self.char_t = cached_lookup_type("char")
+        self.int_t = cached_lookup_type("int")
+        self.long_t = cached_lookup_type("long")
+        self.size_t = cached_lookup_type("size_t")
+        if not self.size_t:
+            ptr_type = "unsigned long" if current_arch.ptrsize == 8 else "unsigned int"
+            self.size_t = cached_lookup_type(ptr_type)
+        return
+
+    # struct offsets
+    @property
+    def addr(self):
+        return self.__addr
+
+    @property
+    def trim_threshold_addr(self):
+        return self.__addr
+
+    @property
+    def top_pad_addr(self):
+        return self.trim_threshold_addr + self.long_t.sizeof
+
+    @property
+    def mmap_threshold_addr(self):
+        return self.top_pad_addr + self.size_t.sizeof
+
+    @property
+    def arena_test_addr(self):
+        return self.mmap_threshold_addr + self.size_t.sizeof
+
+    @property
+    def arena_max_addr(self):
+        return self.arena_test_addr + self.size_t.sizeof
+
+    @property
+    def thp_pagesize_addr(self):
+        if get_libc_version() >= (2, 35):
+            return self.arena_max_addr + self.size_t.sizeof
+        else:
+            return None
+
+    @property
+    def hp_pagesize_addr(self):
+        if get_libc_version() >= (2, 35):
+            return self.thp_pagesize_addr + self.size_t.sizeof
+        else:
+            return None
+
+    @property
+    def hp_flags_addr(self):
+        if get_libc_version() >= (2, 35):
+            return self.hp_pagesize_addr + self.size_t.sizeof
+        else:
+            return None
+
+    @property
+    def n_mmaps_addr(self):
+        if get_libc_version() >= (2, 35):
+            return self.hp_flags_addr + self.int_t.sizeof
+        else:
+            return self.arena_max_addr + self.size_t.sizeof
+
+    @property
+    def n_mmaps_max_addr(self):
+        return self.n_mmaps_addr + self.int_t.sizeof
+
+    @property
+    def max_n_mmaps_addr(self):
+        return self.n_mmaps_max_addr + self.int_t.sizeof
+
+    @property
+    def no_dyn_threshold_addr(self):
+        return self.max_n_mmaps_addr + self.int_t.sizeof
+
+    @property
+    def pagesize_addr(self):
+        if get_libc_version() >= (2, 15):
+            return None
+        else:
+            return self.max_n_mmaps_addr + self.int_t.sizeof
+
+    @property
+    def mmapped_mem_addr(self):
+        if get_libc_version() >= (2, 15):
+            return align_address_to_size(self.no_dyn_threshold_addr + self.int_t.sizeof, current_arch.ptrsize)
+        else:
+            return align_address_to_size(self.pagesize_addr + self.int_t.sizeof, current_arch.ptrsize)
+
+    @property
+    def max_mmapped_mem_addr(self):
+        return self.mmapped_mem_addr + self.size_t.sizeof
+
+    @property
+    def max_total_mem_addr(self):
+        if get_libc_version() >= (2, 24):
+            return None
+        else:
+            return self.mmapped_mem_addr + self.size_t.sizeof
+
+    @property
+    def sbrk_base_addr(self):
+        if get_libc_version() >= (2, 24):
+            return self.max_mmapped_mem_addr + self.size_t.sizeof
+        else:
+            return self.max_total_mem_addr + self.size_t.sizeof
+
+    @property
+    def tcache_bins_addr(self):
+        if get_libc_version() >= (2, 26):
+            return self.sbrk_base_addr + self.char_t.pointer().sizeof
+        else:
+            return None
+
+    @property
+    def tcache_max_bytes_addr(self):
+        if get_libc_version() >= (2, 26):
+            return self.tcache_bins_addr + self.size_t.sizeof
+        else:
+            return None
+
+    @property
+    def tcache_count_addr(self):
+        if get_libc_version() >= (2, 26):
+            return self.tcache_max_bytes_addr + self.size_t.sizeof
+        else:
+            return None
+
+    @property
+    def tcache_unsorted_limit_addr(self):
+        if get_libc_version() >= (2, 26):
+            return self.tcache_count_addr + self.size_t.sizeof
+        else:
+            return None
+
+    @property
+    def sizeof(self):
+        if get_libc_version() >= (2, 26):
+            end = self.tcache_unsorted_limit_addr + self.size_t.sizeof
+        else:
+            end = self.sbrk_base_addr + self.char_t.pointer().sizeof
+        return end - self.__addr
+
+    # struct members
+    @property
+    def trim_threshold(self):
+        return self.get_long_t(self.trim_threshold_addr)
+
+    @property
+    def top_pad(self):
+        return self.get_size_t(self.top_pad_addr)
+
+    @property
+    def mmap_threshold(self):
+        return self.get_size_t(self.mmap_threshold_addr)
+
+    @property
+    def arena_test(self):
+        return self.get_size_t(self.arena_test_addr)
+
+    @property
+    def arena_max(self):
+        return self.get_size_t(self.arena_max_addr)
+
+    @property
+    def thp_pagesize(self):
+        if get_libc_version() >= (2, 35):
+            return self.get_size_t(self.thp_pagesize_addr)
+        else:
+            return None
+
+    @property
+    def hp_pagesize(self):
+        if get_libc_version() >= (2, 35):
+            return self.get_size_t(self.hp_pagesize_addr)
+        else:
+            return None
+
+    @property
+    def hp_flags(self):
+        if get_libc_version() >= (2, 35):
+            return self.get_int_t(self.hp_flags_addr)
+        else:
+            return None
+
+    @property
+    def n_mmaps(self):
+        return self.get_int_t(self.n_mmaps_addr)
+
+    @property
+    def n_mmaps_max(self):
+        return self.get_int_t(self.n_mmaps_max_addr)
+
+    @property
+    def max_n_mmaps(self):
+        return self.get_int_t(self.max_n_mmaps_addr)
+
+    @property
+    def no_dyn_threshold(self):
+        return self.get_int_t(self.no_dyn_threshold_addr)
+
+    @property
+    def pagesize(self):
+        if get_libc_version() >= (2, 15):
+            return None
+        else:
+            return self.get_int_t(self.pagesize_addr)
+
+    @property
+    def mmapped_mem(self):
+        return self.get_size_t(self.mmapped_mem_addr)
+
+    @property
+    def max_mmapped_mem(self):
+        return self.get_size_t(self.max_mmapped_mem_addr)
+
+    @property
+    def max_total_mem(self):
+        if get_libc_version() >= (2, 24):
+            return None
+        else:
+            return self.get_size_t(self.max_total_mem_addr)
+
+    @property
+    def sbrk_base(self):
+        return self.get_char_t_pointer(self.sbrk_base_addr)
+
+    @property
+    def tcache_bins(self):
+        if get_libc_version() >= (2, 26):
+            return self.get_size_t(self.tcache_bins_addr)
+        else:
+            return None
+
+    @property
+    def tcache_max_bytes(self):
+        if get_libc_version() >= (2, 26):
+            return self.get_size_t(self.tcache_max_bytes_addr)
+        else:
+            return None
+
+    @property
+    def tcache_count(self):
+        if get_libc_version() >= (2, 26):
+            return self.get_size_t(self.tcache_count_addr)
+        else:
+            return None
+
+    @property
+    def tcache_unsorted_limit(self):
+        if get_libc_version() >= (2, 26):
+            return self.get_size_t(self.tcache_unsorted_limit_addr)
+        else:
+            return None
+
+    # helper methods
+    def get_size_t(self, addr):
+        return dereference(addr).cast(self.size_t)
+
+    def get_int_t(self, addr):
+        return dereference(addr).cast(self.int_t)
+
+    def get_long_t(self, addr):
+        return dereference(addr).cast(self.long_t)
+
+    def get_char_t_pointer(self, addr):
+        char_t_pointer = self.char_t.pointer()
+        return dereference(addr).cast(char_t_pointer)
+
+    def __getitem__(self, item):
+        return getattr(self, item)
+
+
+@functools.lru_cache(maxsize=None)
+def search_for_mp_():
+    """saerch mp_ from main_arena, then return addr."""
+    main_arena_ptr = search_for_main_arena_from_tls()
+    if main_arena_ptr is None:
+        return None
+    main_arena = read_int_from_memory(main_arena_ptr)
+
+    heap_base = HeapbaseCommand.heap_base()
+    if heap_base is None:
+        return None
+
+    offsetof_sbrk_base = MallocPar(0).sbrk_base_addr
+    current = main_arena - MallocPar(0).sizeof
+    for _ in range(0, 500):
+        x = read_int_from_memory(current)
+        if x == heap_base:
+            mp_ = current - offsetof_sbrk_base
+            return mp_
+        current -= current_arch.ptrsize
+    return None
+
+
 class MallocStateStruct:
     """GEF representation of malloc_state"""
     def __init__(self, addr):
@@ -2096,7 +2508,7 @@ class MallocStateStruct:
 
     @property
     def binmap(self):
-        return self.int_size_t_array(self.binmap_addr, self.num_binmap)
+        return self.get_int_t_array(self.binmap_addr, self.num_binmap)
 
     @property
     def next(self):
@@ -2139,9 +2551,9 @@ class MallocStateStruct:
         size_t_array = self.size_t.array(length)
         return dereference(addr).cast(size_t_array)
 
-    def int_size_t_array(self, addr, length):
-        int_size_t_array = self.int_t.array(length)
-        return dereference(addr).cast(int_size_t_array)
+    def get_int_t_array(self, addr, length):
+        int_t_array = self.int_t.array(length)
+        return dereference(addr).cast(int_t_array)
 
     def __getitem__(self, item):
         return getattr(self, item)
@@ -17389,10 +17801,9 @@ class GlibcHeapArenaCommand(GenericCommand):
         try:
             mp = parse_address("&mp_")
         except gdb.error:
-            return [titlify("[mp_]"), "Not found &mp_"]
-
-        if cached_lookup_type("struct malloc_par") is None:
-            return [titlify("[mp_]"), "Not found type information of `struct malloc_par`"]
+            mp = search_for_mp_()
+            if mp is None:
+                return [titlify("[mp_]"), "Not found &mp_"]
 
         try:
             out = []
@@ -17402,7 +17813,36 @@ class GlibcHeapArenaCommand(GenericCommand):
             result = gdb.execute(cmd, to_string=True)
             out.append(result)
         except gdb.error:
-            return [titlify("[mp_]"), "Failed to parse"]
+            out = []
+            mp = MallocPar(mp)
+            title = titlify("[mp_] ----- {:#x}".format(mp.addr))
+            out.append(title)
+            out.append("$1 = {")
+            out.append("  trim_threshold = {:#x},".format(int(mp.trim_threshold)))
+            out.append("  top_pad = {:#x},".format(int(mp.top_pad)))
+            out.append("  mmap_threshold = {:#x},".format(int(mp.mmap_threshold)))
+            out.append("  arena_test = {:#x},".format(int(mp.arena_test)))
+            out.append("  arena_max = {:#x},".format(int(mp.arena_max)))
+            if get_libc_version() >= (2, 35):
+                out.append("  thp_pagesize = {:#x},".format(int(mp.thp_pagesize)))
+                out.append("  hp_pagesize = {:#x},".format(int(mp.hp_pagesize)))
+                out.append("  hp_flags = {:#x},".format(int(mp.hp_flags)))
+            out.append("  n_mmaps = {:#x},".format(int(mp.n_mmaps)))
+            out.append("  n_mmaps_max = {:#x},".format(int(mp.n_mmaps_max)))
+            out.append("  max_n_mmaps = {:#x},".format(int(mp.max_n_mmaps)))
+            out.append("  no_dyn_threshold = {:#x},".format(int(mp.no_dyn_threshold)))
+            if get_libc_version() < (2, 15):
+                out.append("  pagesize = {:#x},".format(int(mp.pagesize)))
+            out.append("  mmapped_mem = {:#x},".format(int(mp.mmapped_mem)))
+            out.append("  max_mmapped_mem = {:#x},".format(int(mp.max_mmapped_mem)))
+            if get_libc_version() < (2, 24):
+                out.append("  max_total_mem = {:#x},".format(int(mp.max_total_mem)))
+            out.append("  sbrk_base = {:#x},".format(int(mp.sbrk_base)))
+            if get_libc_version() >= (2, 26):
+                out.append("  tcache_bins = {:#x},".format(int(mp.tcache_bins)))
+                out.append("  tcache_max_bytes = {:#x},".format(int(mp.tcache_max_bytes)))
+                out.append("  tcache_unsorted_limit = {:#x},".format(int(mp.tcache_unsorted_limit)))
+            out.append("}")
         return out
 
     def parse_heap_info(self, arena):
@@ -17412,18 +17852,29 @@ class GlibcHeapArenaCommand(GenericCommand):
         if arena.is_main_arena:
             return [titlify("[heap_info]"), "Not thread arena"]
 
-        if cached_lookup_type("struct _heap_info") is None:
-            return [titlify("[heap_info]"), "Not found type information of `struct _heap_info`"]
+        heap_info = arena.addr & gef_getpagesize_mask_high()
 
         try:
             out = []
-            cmd = "p ((struct _heap_info*) {:#x})[0]".format(arena.addr & gef_getpagesize_mask_high())
+            cmd = "p ((struct _heap_info*) {:#x})[0]".format(heap_info)
             title = titlify("[heap_info] ----- {:s}".format(cmd))
             out.append(title)
             result = gdb.execute(cmd, to_string=True)
             out.append(result)
         except gdb.error:
-            return [titlify("[heap_info]"), "Failed to parse"]
+            out = []
+            heap_info = HeapInfo(heap_info)
+            title = titlify("[heap_info] ----- {:#x}".format(heap_info.addr))
+            out.append(title)
+            out.append("$1 = {")
+            out.append("  ar_ptr = {:#x},".format(int(heap_info.ar_ptr)))
+            out.append("  prev = {:#x},".format(int(heap_info.prev)))
+            out.append("  size = {:#x},".format(int(heap_info.size)))
+            out.append("  mprotect_size = {:#x},".format(int(heap_info.mprotect_size)))
+            if get_libc_version() >= (2, 35):
+                out.append("  pagesize = {:#x},".format(int(heap_info.pagesize)))
+            out.append("  pad = {},".format(heap_info.pad))
+            out.append("}")
         return out
 
     @parse_args
