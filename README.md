@@ -481,10 +481,12 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/add-symbol-temporary.png)
 * `errno`: displays errno list or specified errno.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/errno.png)
-* `u2d`: shows cast/transformation u64 <-> double/float.
+* `u2d`: shows cast/convert u64 <-> double/float.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/u2d.png)
-* `trans`: shows various transformation.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/trans.png)
+* `unsigned`: shows unsigned value.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/unsigned.png)
+* `convert`: shows various conversion.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/convert.png)
 * `walk-link-list`: walks the link list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/walk-link-list.png)
 * `hexdump-flexible`: displays the hexdump with user defined format.

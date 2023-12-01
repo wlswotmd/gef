@@ -44047,9 +44047,9 @@ class DistanceCommand(GenericCommand):
 
 @register_command
 class U2dCommand(GenericCommand):
-    """Translate type (unsigned long <-> double/float)."""
+    """Convert type (unsigned long <-> double/float)."""
     _cmdline_ = "u2d"
-    _category_ = "09-a. Misc - Translation"
+    _category_ = "09-a. Misc - Conversion"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("value", metavar="VALUE", help="the hex value or double value.")
@@ -44081,7 +44081,7 @@ class U2dCommand(GenericCommand):
         ud = lambda a: struct.unpack("<d", a)[0]
         return ud(pQ(x))
 
-    def translate_from_float(self, n):
+    def convert_from_float(self, n):
         gef_print(titlify("double -> unsigned long long"))
         gef_print(Color.cyanify("double -> ull (reinterpret_cast)"))
         gef_print("  {:.20e} ---> {:#018x}".format(n, self.d2u(n)))
@@ -44090,7 +44090,7 @@ class U2dCommand(GenericCommand):
         gef_print("  {:.20e} ---> {:#010x}".format(n, self.f2u(n)))
         return
 
-    def translate_from_int(self, n):
+    def convert_from_int(self, n):
         n &= 0xffffffffffffffff
         gef_print(titlify("unsigned long long <-> double"))
         gef_print(Color.cyanify("ull -> double (reinterpret_cast)"))
@@ -44123,23 +44123,46 @@ class U2dCommand(GenericCommand):
         try:
             if "." in args.value:
                 n = float(args.value)
-                self.translate_from_float(n)
+                self.convert_from_float(n)
             else:
                 n = int(args.value, 0)
-                self.translate_from_int(n)
+                self.convert_from_int(n)
         except Exception:
             self.usage()
         return
 
 
 @register_command
-class TransCommand(GenericCommand):
-    """Translate various (pack, pack-hex, unpack, tohex, unhex, byteswap)."""
-    _cmdline_ = "trans"
-    _category_ = "09-a. Misc - Translation"
+class UnsignedCommand(GenericCommand):
+    """Convert the negative number to unsigned."""
+    _cmdline_ = "unsigned"
+    _category_ = "09-a. Misc - Conversion"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("value", metavar="VALUE", help="the value or string you want to translate.")
+    parser.add_argument("value", metavar="VALUE", type=parse_address, help="the value you want to convert.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        for i in range(4):
+            shift = (2 ** i) * 8
+            mask = (1 << shift) -1
+            masked_value = args.value & mask
+            gef_print("{:d} byte unsigned: {:#x}".format(2 ** i, masked_value))
+        return
+
+
+@register_command
+class ConvertCommand(GenericCommand):
+    """Convert values to various (pack, pack-hex, unpack, tohex, unhex, byteswap, etc.)."""
+    _cmdline_ = "convert"
+    _category_ = "09-a. Misc - Conversion"
+    _aliases_ = ["transform", "trans"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("value", metavar="VALUE", help="the value or string you want to convert.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
     _syntax_ = parser.format_help()
