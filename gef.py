@@ -11705,6 +11705,8 @@ def get_auxiliary_walk(offset=0):
 
     # do not use gef_getpagesize(), gef_getpagesize_mask_high(), etc.
     # because gef_getpagesize() -> gef_get_auxiliary_values() -> get_auxiliary_walk()
+    if current_arch.sp is None:
+        return None
     addr = current_arch.sp & DEFAULT_PAGE_SIZE_MASK_HIGH
 
     # check readable or not
