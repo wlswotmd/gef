@@ -72727,6 +72727,10 @@ class PagewalkArm64Command(PagewalkCommand):
         if args.target_el is None:
             CPSR = get_register("$cpsr")
             self.TargetEL = (CPSR >> 2) & 0b11
+            if self.TargetEL == 0:
+                # Since $pc is currently in EL0 (userland), so it is not privileged to be able to view the page table.
+                # Temporarily switch to EL1 and display TTBR0_EL1 and TTBR1_EL1 pagetable.
+                self.TargetEL = 1
         else:
             self.TargetEL = args.target_el
 
