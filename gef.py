@@ -26996,9 +26996,23 @@ class XInfoCommand(GenericCommand):
 
         return
 
+    def xinfo_kernel(self, address):
+        ret = gdb.execute("pagewalk --vrange {:#x} --no-pager --quiet".format(address), to_string=True)
+        ret = [x for x in ret.splitlines() if not Color.remove_color(x).startswith(("---", "[+]"))]
+        gef_print("\n".join(ret))
+
+        if ret[-1].startswith("0x"):
+            virt, phys, *_ = ret[-1].split()
+            vstart = int(virt.split("-")[0], 16)
+            pstart = int(phys.split("-")[0], 16)
+            offset = address - vstart
+            gef_print("Offset (from virt mapped):  {:#x} + {:#x}".format(vstart, offset))
+            gef_print("Offset (from phys mapped):  {:#x} + {:#x}".format(pstart, offset))
+        return
+
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("kgdb",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -27007,6 +27021,14 @@ class XInfoCommand(GenericCommand):
         else:
             locations = args.location
 
+        # kernel xinfo
+        if is_qemu_system() or is_vmware():
+            for location in locations:
+                gef_print(titlify("xinfo: {:#x}".format(location)))
+                self.xinfo_kernel(location)
+            return
+
+        # userland xinfo
         for location in locations:
             try:
                 gef_print(titlify("xinfo: {:#x}".format(location)))
