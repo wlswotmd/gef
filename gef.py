@@ -26407,7 +26407,8 @@ class DereferenceCommand(GenericCommand):
             if args.depth - 1 > 0:
                 v = _read_int_from_memory(start_address + idx * current_arch.ptrsize)
                 if v % current_arch.ptrsize == 0 and is_valid_addr(v):
-                    ret = gdb.execute("dereference --depth {:d} --no-pager {:#x}".format(args.depth - 1, v), to_string=True).strip()
+                    cmd = "dereference --depth {:d} --no-pager {:#x} {:#x}".format(args.depth - 1, v, args.nb_lines)
+                    ret = gdb.execute(cmd, to_string=True).strip()
                     for line in ret.splitlines():
                         out.append("    " + line)
 
