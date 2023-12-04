@@ -49854,7 +49854,7 @@ class KernelTaskCommand(GenericCommand):
                 0xffff972801b78a40|+0x0040|+008: 0x0000030b00000000   // ma_flags || union  <--- mm_mt
                 0xffff972801b78a48|+0x0048|+009: 0xffff972801b0cc1e   // ma_root
                 """
-                if is_valid_addr(x) and (x & 0xff) == 0x1e:
+                if is_valid_addr(x) and (x & 0xff) in [0x1e, 0x0e]:
                     offset_ma_root = current_arch.ptrsize * i
                     if kversion < "6.6":
                         offset_ma_flags = offset_ma_root + current_arch.ptrsize
@@ -50511,6 +50511,7 @@ class KernelTaskCommand(GenericCommand):
 
     def get_sizeof_action(self, task_addrs, offset_sighand, offset_action):
         """
+        case 1 (x64)
         0xffff8f63011e4400|+0x0000|+000: 0x0000000100000000
         0xffff8f63011e4408|+0x0008|+001: 0x0000000000000000
         0xffff8f63011e4410|+0x0010|+002: 0xffff8f63593e11e0  ->  [loop detected]
@@ -50523,29 +50524,75 @@ class KernelTaskCommand(GenericCommand):
         0xffff8f63011e4448|+0x0048|+009: 0x0000000014000000
         0xffff8f63011e4450|+0x0050|+010: 0x00007f3ec71d0d60
         0xffff8f63011e4458|+0x0058|+011: 0x0000000000000000
-        0xffff8f63011e4460|+0x0060|+012: 0x0000562e3b34bdf0
+        0xffff8f63011e4460|+0x0060|+012: 0x0000562e3b34bdf0 <- action[2]
         0xffff8f63011e4468|+0x0068|+013: 0x0000000044000000
         0xffff8f63011e4470|+0x0070|+014: 0x00007f3ec71d0d60
         0xffff8f63011e4478|+0x0078|+015: 0x0000000000000000
-        0xffff8f63011e4480|+0x0080|+016: 0x0000562e3b34bdf0
+        0xffff8f63011e4480|+0x0080|+016: 0x0000562e3b34bdf0 <- action[3]
         0xffff8f63011e4488|+0x0088|+017: 0x0000000044000000
         0xffff8f63011e4490|+0x0090|+018: 0x00007f3ec71d0d60
+        0xffff8f63011e4498|+0x0098|+019: 0x0000000000000000
+        ...
+
+        case 2 (arm64)
+        0xffff000003080000|+0x0000|+000: 0x0000000100000000
+        0xffff000003080008|+0x0008|+001: 0x0000000000000000
+        0xffff000003080010|+0x0010|+002: 0xffff000003080010  ->  [loop detected]
+        0xffff000003080018|+0x0018|+003: 0xffff000003080010  ->  [loop detected]
+        0xffff000003080020|+0x0020|+004: 0x0000000000000000 <- action[0]
+        0xffff000003080028|+0x0028|+005: 0x0000000000000000
+        0xffff000003080030|+0x0030|+006: 0x0000000000000000
+        0xffff000003080038|+0x0038|+007: 0x0000000000000000
+        0xffff000003080040|+0x0040|+008: 0x000000000051dc20 <- action[1]
+        0xffff000003080048|+0x0048|+009: 0x0000000000000000
+        0xffff000003080050|+0x0050|+010: 0x0000000000000002
+        0xffff000003080058|+0x0058|+011: 0xfffffffe7ffbfeff
+        0xffff000003080060|+0x0060|+012: 0x0000000000000001 <- action[2]
+        0xffff000003080068|+0x0068|+013: 0x0000000000000000
+        0xffff000003080070|+0x0070|+014: 0x0000000000000002
+        0xffff000003080078|+0x0078|+015: 0xfffffffe7ffbfeff
+        0xffff000003080080|+0x0080|+016: 0x0000000000000000 <- action[3]
+        0xffff000003080088|+0x0088|+017: 0x0000000000000000
+        0xffff000003080090|+0x0090|+018: 0x0000000000000000
+        0xffff000003080098|+0x0098|+019: 0x0000000000000000
+        ...
         """
         # calc sizeof(action[0])
         sizeof_action = 0xffffffffffffffff
         for task in task_addrs:
             sighand = read_int_from_memory(task + offset_sighand)
             current = sighand + offset_action
-            found_offset = []
+            found_offset_case1 = []
+            found_offset_case2 = []
+
+            # check case 1
             for i in range(64 * 4):
                 offset = current_arch.ptrsize * i
                 v = read_int_from_memory(current + offset)
                 # SA_RESTORER, SA_RESTART, SA_NODEFER, SA_RESTART|SA_RESTORER, SA_NODEFER|SA_RESTORER
                 if v not in [0x4000000, 0x10000000, 0x40000000, 0x14000000, 0x44000000]:
                     continue
-                found_offset.append(offset)
-            if len(found_offset) >= 2:
-                sizeof_action_tmp = min(y - x for x, y in zip(found_offset[:-1], found_offset[1:]))
+                found_offset_case1.append(offset)
+
+            if len(found_offset_case1) >= 2:
+                sizeof_action_tmp = min(y - x for x, y in zip(found_offset_case1[:-1], found_offset_case1[1:]))
+                # it is minimum size, so fast return
+                if is_32bit() and sizeof_action_tmp in [0x10, 0x14, 0x18]:
+                    return sizeof_action_tmp
+                elif is_64bit() and sizeof_action_tmp in [0x18, 0x20, 0x28]:
+                    return sizeof_action_tmp
+                # not minimum size, so check next task
+                sizeof_action = min(sizeof_action, sizeof_action_tmp)
+
+            # check case 2
+            for i in range(64 * 4):
+                offset = current_arch.ptrsize * i
+                v = u64(read_memory(current + offset, 8))
+                if bin(v)[2:].count("1") > 56: # heuristic threshold
+                    found_offset_case2.append(offset)
+
+            if len(found_offset_case2) >= 2:
+                sizeof_action_tmp = min(y - x for x, y in zip(found_offset_case2[:-1], found_offset_case2[1:]))
                 # it is minimum size, so fast return
                 if is_32bit() and sizeof_action_tmp == 0x14:
                     return sizeof_action_tmp
@@ -50553,9 +50600,16 @@ class KernelTaskCommand(GenericCommand):
                     return sizeof_action_tmp
                 # not minimum size, so check next task
                 sizeof_action = min(sizeof_action, sizeof_action_tmp)
-        if sizeof_action == 0xffffffffffffffff:
-            return None
-        return sizeof_action
+
+        if sizeof_action != 0xffffffffffffffff:
+            if is_32bit():
+                possible_sizes = [0x10, 0x14, 0x18]
+            else:
+                possible_sizes = [0x18, 0x20, 0x28]
+            for ps in possible_sizes:
+                if sizeof_action % ps == 0:
+                    return sizeof_action
+        return None
 
     def initialize(self, args):
         # init_task
@@ -51081,7 +51135,7 @@ class KernelModuleCommand(GenericCommand):
         modules = KernelAddressHeuristicFinder.get_modules()
         if modules is None:
             if not self.quiet:
-                err("Not found symbol")
+                err("Not found symbol (maybe, CONFIG_MODULES is not set)")
             return None
 
         if not self.quiet:
@@ -54680,7 +54734,7 @@ class KernelPciDeviceCommand(GenericCommand):
         self.pci_root_buses = KernelAddressHeuristicFinder.get_pci_root_buses()
         if not self.pci_root_buses:
             if not self.quiet:
-                err("Not found pci_root_buses")
+                err("Not found pci_root_buses (maybe, CONFIG_PCI is not set)")
             return False
         if not self.quiet:
             info("pci_root_buses: {:#x}".format(self.pci_root_buses))
