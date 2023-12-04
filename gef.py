@@ -48720,7 +48720,7 @@ class KernelbaseCommand(GenericCommand):
             #   [ .rodata ] <- near the top of this area has "Linux version"
             #   [ .rodata ]
             #   [ .rodata ]
-            start = dic["ro_base"] + gef_getpagesize() * 8
+            start = dic["text_base"] + gef_getpagesize() * 8
             end = dic["text_base"] + dic["text_size"]
             block_size = 0x20
             zero_data = b"\0" * block_size
@@ -48737,6 +48737,7 @@ class KernelbaseCommand(GenericCommand):
                         # Because ksymaddr-remote seems to give better results.
                         dic["rw_base"] = 0
                         dic["rw_size"] = 0
+                        dic["rw_end"] = 0
                         break
             else:
                 # Not found, so fast return
