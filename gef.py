@@ -261,6 +261,22 @@ def cperf(f):
     return wrapper
 
 
+def _displayhook(o):
+    if type(o).__name__ in ('int', 'long'):
+        print(hex(o))
+        __builtins__._ = o
+    else:
+        sys.__displayhook__(o)
+
+
+def hexon():
+    sys.displayhook = _displayhook
+
+
+def hexoff():
+    sys.displayhook = sys.__displayhook__
+
+
 def reset_gef_caches(all=False):
     """Free all caches. If an object is cached, it will have a callable attribute `cache_clear`
     which will be invoked to purge the function cache. Exceptionally, functions with names
@@ -78517,6 +78533,8 @@ def main():
         # if here, we are sourcing gef from a gdb session already attached
         # we must force a call to the new_objfile handler (see issue #278)
         new_objfile_handler(None)
+
+    hexon()
     return
 
 
