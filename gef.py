@@ -45028,44 +45028,50 @@ class KernelAddressHeuristicFinder:
     @staticmethod
     @switch_to_intel_syntax
     def get_current_task():
+        if not is_x86():
+            return None
+
+        # plan 1 (directly)
+        current_task = get_ksymaddr("current_task")
+        if current_task:
+            return current_task
+
         kversion = KernelVersionCommand.kernel_version()
 
-        if is_x86():
-            # plan 1 (directly)
-            current_task = get_ksymaddr("current_task")
-            if current_task:
-                return current_task
+        # plan 2 (available v4.1-rc1 or later)
+        if kversion and kversion >= "4.1":
+            common_cpu_up = get_ksymaddr("common_cpu_up")
+            if common_cpu_up:
+                res = gdb.execute("x/30i {:#x}".format(common_cpu_up), to_string=True)
+                if is_x86_64():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+\w+,(0x\w+)", line)
+                        if m:
+                            v = int(m.group(1), 16) & 0xffffffffffffffff
+                            if v != 0:
+                                return v
+                elif is_x86_32():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+\w+,(0x\w+)", line)
+                        if m:
+                            v = int(m.group(1), 16) & 0xffffffff
+                            if v != 0:
+                                return v
+        return None
 
-            # plan 2 (available v4.1-rc1 or later)
-            if kversion and kversion >= "4.1":
-                common_cpu_up = get_ksymaddr("common_cpu_up")
-                if common_cpu_up:
-                    res = gdb.execute("x/30i {:#x}".format(common_cpu_up), to_string=True)
-                    if is_x86_64():
-                        for line in res.splitlines():
-                            m = re.search(r"mov\s+\w+,(0x\w+)", line)
-                            if m:
-                                v = int(m.group(1), 16) & 0xffffffffffffffff
-                                if v != 0:
-                                    return v
-                    elif is_x86_32():
-                        for line in res.splitlines():
-                            m = re.search(r"mov\s+\w+,(0x\w+)", line)
-                            if m:
-                                v = int(m.group(1), 16) & 0xffffffff
-                                if v != 0:
-                                    return v
-        elif is_arm32():
-            # plan 1
+    @staticmethod
+    def get_current_task_for_current_thread():
+        if is_arm32():
+            # plan 1 (from special register)
             r = get_register("$TPIDRURO")
             if r and is_valid_addr(r):
                 return r
-
-            # plan 2
+            # plan 2 (from stack top)
             current_thread_info = current_arch.sp & ~0x1fff
             v = read_int_from_memory(current_thread_info + current_arch.ptrsize * 3)
             return v
         elif is_arm64():
+            # plan 1 (from special register)
             return get_register("$SP_EL0")
         return None
 
@@ -48997,7 +49003,6 @@ class KernelCurrentCommand(GenericCommand):
 
     def __init__(self):
         super().__init__()
-        self.current_task = None
         self.__per_cpu_offset = None
         self.cpu_offset = None
         self.offset_comm = None
@@ -49007,6 +49012,7 @@ class KernelCurrentCommand(GenericCommand):
         if self.cpu_offset:
             if not self.quiet:
                 info("__per_cpu_offset: {:#x}".format(self.__per_cpu_offset))
+                info("num of cpu: {:d}".format(len(self.cpu_offset)))
             return self.cpu_offset
 
         # resolve __per_cpu_offset
@@ -49021,18 +49027,14 @@ class KernelCurrentCommand(GenericCommand):
             self.__per_cpu_offset = __per_cpu_offset
 
         # resolve each cpu_offset
-        cpu_offset = [read_int_from_memory(__per_cpu_offset)]
-        i = 1
-        while True:
+        num_of_threads = len(gdb.selected_inferior().threads())
+        self.cpu_offset = []
+        for i in range(num_of_threads):
             off = read_int_from_memory(__per_cpu_offset + i * current_arch.ptrsize)
-            if off == 0:
-                break
-            if off == cpu_offset[-1]:
-                cpu_offset = cpu_offset[:-1]
-                break
-            cpu_offset.append(off)
-            i += 1
-        self.cpu_offset = cpu_offset
+            self.cpu_offset.append(off)
+
+        if not self.quiet:
+            info("num of cpu: {:d}".format(len(self.cpu_offset)))
         return self.cpu_offset
 
     def get_comm_str(self, task_addr):
@@ -49046,10 +49048,50 @@ class KernelCurrentCommand(GenericCommand):
                 self.offset_comm = False
 
         if self.offset_comm is False:
-            return ""
+            return "???"
 
         comm = read_cstring_from_memory(task_addr + self.offset_comm)
-        return comm
+        return comm or "???"
+
+    def dump_current_arm(self):
+        _cpu_bases = self.get_cpu_offset()
+
+        orig_thread = gdb.selected_thread()
+        threads = gdb.selected_inferior().threads()
+        threads = sorted(threads, key=lambda th: th.num)
+        for thread in threads:
+            thread.switch() # change thread
+            task = KernelAddressHeuristicFinder.get_current_task_for_current_thread()
+            if task:
+                cpu_num = thread.num - 1 # ?
+                gef_print("current (cpu{:d}): {:#x} {:s}".format(cpu_num, task, self.get_comm_str(task)))
+        orig_thread.switch() # revert thread
+        return
+
+    def dump_current_x86(self):
+        current_task = KernelAddressHeuristicFinder.get_current_task()
+        if not current_task:
+            if not self.quiet:
+                warn("Failed to resolve `current_task`")
+            return
+
+        cpu_bases = self.get_cpu_offset()
+
+        if cpu_bases:
+            # pattern 1. Offset from __per_cpu_offset.
+            if not self.quiet:
+                info("current_task: {:#x}".format(current_task))
+            task_offset = current_task
+            for i, cpu_base in enumerate(cpu_bases):
+                task = read_int_from_memory(cpu_base + task_offset)
+                gef_print("current (cpu{:d}): {:#x} {:s}".format(i, task, self.get_comm_str(task)))
+        else:
+            # pattern 2: current_task is the address that stores a pointer to the current task (not per_cpu).
+            if not self.quiet:
+                info("__per_cpu_offset is unused")
+            task = read_int_from_memory(current_task)
+            gef_print("current: {:#x} {:s}".format(task, self.get_comm_str(task)))
+        return
 
     @parse_args
     @only_if_gdb_running
@@ -49063,42 +49105,11 @@ class KernelCurrentCommand(GenericCommand):
 
         if not self.quiet:
             info("Wait for memory scan")
-        if self.current_task is None:
-            self.current_task = KernelAddressHeuristicFinder.get_current_task()
-            if self.current_task is None:
-                if not self.quiet:
-                    err("Failed to resolve `current_task`")
-                return
-        if not self.quiet:
-            info("current_task: {:#x}".format(self.current_task))
 
         if is_arm32() or is_arm64():
-            task = read_int_from_memory(self.current_task)
-            gef_print("current: {:#x} {:s}".format(self.current_task, self.get_comm_str(task)))
-            return
-
+            self.dump_current_arm()
         elif is_x86():
-            if is_32bit():
-                mask = 0x80000000
-            else:
-                mask = 0x80000000_00000000
-
-            # pattern1: do not use __per_cpu_offset
-            if (self.current_task & mask) == mask:
-                task = read_int_from_memory(self.current_task)
-                if is_valid_addr(task):
-                    if not self.quiet:
-                        info("__per_cpu_offset is not used")
-                    gef_print("current: {:#x} {:s}".format(task, self.get_comm_str(task)))
-                    return
-
-            # pattern2: use __per_cpu_offset
-            cpu_offset = self.get_cpu_offset()
-            if not cpu_offset:
-                return
-            for i, offset in enumerate(cpu_offset):
-                task = read_int_from_memory(self.current_task + offset)
-                gef_print("current (cpu{:d}): {:#x} {:s}".format(i, task, self.get_comm_str(task)))
+            self.dump_current_x86()
         return
 
 
@@ -54256,23 +54267,17 @@ class KernelTimerCommand(GenericCommand):
         __per_cpu_offset = KernelAddressHeuristicFinder.get_per_cpu_offset()
         if __per_cpu_offset is None:
             if not self.quiet:
-                err("__per_cpu_offset: Not found")
+                info("__per_cpu_offset: Not found")
             self.cpu_offset = []
         else:
             if not self.quiet:
                 info("__per_cpu_offset: {:#x}".format(__per_cpu_offset))
             # resolve each cpu_offset
-            self.cpu_offset = [read_int_from_memory(__per_cpu_offset)]
-            i = 1
-            while True:
+            num_of_threads = len(gdb.selected_inferior().threads())
+            self.cpu_offset = []
+            for i in range(num_of_threads):
                 off = read_int_from_memory(__per_cpu_offset + i * current_arch.ptrsize)
-                if off < 10:
-                    break
-                if off == self.cpu_offset[-1]:
-                    self.cpu_offset = self.cpu_offset[:-1]
-                    break
                 self.cpu_offset.append(off)
-                i += 1
 
         ### classic timer (unit: tick)
 
@@ -58466,17 +58471,11 @@ class SlubDumpCommand(GenericCommand):
             if not self.quiet:
                 info("__per_cpu_offset: {:#x}".format(__per_cpu_offset))
             # resolve each cpu_offset
-            self.cpu_offset = [read_int_from_memory(__per_cpu_offset)]
-            i = 1
-            while True:
+            num_of_threads = len(gdb.selected_inferior().threads())
+            self.cpu_offset = []
+            for i in range(num_of_threads):
                 off = read_int_from_memory(__per_cpu_offset + i * current_arch.ptrsize)
-                if off < 10:
-                    break
-                if off == self.cpu_offset[-1]:
-                    self.cpu_offset = self.cpu_offset[:-1]
-                    break
                 self.cpu_offset.append(off)
-                i += 1
 
         # offsetof(kmem_cache, list)
         for candidate_offset in range(current_arch.ptrsize * 2, 0x70, current_arch.ptrsize):
@@ -60081,17 +60080,11 @@ class SlabDumpCommand(GenericCommand):
             if not self.quiet:
                 info("__per_cpu_offset: {:#x}".format(__per_cpu_offset))
             # resolve each cpu_offset
-            self.cpu_offset = [read_int_from_memory(__per_cpu_offset)]
-            i = 1
-            while True:
+            num_of_threads = len(gdb.selected_inferior().threads())
+            self.cpu_offset = []
+            for i in range(num_of_threads):
                 off = read_int_from_memory(__per_cpu_offset + i * current_arch.ptrsize)
-                if off == 0:
-                    break
-                if off == self.cpu_offset[-1]:
-                    self.cpu_offset = self.cpu_offset[:-1]
-                    break
                 self.cpu_offset.append(off)
-                i += 1
 
         # offsetof(kmem_cache, list)
         kversion = KernelVersionCommand.kernel_version()
