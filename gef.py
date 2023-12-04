@@ -69648,7 +69648,15 @@ class PagewalkX64Command(PagewalkCommand):
         PTE = []
         COUNT = 0
         flag_cache = {}
-        for va_base, table_base, parent_flags in self.TABLES:
+
+        tqdm = lambda x, leave: x
+        if not self.quiet:
+            try:
+                from tqdm import tqdm
+            except ImportError:
+                pass
+
+        for va_base, table_base, parent_flags in tqdm(self.TABLES, leave=False):
             entries = self.read_physmem_cache(table_base, 2 ** self.bits["PT_BITS"] * self.bits["ENTRY_SIZE"])
             entries = slice_unpack(entries, self.bits["ENTRY_SIZE"])
             COUNT += len(entries)
@@ -70284,7 +70292,15 @@ class PagewalkArmCommand(PagewalkCommand):
         LARGE = []
         SMALL = []
         COUNT = 0
-        for va_base, table_base, parent_flags in LEVEL1:
+
+        tqdm = lambda x, leave: x
+        if not self.quiet:
+            try:
+                from tqdm import tqdm
+            except ImportError:
+                pass
+
+        for va_base, table_base, parent_flags in tqdm(LEVEL1, leave=False):
             entries = self.read_physmem_cache(table_base, 4 * (2 ** 8))
             entries = slice_unpack(entries, 4)
             COUNT += len(entries)
@@ -70554,7 +70570,15 @@ class PagewalkArmCommand(PagewalkCommand):
         self.quiet_add_out(titlify("LEVEL 3"))
         KB = []
         COUNT = 0
-        for va_base, table_base, parent_flags in LEVEL2:
+
+        tqdm = lambda x, leave: x
+        if not self.quiet:
+            try:
+                from tqdm import tqdm
+            except ImportError:
+                pass
+
+        for va_base, table_base, parent_flags in tqdm(LEVEL2, leave=False):
             entries = self.read_physmem_cache(table_base, 8 * (2 ** 9))
             entries = slice_unpack(entries, 8)
             COUNT += len(entries)
@@ -71906,7 +71930,15 @@ class PagewalkArm64Command(PagewalkCommand):
             KB64 = []
             COUNT = 0
             flag_cache = {}
-            for va_base, table_base, parent_flags in LEVEL2:
+
+            tqdm = lambda x, leave: x
+            if not self.quiet:
+                try:
+                    from tqdm import tqdm
+                except ImportError:
+                    pass
+
+            for va_base, table_base, parent_flags in tqdm(LEVEL2, leave=False):
                 entries = self.read_mem_wrapper(table_base, 8 * entries_per_table)
                 entries = slice_unpack(entries, 8)
                 COUNT += len(entries)
