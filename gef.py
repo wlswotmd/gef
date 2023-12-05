@@ -50579,6 +50579,11 @@ class KernelTaskCommand(GenericCommand):
         0xffff000003080098|+0x0098|+019: 0x0000000000000000
         ...
         """
+        if is_32bit():
+            possible_sizes = [0x10, 0x14, 0x18]
+        else:
+            possible_sizes = [0x18, 0x20, 0x28]
+
         # calc sizeof(action[0])
         sizeof_action = 0xffffffffffffffff
         for task in task_addrs:
@@ -50587,47 +50592,37 @@ class KernelTaskCommand(GenericCommand):
             found_offset_case1 = []
             found_offset_case2 = []
 
-            # check case 1
             for i in range(64 * 4):
                 offset = current_arch.ptrsize * i
+
+                # check case 1 (sa_flags)
                 v = read_int_from_memory(current + offset)
                 # SA_RESTORER, SA_RESTART, SA_NODEFER, SA_RESTART|SA_RESTORER, SA_NODEFER|SA_RESTORER
-                if v not in [0x4000000, 0x10000000, 0x40000000, 0x14000000, 0x44000000]:
-                    continue
-                found_offset_case1.append(offset)
+                if v in [0x4000000, 0x10000000, 0x40000000, 0x14000000, 0x44000000]:
+                    found_offset_case1.append(offset)
 
-            if len(found_offset_case1) >= 2:
-                sizeof_action_tmp = min(y - x for x, y in zip(found_offset_case1[:-1], found_offset_case1[1:]))
-                # it is minimum size, so fast return
-                if is_32bit() and sizeof_action_tmp in [0x10, 0x14, 0x18]:
-                    return sizeof_action_tmp
-                elif is_64bit() and sizeof_action_tmp in [0x18, 0x20, 0x28]:
-                    return sizeof_action_tmp
-                # not minimum size, so check next task
-                sizeof_action = min(sizeof_action, sizeof_action_tmp)
-
-            # check case 2
-            for i in range(64 * 4):
-                offset = current_arch.ptrsize * i
+                # check case 2 (sa_mask)
                 v = u64(read_memory(current + offset, 8))
                 if bin(v)[2:].count("1") > 56: # heuristic threshold
                     found_offset_case2.append(offset)
 
+            if len(found_offset_case1) >= 2:
+                sizeof_action_tmp = min(y - x for x, y in zip(found_offset_case1[:-1], found_offset_case1[1:]))
+                # it is minimum size, so fast return
+                if sizeof_action_tmp in possible_sizes:
+                    return sizeof_action_tmp
+                # not minimum size, so check next task
+                sizeof_action = min(sizeof_action, sizeof_action_tmp)
+
             if len(found_offset_case2) >= 2:
                 sizeof_action_tmp = min(y - x for x, y in zip(found_offset_case2[:-1], found_offset_case2[1:]))
                 # it is minimum size, so fast return
-                if is_32bit() and sizeof_action_tmp == 0x14:
-                    return sizeof_action_tmp
-                elif is_64bit() and sizeof_action_tmp == 0x20:
+                if sizeof_action_tmp in possible_sizes:
                     return sizeof_action_tmp
                 # not minimum size, so check next task
                 sizeof_action = min(sizeof_action, sizeof_action_tmp)
 
         if sizeof_action != 0xffffffffffffffff:
-            if is_32bit():
-                possible_sizes = [0x10, 0x14, 0x18]
-            else:
-                possible_sizes = [0x18, 0x20, 0x28]
             for ps in possible_sizes:
                 if sizeof_action % ps == 0:
                     return sizeof_action
