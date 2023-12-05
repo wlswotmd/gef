@@ -38,7 +38,9 @@ I also list the tools I used in my Ubuntu 23.10 environment.
     * qemu: `qemu-sparc` via apt.
     * gdb: `gdb-multiarch` via apt.
 * SPARC64
-    * toolchain: `gcc-sparc64-linux-gnu` via apt.
+    * toolchain (Ubuntu 23.10): `gcc-sparc64-linux-gnu` via apt.
+    * toolchain (Ubuntu 23.04, 22.04, etc.): `sparc64--glibc--bleeding-edge-2023.08-1` from https://toolchains.bootlin.com/
+        * Because the toolchain obtained with apt seems to be broken since the built ELF always SIGSEGV.
     * qemu: `qemu-sparc64` via apt.
     * gdb: `gdb-multiarch` via apt.
 * RISCV32
@@ -54,7 +56,10 @@ I also list the tools I used in my Ubuntu 23.10 environment.
     * qemu: `qemu-s390x` via apt.
     * gdb: `gdb-multiarch` via apt.
 * sh4
-    * toolchain: `gcc-sh4-linux-gnu` via apt.
+    * toolchain (Ubuntu 23.10): `gcc-sh4-linux-gnu` via apt.
+    * toolchain (Ubuntu 23.04, 22.04, etc.): `sh-sh4--uclibc--bleeding-edge-2023.08-1` from https://toolchains.bootlin.com/
+        * Because the toolchain obtained with apt seems to be broken since static build is failed.
+        * glibc version is broken. use uclibc version.
     * qemu: `qemu-sh4` via apt.
     * gdb: `gdb-multiarch` via apt.
 * m68k
@@ -72,19 +77,19 @@ I also list the tools I used in my Ubuntu 23.10 environment.
 * OpenRISC 1000 (OR1K)
     * toolchain: `openrisc--glibc--bleeding-edge-2023.08-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-or1k` via apt.
-    * gdb: build from latest.
-        * `./configure --enable-targets=all --with-python=/usr/bin/python3`
+    * gdb: build from [latest](https://ftp.gnu.org/gnu/gdb/).
+        * `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`
 * NiosII
     * toolchain: `nios2--glibc--bleeding-edge-2023.08-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-nios2` via apt.
-    * gdb: build from latest.
-        * `./configure --enable-targets=all --with-python=/usr/bin/python3`
+    * gdb: build from [latest](https://ftp.gnu.org/gnu/gdb/).
+        * `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`
 * MicroBlaze
     * toolchain: `microblazebe--glibc--stable-2023.08-1` from https://toolchains.bootlin.com/
         * bleeding edge version is broken.
     * qemu: `qemu-microblaze` via apt.
-    * gdb: build from latest.
-        * `./configure --enable-targets=all --with-python=/usr/bin/python3`
+    * gdb: build from [latest](https://ftp.gnu.org/gnu/gdb/).
+        * `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`
 * Xtensa
     * toolchain: `xtensa-lx60--uclibc--bleeding-edge-2023.08-1` from https://toolchains.bootlin.com/
         * Because the toolchain obtained with apt seems to be broken since the C header is unavailable.
@@ -104,45 +109,54 @@ I also list the tools I used in my Ubuntu 23.10 environment.
     * qemu: `qemu-cris` via apt.
         * It needs `-cpu` option like `qemu-cris -cpu crisv17 -g 1234 ./a.out`.
         * Could not use `-cpu crisv32` because gdb does not support it.
-    * gdb: build from latest.
-        * `./configure --enable-targets=all --with-python=/usr/bin/python3`
+    * gdb: build from [latest](https://ftp.gnu.org/gnu/gdb/).
+        * `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`
 * loongarch64
-    * toolchain: [loongarch64-clfs-7.3-cross-tools-gcc-glibc.tar.xz](https://github.com/loongson/build-tools/releases/download/2022.09.06/loongarch64-clfs-7.3-cross-tools-gcc-glibc.tar.xz)
-    * qemu: build from latest.
-        * `./configure --target-list=loongarch64-linux-user`
-    * gdb: build from latest.
-        * `./configure --enable-targets=all --with-python=/usr/bin/python3`
+    * toolchain: [CLFS-loongarch64-8.1-x86_64-cross-tools-gcc-glibc.tar.xz](https://github.com/loongson/build-tools/releases/download/2023.08.08/CLFS-loongarch64-8.1-x86_64-cross-tools-gcc-glibc.tar.xz)
+    * qemu (Ubuntu 23.10): `qemu-loongarch64` via apt.
+    * qemu (Ubuntu 23.04, 22.04, etc.): build from [latest](https://download.qemu.org/).
+        * `./configure --target-list=loongarch64-linux-user && make && cp build/qemu-loongarch64 /usr/local/bin`
+    * gdb: build from [latest](https://ftp.gnu.org/gnu/gdb/).
+        * `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`
+        * `set architecture Loongarch64`
 * arc32 (HS38; ARCv2)
     * toolchain: `arcle-hs38--glibc--bleeding-edge-2023.08-1` from https://toolchains.bootlin.com/
     * qemu: https://github.com/foss-for-synopsys-dwc-arc-processors/qemu
-        * `./configure --target-list=arc-linux-user`
-    * gdb: build from latest.
-        * `./configure --enable-targets=all --with-python=/usr/bin/python3`
+        * `export CXXFLAGS="-Wno-error=enum-int-mismatch"`
+        * `export CFLAGS="-Wno-error=enum-int-mismatch"`
+        * `./configure --target-list=arc-linux-user && make && cp build/qemu-arc /usr/local/bin`
+    * gdb: build from [latest](https://ftp.gnu.org/gnu/gdb/).
+        * `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`
 * arc32 (HS58; ARCv3)
-    * toolchain: [arc_gnu_2023.03_prebuilt_arc32_uclibc_linux_install.tar.gz](https://github.com/foss-for-synopsys-dwc-arc-processors/toolchain/releases/download/arc-2023.03-release/arc_gnu_2023.03_prebuilt_arc32_uclibc_linux_install.tar.gz)
+    * toolchain: [arc_gnu_2023.09_prebuilt_arc32_uclibc_linux_install.tar.bz2](https://github.com/foss-for-synopsys-dwc-arc-processors/toolchain/releases/download/arc-2023.09-release/arc_gnu_2023.09_prebuilt_arc32_uclibc_linux_install.tar.bz2)
     * qemu: https://github.com/foss-for-synopsys-dwc-arc-processors/qemu
-        * `./configure --target-list=arc-linux-user`
+        * `export CXXFLAGS="-Wno-error=enum-int-mismatch"`
+        * `export CFLAGS="-Wno-error=enum-int-mismatch"`
+        * `./configure --target-list=arc-linux-user && make && cp build/qemu-arc /usr/local/bin`
         * It needs `-cpu` option like `qemu-arc -cpu hs5x -g 1234 ./a.out`.
-    * gdb: [arc-2023.03-rc1.tar.gz](https://github.com/foss-for-synopsys-dwc-arc-processors/binutils-gdb/archive/refs/tags/arc-2023.03-rc1.tar.gz)
-        * `./configure --target=arc64-snps-linux-gnu --with-python=/usr/bin/python3`
-        * This `--target` is right. It enables `arc64:64` and `arc64:32`.
+    * gdb: [arc-2023.09-release.tar.gz](https://github.com/foss-for-synopsys-dwc-arc-processors/binutils-gdb/archive/refs/tags/arc-2023.09-release.tar.gz)
+        * `./configure --disable-{binutils,gold,gas,sim,gprof} --target=arc64-snps-linux-gnu --with-python=/usr/bin/python3 && make && cp gdb/gdb /usr/local/bin/gdb-arc`
 * arc64 (HS68; ARCv3)
-    * toolchain: [arc_gnu_2023.03_prebuilt_arc64_glibc_linux_install.tar.gz](https://github.com/foss-for-synopsys-dwc-arc-processors/toolchain/releases/download/arc-2023.03-release/arc_gnu_2023.03_prebuilt_arc64_glibc_linux_install.tar.gz)
+    * toolchain: [arc_gnu_2023.09_prebuilt_arc64_glibc_linux_install.tar.bz2](https://github.com/foss-for-synopsys-dwc-arc-processors/toolchain/releases/download/arc-2023.09-release/arc_gnu_2023.09_prebuilt_arc64_glibc_linux_install.tar.bz2)
     * qemu: https://github.com/foss-for-synopsys-dwc-arc-processors/qemu
-        * `./configure --target-list=arc64-linux-user`
+        * `export CXXFLAGS="-Wno-error=enum-int-mismatch"`
+        * `export CFLAGS="-Wno-error=enum-int-mismatch"`
+        * `./configure --target-list=arc64-linux-user && make && cp build/qemu-arc64 /usr/local/bin`
         * It needs `-cpu` option like `qemu-arc64 -cpu hs6x -g 1234 ./a.out`.
-    * gdb: [arc-2023.03-rc1.tar.gz](https://github.com/foss-for-synopsys-dwc-arc-processors/binutils-gdb/archive/refs/tags/arc-2023.03-rc1.tar.gz)
-        * `./configure --target=arc64-snps-linux-gnu --with-python=/usr/bin/python3`
+    * gdb: [arc-2023.09-release.tar.gz](https://github.com/foss-for-synopsys-dwc-arc-processors/binutils-gdb/archive/refs/tags/arc-2023.09-release.tar.gz)
+        * `./configure --disable-{binutils,gold,gas,sim,gprof} --target=arc64-snps-linux-gnu --with-python=/usr/bin/python3 && make && cp gdb/gdb /usr/local/bin/gdb-arc`
 * csky
     * toolchain: https://github.com/c-sky/toolchain-build
         * `git submodule update --init`
         * `./build-csky-gcc.py csky-gcc --src ./ --triple csky-unknown-linux-gnu --disable-gdb`
         * It fails if you build along with gdb, so add `--disable-gdb`.
     * qemu: https://github.com/T-head-Semi/qemu
-        * `./configure --target-list=cskyv1-linux-user,cskyv1eb-linux-user,cskyv2-linux-user,cskyv2eb-linux-user`
+        * `export CXXFLAGS="-Wno-error"`
+        * `export CFLAGS="-Wno-error"`
+        * `./configure --target-list=cskyv1-linux-user,cskyv1eb-linux-user,cskyv2-linux-user,cskyv2eb-linux-user && make && cp build/qemu-cskyv{1,2}{,eb} /usr/local/bin`
         * It needs `-cpu` option like `qemu-cskyv2 -cpu ck810 -g 1234 ./a.out`.
-    * gdb: build from latest.
-        * `./configure --enable-targets=all --with-python=/usr/bin/python3`
+    * gdb: build from [latest](https://ftp.gnu.org/gnu/gdb/).
+        * `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`
 
 
 # Qemu-user UNSUPPORTED architectures
@@ -153,8 +167,8 @@ If you find it, please let me know in the issue page.
     * [x] toolchain: `bfin--uclibc--bleeding-edge-2018.02-1` from https://toolchains.bootlin.com/
     * [ ] qemu: https://github.com/vapier/qemu
         * gdb stub is broken.
-    * [x] gdb: build from latest.
-        * `./configure --enable-targets=all --with-python=/usr/bin/python3`
+    * [x] gdb: build from [latest](https://ftp.gnu.org/gnu/gdb/).
+        * `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`
 * hexagon:
     * [x] toolchain: https://github.com/quic/toolchain_for_hexagon
     * [x] qemu: `qemu-hexagon` via apt.
@@ -164,8 +178,8 @@ If you find it, please let me know in the issue page.
     * [x] lib: http://www.voidrouter.net/archives/211
     * [ ] qemu: https://gist.github.com/bata24/3cad590158911de318c1baf898f49626
         * the breakpoint is broken.
-    * [x] gdb: build from latest.
-        * `./configure --enable-targets=all --with-python=/usr/bin/python3`
+    * [x] gdb: build from [latest](https://ftp.gnu.org/gnu/gdb/).
+        * `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`
 * hppa64
     * [x] toolchain: `gcc-hppa64-linux` via apt.
     * [ ] lib: not found.
@@ -178,14 +192,14 @@ If you find it, please let me know in the issue page.
 * loongarch32
     * [ ] toolchain: not found.
     * [ ] qemu: not found.
-    * [x] gdb: build from latest.
-        * `./configure --enable-targets=all --with-python=/usr/bin/python3`
+    * [x] gdb: build from [latest](https://ftp.gnu.org/gnu/gdb/).
+        * `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`
 * e2k
     * [x] toolchain: [lcc-e2k-cross_1.1_i386.deb](https://drive.google.com/file/d/1rdlSKGkOXC9ejXaWC2mUKZd6GYxdtHLt/view?usp=sharing) from https://ctf.harrisongreen.me/2021/midnightsunfinals/elbrus/
         * `mkdir /tmp/e2k && dpkg -x lcc-e2k-cross_1.1_i386.deb /tmp/e2k && mv /tmp/e2k/opt/mcst /opt`
         * `export PATH=$PATH:/opt/mcst/bin.toolchain`
     * [x] qemu: https://github.com/OpenE2K/qemu-e2k
-        * `./configure --target-list=e2k-linux-user`
+        * `./configure --target-list=e2k-linux-user && make`
     * [ ] gdb: not found.
 * nds32
     * [x] toolchain: https://github.com/VincentZWC/prebuilt-nds32-v3f-toolchain
