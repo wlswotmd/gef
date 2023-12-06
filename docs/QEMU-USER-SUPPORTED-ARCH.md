@@ -9,45 +9,49 @@ I also list the tools I used in my Ubuntu 23.10 environment.
     * toolchain: `gcc` via apt.
     * qemu: `qemu-x86_64` via apt.
     * gdb: `gdb-multiarch` via apt.
-* ARM (Cortex-A)
+* arm (Cortex-A)
     * toolchain: `gcc-arm-linux-gnueabihf` via apt.
     * qemu: `qemu-arm` via apt.
     * gdb: `gdb-multiarch` via apt.
-* Aarch64
+* aarch64
     * toolchain: `gcc-aarch64-linux-gnu` via apt.
     * qemu: `qemu-aarch64` via apt.
     * gdb: `gdb-multiarch` via apt.
-* PPC32
+* ppc32
     * toolchain: `gcc-powerpc-linux-gnu` via apt.
     * qemu: `qemu-ppc` via apt.
     * gdb: `gdb-multiarch` via apt.
-* PPC64
+* ppc64
     * toolchain: `gcc-powerpc64-linux-gnu` and `gcc-powerpc64le-linux-gnu` via apt.
     * qemu: `qemu-ppc64` and `qemu-ppc64le` via apt.
     * gdb: `gdb-multiarch` via apt.
-* MIPS32
+* mips32
     * toolchain: `gcc-mips-linux-gnu` and `gcc-mipsel-linux-gnu` via apt.
     * qemu: `qemu-mips` and `qemu-mipsel` via apt.
     * gdb: `gdb-multiarch` via apt.
-* MIPS64
+* mips64
     * toolchain: `gcc-mips64-linux-gnuabi64` and `gcc-mips64el-linux-gnuabi64` via apt.
     * qemu: `qemu-mips64` and `qemu-mips64el` via apt.
     * gdb: `gdb-multiarch` via apt.
-* SPARC32
+* sparc32
     * toolchain: `sparcv8--uclibc--stable-2022.08-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-sparc` via apt.
     * gdb: `gdb-multiarch` via apt.
-* SPARC64
+* sparc32plus
+    * toolchain (Ubuntu 23.10): `gcc-multilib-sparc64-linux-gnu` via apt with `-m32` option.
+    * qemu: `qemu-sparc32plus` via apt.
+    * gdb: `gdb-multiarch` via apt.
+* sparc64
     * toolchain (Ubuntu 23.10): `gcc-sparc64-linux-gnu` via apt.
     * toolchain (Ubuntu 23.04, 22.04, etc.): `sparc64--glibc--bleeding-edge-2023.08-1` from https://toolchains.bootlin.com/
         * Because the toolchain obtained with apt seems to be broken since the built ELF always SIGSEGV.
     * qemu: `qemu-sparc64` via apt.
     * gdb: `gdb-multiarch` via apt.
-* RISCV32
+* riscv32
     * toolchain: `riscv32-ilp32d--glibc--bleeding-edge-2023.08-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-riscv32` via apt.
     * gdb: `gdb-multiarch` via apt.
-* RISCV64
+* riscv64
     * toolchain: `gcc-riscv64-linux-gnu` via apt.
     * qemu: `qemu-riscv64` via apt.
     * gdb: `gdb-multiarch` via apt.
@@ -70,27 +74,27 @@ I also list the tools I used in my Ubuntu 23.10 environment.
     * toolchain: `gcc-alpha-linux-gnu` via apt.
     * qemu: `qemu-alpha` via apt.
     * gdb: `gdb-multiarch` via apt.
-* PA-RISC (HPPA)
+* parisc (PA-RISC; HP-PA)
     * toolchain: `gcc-hppa-linux-gnu` via apt.
     * qemu: `qemu-hppa` via apt.
     * gdb: `gdb-multiarch` via apt.
-* OpenRISC 1000 (OR1K)
+* or1k (OpenRISC 1000)
     * toolchain: `openrisc--glibc--bleeding-edge-2023.08-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-or1k` via apt.
     * gdb: build from [latest](https://ftp.gnu.org/gnu/gdb/).
         * `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`
-* NiosII
+* nios2
     * toolchain: `nios2--glibc--bleeding-edge-2023.08-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-nios2` via apt.
     * gdb: build from [latest](https://ftp.gnu.org/gnu/gdb/).
         * `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`
-* MicroBlaze
+* microblaze
     * toolchain: `microblazebe--glibc--stable-2023.08-1` from https://toolchains.bootlin.com/
         * bleeding edge version is broken.
     * qemu: `qemu-microblaze` via apt.
     * gdb: build from [latest](https://ftp.gnu.org/gnu/gdb/).
         * `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`
-* Xtensa
+* xtensa (lx60)
     * toolchain: `xtensa-lx60--uclibc--bleeding-edge-2023.08-1` from https://toolchains.bootlin.com/
         * Because the toolchain obtained with apt seems to be broken since the C header is unavailable.
     * qemu: `qemu-xtensa` via apt.
@@ -98,7 +102,7 @@ I also list the tools I used in my Ubuntu 23.10 environment.
         * Because `gdb` built from latest source will not work with `set architecture xtensa`.
         * The toolchain also includes `xtensa-linux-gdb`, so I used it.
         * The readline seems to be broken in Ubuntu 22.04, so workaround is here: `LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libncurses.so.6 xtensa-linux-gdb`.
-* Cris
+* cris
     * lib: [cris-dist_1.64-1_i386.deb](https://www.axis.com/ftp/pub/axis/tools/cris/compiler-kit/cris-dist_1.64-1_i386.deb)
     * toolchain: [x86_64-gcc-7.3.0-nolibc_cris-linux.tar.xz](https://ftp.iij.ad.jp/pub/linux/kernel/tools/crosstool/files/bin/x86_64/7.3.0/x86_64-gcc-7.3.0-nolibc_cris-linux.tar.xz) from http://ftp.iij.ad.jp/pub/linux/kernel/tools/crosstool/
         * `mkdir cris-gcc-7.3.0-glibc && tar xf x86_64-gcc-7.3.0-nolibc_cris-linux.tar.xz -C cris-gcc-7.3.0-glibc --strip-components 1`
@@ -185,10 +189,6 @@ If you find it, please let me know in the issue page.
     * [ ] lib: not found.
     * [ ] qemu: not found.
     * [ ] gdb: not found.
-* sparc32plus
-    * [ ] toolchain: not found.
-    * [x] qemu: `qemu-sparc32plus` via apt.
-    * [x] gdb: `gdb-multiarch` via apt.
 * loongarch32
     * [ ] toolchain: not found.
     * [ ] qemu: not found.

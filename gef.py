@@ -15,7 +15,7 @@
 #   * aarch64 (armv8)
 #   * mips & mips64
 #   * powerpc & powerpc64
-#   * sparc & sparc64
+#   * sparc & sparc32plus & sparc64
 #   * riscv32 & riscv64
 #   * s390x
 #   * sh4
@@ -6259,6 +6259,27 @@ class SPARC(Architecture):
         return keystone_assemble(code, arch, mode, raw=True)
 
 
+class SPARC32PLUS(SPARC):
+    arch = "SPARC"
+    mode = "32PLUS"
+
+    load_condition = [
+        Elf.EM_SPARC32PLUS,
+        "SPARC32PLUS",
+        "SPARC32+",
+        "SPARCV8PLUS",
+        "SPARCV8+",
+        "SPARC:V8PLUS",
+        "SPARC:V8PLUSA",
+        "SPARC:V8PLUSB",
+        "SPARC:V8PLUSC",
+        "SPARC:V8PLUSD",
+        "SPARC:V8PLUSE",
+        "SPARC:V8PLUSM",
+        "SPARC:V8PLUSV",
+    ]
+
+
 class SPARC64(SPARC):
     arch = "SPARC"
     mode = "64"
@@ -10320,6 +10341,7 @@ def only_if_specific_arch(arch=()):
                 "PPC32": is_ppc32,
                 "PPC64": is_ppc64,
                 "SPARC32": is_sparc32,
+                "SPARC32PLUS": is_sparc32plus,
                 "SPARC64": is_sparc64,
                 "RISCV32": is_riscv32,
                 "RISCV64": is_riscv64,
@@ -10366,6 +10388,7 @@ def exclude_specific_arch(arch=()):
                 "PPC32": is_ppc32,
                 "PPC64": is_ppc64,
                 "SPARC32": is_sparc32,
+                "SPARC32PLUS": is_sparc32plus,
                 "SPARC64": is_sparc64,
                 "RISCV32": is_riscv32,
                 "RISCV64": is_riscv64,
@@ -11515,6 +11538,8 @@ def get_unicorn_arch(arch=None, mode=None, endian=None, to_string=False):
         mode = "PPC64"
     elif (arch, mode) == ("SPARC", "32"):
         mode = "SPARC32"
+    elif (arch, mode) == ("SPARC", "32PLUS"):
+        mode = "SPARC32"
     elif (arch, mode) == ("SPARC", "64"):
         mode = "SPARC64"
     elif (arch, mode) == ("MIPS", "32"):
@@ -11540,6 +11565,8 @@ def get_capstone_arch(arch=None, mode=None, endian=None, to_string=False):
     elif (arch, mode) == ("RISCV", "64"):
         mode = ("RISCV64", "RISCVC")
     elif (arch, mode) == ("SPARC", "32"):
+        mode = ""
+    elif (arch, mode) == ("SPARC", "32PLUS"):
         mode = ""
     elif (arch, mode) == ("SPARC", "64"):
         mode = "V9"
@@ -11568,6 +11595,8 @@ def get_keystone_arch(arch=None, mode=None, endian=None, to_string=False):
     elif (arch, mode) == ("PPC", "64"):
         mode = "PPC64"
     elif (arch, mode) == ("SPARC", "32"):
+        mode = "SPARC32"
+    elif (arch, mode) == ("SPARC", "32PLUS"):
         mode = "SPARC32"
     elif (arch, mode) == ("SPARC", "64"):
         mode = "SPARC64"
@@ -11743,6 +11772,10 @@ def is_ppc64():
 
 def is_sparc32():
     return current_arch and current_arch.arch == "SPARC" and current_arch.mode == "32"
+
+
+def is_sparc32plus():
+    return current_arch and current_arch.arch == "SPARC" and current_arch.mode == "32PLUS"
 
 
 def is_sparc64():
@@ -15036,7 +15069,7 @@ class HijackFdCommand(GenericCommand):
             # /usr/mips64el-linux-gnuabi64/include/bits/fcntl.h
             self.O_APPEND = 0x0008
             self.O_CREAT = 0x0100
-        elif is_sparc32() or is_sparc64():
+        elif is_sparc32() or is_sparc32plus() or is_sparc64():
             # sparcv8--uclibc--stable-2022.08-1/sparc-buildroot-linux-uclibc/sysroot/usr/include/bits/fcntl.h
             # sparc64--glibc--stable-2022.08-1/sparc64-buildroot-linux-gnu/sysroot/usr/include/bits/fcntl.h
             self.O_APPEND = 0x0008
@@ -17606,7 +17639,7 @@ class CapstoneDisassembleCommand(GenericCommand):
         "ARM64" : ["ARM"],
         "MIPS" : ["32", "64"],
         "PPC" : ["32", "64"],
-        "SPARC" : ["32", "64"],
+        "SPARC" : ["32", "32PLUS", "64"],
         "X86" : ["16", "32", "64"],
     }
 
@@ -19120,6 +19153,7 @@ class AssembleCommand(GenericCommand):
     _example_ += '{:s} -a PPC -m 64    "add 1, 2, 3"\n'.format(_cmdline_)
     _example_ += '{:s} -a PPC -m 64 -e "add 1, 2, 3"\n'.format(_cmdline_)
     _example_ += '{:s} -a SPARC -m 32 -e "add %g1, %g2, %g3"\n'.format(_cmdline_)
+    _example_ += '{:s} -a SPARC -m 32PLUS -e "add %g1, %g2, %g3"\n'.format(_cmdline_)
     _example_ += '{:s} -a SPARC -m 64 -e "add %g1, %g2, %g3"\n'.format(_cmdline_)
     _example_ += '{:s} -a S390X -m 64 -e "a %r0, 4095(%r15,%r1)"'.format(_cmdline_)
 
@@ -19221,6 +19255,7 @@ class DisassembleCommand(GenericCommand):
     _example_ += '{:s} -a PPC -m 64    "141a227c"\n'.format(_cmdline_)
     _example_ += '{:s} -a PPC -m 64 -e "7c221a14"\n'.format(_cmdline_)
     _example_ += '{:s} -a SPARC -m 32 -e "86004002"\n'.format(_cmdline_)
+    _example_ += '{:s} -a SPARC -m 32PLUS -e "86004002"\n'.format(_cmdline_)
     _example_ += '{:s} -a SPARC -m 64 -e "86004002"\n'.format(_cmdline_)
     _example_ += '{:s} -a RISCV -m 32 "97c10600"\n'.format(_cmdline_)
     _example_ += '{:s} -a RISCV -m 64 "97c10600"\n'.format(_cmdline_)
@@ -27827,7 +27862,7 @@ class LinkMapCommand(GenericCommand):
             elif is_ppc64():
                 DT_THISPROCNUM = 4
                 ARCH_SPECIFIC_TABLE = DynamicCommand.DT_TABLE["ppc64"]
-            elif is_sparc32() or is_sparc64():
+            elif is_sparc32() or is_sparc32plus() or is_sparc64():
                 DT_THISPROCNUM = 2
                 ARCH_SPECIFIC_TABLE = DynamicCommand.DT_TABLE["sparc"]
             else:
@@ -29832,6 +29867,7 @@ class SyscallSearchCommand(GenericCommand):
     _example_ += '{:s} -a PPC -m 32        "^writev?" # ppc32\n'.format(_cmdline_)
     _example_ += '{:s} -a PPC -m 64        "^writev?" # ppc64\n'.format(_cmdline_)
     _example_ += '{:s} -a SPARC -m 32      "^writev?" # sparc32\n'.format(_cmdline_)
+    _example_ += '{:s} -a SPARC -m 32PLUS  "^writev?" # sparc32plus\n'.format(_cmdline_)
     _example_ += '{:s} -a SPARC -m 64      "^writev?" # sparc64\n'.format(_cmdline_)
     _example_ += '{:s} -a RISCV -m 32      "^writev?" # riscv32\n'.format(_cmdline_)
     _example_ += '{:s} -a RISCV -m 64      "^writev?" # riscv64\n'.format(_cmdline_)
@@ -41511,8 +41547,11 @@ def get_syscall_table(arch=None, mode=None):
                 raise
             syscall_list.append([nr, name, sc_def[func]])
 
-    elif arch == "SPARC" and mode == "32":
-        register_list = SPARC().syscall_parameters
+    elif arch == "SPARC" and mode in ["32", "32PLUS"]:
+        if mode == "32":
+            register_list = SPARC().syscall_parameters
+        elif mode == "32PLUS":
+            register_list = SPARC32PLUS().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(sparc_syscall_tbl)
         arch_specific_dic = {
@@ -52534,7 +52573,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
             elif 224 <= minor < 256:
                 return "/dev/nst{:d}a".format(minor - 224)
         elif major == 11: # 11 are duplicates
-            if is_sparc32() or is_sparc64():
+            if is_sparc32() or is_sparc32plus() or is_sparc64():
                 return "/dev/kbd"
             elif is_hppa32() or is_hppa64():
                 return "/dev/ttyB{:d}".format(minor)
@@ -56213,7 +56252,7 @@ class ExecAsm:
             gdb.execute("set $pcoqh = {:#x}".format(dst), to_string=True)
             dst2 = dst + len(current_arch.syscall_insn)
             gdb.execute("set $pcoqt = {:#x}".format(dst2), to_string=True)
-        elif is_sparc32() or is_sparc64():
+        elif is_sparc32() or is_sparc32plus() or is_sparc64():
             gdb.execute("set $pc = {:#x}".format(dst), to_string=True)
             dst2 = dst + len(current_arch.syscall_insn)
             gdb.execute("set $npc = {:#x}".format(dst2), to_string=True)
