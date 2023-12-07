@@ -28306,6 +28306,8 @@ class DestructorDumpCommand(GenericCommand):
     _category_ = "02-e. Process Information - Complex Structure Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-r", "--remote", action="store_true", help="parse remote binary if download feature is available.")
+    parser.add_argument("-f", "--file", help="the file path you want to parse.")
     parser.add_argument("--tdl", type=parse_address, help="specify the offset of `tls_dtor_list` from TLS base.")
     _syntax_ = parser.format_help()
 
@@ -28480,10 +28482,7 @@ class DestructorDumpCommand(GenericCommand):
         return tls_dtor_list
 
     def get_dtor_list_from_linkmap_relative(self):
-        codebase = get_section_base_address(get_filepath(append_proc_root_prefix=False))
-        if codebase is None:
-            codebase = get_section_base_address(get_path_from_info_proc())
-        if codebase is None:
+        if self.codebase is None:
             return None
 
         if is_x86() or is_sparc64() or is_s390x():
@@ -28524,7 +28523,7 @@ class DestructorDumpCommand(GenericCommand):
                 continue
 
             candidate_codebase = read_int_from_memory(candidate_link_map)
-            if candidate_codebase == codebase:
+            if candidate_codebase == self.codebase:
                 # found
                 if is_s390x():
                     tls_dtor_list = tls + (current_arch.ptrsize * (i + 1)) * direction
@@ -28592,13 +28591,9 @@ class DestructorDumpCommand(GenericCommand):
             err("TLS is not found")
             return
 
-        filepath = get_filepath()
-        if filepath is None:
-            err("filepath is not set")
-            return
+        tls_dtor_list = None
 
         # user specified
-        tls_dtor_list = None
         if offset_tls_dtor_list:
             tls_dtor_list = align_address(current_arch.get_tls() + offset_tls_dtor_list)
 
@@ -28613,15 +28608,15 @@ class DestructorDumpCommand(GenericCommand):
 
         # method 2 (from msymbols)
         if tls_dtor_list is None:
-            if is_static():
+            if self.is_static:
                 tls_dtor_list = self.get_dtor_list_from_msymbols()
 
         # method 3 (from link-map)
         if tls_dtor_list is None:
-            if not is_static():
+            if not self.is_static:
                 tls_dtor_list = self.get_dtor_list_from_linkmap_relative()
 
-        # method 4 (from xxx)
+        # method 4 (from tls with likely pattern)
         if tls_dtor_list is None:
             if current_arch.encode_cookie(0x1, 0xdeadbeef) != 0x1: # use cookie xor
                 tls_dtor_list = self.get_dtor_list_from_heuristic()
@@ -28630,6 +28625,7 @@ class DestructorDumpCommand(GenericCommand):
             err("Not found tls_dtor_list")
             return
 
+        # parse tls_dtor_list and print
         head_p = tls_dtor_list
         head = lookup_address(read_int_from_memory(head_p))
         current = head.value
@@ -28737,8 +28733,8 @@ class DestructorDumpCommand(GenericCommand):
             gef_print("{} dso_handle: {!s}".format(" " * width, dso_handle))
         return
 
-    def yield_link_map(self):
-        link_map = LinkMapCommand.get_link_map(get_filepath(), silent=True)
+    def yield_link_map(self, codebase):
+        link_map = LinkMapCommand.get_link_map(codebase, silent=True)
         if link_map is None:
             return
         current = link_map.value
@@ -28748,7 +28744,7 @@ class DestructorDumpCommand(GenericCommand):
             name_ptr = read_int_from_memory(current + current_arch.ptrsize * 1)
             dic["name"] = dic["name_org"] = read_cstring_from_memory(name_ptr)
             if dic["name_org"] == "":
-                dic["name"] = "{:s}".format(get_filepath())
+                dic["name"] = "{:s}".format(self.local_filepath)
             dic["dynamic"] = read_int_from_memory(current + current_arch.ptrsize * 2)
             dic["next"] = read_int_from_memory(current + current_arch.ptrsize * 3)
             LinkMap = collections.namedtuple("LinkMap", dic.keys())
@@ -28756,73 +28752,116 @@ class DestructorDumpCommand(GenericCommand):
             yield link_map
             current = dic["next"]
 
-    def dump_sections_not_array(self, section_name):
-        if not is_static(get_filepath()):
-            for link_map in self.yield_link_map():
-                if not os.path.exists(link_map.name):
+    def dump_fini(self):
+        if not self.codebase:
+            return None
+
+        if not self.is_static:
+            # Parse all loaded libraries.
+            for link_map in self.yield_link_map(self.codebase):
+                # get dynamic
+                dynamic = DynamicCommand.get_dynamic(link_map.load_address, silent=True)
+                if dynamic is None:
                     continue
-                elf = Elf(link_map.name)
-                try:
-                    shdr = [s for s in elf.shdrs if s.sh_name == section_name][0]
-                except IndexError:
+
+                # search .fini
+                fini = None
+                current = dynamic.value
+                while True:
+                    tag = read_int_from_memory(current)
+                    if tag == 13: # DT_FINI
+                        fini = read_int_from_memory(current + current_arch.ptrsize)
+                        if fini < link_map.load_address:
+                            fini += link_map.load_address
+                        break
+                    if tag not in DynamicCommand.DT_TABLE:
+                        break
+                    current += current_arch.ptrsize * 2
+
+                if fini is None:
                     continue
-                if is_pie(link_map.name):
-                    addr = shdr.sh_addr + link_map.load_address
-                else:
-                    addr = shdr.sh_addr
+
+                # print .fini
                 gef_print(link_map.name)
-                sym = get_symbol_string(addr)
-                func_s = Color.boldify("{:#x}".format(addr))
+                sym = get_symbol_string(fini)
+                func_s = Color.boldify("{:#x}".format(fini))
                 gef_print("    -> {:s}{:s}".format(func_s, sym))
         else:
-            elf = Elf(get_filepath())
+            # Static binary has no _DYNAMIC, but we can resolve the target address
+            # from section name due to local file path.
+            elf = Elf(self.local_filepath)
             try:
-                shdr = [s for s in elf.shdrs if s.sh_name == section_name][0]
+                shdr = [s for s in elf.shdrs if s.sh_name == ".fini"][0]
             except IndexError:
-                err("Not found {:s} section".format(section_name))
+                err("Not found .fini section")
                 return
-            addr = shdr.sh_addr
-            gef_print(get_filepath())
-            sym = get_symbol_string(addr)
-            func_s = Color.boldify("{:#x}".format(addr))
+            fini = shdr.sh_addr
+            if fini < self.codebase:
+                fini += self.codebase
+            gef_print(self.local_filepath)
+            sym = get_symbol_string(fini)
+            func_s = Color.boldify("{:#x}".format(fini))
             gef_print("    -> {:s}{:s}".format(func_s, sym))
         return
 
-    def dump_sections(self, section_name):
-        if not is_static(get_filepath()):
-            for link_map in self.yield_link_map():
-                if not os.path.exists(link_map.name):
+    def dump_fini_array(self):
+        if not self.codebase:
+            return None
+
+        if not self.is_static:
+            # Parse all loaded libraries.
+            for link_map in self.yield_link_map(self.codebase):
+                # get dynamic
+                dynamic = DynamicCommand.get_dynamic(link_map.load_address, silent=True)
+                if dynamic is None:
                     continue
-                elf = Elf(link_map.name)
-                try:
-                    shdr = [s for s in elf.shdrs if s.sh_name == section_name][0]
-                except IndexError:
+
+                # search .fini_array, fini_array_sz
+                fini_array = None
+                fini_array_sz = None
+                current = dynamic.value
+                while True:
+                    tag = read_int_from_memory(current)
+                    if tag == 26: # DT_FINI_ARRAY
+                        fini_array = read_int_from_memory(current + current_arch.ptrsize)
+                        if fini_array < link_map.load_address:
+                            fini_array += link_map.load_address
+                    if tag == 28: # DT_FINI_ARRAY_SZ
+                        fini_array_sz = read_int_from_memory(current + current_arch.ptrsize)
+                    if fini_array is not None and fini_array_sz is not None:
+                        break
+                    if tag not in DynamicCommand.DT_TABLE:
+                        break
+                    current += current_arch.ptrsize * 2
+
+                if fini_array is None or fini_array_sz is None:
                     continue
+
+                # parse .fini_array
                 entries = []
-                for i in range(shdr.sh_size // current_arch.ptrsize):
-                    if is_pie(link_map.name):
-                        addr = shdr.sh_addr + link_map.load_address + current_arch.ptrsize * i
-                    else:
-                        addr = shdr.sh_addr + current_arch.ptrsize * i
+                for i in range(fini_array_sz // current_arch.ptrsize):
+                    addr = fini_array + current_arch.ptrsize * i
                     func = read_int_from_memory(addr)
-                    if is_32bit() and func in [0, 0xffffffff]:
-                        continue
-                    if is_64bit() and func in [0, 0xffffffffffffffff]:
+                    if not is_valid_addr(func):
                         continue
                     entries.append([addr, func])
                 if not entries:
                     continue
+
+                # print .fini_array
                 gef_print(link_map.name)
                 for addr, func in entries:
                     sym = get_symbol_string(func)
                     func_s = Color.boldify("{:#x}".format(func))
                     gef_print("    -> {:s}: {:s}{:s}".format(self.C(addr), func_s, sym))
         else:
-            elf = Elf(get_filepath())
+            # Static binary has no _DYNAMIC, but we can resolve the target address
+            # from section name due to local file path.
+            elf = Elf(self.local_filepath)
             try:
-                shdr = [s for s in elf.shdrs if s.sh_name == section_name][0]
+                shdr = [s for s in elf.shdrs if s.sh_name == ".fini_array"][0]
             except IndexError:
-                err("Not found {:s} section".format(section_name))
+                err("Not found .fini_array section")
                 return
             entries = []
             vend = (1 << get_memory_alignment(in_bits=True)) - 1
@@ -28835,7 +28874,7 @@ class DestructorDumpCommand(GenericCommand):
             if not entries:
                 err("Not found valid entry")
                 return
-            gef_print(get_filepath())
+            gef_print(self.local_filepath)
             for addr, func in entries:
                 sym = get_symbol_string(func)
                 func_s = Color.boldify("{:#x}".format(func))
@@ -28852,15 +28891,77 @@ class DestructorDumpCommand(GenericCommand):
         reset_gef_caches(all=True)
 
         # init
-        self.tls = current_arch.get_tls()
-        if not is_valid_addr(self.tls):
-            err("Not found tls")
+        self.remote = args.remote
+
+        local_filepath = None
+        remote_filepath = None
+        tmp_filepath = None
+
+        if args.remote:
+            if not is_remote_debug():
+                err("-r option is allowed only remote debug.")
+                return
+
+            if args.file:
+                remote_filepath = args.file # if specified, assume it is remote
+            elif gdb.current_progspace().filename:
+                f = gdb.current_progspace().filename
+                if f.startswith("target:"): # gdbserver
+                    f = f[7:]
+                remote_filepath = f
+            elif get_pid(remote=True):
+                remote_filepath = "/proc/{:d}/exe".format(get_pid(remote=True))
+            else:
+                err("File name could not be determined.")
+                return
+
+            data = read_remote_file(remote_filepath, as_byte=True) # qemu-user is failed here, it is ok
+            if not data:
+                err("Failed to read remote filepath")
+                return
+            tmp_fd, tmp_filepath = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".elf", prefix="dtor-dump-")
+            os.write(tmp_fd, data)
+            os.close(tmp_fd)
+            local_filepath = tmp_filepath
+            del data
+
+        elif args.file:
+            local_filepath = args.file
+
+        elif args.file is None:
+            local_filepath = get_filepath()
+
+        if local_filepath is None:
+            err("File name could not be determined.")
             return
 
+        # filepath
+        self.local_filepath = local_filepath
+
+        # is_static
+        self.is_static = is_static(local_filepath)
+
+        # codebase
+        if remote_filepath:
+            self.codebase = get_section_base_address(remote_filepath)
+        elif local_filepath:
+            self.codebase = get_section_base_address(local_filepath)
+        if self.codebase is None:
+            self.codebase = get_section_base_address(get_filepath(append_proc_root_prefix=False))
+        if self.codebase is None:
+            self.codebase = get_section_base_address(get_path_from_info_proc())
+        if self.codebase is None:
+            warn("Not found codebase")
+
+        # tls
+        self.tls = current_arch.get_tls()
+        if self.tls is None or not is_valid_addr(self.tls):
+            warn("Not found tls")
+
+        # cookie
         self.cookie = PtrDemangleCommand.get_cookie()
         if self.cookie is None:
-            err("Not found cookie")
-            return
+            warn("Not found cookie")
 
         # dump
         gef_print(titlify("tls_dtor_list: registered by __cxa_thread_atexit_impl()"))
@@ -28873,16 +28974,14 @@ class DestructorDumpCommand(GenericCommand):
         self.dump_exit_funcs("__quick_exit_funcs")
 
         gef_print(titlify(".fini_array section"))
-        self.dump_sections(".fini_array")
+        self.dump_fini_array()
 
         gef_print(titlify(".fini section"))
-        self.dump_sections_not_array(".fini")
+        self.dump_fini()
 
-        gef_print(titlify(".dtors section"))
-        self.dump_sections(".dtors")
-
-        gef_print(titlify("__libc_atexit section")) # you can see at /bin/busybox
-        self.dump_sections("__libc_atexit")
+        # cleanup
+        if tmp_filepath and os.path.exists(tmp_filepath):
+            os.unlink(tmp_filepath)
         return
 
 
