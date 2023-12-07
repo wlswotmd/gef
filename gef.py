@@ -27907,7 +27907,10 @@ class LinkMapCommand(GenericCommand):
             l_next = lookup_address(read_int_from_memory(current + current_arch.ptrsize * 3))
 
             if not name:
-                name = "(binary itself: {:s})".format(get_filepath())
+                if get_filepath():
+                    name = "(binary itself: {:s})".format(get_filepath())
+                else:
+                    name = "(binary itself)"
             self.out.append(titlify(name))
 
             for i, tag in enumerate(members):
