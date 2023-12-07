@@ -19561,9 +19561,9 @@ class ProcessSearchCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("pattern", metavar="REGEX_PATTERN", nargs="?", help="filter by regex.")
-    parser.add_argument("-a", dest="do_attach", action="store_true", help="attach it. (default: %(default)s)")
+    parser.add_argument("-a", dest="do_attach", action="store_true", help="attach it.")
     parser.add_argument("-s", dest="smart_scan", action="store_true",
-                        help="filter kernel thread, socat, grep, gdb, sshd, bash, systemd, etc. (default: %(default)s)")
+                        help="filter kernel thread, socat, grep, gdb, sshd, bash, systemd, etc.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} gdb.*".format(_cmdline_)
@@ -19739,8 +19739,7 @@ class ElfInfoCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-e", "--use-readelf", action="store_true", help="use readelf.")
-    parser.add_argument("-r", "--remote", action="store_true",
-                        help="parse remote binary if download feature is available.")
+    parser.add_argument("-r", "--remote", action="store_true", help="parse remote binary if download feature is available.")
     parser.add_argument("-f", "--file", help="the file path you want to parse.")
     parser.add_argument("-a", "--address", type=parse_address, help="the memory address you want to parse.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
@@ -20316,8 +20315,7 @@ class ChecksecCommand(GenericCommand):
     _category_ = "02-f. Process Information - Security"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-r", "--remote", action="store_true",
-                        help="parse remote binary if download feature is available. (default: %(default)s)")
+    parser.add_argument("-r", "--remote", action="store_true", help="parse remote binary if download feature is available.")
     parser.add_argument("-f", "--file", help="the file path you want to parse.")
     _syntax_ = parser.format_help()
 
@@ -21589,9 +21587,8 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-f", "--file", help="the file path you want to parse.")
-    parser.add_argument("-r", "--remote", action="store_true",
-                        help="parse remote binary if download feature is available. (default: %(default)s)")
-    parser.add_argument("-x", "--hexdump", action="store_true", help="with hexdump. (default: %(default)s)")
+    parser.add_argument("-r", "--remote", action="store_true", help="parse remote binary if download feature is available.")
+    parser.add_argument("-x", "--hexdump", action="store_true", help="with hexdump.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
@@ -25404,7 +25401,7 @@ class PatchQwordCommand(PatchCommand):
     _aliases_ = ["patch q"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-e", dest="endian_reverse", action="store_true", help="reverse endian. (default: %(default)s)")
+    parser.add_argument("-e", dest="endian_reverse", action="store_true", help="reverse endian.")
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
     parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to patch.")
     parser.add_argument("values", metavar="QWORD", nargs="*", help="the value you want to patch.")
@@ -25427,7 +25424,7 @@ class PatchDwordCommand(PatchCommand):
     _aliases_ = ["patch d"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-e", dest="endian_reverse", action="store_true", help="reverse endian. (default: %(default)s)")
+    parser.add_argument("-e", dest="endian_reverse", action="store_true", help="reverse endian.")
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
     parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to patch.")
     parser.add_argument("values", metavar="DWORD", nargs="*", help="the value you want to patch.")
@@ -25450,7 +25447,7 @@ class PatchWordCommand(PatchCommand):
     _aliases_ = ["patch w"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-e", dest="endian_reverse", action="store_true", help="reverse endian. (default: %(default)s)")
+    parser.add_argument("-e", dest="endian_reverse", action="store_true", help="reverse endian.")
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
     parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to patch.")
     parser.add_argument("values", metavar="WORD", nargs="*", help="the value you want to patch.")
@@ -25473,7 +25470,7 @@ class PatchByteCommand(PatchCommand):
     _aliases_ = ["patch b"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-e", dest="endian_reverse", action="store_true", help="reverse endian. (default: %(default)s)")
+    parser.add_argument("-e", dest="endian_reverse", action="store_true", help="reverse endian.")
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
     parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to patch.")
     parser.add_argument("values", metavar="BYTE", nargs="*", help="the value you want to patch.")
@@ -26801,8 +26798,7 @@ class VMMapCommand(GenericCommand):
     parser.add_argument("--outer", action="store_true",
                         help="display qemu-user's memory map instead of emulated process's memory map.")
     parser.add_argument("filter", metavar="FILTER", nargs="?", help="filter string.")
-    parser.add_argument("-n", "--no-pager", action="store_true",
-                        help="do not use less. (default: Use less for more than 60 lines)")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} libc             # show only lines containing the string `libc`\n".format(_cmdline_)
