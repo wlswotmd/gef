@@ -68492,6 +68492,43 @@ class MsrCommand(GenericCommand):
 
 
 @register_command
+class MteTagsCommand(GenericCommand):
+    """Display the MTE tag for the specified address (only ARM64)."""
+    _cmdline_ = "mte-tags"
+    _category_ = "02-d. Process Information - Trivial Information"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("address", metavar="ADDRESS", type=parse_address,
+                        help="the start address you want to display the MTE tag.")
+    parser.add_argument("count", metavar="COUNT", nargs="?", type=parse_address,
+                        help="repeat count for MTE tag displaying (every 16 bytes).")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_arch(arch=("ARM64",))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        auxv = gef_get_auxiliary_values()
+        HWCAP2_MTE = 1 << 18
+        if auxv and "AT_HWCAP2" in auxv and (auxv["AT_HWCAP2"] & HWCAP2_MTE) == 0:
+            err("MTE is unsupported")
+            return
+
+        codes = [b"\x00\x00\x60\xD9"] # ldg x0, [x0]
+        count = args.count or 1
+        for i in range(count):
+            address = args.address + 16 * i
+            if not is_valid_addr(address):
+                break
+            ret = ExecAsm(codes, regs={"$x0": address}).exec_code()
+            tag = (ret["reg"]["$x0"] >> 56) & 0xff
+            gef_print("{!s}: {:#04x} ({:#018x})".format(lookup_address(address), tag, tag << 56))
+        return
+
+
+@register_command
 class PacKeysCommand(GenericCommand):
     """Pretty-print PAC keys from qemu registers (only ARM64)."""
     _cmdline_ = "pac-keys"

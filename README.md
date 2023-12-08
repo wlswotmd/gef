@@ -588,6 +588,9 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-pyobj-list.png)
 * `dt`: is wrapper for `ptype /ox TYPE` and `p ((TYPE*) ADDRESS)[0]`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dt.png)
+* `mte-tags`: displays the MTE tags for the specified address.
+    * Supported on only ARM64.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/mte-tags.png)
 
 ### Other
 * The category is introduced in `gef help`.
