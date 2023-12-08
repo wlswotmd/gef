@@ -122,7 +122,6 @@ I also list the tools I used in my Ubuntu 23.10 environment.
         * `./configure --target-list=loongarch64-linux-user && make && cp build/qemu-loongarch64 /usr/local/bin`
     * gdb: build from [latest](https://ftp.gnu.org/gnu/gdb/).
         * `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`
-        * `set architecture Loongarch64`
 * arc32 (HS38; ARCv2)
     * toolchain: `arcle-hs38--glibc--bleeding-edge-2023.08-1` from https://toolchains.bootlin.com/
     * qemu: https://github.com/foss-for-synopsys-dwc-arc-processors/qemu
@@ -157,7 +156,7 @@ I also list the tools I used in my Ubuntu 23.10 environment.
     * qemu: https://github.com/T-head-Semi/qemu
         * `export CXXFLAGS="-Wno-error"`
         * `export CFLAGS="-Wno-error"`
-        * `./configure --target-list=cskyv1-linux-user,cskyv1eb-linux-user,cskyv2-linux-user,cskyv2eb-linux-user && make && cp build/qemu-cskyv{1,2}{,eb} /usr/local/bin`
+        * `./configure --target-list=cskyv1-linux-user,cskyv1eb-linux-user,cskyv2-linux-user,cskyv2eb-linux-user --disable-bpf && make && cp build/qemu-cskyv{1,2}{,eb} /usr/local/bin`
         * It needs `-cpu` option like `qemu-cskyv2 -cpu ck810 -g 1234 ./a.out`.
     * gdb: build from [latest](https://ftp.gnu.org/gnu/gdb/).
         * `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`
