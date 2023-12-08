@@ -304,6 +304,10 @@ def reset_gef_caches(all=False):
     if all:
         global __cached_context_legend__
         __cached_context_legend__ = None
+        global __cached_main_arena__
+        __cached_main_arena__ = None
+        global __cached_heap_base__
+        __cached_heap_base__ = None
     return
 
 
