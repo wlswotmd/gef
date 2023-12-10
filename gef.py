@@ -15666,7 +15666,7 @@ class PtrMangleCommand(GenericCommand):
 
 @register_command
 class SearchMangledPtrCommand(GenericCommand):
-    """Search a mangled pointer value in memory."""
+    """Search mangled values from RW memory."""
     _cmdline_ = "search-mangled-ptr"
     _category_ = "02-f. Process Information - Security"
     _aliases_ = ["cookie"]
@@ -68426,22 +68426,6 @@ class MsrCommand(GenericCommand):
         info("See more info: https://elixir.bootlin.com/linux/latest/source/arch/x86/include/asm/msr-index.h")
         return
 
-    def bits_split(self, x, bits=64):
-        # 0xaaaabbbb -> 0xaaaa_bbbb
-        if x == 0:
-            return "0b0"
-        out = ""
-        for i in range(bits):
-            if x & (1 << i):
-                out = "1" + out
-            else:
-                out = "0" + out
-            if i % 4 == 3:
-                out = "_" + out
-        while out.startswith("_0000"):
-            out = out[5:]
-        return "0b" + out[1:]
-
     def read_msr(self, num):
         codes = [b"\x0f\x32"] # rdmsr
         if is_x86_64():
@@ -68491,7 +68475,7 @@ class MsrCommand(GenericCommand):
         if args.quiet:
             gef_print("{:#x}".format(val))
         else:
-            gef_print("{:s} ({:#x}): {:#x} (={:s})".format(name, num, val, self.bits_split(val)))
+            gef_print("{:s} ({:#x}): {:#x}".format(name, num, val))
         return
 
 
@@ -70147,7 +70131,7 @@ class PagewalkX64Command(PagewalkCommand):
 
 @register_command
 class PagewalkArmCommand(PagewalkCommand):
-    """Dump pagetable for ARM (only Cortex-A) using qemu-monitor. PL2 pagewalk is unsupported"""
+    """Dump pagetable for ARM (only Cortex-A) using qemu-monitor. PL2 pagewalk is unsupported."""
     _cmdline_ = "pagewalk arm"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -78569,7 +78553,7 @@ class GefAlias(gdb.Command):
 
 @register_command
 class AliasesCommand(GenericCommand):
-    """The base command to add, remove, or list aliases."""
+    """The base command to add, remove or list aliases."""
     _cmdline_ = "aliases"
     _category_ = "99. GEF Maintenance Command"
 
