@@ -67279,6 +67279,62 @@ class UclibcNgHeapDumpCommand(GenericCommand):
 
 
 @register_command
+class XStringCommand(GenericCommand):
+    """Dump string like x/s command, but with hex-string style."""
+    _cmdline_ = "xs"
+    _category_ = "03-b. Memory - View"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="dump target address.")
+    parser.add_argument("count", metavar="COUNT", nargs="?", default=1, type=parse_address, help="repeat count for displaying.")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0x11223344".format(_cmdline_)
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        max_length = get_gef_setting("context.nb_max_string_length")
+
+        address = args.address
+        for _ in range(args.count):
+            if not is_valid_addr(args.address):
+                err("Memory access error at {:#x}".format(address))
+                return
+
+            size = gef_getpagesize() - (address & gef_getpagesize_mask_low())
+
+            # read once
+            s = read_memory(address, size)
+            pos = s.find(b"\0")
+            if pos != -1:
+                s = s[:pos]
+            else:
+                # not found 0x0, but too short. read more.
+                if len(s) < max_length:
+                    if is_valid_addr(address + size):
+                        s += read_memory(address + size, gef_getpagesize())
+                        pos = s.find(b"\0")
+                        if pos != -1:
+                            s = s[:pos]
+
+            # cut off
+            if len(s) > max_length:
+                s = s[:max_length] + b"..."
+
+            gef_print("{!s}: {:s}".format(lookup_address(address), repr(s)))
+
+            # go to next address
+            if pos == -1:
+                address += 1
+            else:
+                address += pos + 1
+        return
+
+
+@register_command
 class XphysAddrCommand(GenericCommand):
     """Dump physical memory via qemu-monitor."""
     _cmdline_ = "xp"
