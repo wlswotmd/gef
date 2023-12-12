@@ -144,6 +144,12 @@ Currently, at least following commands do not work.
 * `ksysctl`
 * `kmalloc-tracer`
 * `kmalloc-allocated-by`
+* `kfiles`
+* `kregs`
+* `ksighands`
+* `kpcidev`
+* `knamespaces`
+* `kipcs`
 
 ## `vmmap` command does not recognize option.
 Try `pagewalk` command.

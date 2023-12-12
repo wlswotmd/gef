@@ -102,7 +102,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
         * ARM v8.7 base.
         * 32bit mode is NOT supported.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64.png)
-        * Supported stage2 translation. This is EL1/EL2/EL3 pagewalk sample (HITCON CTF 2018 super_hexagon).
+        * Stage2 translation is supported. This is EL1/EL2/EL3 pagewalk sample (HITCON CTF 2018 super_hexagon).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-el123.png)
         * Secure memory scanning is supported, but you have to break in the secure world.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-secure.png)
