@@ -48703,6 +48703,226 @@ class KernelAddressHeuristicFinder:
                                     return x
         return None
 
+    @staticmethod
+    @switch_to_intel_syntax
+    def get_iomem_resource():
+        # plan 1 (directly)
+        iomem_resource = get_ksymaddr("iomem_resource")
+        if iomem_resource:
+            return iomem_resource
+
+        kversion = KernelVersionCommand.kernel_version()
+
+        # plan 2 (available v3.3 or later)
+        if kversion and kversion >= "3.3":
+            pci_scan_bus = get_ksymaddr("pci_scan_bus")
+            if pci_scan_bus:
+                res = gdb.execute("x/30i {:#x}".format(pci_scan_bus), to_string=True)
+                if is_x86_64():
+                    count = 0
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+r\S+\s*,\s*(0x\S+)", line)
+                        if m:
+                            if count == 0:
+                                count += 1
+                                continue
+                            return int(m.group(1), 16)
+                elif is_x86_32():
+                    count = 0
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+e\S+\s*,\s*(0x\S+)", line)
+                        if m:
+                            if count == 0:
+                                count += 1
+                                continue
+                            return int(m.group(1), 16) & 0xffffffff
+                elif is_arm64():
+                    count = 0
+                    bases = {}
+                    for line in res.splitlines():
+                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            base = int(m.group(2), 16)
+                            bases[reg] = base
+                            continue
+                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
+                        if m:
+                            srcreg = m.group(2)
+                            v = int(m.group(3), 16)
+                            if srcreg in bases:
+                                count += 1
+                                if count == 2:
+                                    return bases[srcreg] + v
+                elif is_arm32():
+                    count = 0
+                    bases = {}
+                    for line in res.splitlines():
+                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            base = int(m.group(2), 16)
+                            bases[reg] = base
+                            continue
+                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            v = int(m.group(2), 16) << 16
+                            if reg in bases:
+                                count += 1
+                                if count == 2:
+                                    return bases[reg] + v
+
+        # plan 3 (available v3.9 or later)
+        if kversion and kversion >= "3.9":
+            devm_ioremap_resource = get_ksymaddr("devm_ioremap_resource")
+            if devm_ioremap_resource:
+                res = gdb.execute("x/50i {:#x}".format(devm_ioremap_resource), to_string=True)
+                if is_x86_64():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+r\S+\s*,\s*(0x\S+)", line)
+                        if m:
+                            return int(m.group(1), 16)
+                elif is_x86_32():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+e\S+\s*,\s*(0x\S+)", line)
+                        if m:
+                            return int(m.group(1), 16) & 0xffffffff
+                elif is_arm64():
+                    bases = {}
+                    for line in res.splitlines():
+                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            base = int(m.group(2), 16)
+                            bases[reg] = base
+                            continue
+                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
+                        if m:
+                            srcreg = m.group(2)
+                            v = int(m.group(3), 16)
+                            if srcreg in bases:
+                                return bases[srcreg] + v
+                elif is_arm32():
+                    bases = {}
+                    for line in res.splitlines():
+                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            base = int(m.group(2), 16)
+                            bases[reg] = base
+                            continue
+                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            v = int(m.group(2), 16) << 16
+                            if reg in bases:
+                                return bases[reg] + v
+        return None
+
+    @staticmethod
+    @switch_to_intel_syntax
+    def get_ioport_resource():
+        # plan 1 (directly)
+        ioport_resource = get_ksymaddr("ioport_resource")
+        if ioport_resource:
+            return ioport_resource
+
+        kversion = KernelVersionCommand.kernel_version()
+
+        # plan 2 (available v3.3 or later)
+        if kversion and kversion >= "3.3":
+            pci_scan_bus = get_ksymaddr("pci_scan_bus")
+            if pci_scan_bus:
+                res = gdb.execute("x/30i {:#x}".format(pci_scan_bus), to_string=True)
+                if is_x86_64():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+r\S+\s*,\s*(0x\S+)", line)
+                        if m:
+                            return int(m.group(1), 16)
+                elif is_x86_32():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+e\S+\s*,\s*(0x\S+)", line)
+                        if m:
+                            return int(m.group(1), 16) & 0xffffffff
+                elif is_arm64():
+                    bases = {}
+                    for line in res.splitlines():
+                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            base = int(m.group(2), 16)
+                            bases[reg] = base
+                            continue
+                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
+                        if m:
+                            srcreg = m.group(2)
+                            v = int(m.group(3), 16)
+                            if srcreg in bases:
+                                return bases[srcreg] + v
+                elif is_arm32():
+                    bases = {}
+                    for line in res.splitlines():
+                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            base = int(m.group(2), 16)
+                            bases[reg] = base
+                            continue
+                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            v = int(m.group(2), 16) << 16
+                            if reg in bases:
+                                return bases[reg] + v
+
+        # plan 3 (available v4.9 or later)
+        if kversion and kversion >= "4.9":
+            acpi_ec_remove = get_ksymaddr("acpi_ec_remove")
+            if acpi_ec_remove:
+                res = gdb.execute("x/30i {:#x}".format(acpi_ec_remove), to_string=True)
+                if is_x86_64():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+r\S+\s*,\s*(0x\S+)", line)
+                        if m:
+                            return int(m.group(1), 16)
+                elif is_x86_32():
+                    for line in res.splitlines():
+                        m = re.search(r"mov\s+e\S+\s*,\s*(0x\S+)", line)
+                        if m:
+                            return int(m.group(1), 16) & 0xffffffff
+                elif is_arm64():
+                    bases = {}
+                    for line in res.splitlines():
+                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            base = int(m.group(2), 16)
+                            bases[reg] = base
+                            continue
+                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
+                        if m:
+                            srcreg = m.group(2)
+                            v = int(m.group(3), 16)
+                            if srcreg in bases:
+                                return bases[srcreg] + v
+                elif is_arm32():
+                    bases = {}
+                    for line in res.splitlines():
+                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            base = int(m.group(2), 16)
+                            bases[reg] = base
+                            continue
+                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
+                        if m:
+                            reg = m.group(1)
+                            v = int(m.group(2), 16) << 16
+                            if reg in bases:
+                                return bases[reg] + v
+        return None
+
 
 KF = KernelAddressHeuristicFinder # for convenience using from python-interactive
 
@@ -55361,7 +55581,7 @@ class KernelPciDeviceCommand(GenericCommand):
             flags.remove("IORESOURCE_MEM")
             flags.append("IORESOURCE_REG")
 
-        flags_str = "|".join(flags)
+        flags_str = " | ".join(flags)
         if flags_str == "":
             flags_str = "none"
         return flags_str.replace("IORESOURCE_", "")
@@ -63395,6 +63615,183 @@ class KernelIpcsCommand(GenericCommand):
 
         # print
         gef_print("\n".join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
+class KernelDeviceIOCommand(GenericCommand):
+    """Dump I/O-port and I/O-memory informations."""
+    _cmdline_ = "kdevio"
+    _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
+    _syntax_ = parser.format_help()
+
+    _note_ = "Simplified ioport structure:\n"
+    _note_ += "\n"
+    _note_ += "+-ioport_resource-+       +-------->+-resource--------+\n"
+    _note_ += "| start           |       |         | start           |\n"
+    _note_ += "| end             |       |         | end             |\n"
+    _note_ += "| name            |       |         | name            |\n"
+    _note_ += "| flags           |       |         | flags           |\n"
+    _note_ += "| desc            |       |         | desc            |\n"
+    _note_ += "| parent          |-------+         | parent          |\n"
+    _note_ += "| sibling         |--> resource     | sibling         |\n"
+    _note_ += "| child           |--> resource     | child           |\n"
+    _note_ += "+-----------------+                 +-----------------+\n"
+    _note_ += "\n"
+    _note_ += "Simplified iomem structure:\n"
+    _note_ += "\n"
+    _note_ += "+-iomem_resource--+       +-------->+-resource--------+\n"
+    _note_ += "| start           |       |         | start           |\n"
+    _note_ += "| end             |       |         | end             |\n"
+    _note_ += "| name            |       |         | name            |\n"
+    _note_ += "| flags           |       |         | flags           |\n"
+    _note_ += "| desc            |       |         | desc            |\n"
+    _note_ += "| parent          |-------+         | parent          |\n"
+    _note_ += "| sibling         |--> resource     | sibling         |\n"
+    _note_ += "| child           |--> resource     | child           |\n"
+    _note_ += "+-----------------+                 +-----------------+"
+
+    def dump_resource(self, addr):
+        if not is_valid_addr(addr):
+            return []
+        if addr in self.seen:
+            return []
+        self.seen.append(addr)
+
+        """
+        struct resource {
+            resource_size_t start;
+            resource_size_t end;
+            const char *name;
+            unsigned long flags;
+            unsigned long desc;
+            struct resource *parent, *sibling, *child;
+        };
+        """
+        start = u64(read_memory(addr, 8))
+        end = u64(read_memory(addr + 8, 8))
+        name = read_cstring_from_memory(read_int_from_memory(addr + 8 * 2))
+        flags = read_int_from_memory(addr + 8 * 2 + current_arch.ptrsize)
+
+        ret = [(addr, start, end, name, flags)]
+
+        kversion = KernelVersionCommand.kernel_version()
+        if kversion > "4.5":
+            adjust = 1
+        else:
+            adjust = 0
+
+        parent = read_int_from_memory(addr + 8 * 2 + current_arch.ptrsize * (2 + adjust))
+        ret += self.dump_resource(parent)
+        sibling = read_int_from_memory(addr + 8 * 2 + current_arch.ptrsize * (2 + adjust + 1))
+        ret += self.dump_resource(sibling)
+        child = read_int_from_memory(addr + 8 * 2 + current_arch.ptrsize * (2 + adjust + 2))
+        ret += self.dump_resource(child)
+        return ret
+
+    def get_flags_str(self, flags_value):
+        _flags = {
+            "IORESOURCE_BUSY":                  0x80000000,
+            "IORESOURCE_AUTO":                  0x40000000,
+            "IORESOURCE_UNSET":                 0x20000000,
+            "IORESOURCE_DISABLED":              0x10000000,
+            "IORESOURCE_EXCLUSIVE":             0x08000000,
+            "IORESOURCE_SYSRAM_MERGEABLE":      0x04000000,
+            "IORESOURCE_SYSRAM_DRIVER_MANAGED": 0x02000000,
+            "IORESOURCE_SYSRAM":                0x01000000,
+            "IORESOURCE_MUXED":                 0x00400000,
+            "IORESOURCE_WINDOW":                0x00200000,
+            "IORESOURCE_MEM_64":                0x00100000,
+            "IORESOURCE_STARTALIGN":            0x00080000,
+            "IORESOURCE_SIZEALIGN":             0x00040000,
+            "IORESOURCE_SHADOWABLE":            0x00020000,
+            "IORESOURCE_RANGELENGTH":           0x00010000,
+            "IORESOURCE_CACHEABLE":             0x00008000,
+            "IORESOURCE_READONLY":              0x00004000,
+            "IORESOURCE_PREFETCH":              0x00002000,
+            "IORESOURCE_BUS":                   0x00001000,
+            "IORESOURCE_DMA":                   0x00000800,
+            "IORESOURCE_IRQ":                   0x00000400,
+            "IORESOURCE_MEM":                   0x00000200,
+            "IORESOURCE_IO":                    0x00000100,
+        }
+        flags = []
+        for k, v in _flags.items():
+            if flags_value & v:
+                flags.append(k)
+
+        if "IORESOURCE_IO" in flags and "IORESOURCE_MEM" in flags:
+            flags.remove("IORESOURCE_IO")
+            flags.remove("IORESOURCE_MEM")
+            flags.append("IORESOURCE_REG")
+
+        flags_str = " | ".join(flags)
+        if flags_str == "":
+            flags_str = "none"
+        return flags_str.replace("IORESOURCE_", "")
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        self.quiet = args.quiet
+        if not self.quiet:
+            info("Wait for memory scan")
+
+        out = []
+
+        # ioport
+        ioport_resource = KernelAddressHeuristicFinder.get_ioport_resource()
+        if not ioport_resource:
+            err("Not found ioport_resource")
+        else:
+            self.seen = []
+            resources = self.dump_resource(ioport_resource)
+            if resources:
+                name_width = max(len(res[3]) for res in resources)
+            else:
+                name_width = 4
+
+            out.append(titlify("I/O-port"))
+            fmt = "{:18s} {:17s} {:{:d}s} {:s}"
+            legend = ["resource", "I/O address", "name", name_width, "flags"]
+            out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
+            for addr, start, end, name, flags in sorted(resources, key=lambda x: x[1]):
+                fmt = "{:#018x} {:#08x}-{:#08x} {:{:d}s} {:#010x} ({:s})"
+                out.append(fmt.format(addr, start, end, name, name_width, flags, self.get_flags_str(flags)))
+
+        # iomem
+        iomem_resource = KernelAddressHeuristicFinder.get_iomem_resource()
+        if not iomem_resource:
+            err("Not found iomem_resource")
+        else:
+            self.seen = []
+            resources = self.dump_resource(iomem_resource)
+            if resources:
+                name_width = max(len(res[3]) for res in resources)
+            else:
+                name_width = 4
+
+            out.append(titlify("I/O-memory"))
+            fmt = "{:18s} {:37s} {:{:d}s} {:s}"
+            legend = ["resource", "Physical address", "name", name_width, "flags"]
+            out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
+            for addr, start, end, name, flags in sorted(resources, key=lambda x: x[1]):
+                fmt = "{:#018x} {:#018x}-{:#018x} {:{:d}s} {:#010x} ({:s})"
+                out.append(fmt.format(addr, start, end, name, name_width, flags, self.get_flags_str(flags)))
+
+        # print
+        gef_print("\n".join(out), less=not args.no_pager)
         return
 
 

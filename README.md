@@ -247,6 +247,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kpcidev.png)
 * `kipcs`: dumps IPCs information (System V semaphore, message queue and shared memory).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kipcs.png)
+* `kdevio`: dumps I/O-port and I/O-memory informations.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kdevio.png)
 
 ### Qemu-system cooperation - Linux specific - Other
 * `ksearch-code-ptr`: searches the code pointer in kernel data area.
