@@ -9869,6 +9869,13 @@ def is_valid_addr(addr):
         return False
 
 
+def is_valid_addr_addr(addr):
+    if is_valid_addr(addr):
+        v = read_int_from_memory(addr)
+        return is_valid_addr(v)
+    return False
+
+
 def read_int_from_memory(addr):
     """Return an integer read from memory."""
     sz = current_arch.ptrsize
@@ -11352,6 +11359,13 @@ def is_hex(pattern):
     if not pattern.startswith("0x") and not pattern.startswith("0X"):
         return False
     return len(pattern) % 2 == 0 and all(c in string.hexdigits for c in pattern[2:])
+
+
+def is_msb_on(addr):
+    """Return whether provided address MSB is on."""
+    if get_memory_alignment() == 4:
+        return addr & 0x80000000
+    return addr & 0x8000000000000000
 
 
 def continue_handler(_event):
@@ -43504,7 +43518,7 @@ class KernelMagicCommand(GenericCommand):
             self.resolve_and_print_kernel("vdso_start", text_base, maps, KernelAddressHeuristicFinder.get_vdso_start)
             self.resolve_and_print_kernel("vdso32_start", text_base, maps, KernelAddressHeuristicFinder.get_vdso32_start)
         elif is_arm32():
-            self.resolve_and_print_kernel("vdso_start", text_base, maps)
+            self.resolve_and_print_kernel("vdso_start", text_base, maps, KernelAddressHeuristicFinder.get_vdso_start)
         gef_print(titlify("Others"))
         self.resolve_and_print_kernel(["do_fchmodat", "sys_fchmodat"], text_base, maps)
         self.resolve_and_print_kernel("mmap_min_addr", text_base, maps, KernelAddressHeuristicFinder.get_mmap_min_addr)
@@ -45248,55 +45262,482 @@ class ConvertCommand(GenericCommand):
         return
 
 
+class KernelAddressHeuristicFinderUtil:
+    """A class that has utility for KernelAddressHeuristicFinder."""
+
+    @staticmethod
+    def x64_x86_any_const(res, skip=0, skip_msb_check=False, read_valid=False):
+        skipped = 0
+        for line in res.splitlines():
+            m = re.search(r"(?:# |,)(0x\w{8,})", line)
+            if m:
+                v = align_address(int(m.group(1), 16))
+                if not skip_msb_check and not is_msb_on(v):
+                    continue
+                if read_valid and not is_valid_addr_addr(v):
+                    continue
+                if skipped != skip:
+                    skipped += 1
+                    continue
+                return v
+        return None
+
+    @staticmethod
+    def x64_x86_mov_reg_const(res, reg=r"\w+", skip=0, skip_msb_check=False, read_valid=False):
+        skipped = 0
+        for line in res.splitlines():
+            m = re.search(r"mov\s+" + reg + r"\s*,\s*(0x\w+)", line)
+            if m:
+                v = align_address(int(m.group(1), 16))
+                if not skip_msb_check and not is_msb_on(v):
+                    continue
+                if read_valid and not is_valid_addr_addr(v):
+                    continue
+                if skipped != skip:
+                    skipped += 1
+                    continue
+                return v
+        return None
+
+    @staticmethod
+    def x64_x86_cmp_const(res, reg=r"\w+", skip=0, skip_msb_check=False, read_valid=False):
+        skipped = 0
+        for line in res.splitlines():
+            m = re.search(r"cmp\s+" + reg + r",\s*(0x\w+)", line)
+            if m:
+                v = align_address(int(m.group(1), 16))
+                if not skip_msb_check and not is_msb_on(v):
+                    continue
+                if read_valid and not is_valid_addr_addr(v):
+                    continue
+                if skipped != skip:
+                    skipped += 1
+                    continue
+                return v
+        return None
+
+    @staticmethod
+    def x64_byte_ptr(res, skip=0, skip_msb_check=False, read_valid=False):
+        skipped = 0
+        for line in res.splitlines():
+            m = re.search(r"BYTE PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+            if m:
+                v = align_address(int(m.group(1), 16))
+                if not skip_msb_check and not is_msb_on(v):
+                    continue
+                if read_valid and not is_valid_addr_addr(v):
+                    continue
+                if skipped != skip:
+                    skipped += 1
+                    continue
+                return v
+        return None
+
+    @staticmethod
+    def x64_dword_ptr(res, skip=0, skip_msb_check=False, read_valid=False):
+        skipped = 0
+        for line in res.splitlines():
+            m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+            if m:
+                v = align_address(int(m.group(1), 16))
+                if not skip_msb_check and not is_msb_on(v):
+                    continue
+                if read_valid and not is_valid_addr_addr(v):
+                    continue
+                if skipped != skip:
+                    skipped += 1
+                    continue
+                return v
+        return None
+
+    @staticmethod
+    def x64_qword_ptr(res, skip=0, skip_msb_check=False, read_valid=False):
+        skipped = 0
+        for line in res.splitlines():
+            m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
+            if m:
+                v = align_address(int(m.group(1), 16))
+                if not skip_msb_check and not is_msb_on(v):
+                    continue
+                if read_valid and not is_valid_addr_addr(v):
+                    continue
+                if skipped != skip:
+                    skipped += 1
+                    continue
+                return v
+        return None
+
+    @staticmethod
+    def x64_qword_ptr_array_base(res, skip=0, skip_msb_check=False, read_valid=False):
+        skipped = 0
+        for line in res.splitlines():
+            m = re.search(r"QWORD PTR \[.*\*8([-+]0x\w+)\]", line)
+            if m:
+                v = align_address(int(m.group(1), 16))
+                if not skip_msb_check and not is_msb_on(v):
+                    continue
+                if read_valid and not is_valid_addr_addr(v):
+                    continue
+                if skipped != skip:
+                    skipped += 1
+                    continue
+                return v
+        return None
+
+    @staticmethod
+    def x86_byte_ptr_ds(res, skip=0, skip_msb_check=False, read_valid=False):
+        skipped = 0
+        for line in res.splitlines():
+            m = re.search(r"BYTE PTR ds:\s*(0x\w+)", line)
+            if m:
+                v = align_address(int(m.group(1), 16))
+                if not skip_msb_check and not is_msb_on(v):
+                    continue
+                if read_valid and not is_valid_addr_addr(v):
+                    continue
+                if skipped != skip:
+                    skipped += 1
+                    continue
+                return v
+        return None
+
+    @staticmethod
+    def x86_dword_ptr_ds(res, skip=0, skip_msb_check=False, read_valid=False):
+        skipped = 0
+        for line in res.splitlines():
+            m = re.search(r"DWORD PTR ds:\s*(0x\w+)", line)
+            if m:
+                v = align_address(int(m.group(1), 16))
+                if not skip_msb_check and not is_msb_on(v):
+                    continue
+                if read_valid and not is_valid_addr_addr(v):
+                    continue
+                if skipped != skip:
+                    skipped += 1
+                    continue
+                return v
+        return None
+
+    @staticmethod
+    def x86_noptr_ds(res, skip=0, skip_msb_check=False, read_valid=False):
+        skipped = 0
+        for line in res.splitlines():
+            m = re.search(r"ds:\s*(0x\w+)", line)
+            if m:
+                v = align_address(int(m.group(1), 16))
+                if not skip_msb_check and not is_msb_on(v):
+                    continue
+                if read_valid and not is_valid_addr_addr(v):
+                    continue
+                if skipped != skip:
+                    skipped += 1
+                    continue
+                return v
+        return None
+
+    @staticmethod
+    def x86_dword_ptr(res, skip=0, skip_msb_check=False, read_valid=False):
+        skipped = 0
+        for line in res.splitlines():
+            m = re.search(r",\s*DWORD PTR \[.*([+-]0x\w+)\]", line)
+            if m:
+                v = align_address(int(m.group(1), 16))
+                if not skip_msb_check and not is_msb_on(v):
+                    continue
+                if read_valid and not is_valid_addr_addr(v):
+                    continue
+                if skipped != skip:
+                    skipped += 1
+                    continue
+                return v
+        return None
+
+    @staticmethod
+    def x86_dword_ptr_array_base(res, skip=0, skip_msb_check=False, read_valid=False):
+        skipped = 0
+        for line in res.splitlines():
+            m = re.search(r"DWORD PTR \[.*\*4([+-]0x\w+)\]", line)
+            if m:
+                v = align_address(int(m.group(1), 16))
+                if not skip_msb_check and not is_msb_on(v):
+                    continue
+                if read_valid and not is_valid_addr_addr(v):
+                    continue
+                if skipped != skip:
+                    skipped += 1
+                    continue
+                return v
+        return None
+
+    @staticmethod
+    def aarch64_adrp_ldr(res, skip=0, skip_msb_check=False, read_valid=False, b=""):
+        skipped = 0
+        bases = {}
+        for line in res.splitlines():
+            m = re.search(r"adrp\s+(\w+),\s*(0x\w+)", line)
+            if m:
+                reg = m.group(1)
+                v = int(m.group(2), 16)
+                bases[reg] = v
+                continue
+            m = re.search(r"ldr" + b + r"\s+\w+,\s*\[(\w+),\s*#(\d+)\]", line)
+            if m:
+                srcreg = m.group(1)
+                v = int(m.group(2), 0)
+                if srcreg in bases:
+                    w = align_address(bases[srcreg] + v)
+                    if not skip_msb_check and not is_msb_on(w):
+                        continue
+                    if read_valid and not is_valid_addr_addr(w):
+                        continue
+                    if skipped != skip:
+                        skipped += 1
+                        continue
+                    return w
+        return None
+
+    @staticmethod
+    def aarch64_adrp_ldrb(res, skip=0, skip_msb_check=False, read_valid=False):
+        return KernelAddressHeuristicFinderUtil.aarch64_adrp_ldr(res, skip, skip_msb_check, read_valid, "b")
+
+    @staticmethod
+    def aarch64_adrp_add(res, skip=0, skip_msb_check=False, read_valid=False):
+        skipped = 0
+        bases = {}
+        for line in res.splitlines():
+            m = re.search(r"adrp\s+(\w+),\s*(0x\w+)", line)
+            if m:
+                reg = m.group(1)
+                v = int(m.group(2), 16)
+                bases[reg] = v
+                continue
+            m = re.search(r"add\s+(\w+),\s*(\w+),\s*#(0x\w+)", line)
+            if m:
+                srcreg = m.group(2)
+                v = int(m.group(3), 16)
+                if srcreg in bases:
+                    w = align_address(bases[srcreg] + v)
+                    if not skip_msb_check and not is_msb_on(w):
+                        continue
+                    if read_valid and not is_valid_addr_addr(w):
+                        continue
+                    if skipped != skip:
+                        skipped += 1
+                        continue
+                    return w
+        return None
+
+    @staticmethod
+    def aarch64_adrp_add_add(res, skip=0, skip_msb_check=False, read_valid=False):
+        skipped = 0
+        bases = {}
+        add1time = {}
+        for line in res.splitlines():
+            m = re.search(r"adrp\s+(\w+),\s*(0x\w+)", line)
+            if m:
+                reg = m.group(1)
+                base = int(m.group(2), 16)
+                bases[reg] = base
+                continue
+            m = re.search(r"add\s+(\w+),\s*(\w+),\s*#(0x\w+)", line)
+            if m:
+                dstreg = m.group(1)
+                srcreg = m.group(2)
+                v = int(m.group(3), 16)
+                if srcreg in add1time:
+                    w = align_address(add1time[srcreg] + v)
+                    if not skip_msb_check or is_msb_on(w):
+                        if not read_valid or is_valid_addr_addr(w):
+                            if skipped == skip:
+                                return w
+                if srcreg in bases:
+                    add1time[dstreg] = bases[srcreg] + v
+                    continue
+        return None
+
+    @staticmethod
+    def aarch64_adrp_add_ldr(res, skip=0, skip_msb_check=False, read_valid=False):
+        skipped = 0
+        bases = {}
+        add1time = {}
+        for line in res.splitlines():
+            m = re.search(r"adrp\s+(\w+),\s*(0x\w+)", line)
+            if m:
+                reg = m.group(1)
+                v = int(m.group(2), 16)
+                bases[reg] = v
+                continue
+            m = re.search(r"add\s+(\w+),\s*(\w+),\s*#(0x\w+)", line)
+            if m:
+                dstreg = m.group(1)
+                srcreg = m.group(2)
+                v = int(m.group(3), 16)
+                if srcreg in bases:
+                    add1time[dstreg] = bases[srcreg] + v
+                    continue
+            m = re.search(r"ldr\s+\w+,\s*\[(\w+),\s*#(\d+)\]", line)
+            if m:
+                srcreg = m.group(1)
+                v = int(m.group(2), 0)
+                if srcreg in add1time:
+                    w = align_address(add1time[srcreg] + v)
+                    if not skip_msb_check and not is_msb_on(w):
+                        continue
+                    if read_valid and not is_valid_addr_addr(w):
+                        continue
+                    if skipped != skip:
+                        skipped += 1
+                        continue
+                    return w
+        return None
+
+    @staticmethod
+    def arm32_movw_movt(res, skip=0, skip_msb_check=False, read_valid=False):
+        skipped = 0
+        bases = {}
+        for line in res.splitlines():
+            m = re.search(r"movw\s+(\w+),.+[;@]\s*(0x\w+)", line)
+            if m:
+                reg = m.group(1)
+                v = int(m.group(2), 16)
+                bases[reg] = v
+                continue
+            m = re.search(r"movt\s+(\w+),.+[;@]\s*(0x\w+)", line)
+            if m:
+                reg = m.group(1)
+                v = int(m.group(2), 16) << 16
+                if reg in bases:
+                    w = align_address(bases[reg] + v)
+                    if not skip_msb_check and not is_msb_on(w):
+                        continue
+                    if read_valid and not is_valid_addr_addr(w):
+                        continue
+                    if skipped != skip:
+                        skipped += 1
+                        continue
+                    return w
+        return None
+
+    @staticmethod
+    def arm32_movw_movt_ldr(res, skip=0, skip_msb_check=False, read_valid=False):
+        skipped = 0
+        bases = {}
+        add1time = {}
+        for line in res.splitlines():
+            m = re.search(r"movw\s+(\w+),.+[;@]\s*(0x\w+)", line)
+            if m:
+                reg = m.group(1)
+                v = int(m.group(2), 16)
+                bases[reg] = v
+                continue
+            m = re.search(r"movt\s+(\w+),.+[;@]\s*(0x\w+)", line)
+            if m:
+                reg = m.group(1)
+                v = int(m.group(2), 16) << 16
+                if reg in bases:
+                    add1time[reg] = bases[reg] + v
+                    continue
+            m = re.search(r"ldr\s+\w+,\s*\[(\w+),\s*#(\d+)\]", line)
+            if m:
+                reg = m.group(1)
+                v = int(m.group(2), 0)
+                if reg in add1time:
+                    w = align_address(add1time[reg] + v)
+                    if not skip_msb_check and not is_msb_on(w):
+                        continue
+                    if read_valid and not is_valid_addr_addr(w):
+                        continue
+                    if skipped != skip:
+                        skipped += 1
+                        continue
+                    return w
+        return None
+
+    @staticmethod
+    def arm32_movw_movt_then_ldrb(res):
+        addr = 0
+        for line in res.splitlines():
+            m = re.search(r"movw.*[;@]\s*(0x\w+)", line)
+            if m:
+                addr_high = addr & 0xffff0000
+                addr = addr_high | int(m.group(1), 16)
+                continue
+            m = re.search(r"movt.*[;@]\s*(0x\w+)", line)
+            if m:
+                addr_low = addr & 0xffff
+                addr = (int(m.group(1), 16) << 16) | addr_low
+                continue
+            if "ldrb" in line:
+                return addr
+        return None
+
+    @staticmethod
+    def arm32_ldr_reg_const(res, reg=r"\w+", skip=0, skip_msb_check=False, read_valid=False):
+        skipped = 0
+        for line in res.splitlines():
+            m = re.search(r"ldr\s+" + reg + r",.*[;@]\s*(0x\w+)", line)
+            if m:
+                v = align_address(int(m.group(1), 16))
+                if not is_valid_addr(v):
+                    continue
+                if not skip_msb_check and not is_msb_on(v):
+                    continue
+                if read_valid and not is_valid_addr_addr(v):
+                    continue
+                if skipped != skip:
+                    skipped += 1
+                    continue
+                return v
+        return None
+
+    @staticmethod
+    def arm32_ldr_pc_relative(res):
+        for line in res.splitlines():
+            m = re.search(r"ldr\s+\w+,\s*\[pc,\s*#(\d+)\]", line)
+            if m:
+                ofs = align_address(int(m.group(1), 0))
+                pos = align_address(int(line.split()[0].replace(":", ""), 16))
+                v = read_int_from_memory(pos + 4 * 2 + ofs)
+                if is_valid_addr(v):
+                    return v
+            m = re.search(r"ldr\s+\w+,\s*\[pc\]", line)
+            if m:
+                pos = align_address(int(line.split()[0].replace(":", ""), 16))
+                v = read_int_from_memory(pos + 4 * 2)
+                if is_valid_addr(v):
+                    return v
+        return None
+
+
 class KernelAddressHeuristicFinder:
     """A class that heuristically finds a specific symbol in the kernel."""
+
+    USE_DIRECTLY = True
+    USE_KSYSCTL = True
 
     @staticmethod
     @switch_to_intel_syntax
     def get_saved_command_line():
+        # Do not use get_ksymaddr as this function is used to discover KPTI.
+        # This is because get_ksymaddr uses a cache.
+
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 1 (available v2.6.28-rc1 or later)
+        # plan 1 (available v2.6.28 or later)
         if kversion and kversion >= "2.6.28":
-            cmdline_proc_show = get_ksymaddr("cmdline_proc_show")
-            if cmdline_proc_show:
-                res = gdb.execute("x/10i {:#x}".format(cmdline_proc_show), to_string=True)
+            addr = get_ksymaddr("cmdline_proc_show")
+            if addr:
+                res = gdb.execute("x/10i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"DWORD PTR ds:(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x86_dword_ptr_ds(res)
                 elif is_arm64():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"ldr\s+\S+,\s*\[\S+,\s*#(\d+)\]", line)
-                            if m:
-                                return base + int(m.group(1), 0)
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_ldr(res)
                 elif is_arm32():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                return base + (int(m.group(1), 16) << 16)
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
@@ -45306,31 +45747,24 @@ class KernelAddressHeuristicFinder:
             return None
 
         # plan 1 (directly)
-        current_task = get_ksymaddr("current_task")
-        if current_task:
-            return current_task
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("current_task")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v4.1-rc1 or later)
+        # plan 2 (available v4.1 or later)
         if kversion and kversion >= "4.1":
-            common_cpu_up = get_ksymaddr("common_cpu_up")
-            if common_cpu_up:
-                res = gdb.execute("x/30i {:#x}".format(common_cpu_up), to_string=True)
+            addr = get_ksymaddr("common_cpu_up")
+            if addr:
+                res = gdb.execute("x/30i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+\w+,(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, skip_msb_check=True)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+\w+,(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, skip_msb_check=True)
+                if x:
+                    return x
         return None
 
     @staticmethod
@@ -45353,204 +45787,55 @@ class KernelAddressHeuristicFinder:
     @switch_to_intel_syntax
     def get_init_task():
         # plan 1 (directly)
-        init_task = get_ksymaddr("init_task")
-        if init_task:
-            return init_task
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("init_task")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v3.4-rc1 or later)
-        if kversion and kversion >= "3.4":
-            do_exit = get_ksymaddr("do_exit")
-            if do_exit:
-                res = gdb.execute("x/600i {:#x}".format(do_exit), to_string=True)
+        # plan 2 (available v3.3 or later)
+        if kversion and kversion >= "3.3":
+            addr = get_ksymaddr("thaw_kernel_threads")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"cmp\s+\S+,\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v & 0x8000000000000000:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, skip=1)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"cmp\s+\S+,\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v & 0x80000000:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
                 elif is_arm64():
-                    adrp = None
-                    add = None
-                    for i, line in enumerate(res.splitlines()):
-                        m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                        if m:
-                            adrp = int(m.group(1), 16)
-                            adrp_idx = i
-                        m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
-                        if m:
-                            add = int(m.group(1), 16)
-                            add_idx = i
-                        if adrp and add:
-                            if abs(adrp_idx - add_idx) > 2:
-                                if adrp_idx < add_idx:
-                                    adrp = None
-                                else:
-                                    add = None
-                                continue
-                            candidate = adrp + add
-                            adrp = None
-                            add = None
-                            if not is_valid_addr(candidate):
-                                continue
-                            v1 = read_int_from_memory(candidate)
-                            v2 = read_int_from_memory(candidate + current_arch.ptrsize)
-                            if v1 == v2 and v1 != 0:
-                                continue
-                            if is_valid_addr(v1):
-                                continue
-                            if len(read_cstring_from_memory(candidate)) > 5:
-                                continue
-                            if read_memory(candidate, 0x20) == b"\0" * 0x20:
-                                continue
-                            return candidate
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res, skip=1)
                 elif is_arm32():
-                    movw = None
-                    movt = None
-                    for i, line in enumerate(res.splitlines()):
-                        m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
-                        if m:
-                            movw = int(m.group(1), 16)
-                            movw_idx = i
-                        m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
-                        if m:
-                            movt = int(m.group(1), 16)
-                            movt_idx = i
-                        if movw and movt:
-                            if abs(movw_idx - movt_idx) > 2:
-                                if movw_idx < movt_idx:
-                                    movw = None
-                                else:
-                                    movt = None
-                                continue
-                            candidate = (movt << 16) | movw
-                            movw = None
-                            movt = None
-                            if not is_valid_addr(candidate):
-                                continue
-                            v1 = read_int_from_memory(candidate)
-                            v2 = read_int_from_memory(candidate + current_arch.ptrsize)
-                            if v1 == v2 and v1 != 0:
-                                continue
-                            if is_valid_addr(v1):
-                                continue
-                            if len(read_cstring_from_memory(candidate)) > 5:
-                                continue
-                            if read_memory(candidate, 0x20) == b"\0" * 0x20:
-                                continue
-                            return candidate
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res, skip=2)
+                if x:
+                    return x
 
-        # plan 3 (available v2.6.18-rc2 or later)
-        # Depending on the CONFIG_TASK_DELAY_ACCT, it may disappear with optimization.
-        if kversion and kversion >= "2.6.18":
-            delayacct_init = get_ksymaddr("delayacct_init")
-            if delayacct_init:
-                res = gdb.execute("x/20i {:#x}".format(delayacct_init), to_string=True)
-                if is_x86_64():
-                    count = 0
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+rdi\s*,\s*(0x\S+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v & 0x8000000000000000:
-                                if count == 1:
-                                    return v
-                                count += 1
+        # plan 3 (available v2.6.30 or later)
+        if kversion and kversion >= "2.6.30":
+            if is_arm64() or is_arm32():
+                addr = get_ksymaddr("chroot_fs_refs")
+                if addr:
+                    res = gdb.execute("x/30i {:#x}".format(addr), to_string=True)
+                    if is_arm64():
+                        x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res, skip=1)
+                    elif is_arm32():
+                        x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                    if x:
+                        return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_init_cred():
         # plan 1 (directly)
-        init_cred = get_ksymaddr("init_cred")
-        if init_cred:
-            return init_cred
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("init_cred")
+            if x:
+                return x
 
-        kversion = KernelVersionCommand.kernel_version()
-
-        # plan 2 (available v6.1.55 or before)
-        if kversion and kversion < "6.2":
-            prepare_kernel_cred = get_ksymaddr("prepare_kernel_cred")
-            if prepare_kernel_cred:
-                res = gdb.execute("x/100i {:#x}".format(prepare_kernel_cred), to_string=True)
-                if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"WORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0 and is_valid_addr(v) and read_int_from_memory(v) == 4:
-                                return v
-                elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"ds:(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0 and is_valid_addr(v) and read_int_from_memory(v) == 4:
-                                return v
-                elif is_arm64():
-                    adrp = None
-                    add = None
-                    for i, line in enumerate(res.splitlines()):
-                        m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                        if m:
-                            adrp = int(m.group(1), 16)
-                            adrp_idx = i
-                        m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
-                        if m:
-                            add = int(m.group(1), 16)
-                            add_idx = i
-                        if adrp and add:
-                            if abs(adrp_idx - add_idx) > 2:
-                                if adrp_idx < add_idx:
-                                    adrp = None
-                                else:
-                                    add = None
-                                continue
-                            candidate = adrp + add
-                            adrp = None
-                            add = None
-                            if not is_valid_addr(candidate):
-                                continue
-                            if read_int_from_memory(candidate) == 4:
-                                return candidate
-                elif is_arm32():
-                    movw = None
-                    movt = None
-                    for i, line in enumerate(res.splitlines()):
-                        m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
-                        if m:
-                            movw = int(m.group(1), 16)
-                            movw_idx = i
-                        m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
-                        if m:
-                            movt = int(m.group(1), 16)
-                            movt_idx = i
-                        if movw and movt:
-                            if abs(movw_idx - movt_idx) > 2:
-                                if movw_idx < movt_idx:
-                                    movw = None
-                                else:
-                                    movt = None
-                                continue
-                            candidate = (movt << 16) | movw
-                            movw = None
-                            movt = None
-                            if not is_valid_addr(candidate):
-                                continue
-                            if read_int_from_memory(candidate) == 4:
-                                return candidate
-
+        # plan2 (from ktask)
         res = gdb.execute("ktask --filter swapper/0 --no-pager", to_string=True)
-        m = re.search("offsetof\(task_struct, cred\): (0x\S+)", res)
+        m = re.search("offsetof\(task_struct, cred\): (0x\w+)", res)
         if m:
             cred_offset = int(m.group(1), 16)
             line = res.strip().splitlines()[-1]
@@ -45564,319 +45849,165 @@ class KernelAddressHeuristicFinder:
     @switch_to_intel_syntax
     def get_init_net():
         # plan 1 (directly)
-        init_net = get_ksymaddr("init_net")
-        if init_net:
-            return init_net
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("init_net")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
         # plan 2 (available v2.6.35 or later)
         if kversion and kversion >= "2.6.35":
-            net_initial_ns = get_ksymaddr("net_initial_ns")
-            if net_initial_ns:
-                res = gdb.execute("x/20i {:#x}".format(net_initial_ns), to_string=True)
+            addr = get_ksymaddr("net_initial_ns")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+rax\s*,\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+eax\s*,\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
                 elif is_arm64():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
-                            if m:
-                                return base + int(m.group(1), 16)
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
                 elif is_arm32():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                return base + (int(m.group(1), 16) << 16)
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_init_user_ns():
         # plan 1 (directly)
-        init_user_ns = get_ksymaddr("init_user_ns")
-        if init_user_ns:
-            return init_user_ns
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("init_user_ns")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
         # plan 2 (available v2.6.39 or later)
         if kversion and kversion >= "2.6.39":
-            has_capability = get_ksymaddr("has_capability")
-            if has_capability:
-                res = gdb.execute("x/20i {:#x}".format(has_capability), to_string=True)
+            addr = get_ksymaddr("has_capability")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+rsi\s*,\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+e\w\w\s*,\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
                 elif is_arm64():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
-                            if m:
-                                return base + int(m.group(1), 16)
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
                 elif is_arm32():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                return base + (int(m.group(1), 16) << 16)
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_modules():
         # plan 1 (directly)
-        modules = get_ksymaddr("modules")
-        if modules:
-            return modules
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("modules")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
         # plan 2 (available v3.7.5 or later)
         if kversion and kversion >= "3.7.5":
-            find_module_all = get_ksymaddr("find_module_all")
-            if find_module_all:
-                res = gdb.execute("x/20i {:#x}".format(find_module_all), to_string=True)
+            addr = get_ksymaddr("find_module_all")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"ds:(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x86_noptr_ds(res)
                 elif is_arm64():
-                    bases = {}
-                    add1time = {}
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
-                        if m:
-                            dstreg = m.group(1)
-                            srcreg = m.group(2)
-                            v = int(m.group(3), 16)
-                            if srcreg in bases:
-                                add1time[dstreg] = bases[srcreg] + v
-                                continue
-                        m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
-                        if m:
-                            srcreg = m.group(1)
-                            v = int(m.group(2), 0)
-                            if srcreg in add1time:
-                                return add1time[srcreg] + v
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add_ldr(res)
                 elif is_arm32():
-                    bases = {}
-                    add1time = {}
-                    for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 16) << 16
-                            if reg in bases:
-                                add1time[reg] = bases[reg] + v
-                                continue
-                        m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 0)
-                            if reg in add1time:
-                                return add1time[reg] + v
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt_ldr(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_chrdevs():
         # plan 1 (directly)
-        chrdevs = get_ksymaddr("chrdevs")
-        if chrdevs:
-            return chrdevs
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("chrdevs")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
         # plan 2 (available v2.6.16.12 or later)
         if kversion and kversion >= "2.6.17":
-            chrdev_show = get_ksymaddr("chrdev_show")
-            if chrdev_show:
-                res = gdb.execute("x/30i {:#x}".format(chrdev_show), to_string=True)
-                if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"QWORD PTR \[.*\*8([-+]0x\S+)\]", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
-                elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"\[.*\*4([+-]0x\S+)\]", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
-                elif is_arm64():
-                    count = 0
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
-                            if m:
-                                addr = base + int(m.group(1), 16) # add 1 time
-                                if count == 1:
-                                    return addr # 2nd pair of (adrp + add) is target
-                                else:
-                                    base = None
-                                    count += 1
-                elif is_arm32():
+            addr = get_ksymaddr("chrdev_show")
+            if addr:
+                res = gdb.execute("x/30i {:#x}".format(addr), to_string=True)
+                if is_arm32():
                     bases = {}
                     add1time = {}
                     for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
+                        m = re.search(r"movw\s+(\w+),.+[;@]\s*(0x\w+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
+                        m = re.search(r"movt\s+(\w+),.+[;@]\s*(0x\w+)", line)
                         if m:
                             reg = m.group(1)
                             v = int(m.group(2), 16) << 16
                             if reg in bases:
                                 add1time[reg] = bases[reg] + v
                                 continue
-                        m = re.search(r"ldr\s+\S+,\s*\[(\S+),.*#\d+\]", line)
+                        # It only checks whether there is access by `ldr` and does not add an offset.
+                        m = re.search(r"ldr\s+\w+,\s*\[(\w+),.*#\d+\]", line)
                         if m:
                             reg = m.group(1)
                             if reg in add1time:
-                                return add1time[reg]
+                                v = add1time[reg]
+                                v = align_address(v)
+                                if v & 0x80000000:
+                                    return v
+                else:
+                    if is_x86_64():
+                        x = KernelAddressHeuristicFinderUtil.x64_qword_ptr_array_base(res)
+                    elif is_x86_32():
+                        x = KernelAddressHeuristicFinderUtil.x86_dword_ptr_array_base(res)
+                    elif is_arm64():
+                        x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res, skip=1)
+                    if x:
+                        return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_cdev_map():
         # plan 1 (directly)
-        cdev_map = get_ksymaddr("cdev_map")
-        if cdev_map:
-            return cdev_map
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("cdev_map")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
         # plan 2 (available v2.5.70 or later)
         if kversion and kversion >= "2.5.70":
-            cdev_del = get_ksymaddr("cdev_del")
-            if cdev_del:
-                res = gdb.execute("x/30i {:#x}".format(cdev_del), to_string=True)
+            addr = get_ksymaddr("cdev_del")
+            if addr:
+                res = gdb.execute("x/30i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"ds:(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x86_noptr_ds(res)
                 elif is_arm64():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"ldr\s+\S+,\s*\[\S+,\s*#(\d+)\]", line)
-                            if m:
-                                return base + int(m.group(1), 0)
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_ldr(res)
                 elif is_arm32():
-                    bases = {}
-                    add1time = {}
-                    for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 16) << 16
-                            if reg in bases:
-                                add1time[reg] = bases[reg] + v
-                                continue
-                        m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 0)
-                            if reg in add1time:
-                                return add1time[reg] + v
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt_ldr(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
@@ -45886,23 +46017,21 @@ class KernelAddressHeuristicFinder:
             return None
 
         # plan 1 (directly)
-        sys_call_table = get_ksymaddr("sys_call_table")
-        if sys_call_table:
-            return sys_call_table
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("sys_call_table")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v4.6-rc1 or later)
+        # plan 2 (available v4.6 or later)
         if kversion and kversion >= "4.6":
-            do_syscall_64 = get_ksymaddr("do_syscall_64")
-            if do_syscall_64:
-                res = gdb.execute("x/30i {:#x}".format(do_syscall_64), to_string=True)
-                for line in res.splitlines():
-                    m = re.search(r"[DQ]WORD PTR \[.*\*8([-+]0x\S+)\]", line)
-                    if m:
-                        v = int(m.group(1), 16) & 0xffffffffffffffff
-                        if v != 0:
-                            return v
+            addr = get_ksymaddr("do_syscall_64")
+            if addr:
+                res = gdb.execute("x/30i {:#x}".format(addr), to_string=True)
+                x = KernelAddressHeuristicFinderUtil.x64_qword_ptr_array_base(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
@@ -45912,27 +46041,21 @@ class KernelAddressHeuristicFinder:
             return None
 
         # plan 1 (directly)
-        sys_call_table = get_ksymaddr("x32_sys_call_table")
-        if sys_call_table:
-            return sys_call_table
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("x32_sys_call_table")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v4.6-rc1 or later)
+        # plan 2 (available v4.6 or later)
         if kversion and kversion >= "4.6":
-            do_syscall_64 = get_ksymaddr("do_syscall_64")
-            if do_syscall_64:
-                count = 0
-                res = gdb.execute("x/30i {:#x}".format(do_syscall_64), to_string=True)
-                for line in res.splitlines():
-                    m = re.search(r"[DQ]WORD PTR \[.*\*8([-+]0x\S+)\]", line)
-                    if m and count == 0:
-                        count += 1
-                        continue
-                    elif m and count == 1:
-                        v = int(m.group(1), 16) & 0xffffffffffffffff
-                        if v != 0:
-                            return v
+            addr = get_ksymaddr("do_syscall_64")
+            if addr:
+                res = gdb.execute("x/30i {:#x}".format(addr), to_string=True)
+                x = KernelAddressHeuristicFinderUtil.x64_qword_ptr_array_base(res, skip=1)
+                if x:
+                    return x
         return None
 
     @staticmethod
@@ -45942,48 +46065,42 @@ class KernelAddressHeuristicFinder:
             return None
 
         # plan 1 (directly)
-        if is_x86_64():
-            sys_call_table = get_ksymaddr("ia32_sys_call_table")
-        elif is_x86_32():
-            sys_call_table = get_ksymaddr("sys_call_table")
-        if sys_call_table:
-            return sys_call_table
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            if is_x86_64():
+                x = get_ksymaddr("ia32_sys_call_table")
+            elif is_x86_32():
+                x = get_ksymaddr("sys_call_table")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v4.6-rc1 or later)
+        # plan 2 (available v4.6 or later)
         if kversion and kversion >= "4.6":
-            do_int80_syscall_32 = get_ksymaddr("do_int80_syscall_32")
-            if do_int80_syscall_32:
-                res = gdb.execute("x/20i {:#x}".format(do_int80_syscall_32), to_string=True)
-                for line in res.splitlines():
-                    if is_x86_32():
-                        m = re.search(r"\[eax\*4([+-]0x\S+)\]", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
-                    if is_x86_64():
-                        m = re.search(r"\[rax\*8([+-]0x\S+)\]", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
+            addr = get_ksymaddr("do_int80_syscall_32")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
+                if is_x86_64():
+                    x = KernelAddressHeuristicFinderUtil.x64_qword_ptr_array_base(res)
+                elif is_x86_32():
+                    x = KernelAddressHeuristicFinderUtil.x86_dword_ptr_array_base(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
     def get_sys_call_table_arm32():
-        # plan 1 (directly)
-        if is_arm32():
-            sys_call_table = get_ksymaddr("sys_call_table")
-        else:
+        if not is_arm32():
             return None
-        if sys_call_table:
-            return sys_call_table
 
-        # plan 2 is nothing
-        # because `sys_call_table` symbol is embeded in .text area
-        # I couldn't come up with the detection logic.
+        # plan 1 (directly)
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("sys_call_table")
+            if x:
+                return x
+
+        # `sys_call_table` is embedded in the .text area even if
+        # `CONFIG_KALLSYMS_ALL=n`, so plan2 is not necessary.
         return None
 
     @staticmethod
@@ -45992,47 +46109,27 @@ class KernelAddressHeuristicFinder:
             return
 
         # plan 1 (directly)
-        sys_call_table = get_ksymaddr("sys_call_table")
-        if sys_call_table:
-            return sys_call_table
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("sys_call_table")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v3.7-rc1 or later)
+        # plan 2 (available v3.7 or later)
         if kversion and kversion >= "5.6":
-            el0_svc = get_ksymaddr("do_el0_svc")
+            addr = get_ksymaddr("do_el0_svc")
         elif kversion and kversion >= "4.18" and kversion < "5.6":
-            el0_svc = get_ksymaddr("el0_svc_handler")
+            addr = get_ksymaddr("el0_svc_handler")
         elif kversion and kversion >= "3.7" and kversion < "4.18":
-            el0_svc = get_ksymaddr("el0_svc")
+            addr = get_ksymaddr("el0_svc")
         else:
-            el0_svc = None
-
-        if el0_svc:
-            res = gdb.execute("x/100i {:#x}".format(el0_svc), to_string=True)
-            adrp = None
-            add = None
-            for i, line in enumerate(res.splitlines()):
-                m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                if m:
-                    adrp = int(m.group(1), 16)
-                    adrp_idx = i
-                m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
-                if m:
-                    add = int(m.group(1), 16)
-                    add_idx = i
-                if adrp and add:
-                    if abs(adrp_idx - add_idx) > 2:
-                        if adrp_idx < add_idx:
-                            adrp = None
-                        else:
-                            add = None
-                        continue
-                    candidate = adrp + add
-                    adrp = None
-                    add = None
-                    if is_valid_addr(candidate) and is_valid_addr(read_int_from_memory(candidate)):
-                        return candidate
+            addr = None
+        if addr:
+            res = gdb.execute("x/100i {:#x}".format(addr), to_string=True)
+            x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res, read_valid=True)
+            if x:
+                return x
         return None
 
     @staticmethod
@@ -46041,594 +46138,359 @@ class KernelAddressHeuristicFinder:
             return
 
         # plan 1 (directly)
-        sys_call_table = get_ksymaddr("compat_sys_call_table")
-        if sys_call_table:
-            return sys_call_table
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("compat_sys_call_table")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v3.7-rc1 or later)
+        # plan 2 (available v3.7 or later)
         if kversion and kversion >= "5.6":
-            el0_svc_compat = get_ksymaddr("do_el0_svc_compat")
+            addr = get_ksymaddr("do_el0_svc_compat")
         elif kversion and kversion >= "4.18" and kversion < "5.6":
-            el0_svc_compat = get_ksymaddr("el0_svc_compat_handler")
+            addr = get_ksymaddr("el0_svc_compat_handler")
         elif kversion and kversion >= "3.7" and kversion < "4.18":
-            el0_svc_compat = get_ksymaddr("el0_svc_compat") # 3.7-rc1 <= kernel < 4.18-rc1
+            addr = get_ksymaddr("el0_svc_compat")
         else:
-            el0_svc_compat = None
-
-        if el0_svc_compat:
-            res = gdb.execute("x/100i {:#x}".format(el0_svc_compat), to_string=True)
-            adrp = None
-            add = None
-            for i, line in enumerate(res.splitlines()):
-                m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                if m:
-                    adrp = int(m.group(1), 16)
-                    adrp_idx = i
-                m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
-                if m:
-                    add = int(m.group(1), 16)
-                    add_idx = i
-                if adrp and add:
-                    if abs(adrp_idx - add_idx) > 2:
-                        if adrp_idx < add_idx:
-                            adrp = None
-                        else:
-                            add = None
-                        continue
-                    candidate = adrp + add
-                    adrp = None
-                    add = None
-                    if is_valid_addr(candidate) and is_valid_addr(read_int_from_memory(candidate)):
-                        return candidate
+            addr = None
+        if addr:
+            res = gdb.execute("x/100i {:#x}".format(addr), to_string=True)
+            x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res, read_valid=True)
+            if x:
+                return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_per_cpu_offset():
         # plan 1 (directly)
-        __per_cpu_offset = get_ksymaddr("__per_cpu_offset")
-        if __per_cpu_offset:
-            return __per_cpu_offset
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("__per_cpu_offset")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v3.3-rc1 or later)
+        # plan 2 (available v3.3 or later)
         if kversion and kversion >= "3.3":
-            nr_iowait_cpu = get_ksymaddr("nr_iowait_cpu")
-            if nr_iowait_cpu:
-                res = gdb.execute("x/10i {:#x}".format(nr_iowait_cpu), to_string=True)
+            addr = get_ksymaddr("nr_iowait_cpu")
+            if addr:
+                res = gdb.execute("x/10i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    # pattern 1
                     for line in res.splitlines():
-                        m = re.search(r"add.*QWORD PTR \[.*([-+]0x\S+)\]", line)
+                        # 2 pattern
+                        m = re.search(r"add.*QWORD PTR \[.*([-+]0x\w+)\]", line) or \
+                            re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
                         if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if is_valid_addr(v):
-                                cpu0 = read_int_from_memory(v)
-                                if cpu0 and (cpu0 & 0xfff) == 0:
-                                    return v
-                    # pattern 2
-                    for line in res.splitlines():
-                        m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if is_valid_addr(v):
-                                cpu0 = read_int_from_memory(v)
-                                if cpu0 and (cpu0 & 0xfff) == 0:
-                                    return v
+                            v = align_address(int(m.group(1), 16))
+                            if is_msb_on(v):
+                                if is_valid_addr(v):
+                                    cpu0 = read_int_from_memory(v)
+                                    if cpu0 and (cpu0 & 0xfff) == 0:
+                                        return v
                 elif is_x86_32():
-                    # pattern 1
                     for line in res.splitlines():
-                        m = re.search(r"DWORD PTR \[.*([-+]0x\S+)\]", line)
+                        m = re.search(r"DWORD PTR \[.*([-+]0x\w+)\]", line)
                         if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if is_valid_addr(v):
-                                cpu0 = read_int_from_memory(v)
-                                if cpu0 and (cpu0 & 0xfff) == 0:
-                                    return v
+                            v = align_address(int(m.group(1), 16))
+                            if is_msb_on(v):
+                                if is_valid_addr(v):
+                                    cpu0 = read_int_from_memory(v)
+                                    if cpu0 and (cpu0 & 0xfff) == 0:
+                                        return v
                 elif is_arm64():
-                    # pattern 1
                     bases = {}
                     for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                        m = re.search(r"adrp\s+(\w+),\s*(0x\w+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\S+)", line)
+                        m = re.search(r"add\s+(\w+),\s*(\w+),\s*#(0x\w+)", line)
                         if m:
                             srcreg = m.group(2)
-                            add = int(m.group(3), 16)
+                            v = int(m.group(3), 16)
                             if srcreg in bases:
-                                v = bases[srcreg] + add
-                                if is_valid_addr(v):
-                                    cpu0 = read_int_from_memory(v)
-                                    if cpu0 and (cpu0 & 0xfff) == 0:
-                                        return v
+                                w = align_address(bases[srcreg] + v)
+                                if is_msb_on(w):
+                                    if is_valid_addr(w):
+                                        cpu0 = read_int_from_memory(w)
+                                        if cpu0 and (cpu0 & 0xfff) == 0:
+                                            return w
                                 del bases[srcreg]
                 elif is_arm32():
-                    # pattern 1
-                    base = None
+                    bases = {}
                     for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                v = base + (int(m.group(1), 16) << 16)
-                                if is_valid_addr(v):
-                                    cpu0 = read_int_from_memory(v)
-                                    if cpu0 and (cpu0 & 0xfff) == 0:
-                                        return v
+                        m = re.search(r"movw\s+(\w+),.+[;@]\s*(0x\w+)", line)
+                        if m:
+                            reg = m.group(1)
+                            v = int(m.group(2), 16)
+                            bases[reg] = v
+                            continue
+                        m = re.search(r"movt\s+(\w+),.+[;@]\s*(0x\w+)", line)
+                        if m:
+                            reg = m.group(1)
+                            v = int(m.group(2), 16) << 16
+                            if reg in bases:
+                                w = align_address(bases[reg] + v)
+                                if is_msb_on(w):
+                                    if is_valid_addr(w):
+                                        cpu0 = read_int_from_memory(w)
+                                        if cpu0 and (cpu0 & 0xfff) == 0:
+                                            return w
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_slab_caches():
         # plan 1 (directly)
-        slab_caches = get_ksymaddr("slab_caches")
-        if slab_caches:
-            return slab_caches
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("slab_caches")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v4.9-rc1 or later)
+        # plan 2 (available v4.9 or later)
         if kversion and kversion >= "4.9":
-            slub_cpu_dead = get_ksymaddr("slub_cpu_dead")
-            if slub_cpu_dead:
-                res = gdb.execute("x/20i {:#x}".format(slub_cpu_dead), to_string=True)
-                if is_x86():
-                    count = 0
-                    for line in res.splitlines():
-                        m = re.search(r"(?:# |,)(0x\S{8,})", line)
-                        if not m:
-                            continue
-                        if count == 1:
-                            return int(m.group(1), 16)
-                        count += 1
+            addr = get_ksymaddr("slub_cpu_dead")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
+                if is_x86_64():
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_any_const(res, skip=1)
+                elif is_x86_32():
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_any_const(res, skip=1)
                 elif is_arm64():
-                    count = 0
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
-                            if m:
-                                addr = base + int(m.group(1), 16) # add 1 time
-                                if count == 1:
-                                    return addr # 2nd pair of (adrp + add) is target
-                                else:
-                                    base = None
-                                    count += 1
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res, skip=1)
                 elif is_arm32():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                return base + (int(m.group(1), 16) << 16)
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                if x:
+                    return x
 
         # plan 3 (available v4.10.17 or before)
         if kversion and kversion <= "4.10.17":
-            memcg_update_all_caches = get_ksymaddr("memcg_update_all_caches")
-            if memcg_update_all_caches:
-                res = gdb.execute("x/20i {:#x}".format(memcg_update_all_caches), to_string=True)
-                if is_x86():
-                    for line in res.splitlines():
-                        m = re.search(r"(?:# |,)(0x\S{8,})", line)
-                        if m:
-                            if is_64bit():
-                                return int(m.group(1), 16) & 0xffffffffffffffff
-                            else:
-                                return int(m.group(1), 16) & 0xffffffff
+            addr = get_ksymaddr("memcg_update_all_caches")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
+                if is_x86_64():
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_any_const(res)
+                elif is_x86_32():
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_any_const(res)
                 elif is_arm64():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
-                            if m:
-                                return base + int(m.group(1), 16)
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
                 elif is_arm32():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                return base + (int(m.group(1), 16) << 16)
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                if x:
+                    return x
 
         # plan 4 (available v4.10.17 or before)
         if kversion and kversion <= "4.10.17":
-            slab_next = get_ksymaddr("slab_next")
-            if slab_next:
-                res = gdb.execute("x/20i {:#x}".format(slab_next), to_string=True)
-                if is_x86():
-                    for line in res.splitlines():
-                        m = re.search(r"(?:# |,)(0x\S{8,})", line)
-                        if m:
-                            if is_64bit():
-                                return int(m.group(1), 16) & 0xffffffffffffffff
-                            else:
-                                return int(m.group(1), 16) & 0xffffffff
+            addr = get_ksymaddr("slab_next")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
+                if is_x86_64():
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_any_const(res)
+                elif is_x86_32():
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_any_const(res)
                 elif is_arm64():
                     # TODO
-                    pass
+                    x = None
                 elif is_arm32():
                     # TODO
-                    pass
+                    x = None
+                if x:
+                    return x
 
         # plan 5 (available if CONFIG_SLAB=y)
         cache_reap = get_ksymaddr("cache_reap")
         if cache_reap:
             res = gdb.execute("x/30i {:#x}".format(cache_reap), to_string=True)
             if is_x86_64():
-                for line in res.splitlines():
-                    m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
-                    if m:
-                        v = int(m.group(1), 16) & 0xffffffffffffffff
-                        return v
+                x = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res)
             elif is_x86_32():
                 # TODO
-                pass
+                x = None
             elif is_arm64():
                 # TODO
-                pass
+                x = None
             elif is_arm32():
-                count = 0
-                for line in res.splitlines():
-                    m = re.search(r"ldr\s+r\d+,.*[;@]\s*(0x\S+)", line)
-                    if m:
-                        if count == 0:
-                            count += 1
-                            continue
-                        addr = int(m.group(1), 16)
-                        try:
-                            return read_int_from_memory(addr)
-                        except gdb.MemoryError:
-                            pass
+                x = KernelAddressHeuristicFinderUtil.arm32_ldr_reg_const(res, reg=r"r\d+", skip=1)
+            if x:
+                return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_modprobe_path():
         # plan 1 (directly)
-        modprobe_path = get_ksymaddr("modprobe_path")
-        if modprobe_path:
-            return modprobe_path
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("modprobe_path")
+            if x:
+                return x
 
-        # plan 2
-        modprobe = get_ksysctl("kernel.modprobe")
-        if modprobe:
-            return modprobe
+        # plan 2 (from ksysctl)
+        if KernelAddressHeuristicFinder.USE_KSYSCTL:
+            x = get_ksysctl("kernel.modprobe")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 3 (available v3.11-rc1 or later)
+        # plan 3 (available v3.11 or later)
         if kversion and kversion >= "3.11":
-            request_module = get_ksymaddr("__request_module")
-            if request_module:
-                res = gdb.execute("x/40i {:#x}".format(request_module), to_string=True)
+            addr = get_ksymaddr("__request_module")
+            if addr:
+                res = gdb.execute("x/40i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"BYTE PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_byte_ptr(res)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"BYTE PTR ds:(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x86_byte_ptr_ds(res)
                 elif is_arm64():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"ldrb\s+\S+,\s*\[\S+,\s*#(\d+)\]", line)
-                            if m:
-                                return base + int(m.group(1), 0)
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add_ldrb(res)
                 elif is_arm32():
-                    addr = 0
-                    for line in res.splitlines():
-                        m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
-                        if m:
-                            addr_high = addr & 0xffff0000
-                            addr = addr_high | int(m.group(1), 16)
-                            continue
-                        m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
-                        if m:
-                            addr_low = addr & 0xffff
-                            addr = (int(m.group(1), 16) << 16) | addr_low
-                            continue
-                        if "ldrb" in line:
-                            return addr
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt_then_ldrb(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_poweroff_cmd():
         # plan 1 (directly)
-        poweroff_cmd = get_ksymaddr("poweroff_cmd")
-        if poweroff_cmd:
-            return poweroff_cmd
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("poweroff_cmd")
+            if x:
+                return x
 
-        # plan 2
-        poweroff_cmd = get_ksysctl("kernel.poweroff_cmd")
-        if poweroff_cmd:
-            return poweroff_cmd
+        # plan 2 (from ksysctl)
+        if KernelAddressHeuristicFinder.USE_KSYSCTL:
+            x = get_ksysctl("kernel.poweroff_cmd")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 3 (available v4.1-rc1 or later)
+        # plan 3 (available v4.1 or later)
         if kversion and kversion >= "4.1":
-            poweroff_work_func = get_ksymaddr("poweroff_work_func")
-            if poweroff_work_func:
-                res = gdb.execute("x/20i {:#x}".format(poweroff_work_func), to_string=True)
+            addr = get_ksymaddr("poweroff_work_func")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+rdi\s*,\s*(0x\w+)", line) # search run_cmd
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+rsi\s*,\s*(0x\w+)", line) # search argv_split
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "rdi") or \
+                        KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "rsi")
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+e[a-d]x\s*,\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "e[a-d]x")
                 elif is_arm64():
-                    bases = {}
-                    add1time = {}
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
-                        if m:
-                            dstreg = m.group(1)
-                            srcreg = m.group(2)
-                            v = int(m.group(3), 16)
-                            if srcreg in add1time:
-                                return add1time[srcreg] + v
-                            if srcreg in bases:
-                                add1time[dstreg] = bases[srcreg] + v
-                                continue
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add_add(res)
                 elif is_arm32():
-                    addr = 0
-                    for line in res.splitlines():
-                        m = re.search(r"ldr.*[;@]\s*(0x\S+)", line)
-                        if m:
-                            addr = int(m.group(1), 16)
-                            try:
-                                return read_int_from_memory(addr)
-                            except gdb.MemoryError:
-                                pass
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_reboot_cmd():
         # plan 1 (directly)
-        reboot_cmd = get_ksymaddr("reboot_cmd")
-        if reboot_cmd:
-            return reboot_cmd
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("reboot_cmd")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v4.1-rc1 or later)
+        # plan 2 (available v4.1 or later)
         if kversion and kversion >= "4.1":
-            reboot_work_func = get_ksymaddr("reboot_work_func")
-            if reboot_work_func:
-                res = gdb.execute("x/10i {:#x}".format(reboot_work_func), to_string=True)
+            addr = get_ksymaddr("reboot_work_func")
+            if addr:
+                res = gdb.execute("x/10i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+rdi\s*,\s*(0x\w+)", line) # search run_cmd
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+rsi\s*,\s*(0x\w+)", line) # search argv_split
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "rdi") or \
+                        KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "rsi")
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+e[a-d]x\s*,\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "e[a-d]x")
                 elif is_arm64():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
-                            if m:
-                                return base + int(m.group(1), 16)
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
                 elif is_arm32():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                return base + (int(m.group(1), 16) << 16)
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_core_pattern():
         # plan 1 (directly)
-        core_pattern = get_ksymaddr("core_pattern")
-        if core_pattern:
-            return core_pattern
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("core_pattern")
+            if x:
+                return x
 
-        # plan 2
-        core_pattern = get_ksysctl("kernel.core_pattern")
-        if core_pattern:
-            return core_pattern
+        # plan 2 (from ksysctl)
+        if KernelAddressHeuristicFinder.USE_KSYSCTL:
+            x = get_ksysctl("kernel.core_pattern")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 3 (available v3.6-rc1 or later)
+        # plan 3 (available v3.6 or later)
         if kversion and kversion >= "3.6":
-            validate_coredump_safety = get_ksymaddr("validate_coredump_safety.part.0")
-            if validate_coredump_safety:
-                res = gdb.execute("x/10i {:#x}".format(validate_coredump_safety), to_string=True)
+            addr = get_ksymaddr("validate_coredump_safety.part.0")
+            if addr:
+                res = gdb.execute("x/10i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"BYTE PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_byte_ptr(res)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"BYTE PTR ds:(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x86_byte_ptr_ds(res)
                 elif is_arm64():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"ldrb\s+\S+,\s*\[\S+,\s*#(\d+)\]", line)
-                            if m:
-                                return base + int(m.group(1), 0)
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_ldrb(res)
                 elif is_arm32():
-                    addr = 0
-                    for line in res.splitlines():
-                        m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
-                        if m:
-                            addr_high = addr & 0xffff0000
-                            addr = addr_high | int(m.group(1), 16)
-                            continue
-                        m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
-                        if m:
-                            addr_low = addr & 0xffff
-                            addr = (int(m.group(1), 16) << 16) | addr_low
-                            continue
-                        if "ldrb" in line:
-                            return addr
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt_then_ldrb(res)
+                if x:
+                    return x
 
-        # plan 3 (available v3.6-rc1 or later)
+        # plan 3 (available v3.6 or later)
         if kversion and kversion >= "3.6":
-            proc_dostring_coredump = get_ksymaddr("proc_dostring_coredump")
-            if proc_dostring_coredump:
-                res = gdb.execute("x/50i {:#x}".format(proc_dostring_coredump), to_string=True)
+            addr = get_ksymaddr("proc_dostring_coredump")
+            if addr:
+                res = gdb.execute("x/50i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"BYTE PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_byte_ptr(res)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"BYTE PTR ds:(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x86_byte_ptr_ds(res)
                 elif is_arm64():
-                    base = None
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                        if m:
-                            base = int(m.group(1), 16)
-                            continue
-                        if base:
-                            m = re.search(r"ldrb\s+\S+,\s*\[\S+,\s*#(\d+)\]", line)
-                            if m:
-                                return base + int(m.group(1), 0)
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_ldrb(res)
                 elif is_arm32():
-                    addr = 0
-                    for line in res.splitlines():
-                        m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
-                        if m:
-                            addr_high = addr & 0xffff0000
-                            addr = addr_high | int(m.group(1), 16)
-                            continue
-                        m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
-                        if m:
-                            addr_low = addr & 0xffff
-                            addr = (int(m.group(1), 16) << 16) | addr_low
-                            continue
-                        if "ldrb" in line:
-                            return addr
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt_then_ldrb(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_phys_base():
+        if not is_x86_64():
+            return
+
         # plan 1 (directly)
-        phys_base = get_ksymaddr("phys_base")
-        if phys_base:
-            return phys_base
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("phys_base")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
         # plan 2 (available v2.6.24 or later)
         if kversion and kversion >= "2.6.24":
-            if is_x86_64():
-                secondary_startup_64 = get_ksymaddr("secondary_startup_64")
-                if secondary_startup_64:
-                    res = gdb.execute("x/20i {:#x}".format(secondary_startup_64), to_string=True)
-                    for line in res.splitlines():
-                        m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            return v
+            addr = get_ksymaddr("secondary_startup_64")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
+                x = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
@@ -46638,11 +46500,12 @@ class KernelAddressHeuristicFinder:
             return None
 
         # plan 1 (directly)
-        page_offset_base = get_ksymaddr("page_offset_base")
-        if page_offset_base:
-            return page_offset_base
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("page_offset_base")
+            if x:
+                return x
 
-        # plan 2 (from result of pagewalk)
+        # plan 2 (from pagewalk)
         kinfo = KernelbaseCommand.get_kernel_base()
         page_offset_base_raw = kinfo.maps[0][0]
         ro_data = read_memory(kinfo.ro_base, kinfo.ro_size)
@@ -46660,6 +46523,7 @@ class KernelAddressHeuristicFinder:
         if not is_x86_64():
             return None
 
+        # plan 1 (from get_page_offset_base)
         page_offset_base = KernelAddressHeuristicFinder.get_page_offset_base()
         if page_offset_base:
             return read_int_from_memory(page_offset_base)
@@ -46672,11 +46536,12 @@ class KernelAddressHeuristicFinder:
             return None
 
         # plan 1 (directly)
-        vmalloc_base = get_ksymaddr("vmalloc_base")
-        if vmalloc_base:
-            return read_int_from_memory(vmalloc_base)
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            vmalloc_base = get_ksymaddr("vmalloc_base")
+            if vmalloc_base:
+                return read_int_from_memory(vmalloc_base)
 
-        # plan 2 (from result of get_page_offset_base)
+        # plan 2 (from get_page_offset_base)
         page_offset_base = KernelAddressHeuristicFinder.get_page_offset_base()
         if page_offset_base:
             vmalloc_base = page_offset_base - current_arch.ptrsize
@@ -46690,17 +46555,18 @@ class KernelAddressHeuristicFinder:
             return None
 
         # plan 1 (directly)
-        vmemmap_base = get_ksymaddr("vmemmap_base")
-        if vmemmap_base:
-            return read_int_from_memory(vmemmap_base)
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            vmemmap_base = get_ksymaddr("vmemmap_base")
+            if vmemmap_base:
+                return read_int_from_memory(vmemmap_base)
 
-        # plan 2 (from result of get_page_offset_base)
+        # plan 2 (from get_page_offset_base)
         page_offset_base = KernelAddressHeuristicFinder.get_page_offset_base()
         if page_offset_base:
             vmemmap_base = page_offset_base - current_arch.ptrsize * 2
             return read_int_from_memory(vmemmap_base)
 
-        # plan 3 (from result of slub-dump)
+        # plan 3 (from slub-dump)
         if not from_slub_dump:
             allocator = KernelChecksecCommand.get_slab_type()
             if allocator == "SLUB":
@@ -46717,10 +46583,10 @@ class KernelAddressHeuristicFinder:
                         page = int(Color.remove_color(lines[i]).split()[-1], 16)
                         vaddr = int(Color.remove_color(lines[i + 1]).split()[-1], 16)
                         ret = gdb.execute("monitor gva2gpa {:#x}".format(vaddr), to_string=True)
-                        r = re.search(r"gpa: (0x\S+)", ret)
+                        r = re.search(r"gpa: (0x\w+)", ret)
                         if not r:
                             ret = gdb.execute("v2p {:#x}".format(vaddr), to_string=True)
-                            r = re.search(r"Virt: 0x\S+ -> Phys: (0x\S+)", ret)
+                            r = re.search(r"Virt: 0x\w+ -> Phys: (0x\w+)", ret)
                         if r:
                             paddr = int(r.group(1), 16)
                             return page - (paddr >> 6)
@@ -46733,95 +46599,64 @@ class KernelAddressHeuristicFinder:
             return
 
         # plan 1 (directly)
-        clocksource_tsc = get_ksymaddr("clocksource_tsc")
-        if clocksource_tsc:
-            return clocksource_tsc
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("clocksource_tsc")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
         # plan 2 (available v4.16.8 or later)
         if kversion and kversion >= "4.16.8":
-            mark_tsc_unstable_cold = get_ksymaddr("mark_tsc_unstable.part.0") or get_ksymaddr("mark_tsc_unstable.cold")
-            if mark_tsc_unstable_cold:
-                res = gdb.execute("x/20i {:#x}".format(mark_tsc_unstable_cold), to_string=True)
-                count = 0
-                for line in res.splitlines():
-                    if is_x86_64():
-                        m = re.search(r"mov\s+rdi\s*,\s*(0x\w+)", line)
-                        if m:
-                            if count == 2:
-                                v = int(m.group(1), 16) & 0xffffffffffffffff
-                                return v
-                            count += 1
-                    elif is_x86_32():
-                        m = re.search(r"mov\s+eax\s*,\s*(0x\w+)", line)
-                        if m:
-                            if count == 1:
-                                v = int(m.group(1), 16) & 0xffffffff
-                                return v
-                            count += 1
+            addr = get_ksymaddr("mark_tsc_unstable.part.0") or get_ksymaddr("mark_tsc_unstable.cold")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
+                if is_x86_64():
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "rdi", skip=2)
+                elif is_x86_32():
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "eax", skip=1)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_clocksource_list():
         # plan 1 (directly)
-        clocksource_list = get_ksymaddr("clocksource_list")
-        if clocksource_list:
-            return clocksource_list
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("clocksource_list")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v2.6.21-rc1 or later / v2.6.32 or later)
+        # plan 2 (available v2.6.21 or later / v2.6.32 or later)
         if kversion and kversion >= "2.6.21":
-            clocksource_enqueue_resume = get_ksymaddr("clocksource_enqueue") or get_ksymaddr("clocksource_resume")
-            if clocksource_enqueue_resume:
-                res = gdb.execute("x/20i {:#x}".format(clocksource_enqueue_resume), to_string=True)
+            addr = get_ksymaddr("clocksource_enqueue") or get_ksymaddr("clocksource_resume")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            return v
+                    x = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"DWORD PTR ds:(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            return v
+                    x = KernelAddressHeuristicFinderUtil.x86_dword_ptr_ds(res)
                 elif is_arm64():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
-                            if m:
-                                return base + int(m.group(1), 0)
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
                 elif is_arm32():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                return base + (int(m.group(1), 16) << 16)
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_ptmx_fops():
         # plan 1 (directly)
-        ptmx_fops = get_ksymaddr("ptmx_fops")
-        if ptmx_fops:
-            return ptmx_fops
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("ptmx_fops")
+            if x:
+                return x
 
-        # plan 2
+        # plan 2 (from kcdev)
         res = gdb.execute("kcdev --quiet --no-pager", to_string=True)
         for line in res.splitlines():
             if "/dev/ptmx" not in line:
@@ -46836,385 +46671,199 @@ class KernelAddressHeuristicFinder:
     @switch_to_intel_syntax
     def get_n_tty_ops():
         # plan 1 (directly)
-        n_tty_ops = get_ksymaddr("n_tty_ops")
-        if n_tty_ops:
-            return n_tty_ops
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("n_tty_ops")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v4.6-rc1 or later)
+        # plan 2 (available v4.6 or later)
         if kversion and kversion >= "4.6":
-            n_tty_inherit_ops = get_ksymaddr("n_tty_inherit_ops")
-            if n_tty_inherit_ops:
-                res = gdb.execute("x/20i {:#x}".format(n_tty_inherit_ops), to_string=True)
+            addr = get_ksymaddr("n_tty_inherit_ops")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+r\S+,\s*(0x\S+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r",\s*DWORD PTR \[.*([+-]0x\S+)\]", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+\S+,\s*(0x[0-9a-f]{8})", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x86_dword_ptr(res) or \
+                        KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
                 elif is_arm64():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
-                            if m:
-                                return base + int(m.group(1), 0)
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
                 elif is_arm32():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                return base + (int(m.group(1), 16) << 16)
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_tty_ldiscs():
         # plan 1 (directly)
-        tty_ldiscs = get_ksymaddr("tty_ldiscs")
-        if tty_ldiscs:
-            return tty_ldiscs
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("tty_ldiscs")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v2.6.37-rc2 or later)
+        # plan 2 (available v2.6.37 or later)
         if kversion and kversion >= "2.6.37":
-            tty_register_ldisc = get_ksymaddr("tty_register_ldisc")
-            if tty_register_ldisc:
-                res = gdb.execute("x/20i {:#x}".format(tty_register_ldisc), to_string=True)
+            addr = get_ksymaddr("tty_register_ldisc")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"QWORD PTR \[.*\*8([-+]0x\S+)\]", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_qword_ptr_array_base(res)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"DWORD PTR \[.*\*4([+-]0x\S+)\]", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x86_dword_ptr_array_base(res)
                 elif is_arm64():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
-                            if m:
-                                return base + int(m.group(1), 0) + 8
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res) + 8
                 elif is_arm32():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                return base + (int(m.group(1), 16) << 16) + 4
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res) + 4
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_sysctl_table_root():
         # plan 1 (directly)
-        sysctl_table_root = get_ksymaddr("sysctl_table_root")
-        if sysctl_table_root:
-            return sysctl_table_root
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("sysctl_table_root")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v3.4-rc1 or later)
+        # plan 2 (available v3.4 or later)
         if kversion and kversion >= "3.4":
-            register_sysctl = get_ksymaddr("register_sysctl") or get_ksymaddr("register_sysctl_sz")
-            if register_sysctl:
-                res = gdb.execute("x/20i {:#x}".format(register_sysctl), to_string=True)
+            addr = get_ksymaddr("register_sysctl") or get_ksymaddr("register_sysctl_sz")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+rdi\s*,\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, reg="rdi")
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+e[a-d]x\s*,\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "e[a-d]x")
                 elif is_arm64():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
-                        if m:
-                            srcreg = m.group(2)
-                            v = int(m.group(3), 16)
-                            if srcreg in bases:
-                                return bases[srcreg] + v
-                            continue
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
                 elif is_arm32():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                return base + (int(m.group(1), 16) << 16)
-                    for line in res.splitlines():
-                        m = re.search(r"ldr\s+r0,.*[;@]\s*(0x\S+)", line)
-                        if m:
-                            addr = int(m.group(1), 16)
-                            try:
-                                return read_int_from_memory(addr)
-                            except gdb.MemoryError:
-                                pass
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res) or \
+                        KernelAddressHeuristicFinderUtil.arm32_ldr_reg_const(res, "r0")
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_selinux_state():
         # plan 1 (directly)
-        selinux_state = get_ksymaddr("selinux_state")
-        if selinux_state:
-            return selinux_state
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("selinux_state")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v5.0-rc1 or later)
+        # plan 2 (available v5.0 or later)
         if kversion and kversion >= "5.0":
-            show_sid = get_ksymaddr("show_sid")
-            if show_sid:
-                res = gdb.execute("x/20i {:#x}".format(show_sid), to_string=True)
-                if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+rdi\s*,\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
-                elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+e[a-d]x\s*,\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
-                elif is_arm64():
+            addr = get_ksymaddr("show_sid")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
+                if is_arm64():
                     bases = {}
                     for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                        m = re.search(r"adrp\s+(\w+),\s*(0x\w+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
+                        m = re.search(r"add\s+(\w+),\s*(\w+),\s*#(0x\w+)", line)
                         if m:
                             dstreg = m.group(1)
                             srcreg = m.group(2)
                             v = int(m.group(3), 16)
                             if srcreg in bases:
                                 if dstreg == "x0":
-                                    return bases[srcreg] + v
+                                    return align_address(bases[srcreg] + v)
                                 else:
                                     bases[dstreg] = bases[srcreg] + v
                             continue
-                elif is_arm32():
-                    for line in res.splitlines():
-                        m = re.search(r"ldr\s+r0,.*[;@]\s*(0x\S+)", line)
-                        if m:
-                            addr = int(m.group(1), 16)
-                            try:
-                                return read_int_from_memory(addr)
-                            except gdb.MemoryError:
-                                pass
+                else:
+                    if is_x86_64():
+                        x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, reg="rdi")
+                    elif is_x86_32():
+                        x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "e[a-d]x")
+                    elif is_arm32():
+                        x = KernelAddressHeuristicFinderUtil.arm32_ldr_reg_const(res, "r0")
+                    if x:
+                        return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_apparmor_enabled():
         # plan 1 (directly)
-        apparmor_enabled = get_ksymaddr("apparmor_enabled")
-        if apparmor_enabled:
-            return apparmor_enabled
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("apparmor_enabled")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v4.12-rc1 or later)
+        # plan 2 (available v4.12 or later)
         if kversion and kversion >= "4.12":
-            param_get_aauint = get_ksymaddr("param_get_aauint")
-            if param_get_aauint:
-                res = gdb.execute("x/20i {:#x}".format(param_get_aauint), to_string=True)
+            addr = get_ksymaddr("param_get_aauint")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            return v
+                    x = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"ds:(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            return v
+                    x = KernelAddressHeuristicFinderUtil.x86_noptr_ds(res)
                 elif is_arm64():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 0)
-                            if reg in bases:
-                                return bases[reg] + v
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_ldr(res)
                 elif is_arm32():
-                    bases = {}
-                    add1time = {}
-                    for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 16) << 16
-                            if reg in bases:
-                                add1time[reg] = bases[reg] + v
-                                continue
-                        m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 0)
-                            if reg in add1time:
-                                return add1time[reg] + v
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt_ldr(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_apparmor_initialized():
         # plan 1 (directly)
-        apparmor_initialized = get_ksymaddr("apparmor_initialized")
-        if apparmor_initialized:
-            return apparmor_initialized
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("apparmor_initialized")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v4.12-rc1 or later)
+        # plan 2 (available v4.12 or later)
         if kversion and kversion >= "4.12":
-            param_get_aauint = get_ksymaddr("param_get_aauint")
-            if param_get_aauint:
-                res = gdb.execute("x/20i {:#x}".format(param_get_aauint), to_string=True)
+            addr = get_ksymaddr("param_get_aauint")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    count = 0
-                    for line in res.splitlines():
-                        m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if count == 1:
-                                return v
-                            count += 1
+                    x = KernelAddressHeuristicFinderUtil.x64_dword_ptr(res, skip=1)
                 elif is_x86_32():
-                    count = 0
-                    for line in res.splitlines():
-                        m = re.search(r"ds:(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if count == 1:
-                                return v
-                            count += 1
+                    x = KernelAddressHeuristicFinderUtil.x86_noptr_ds(res, skip=1)
                 elif is_arm64():
-                    bases = {}
-                    count = 0
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 0)
-                            if reg in bases:
-                                if count == 1:
-                                    return bases[reg] + v
-                                count += 1
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_ldr(res, skip=1)
                 elif is_arm32():
-                    bases = {}
-                    count = 0
-                    for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 16) << 16
-                            if reg in bases:
-                                if count == 1:
-                                    return bases[reg] + v
-                                count += 1
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res, skip=1)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_tomoyo_enabled():
         # plan 1 (directly)
-        tomoyo_enabled = get_ksymaddr("tomoyo_enabled")
-        if tomoyo_enabled:
-            return tomoyo_enabled
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("tomoyo_enabled")
+            if x:
+                return x
 
         # plan 2 nothing
         return None
@@ -47223,526 +46872,371 @@ class KernelAddressHeuristicFinder:
     @switch_to_intel_syntax
     def get_mmap_min_addr():
         # plan 1 (directly)
-        mmap_min_addr = get_ksymaddr("mmap_min_addr")
-        if mmap_min_addr:
-            return mmap_min_addr
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("mmap_min_addr")
+            if x:
+                return x
 
-        # plan 2
-        mmap_min_addr = get_ksysctl("vm.mmap_min_addr")
-        if mmap_min_addr:
-            return mmap_min_addr
+        # plan 2 (from ksysctl)
+        if KernelAddressHeuristicFinder.USE_KSYSCTL:
+            x = get_ksysctl("vm.mmap_min_addr")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
         # plan 3 (available v4.19.27 or later)
         if kversion and kversion >= "4.19.27":
-            expand_downwards = get_ksymaddr("expand_downwards")
-            if expand_downwards:
-                res = gdb.execute("x/20i {:#x}".format(expand_downwards), to_string=True)
+            addr = get_ksymaddr("expand_downwards")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"ds:(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x86_noptr_ds(res)
                 elif is_arm64():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"ldr\s+\S+,\s*\[\S+,\s*#(\d+)\]", line)
-                            if m:
-                                return base + int(m.group(1), 0)
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_ldr(res)
                 elif is_arm32():
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"movw.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"movt.*[;@]\s*(0x\S+)", line)
-                            if m:
-                                return base + (int(m.group(1), 16) << 16)
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_sysctl_unprivileged_userfaultfd():
         # plan 1 (directly)
-        sysctl_unprivileged_userfaultfd = get_ksymaddr("sysctl_unprivileged_userfaultfd")
-        if sysctl_unprivileged_userfaultfd:
-            return sysctl_unprivileged_userfaultfd
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("sysctl_unprivileged_userfaultfd")
+            if x:
+                return x
 
-        # plan 2
-        unprivileged_userfaultfd = get_ksysctl("vm.unprivileged_userfaultfd")
-        if unprivileged_userfaultfd:
-            return unprivileged_userfaultfd
+        # plan 2 (from ksysctl)
+        if KernelAddressHeuristicFinder.USE_KSYSCTL:
+            x = get_ksysctl("vm.unprivileged_userfaultfd")
+            if x:
+                return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_sysctl_unprivileged_bpf_disabled():
         # plan 1 (directly)
-        sysctl_unprivileged_bpf_disabled = get_ksymaddr("sysctl_unprivileged_bpf_disabled")
-        if sysctl_unprivileged_bpf_disabled:
-            return sysctl_unprivileged_bpf_disabled
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("sysctl_unprivileged_bpf_disabled")
+            if x:
+                return x
 
-        # plan 2
-        unprivileged_bpf_disabled = get_ksysctl("kernel.unprivileged_bpf_disabled")
-        if unprivileged_bpf_disabled:
-            return unprivileged_bpf_disabled
+        # plan 2 (from ksysctl)
+        if KernelAddressHeuristicFinder.USE_KSYSCTL:
+            x = get_ksysctl("kernel.unprivileged_bpf_disabled")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
         # plan 3 (available v4.9.91 ~ v5.18.19)
         if kversion and kversion >= "4.9.91" and kversion < "5.19":
-            __do_sys_bpf = get_ksymaddr("__do_sys_bpf")
-            if __do_sys_bpf:
-                res = gdb.execute("x/20i {:#x}".format(__do_sys_bpf), to_string=True)
+            addr = get_ksymaddr("__do_sys_bpf")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_dword_ptr(res)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"ds:(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x86_noptr_ds(res)
                 elif is_arm64():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 0)
-                            if reg in bases:
-                                return bases[reg] + v
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_ldr(res)
                 elif is_arm32():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 16) << 16
-                            if reg in bases:
-                                return bases[reg] + v
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_kptr_restrict():
         # plan 1 (directly)
-        kptr_restrict = get_ksymaddr("kptr_restrict")
-        if kptr_restrict:
-            return kptr_restrict
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("kptr_restrict")
+            if x:
+                return x
 
-        # plan 2
-        kptr_restrict = get_ksysctl("kernel.kptr_restrict")
-        if kptr_restrict:
-            return kptr_restrict
+        # plan 2 (from ksysctl)
+        if KernelAddressHeuristicFinder.USE_KSYSCTL:
+            x = get_ksysctl("kernel.kptr_restrict")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 3 (available v4.15-rc1 or later)
+        # plan 3 (available v4.15 or later)
         if kversion and kversion >= "4.15":
-            kallsyms_show_value = get_ksymaddr("kallsyms_show_value")
-            if kallsyms_show_value:
-                res = gdb.execute("x/20i {:#x}".format(kallsyms_show_value), to_string=True)
+            addr = get_ksymaddr("kallsyms_show_value")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_dword_ptr(res)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"ds:(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x86_noptr_ds(res)
                 elif is_arm64():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 0)
-                            if reg in bases:
-                                return bases[reg] + v
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_ldr(res)
                 elif is_arm32():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 16) << 16
-                            if reg in bases:
-                                return bases[reg] + v
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_sysctl_perf_event_paranoid():
         # plan 1 (directly)
-        sysctl_perf_event_paranoid = get_ksymaddr("sysctl_perf_event_paranoid")
-        if sysctl_perf_event_paranoid:
-            return sysctl_perf_event_paranoid
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("sysctl_perf_event_paranoid")
+            if x:
+                return x
 
-        # plan 2
-        perf_event_paranoid = get_ksysctl("kernel.perf_event_paranoid")
-        if perf_event_paranoid:
-            return perf_event_paranoid
+        # plan 2 (from ksysctl)
+        if KernelAddressHeuristicFinder.USE_KSYSCTL:
+            x = get_ksysctl("kernel.perf_event_paranoid")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 3 (available v4.15-rc1 or later)
+        # plan 3 (available v4.15 or later)
         if kversion and kversion >= "4.15":
-            kallsyms_show_value = get_ksymaddr("kallsyms_show_value")
-            if kallsyms_show_value:
-                res = gdb.execute("x/20i {:#x}".format(kallsyms_show_value), to_string=True)
+            addr = get_ksymaddr("kallsyms_show_value")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    count = 0
-                    for line in res.splitlines():
-                        m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                count += 1
-                                if count == 2:
-                                    return v
+                    x = KernelAddressHeuristicFinderUtil.x64_dword_ptr(res, skip=1)
                 elif is_x86_32():
-                    count = 0
-                    for line in res.splitlines():
-                        m = re.search(r"ds:(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                count += 1
-                                if count == 2:
-                                    return v
+                    x = KernelAddressHeuristicFinderUtil.x86_noptr_ds(res, skip=1)
                 elif is_arm64():
-                    count = 0
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 0)
-                            if reg in bases:
-                                count += 1
-                                if count == 2:
-                                    return bases[reg] + v
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_ldr(res, skip=1)
                 elif is_arm32():
-                    count = 0
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 16) << 16
-                            if reg in bases:
-                                count += 1
-                                if count == 2:
-                                    return bases[reg] + v
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res, skip=1)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_dmesg_restrict():
         # plan 1 (directly)
-        get_dmesg_restrict = get_ksymaddr("dmesg_restrict")
-        if get_dmesg_restrict:
-            return get_dmesg_restrict
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("dmesg_restrict")
+            if x:
+                return x
 
-        # plan 2
-        dmesg_restrict = get_ksysctl("kernel.dmesg_restrict")
-        if dmesg_restrict:
-            return dmesg_restrict
+        # plan 2 (from ksysctl)
+        if KernelAddressHeuristicFinder.USE_KSYSCTL:
+            x = get_ksysctl("kernel.dmesg_restrict")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 3 (available v3.11-rc4 or later)
+        # plan 3 (available v3.11 or later)
         if kversion and kversion >= "3.11":
-            check_syslog_permissions = get_ksymaddr("check_syslog_permissions")
-            if check_syslog_permissions:
-                res = gdb.execute("x/20i {:#x}".format(check_syslog_permissions), to_string=True)
+            addr = get_ksymaddr("check_syslog_permissions")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_dword_ptr(res)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"ds:(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x86_noptr_ds(res)
                 elif is_arm64():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 0)
-                            if reg in bases:
-                                return bases[reg] + v
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_ldr(res)
                 elif is_arm32():
-                    bases = {}
-                    add1time = {}
-                    for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 16) << 16
-                            if reg in bases:
-                                add1time[reg] = bases[reg] + v
-                                continue
-                        m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 0)
-                            if reg in add1time:
-                                return add1time[reg] + v
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt_ldr(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_kexec_load_disabled():
         # plan 1 (directly)
-        kexec_load_disabled = get_ksymaddr("kexec_load_disabled")
-        if kexec_load_disabled:
-            return kexec_load_disabled
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("kexec_load_disabled")
+            if x:
+                return x
 
-        # plan 2
-        kexec_load_disabled = get_ksysctl("kernel.kexec_load_disabled")
-        if kexec_load_disabled:
-            return kexec_load_disabled
+        # plan 2 (from ksysctl)
+        if KernelAddressHeuristicFinder.USE_KSYSCTL:
+            x = get_ksysctl("kernel.kexec_load_disabled")
+            if x:
+                return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_loadpin_enabled():
-        # plan 1
-        loadpin_enabled = get_ksysctl("kernel.loadpin.enabled")
-        if loadpin_enabled:
-            return loadpin_enabled
+        # plan 1 (from ksysctl)
+        if KernelAddressHeuristicFinder.USE_KSYSCTL:
+            x = get_ksysctl("kernel.loadpin.enabled")
+            if x:
+                return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_ptrace_scope():
         # plan 1 (directly)
-        ptrace_scope = get_ksymaddr("ptrace_scope")
-        if ptrace_scope:
-            return ptrace_scope
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("ptrace_scope")
+            if x:
+                return x
 
-        # plan 2
-        ptrace_scope = get_ksysctl("kernel.yama.ptrace_scope")
-        if ptrace_scope:
-            return ptrace_scope
+        # plan 2 (from ksysctl)
+        if KernelAddressHeuristicFinder.USE_KSYSCTL:
+            x = get_ksysctl("kernel.yama.ptrace_scope")
+            if x:
+                return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_vdso_image_64():
+        if not is_x86_64():
+            return None
+
         # plan 1 (directly)
-        vdso_image_64 = get_ksymaddr("vdso_image_64")
-        if vdso_image_64:
-            return vdso_image_64
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("vdso_image_64")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v4.2-rc1 or later)
+        # plan 2 (available v4.2 or later)
         if kversion and kversion >= "4.2":
-            if is_x86_64():
-                arch_setup_additional_pages = get_ksymaddr("arch_setup_additional_pages")
-                if arch_setup_additional_pages:
-                    res = gdb.execute("x/40i {:#x}".format(arch_setup_additional_pages), to_string=True)
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+rdi\s*,\s*(0x\w+)", line)
-                        if m:
-                            p = int(m.group(1), 16)
-                            if is_valid_addr(p):
-                                x = read_int_from_memory(p)
-                                if is_valid_addr(x):
-                                    if read_memory(x, 4) == b"\x7fELF":
-                                        return p
+            addr = get_ksymaddr("arch_setup_additional_pages")
+            if addr:
+                res = gdb.execute("x/40i {:#x}".format(addr), to_string=True)
+                for line in res.splitlines():
+                    m = re.search(r"mov\s+rdi\s*,\s*(0x\w+)", line)
+                    if m:
+                        v = align_address(int(m.group(1), 16))
+                        if is_valid_addr(v):
+                            w = read_int_from_memory(v)
+                            if is_valid_addr(w):
+                                if read_memory(w, 4) == b"\x7fELF":
+                                    return v
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_vdso_image_x32():
+        if not is_x86_64():
+            return None
+
         # plan 1 (directly)
-        vdso_image_x32 = get_ksymaddr("vdso_image_x32")
-        if vdso_image_x32:
-            return vdso_image_x32
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("vdso_image_x32")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v4.2-rc1 or later)
+        # plan 2 (available v4.2 or later)
         if kversion and kversion >= "4.2":
-            if is_x86_64():
-                compat_arch_setup_additional_pages = get_ksymaddr("compat_arch_setup_additional_pages")
-                if compat_arch_setup_additional_pages:
-                    res = gdb.execute("x/20i {:#x}".format(compat_arch_setup_additional_pages), to_string=True)
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+rdi\s*,\s*(0x\w+)", line)
-                        if m:
-                            p = int(m.group(1), 16)
-                            if is_valid_addr(p):
-                                x = read_int_from_memory(p)
-                                if is_valid_addr(x):
-                                    if read_memory(x, 4) == b"\x7fELF":
-                                        if read_memory(x + 0x12, 1) == b"\x3e": # Elf.Machine
-                                            return p
+            addr = get_ksymaddr("compat_arch_setup_additional_pages")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
+                for line in res.splitlines():
+                    m = re.search(r"mov\s+rdi\s*,\s*(0x\w+)", line)
+                    if m:
+                        v = align_address(int(m.group(1), 16))
+                        if is_valid_addr(v):
+                            w = read_int_from_memory(v)
+                            if is_valid_addr(w):
+                                if read_memory(w, 4) == b"\x7fELF":
+                                    if read_memory(w + 0x12, 1) == b"\x3e": # Elf.Machine
+                                        return v
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_vdso_image_32():
+        if not is_x86():
+            return None
+
         # plan 1 (directly)
-        vdso_image_32 = get_ksymaddr("vdso_image_32")
-        if vdso_image_32:
-            return vdso_image_32
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("vdso_image_32")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v4.2-rc1 or later)
+        # plan 2 (available v4.2 or later)
         if kversion and kversion >= "4.2":
             if is_x86_64():
-                compat_arch_setup_additional_pages = get_ksymaddr("compat_arch_setup_additional_pages")
-                if compat_arch_setup_additional_pages:
-                    res = gdb.execute("x/20i {:#x}".format(compat_arch_setup_additional_pages), to_string=True)
+                addr = get_ksymaddr("compat_arch_setup_additional_pages")
+                if addr:
+                    res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                     for line in res.splitlines():
                         m = re.search(r"mov\s+rdi\s*,\s*(0x\w+)", line)
                         if m:
-                            p = int(m.group(1), 16)
-                            if is_valid_addr(p):
-                                x = read_int_from_memory(p)
-                                if is_valid_addr(x):
-                                    if read_memory(x, 4) == b"\x7fELF":
-                                        if read_memory(x + 0x12, 1) == b"\x03": # Elf.Machine
-                                            return p
+                            v = align_address(int(m.group(1), 16))
+                            if is_valid_addr(v):
+                                w = read_int_from_memory(v)
+                                if is_valid_addr(w):
+                                    if read_memory(w, 4) == b"\x7fELF":
+                                        if read_memory(w + 0x12, 1) == b"\x03": # Elf.Machine
+                                            return v
             elif is_x86_32():
-                arch_setup_additional_pages = get_ksymaddr("arch_setup_additional_pages")
-                if arch_setup_additional_pages:
-                    res = gdb.execute("x/20i {:#x}".format(arch_setup_additional_pages), to_string=True)
+                addr = get_ksymaddr("arch_setup_additional_pages")
+                if addr:
+                    res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                     for line in res.splitlines():
                         m = re.search(r"mov\s+eax\s*,\s*(0x\w+)", line)
                         if m:
-                            p = int(m.group(1), 16)
-                            if is_valid_addr(p):
-                                x = read_int_from_memory(p)
-                                if is_valid_addr(x):
-                                    if read_memory(x, 4) == b"\x7fELF":
-                                        return p
+                            v = align_address(int(m.group(1), 16))
+                            if is_valid_addr(v):
+                                w = read_int_from_memory(v)
+                                if is_valid_addr(w):
+                                    if read_memory(w, 4) == b"\x7fELF":
+                                        return v
         return None
 
     @staticmethod
     def get_vdso_info():
+        if not is_arm64():
+            return None
+
         # plan 1 (directly)
-        vdso_info = get_ksymaddr("vdso_info")
-        if vdso_info:
-            return vdso_info
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("vdso_info")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v5.3-rc1 or later)
+        # plan 2 (available v5.3 or later)
         if kversion and kversion >= "5.3":
-            if is_arm64():
-                vdso_init = get_ksymaddr("__vdso_init")
-                if vdso_init:
-                    res = gdb.execute("x/20i {:#x}".format(vdso_init), to_string=True)
-                    base = None
-                    for line in res.splitlines():
-                        if base is None:
-                            m = re.search(r"adrp\s+\S+,\s*(0x\S+)", line)
-                            if m:
-                                base = int(m.group(1), 16)
-                        else:
-                            m = re.search(r"add\s+\S+,\s*\S+,\s*#(0x\S+)", line)
-                            if m:
-                                return base + int(m.group(1), 0)
+            addr = get_ksymaddr("__vdso_init")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
+                x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
     def get_vdso_start():
-        # plan 1 (directly)
-        vdso_start = get_ksymaddr("vdso_start")
-        if vdso_start:
-            return vdso_start
+        if not is_arm32() and not is_arm64():
+            return None
 
-        # plan 2 (get from vdso_info)
+        # plan 1 (directly)
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("vdso_start")
+            if x:
+                return x
+
+        # plan 2 (from vdso_info)
         if is_arm64():
             vdso_info = KernelAddressHeuristicFinder.get_vdso_info()
             if vdso_info and is_valid_addr(vdso_info):
@@ -47755,175 +47249,110 @@ class KernelAddressHeuristicFinder:
 
     @staticmethod
     def get_vdso32_start():
-        # plan 1 (directly)
-        vdso32_start = get_ksymaddr("vdso32_start")
-        if vdso32_start:
-            return vdso32_start
+        if not is_arm64():
+            return None
 
-        # plan 2 (get from vdso_info)
-        if is_arm64():
-            vdso_info = KernelAddressHeuristicFinder.get_vdso_info()
-            vdso_info_2 = vdso_info + current_arch.ptrsize * 6
-            if vdso_info_2 and is_valid_addr(vdso_info_2):
-                vdso_name = read_int_from_memory(vdso_info_2)
-                if is_valid_addr(vdso_name):
-                    if "vdso32" == read_cstring_from_memory(vdso_name):
-                        x = read_int_from_memory(vdso_info_2 + current_arch.ptrsize)
-                        return x
+        # plan 1 (directly)
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("vdso32_start")
+            if x:
+                return x
+
+        # plan 2 (from vdso_info)
+        vdso_info = KernelAddressHeuristicFinder.get_vdso_info()
+        vdso_info_2 = vdso_info + current_arch.ptrsize * 6
+        if vdso_info_2 and is_valid_addr(vdso_info_2):
+            vdso_name = read_int_from_memory(vdso_info_2)
+            if is_valid_addr(vdso_name):
+                if "vdso32" == read_cstring_from_memory(vdso_name):
+                    x = read_int_from_memory(vdso_info_2 + current_arch.ptrsize)
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_file_systems():
         # plan 1 (directly)
-        file_systems = get_ksymaddr("file_systems")
-        if file_systems:
-            return file_systems
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("file_systems")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
         # plan 2 (available v2.5.7 or later)
         if kversion and kversion >= "2.5.7":
-            unregister_filesystem = get_ksymaddr("unregister_filesystem")
-            if unregister_filesystem:
-                res = gdb.execute("x/20i {:#x}".format(unregister_filesystem), to_string=True)
+            addr = get_ksymaddr("unregister_filesystem")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            return v
+                    x = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"ds:(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if v != 0:
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x86_noptr_ds(res)
                 elif is_arm64():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
-                        if m:
-                            srcreg = m.group(2)
-                            v = int(m.group(3), 16)
-                            if srcreg in bases:
-                                return bases[srcreg] + v
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
                 elif is_arm32():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 16) << 16
-                            if reg in bases:
-                                return bases[reg] + v
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_printk_rb_static():
         # plan 1 (directly)
-        printk_rb_static = get_ksymaddr("printk_rb_static")
-        if printk_rb_static:
-            return printk_rb_static
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("printk_rb_static")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v5.15-rc1 or later)
-        if kversion and kversion >= "5.15":
-            kmsg_dump_rewind = get_ksymaddr("kmsg_dump_rewind")
-            if kmsg_dump_rewind:
-                res = gdb.execute("x/30i {:#x}".format(kmsg_dump_rewind), to_string=True)
+        # plan 2 (available v5.13 or later)
+        if kversion and kversion >= "5.13":
+            addr = get_ksymaddr("kmsg_dump_rewind")
+            if addr:
+                res = gdb.execute("x/30i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
-                        if m:
-                            prb = int(m.group(1), 16)
-                            if is_valid_addr(prb):
-                                printk_rb_static = read_int_from_memory(prb)
-                                if is_valid_addr(printk_rb_static):
-                                    return printk_rb_static
+                    x = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res, read_valid=True)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"ds:(0x\w+)", line)
-                        if m:
-                            prb = int(m.group(1), 16)
-                            if is_valid_addr(prb):
-                                printk_rb_static = read_int_from_memory(prb)
-                                if is_valid_addr(printk_rb_static):
-                                    return printk_rb_static
+                    x = KernelAddressHeuristicFinderUtil.x86_noptr_ds(res, read_valid=True)
                 elif is_arm64():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 0)
-                            if reg in bases:
-                                prb = bases[reg] + v
-                                if is_valid_addr(prb):
-                                    printk_rb_static = read_int_from_memory(prb)
-                                    if is_valid_addr(printk_rb_static):
-                                        return printk_rb_static
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_ldr(res, read_valid=True)
                 elif is_arm32():
-                    bases = {}
-                    add1time = {}
-                    for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 16) << 16
-                            if reg in bases:
-                                add1time[reg] = bases[reg] + v
-                                continue
-                        m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 0)
-                            if reg in add1time:
-                                prb = add1time[reg] + v
-                                if is_valid_addr(prb):
-                                    printk_rb_static = read_int_from_memory(prb)
-                                    if is_valid_addr(printk_rb_static):
-                                        return printk_rb_static
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt_ldr(res, read_valid=True)
+                if x:
+                    return read_int_from_memory(x)
+
+        # plan 3 (available v5.10 or later)
+        if kversion and kversion >= "5.10":
+            addr = get_ksymaddr("kmsg_dump_rewind_nolock")
+            if addr:
+                res = gdb.execute("x/30i {:#x}".format(addr), to_string=True)
+                if is_x86_64():
+                    x = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res, read_valid=True)
+                elif is_x86_32():
+                    x = KernelAddressHeuristicFinderUtil.x86_noptr_ds(res, read_valid=True)
+                elif is_arm64():
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_ldr(res, read_valid=True)
+                elif is_arm32():
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt_ldr(res, read_valid=True)
+                if x:
+                    return read_int_from_memory(x)
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_log_first_idx():
         # plan 1 (directly)
-        log_first_idx = get_ksymaddr("log_first_idx")
-        if log_first_idx:
-            return log_first_idx
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("log_first_idx")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v3.11-rc4 or later)
+        # plan 2 (available v3.11 or later)
         if kversion and kversion >= "3.11":
             log_next_idx = KernelAddressHeuristicFinder.get_log_next_idx()
             if log_next_idx:
@@ -47934,44 +47363,45 @@ class KernelAddressHeuristicFinder:
     @switch_to_intel_syntax
     def get_log_next_idx():
         # plan 1 (directly)
-        log_next_idx = get_ksymaddr("log_next_idx")
-        if log_next_idx:
-            return log_next_idx
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("log_next_idx")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v3.11-rc4 or later)
+        # plan 2 (available v3.11 or later)
         if kversion and kversion >= "3.11":
-            kmsg_dump_rewind_nolock = get_ksymaddr("kmsg_dump_rewind_nolock")
-            if kmsg_dump_rewind_nolock:
-                res = gdb.execute("x/20i {:#x}".format(kmsg_dump_rewind_nolock), to_string=True)
+            addr = get_ksymaddr("kmsg_dump_rewind_nolock")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
                     for line in res.splitlines():
                         m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
                         if m:
-                            x = int(m.group(1), 16)
+                            v = align_address(int(m.group(1), 16))
                             continue
                         if "ret" in line:
-                            return x
+                            return v
                 elif is_x86_32():
                     for line in res.splitlines():
                         m = re.search(r"ds:(0x\w+)", line)
                         if m:
-                            x = int(m.group(1), 16)
+                            v = align_address(int(m.group(1), 16))
                             continue
                         if "ret" in line:
-                            return x
+                            return v
                 elif is_arm64():
                     bases = {}
                     add1time = {}
                     for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                        m = re.search(r"adrp\s+(\w+),\s*(0x\w+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
+                        m = re.search(r"add\s+(\w+),\s*(\w+),\s*#(0x\w+)", line)
                         if m:
                             dstreg = m.group(1)
                             srcreg = m.group(2)
@@ -47979,56 +47409,55 @@ class KernelAddressHeuristicFinder:
                             if srcreg in bases:
                                 add1time[dstreg] = bases[srcreg] + v
                                 continue
-                        m = re.search(r"ldr\s+w\d+,\s*\[(\S+),\s*#(\d+)\]", line)
+                        m = re.search(r"ldr\s+w\d+,\s*\[(\w+),\s*#(\d+)\]", line)
                         if m:
                             srcreg = m.group(1)
                             v = int(m.group(2), 0)
                             if srcreg in add1time:
-                                x = add1time[srcreg] + v
-                                if is_valid_addr(x):
-                                    y = u32(read_memory(x, 4))
-                                    if y:
-                                        return x
+                                w = align_address(add1time[srcreg] + v)
+                                if is_valid_addr(w):
+                                    if u32(read_memory(w, 4)):
+                                        return w
                 elif is_arm32():
                     bases = {}
                     add1time = {}
                     for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
+                        m = re.search(r"movw\s+(\w+),.+[;@]\s*(0x\w+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
+                        m = re.search(r"movt\s+(\w+),.+[;@]\s*(0x\w+)", line)
                         if m:
                             reg = m.group(1)
                             v = int(m.group(2), 16) << 16
                             if reg in bases:
                                 add1time[reg] = bases[reg] + v
                                 continue
-                        m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
+                        m = re.search(r"ldr\s+\w+,\s*\[(\w+),\s*#(\d+)\]", line)
                         if m:
                             reg = m.group(1)
                             v = int(m.group(2), 0)
                             if reg in add1time:
-                                x = add1time[reg] + v
-                                if is_valid_addr(x):
-                                    y = u32(read_memory(x, 4))
-                                    if y:
-                                        return x
+                                w = align_address(add1time[reg] + v)
+                                if is_valid_addr(w):
+                                    if u32(read_memory(w, 4)):
+                                        return w
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get___log_buf():
         # plan 1 (directly)
-        __log_buf = get_ksymaddr("__log_buf")
-        if __log_buf:
-            return __log_buf
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("__log_buf")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v3.11-rc4 or later)
+        # plan 2 (available v3.11 or later)
         if kversion and kversion >= "3.11":
             log_buf_len = KernelAddressHeuristicFinder.get_log_buf_len()
             if log_buf_len:
@@ -48047,97 +47476,98 @@ class KernelAddressHeuristicFinder:
     @switch_to_intel_syntax
     def get_log_buf_len():
         # plan 1 (directly)
-        log_buf_len = get_ksymaddr("log_buf_len")
-        if log_buf_len:
-            return log_buf_len
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("log_buf_len")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v3.17-rc1 or later)
+        # plan 2 (available v3.17 or later)
         if kversion and kversion >= "3.17":
-            log_buf_len_get = get_ksymaddr("log_buf_len_get")
-            if log_buf_len_get:
-                res = gdb.execute("x/10i {:#x}".format(log_buf_len_get), to_string=True)
+            addr = get_ksymaddr("log_buf_len_get")
+            if addr:
+                res = gdb.execute("x/10i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
                     for line in res.splitlines():
                         m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
                         if m:
-                            x = int(m.group(1), 16)
-                            if is_valid_addr(x):
-                                y = u32(read_memory(x, 4))
-                                if y and (y & 0xfff) == 0:
-                                    return x
+                            v = align_address(int(m.group(1), 16))
+                            if is_valid_addr(v):
+                                w = u32(read_memory(v, 4))
+                                if w and (w & 0xfff) == 0:
+                                    return v
                 elif is_x86_32():
                     for line in res.splitlines():
                         m = re.search(r"ds:(0x\w+)", line)
                         if m:
-                            x = int(m.group(1), 16)
-                            if is_valid_addr(x):
-                                y = u32(read_memory(x, 4))
-                                if y and (y & 0xfff) == 0:
-                                    return x
+                            v = align_address(int(m.group(1), 16))
+                            if is_valid_addr(v):
+                                w = u32(read_memory(v, 4))
+                                if w and (w & 0xfff) == 0:
+                                    return v
                 elif is_arm64():
                     bases = {}
                     for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                        m = re.search(r"adrp\s+(\w+),\s*(0x\w+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
+                        m = re.search(r"ldr\s+\w+,\s*\[(\w+),\s*#(\d+)\]", line)
                         if m:
                             reg = m.group(1)
                             v = int(m.group(2), 0)
                             if reg in bases:
-                                x = bases[reg] + v
-                                if is_valid_addr(x):
-                                    y = u32(read_memory(x, 4))
-                                    if y and (y & 0xfff) == 0:
-                                        return x
+                                w = align_address(bases[reg] + v)
+                                if is_valid_addr(w):
+                                    u = u32(read_memory(w, 4))
+                                    if u and (u & 0xfff) == 0:
+                                        return w
                 elif is_arm32():
                     bases = {}
                     for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
+                        m = re.search(r"movw\s+(\w+),.+[;@]\s*(0x\w+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
+                        m = re.search(r"movt\s+(\w+),.+[;@]\s*(0x\w+)", line)
                         if m:
                             reg = m.group(1)
                             v = int(m.group(2), 16) << 16
                             if reg in bases:
-                                x = bases[reg] + v
+                                x = align_address(bases[reg] + v)
                                 if is_valid_addr(x):
                                     y = u32(read_memory(x, 4))
                                     if y and (y & 0xfff) == 0:
                                         return x
 
-        # plan 3 (available v3.11-rc4 or later)
+        # plan 3 (available v3.11 or later)
         if kversion and kversion >= "3.11":
-            do_syslog = get_ksymaddr("do_syslog")
-            if do_syslog:
-                res = gdb.execute("x/100i {:#x}".format(do_syslog), to_string=True)
+            addr = get_ksymaddr("do_syslog")
+            if addr:
+                res = gdb.execute("x/100i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
                     for line in res.splitlines():
                         m = re.search(r"DWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
                         if m:
-                            x = int(m.group(1), 16)
-                            if is_valid_addr(x):
-                                y = u32(read_memory(x, 4))
-                                if y and (y & 0xfff) == 0:
-                                    return x
+                            v = align_address(int(m.group(1), 16))
+                            if is_valid_addr(v):
+                                w = u32(read_memory(v, 4))
+                                if w and (w & 0xfff) == 0:
+                                    return v
                 elif is_x86_32():
                     for line in res.splitlines():
                         m = re.search(r"ds:(0x\w+)", line)
                         if m:
-                            x = int(m.group(1), 16)
-                            if is_valid_addr(x):
-                                y = u32(read_memory(x, 4))
-                                if y and (y & 0xfff) == 0:
-                                    return x
+                            v = align_address(int(m.group(1), 16))
+                            if is_valid_addr(v):
+                                w = u32(read_memory(v, 4))
+                                if w and (w & 0xfff) == 0:
+                                    return v
         return None
 
     @staticmethod
@@ -48146,12 +47576,12 @@ class KernelAddressHeuristicFinder:
         if is_x86():
             if is_qemu_system():
                 res = gdb.execute("monitor info registers", to_string=True)
-                idtr = re.search(r"IDT\s*=\s*(\S+) (\S+)", res)
+                idtr = re.search(r"IDT\s*=\s*(\w+) (\w+)", res)
                 base, _limit = [int(idtr.group(i), 16) for i in range(1, 3)]
                 return base
             elif is_vmware():
                 res = gdb.execute("monitor r idtr", to_string=True)
-                r = re.search(r"idtr base=(\S+) limit=(\S+)", res)
+                r = re.search(r"idtr base=(\w+) limit=(\w+)", res)
                 base = int(r.group(1), 16)
                 return base
         return None
@@ -48162,12 +47592,12 @@ class KernelAddressHeuristicFinder:
         if is_x86():
             if is_qemu_system():
                 res = gdb.execute("monitor info registers", to_string=True)
-                gdtr = re.search(r"GDT\s*=\s*(\S+) (\S+)", res)
+                gdtr = re.search(r"GDT\s*=\s*(\w+) (\w+)", res)
                 base, _limit = [int(gdtr.group(i), 16) for i in range(1, 3)]
                 return base
             elif is_vmware():
                 res = gdb.execute("monitor r gdtr", to_string=True)
-                r = re.search(r"gdtr base=(\S+) limit=(\S+)", res)
+                r = re.search(r"gdtr base=(\w+) limit=(\w+)", res)
                 base = int(r.group(1), 16)
                 return base
         return None
@@ -48178,7 +47608,7 @@ class KernelAddressHeuristicFinder:
         if is_x86():
             if is_qemu_system():
                 res = gdb.execute("monitor info registers", to_string=True)
-                tr = re.search(r"TR\s*=\s*(\S+) (\S+) (\S+) (\S+)", res)
+                tr = re.search(r"TR\s*=\s*(\w+) (\w+) (\w+) (\w+)", res)
                 _trseg, base, _limit, _attr = [int(tr.group(i), 16) for i in range(1, 5)]
                 return base
         return None
@@ -48189,7 +47619,7 @@ class KernelAddressHeuristicFinder:
         if is_x86():
             if is_qemu_system():
                 res = gdb.execute("monitor info registers", to_string=True)
-                ldtr = re.search(r"LDT\s*=\s*(\S+) (\S+) (\S+) (\S+)", res)
+                ldtr = re.search(r"LDT\s*=\s*(\w+) (\w+) (\w+) (\w+)", res)
                 _seg, base, _limit, _attr = [int(ldtr.group(i), 16) for i in range(1, 5)]
                 return base
             elif is_vmware():
@@ -48203,42 +47633,43 @@ class KernelAddressHeuristicFinder:
         # when CONFIG_NUMA=y
 
         # plan 1 (directly)
-        node_data = get_ksymaddr("node_data")
-        if node_data:
-            return node_data
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("node_data")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
         # plan 2 (available v2.6.17 or later)
         if kversion and kversion >= "2.6.17":
-            first_online_pgdat = get_ksymaddr("first_online_pgdat")
-            if first_online_pgdat:
-                res = gdb.execute("x/20i {:#x}".format(first_online_pgdat), to_string=True)
+            addr = get_ksymaddr("first_online_pgdat")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
                     for line in res.splitlines():
-                        m = re.search(r"mov.*QWORD PTR \[.*([-+]0x\S+)\]", line)
+                        m = re.search(r"mov.*QWORD PTR \[.*([-+]0x\w+)\]", line)
                         if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if is_valid_addr(v) and is_valid_addr(read_int_from_memory(v)):
+                            v = align_address(int(m.group(1), 16))
+                            if is_valid_addr_addr(v):
                                 return v
                 elif is_arm64():
                     bases = {}
                     for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                        m = re.search(r"adrp\s+(\w+),\s*(0x\w+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
+                        m = re.search(r"add\s+(\w+),\s*(\w+),\s*#(0x\w+)", line)
                         if m:
                             srcreg = m.group(2)
                             v = int(m.group(3), 16)
                             if srcreg in bases:
-                                x = bases[srcreg] + v
-                                if is_valid_addr(x) and is_valid_addr(read_int_from_memory(x)):
-                                    return x
-                        m = re.search(r"ret", line)
+                                w = align_address(bases[srcreg] + v)
+                                if is_valid_addr_addr(w):
+                                    return w
+                        m = re.search("ret", line)
                         if m:
                             return None # maybe CONFIG_NUMA=n
         return None
@@ -48252,282 +47683,160 @@ class KernelAddressHeuristicFinder:
 
         # plan 1 (available v2.6.17 or later)
         if kversion and kversion >= "2.6.17":
-            first_online_pgdat = get_ksymaddr("first_online_pgdat")
-            if first_online_pgdat:
-                res = gdb.execute("x/10i {:#x}".format(first_online_pgdat), to_string=True)
+            addr = get_ksymaddr("first_online_pgdat")
+            if addr:
+                res = gdb.execute("x/10i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
                     v = None
                     for line in res.splitlines():
-                        m = re.search(r"mov\s+rax\s*,\s*(0x\S+)", line)
+                        m = re.search(r"mov\s+rax\s*,\s*(0x\w+)", line)
                         if m:
-                            v_ = int(m.group(1), 16) & 0xffffffffffffffff
-                            if is_valid_addr(v_):
-                                v = v_
+                            v_tmp = align_address(int(m.group(1), 16))
+                            if is_valid_addr(v_tmp):
+                                v = v_tmp
                             continue
-                        m = re.search(r"ret", line)
+                        m = re.search("ret", line)
                         if m:
                             if v:
                                 return v
                 elif is_arm64():
                     bases = {}
-                    x = None
+                    w = None
                     for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
+                        m = re.search(r"adrp\s+(\w+),\s*(0x\w+)", line)
                         if m:
                             reg = m.group(1)
                             base = int(m.group(2), 16)
                             bases[reg] = base
                             continue
-                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
+                        m = re.search(r"add\s+(\w+),\s*(\w+),\s*#(0x\w+)", line)
                         if m:
                             srcreg = m.group(2)
                             v = int(m.group(3), 16)
                             if srcreg in bases:
-                                x = bases[srcreg] + v
-                        m = re.search(r"ret", line)
+                                w = align_address(bases[srcreg] + v)
+                        m = re.search("ret", line)
                         if m:
-                            if x:
-                                return x
+                            if w:
+                                return w
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_prog_idr():
         # plan 1 (directly)
-        prog_idr = get_ksymaddr("prog_idr")
-        if prog_idr:
-            return prog_idr
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("prog_idr")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
         # plan 2 (available v4.13 or later)
         if kversion and kversion >= "4.13":
-            bpf_prog_free_id = get_ksymaddr("bpf_prog_free_id.part.0") or get_ksymaddr("bpf_prog_free_id")
-            if bpf_prog_free_id:
-                res = gdb.execute("x/20i {:#x}".format(bpf_prog_free_id), to_string=True)
+            addr = get_ksymaddr("bpf_prog_free_id.part.0") or get_ksymaddr("bpf_prog_free_id")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+rdi\s*,\s*(0x\S+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if is_valid_addr(v):
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "rdi")
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+eax\s*,\s*(0x\S+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if is_valid_addr(v):
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "eax")
                 elif is_arm64():
-                    bases = {}
-                    add1time = {}
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
-                        if m:
-                            dstreg = m.group(1)
-                            srcreg = m.group(2)
-                            v = int(m.group(3), 16)
-                            if srcreg in add1time:
-                                x = add1time[srcreg] + v
-                                if is_valid_addr(x):
-                                    return x
-                            if srcreg in bases:
-                                add1time[dstreg] = bases[srcreg] + v
-                                continue
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add_add(res)
                 elif is_arm32():
-                    for line in res.splitlines():
-                        m = re.search(r"ldr\s+\S+,\s*\[pc,\s*#(\d+)\]", line)
-                        if m:
-                            ofs = int(m.group(1), 0)
-                            pos = int(line.split()[0].replace(":", ""), 16)
-                            return read_int_from_memory(pos + 4 * 2 + ofs)
-                        m = re.search(r"ldr\s+\S+,\s*\[pc\]", line)
-                        if m:
-                            pos = int(line.split()[0].replace(":", ""), 16)
-                            return read_int_from_memory(pos + 4 * 2)
+                    x = KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_map_idr():
         # plan 1 (directly)
-        map_idr = get_ksymaddr("map_idr")
-        if map_idr:
-            return map_idr
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("map_idr")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
         # plan 2 (available v4.13 or later)
         if kversion and kversion >= "4.13":
-            bpf_map_free_id = get_ksymaddr("bpf_map_free_id")
-            if bpf_map_free_id:
-                res = gdb.execute("x/20i {:#x}".format(bpf_map_free_id), to_string=True)
+            addr = get_ksymaddr("bpf_map_free_id")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+rdi\s*,\s*(0x\S+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if is_valid_addr(v):
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "rdi")
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+eax\s*,\s*(0x\S+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if is_valid_addr(v):
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "eax")
                 elif is_arm64():
-                    bases = {}
-                    add1time = {}
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
-                        if m:
-                            dstreg = m.group(1)
-                            srcreg = m.group(2)
-                            v = int(m.group(3), 16)
-                            if srcreg in add1time:
-                                x = add1time[srcreg] + v
-                                if is_valid_addr(x):
-                                    return x
-                            if srcreg in bases:
-                                add1time[dstreg] = bases[srcreg] + v
-                                continue
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add_add(res)
                 elif is_arm32():
-                    for line in res.splitlines():
-                        m = re.search(r"ldr\s+\S+,\s*\[pc,\s*#(\d+)\]", line)
-                        if m:
-                            ofs = int(m.group(1), 0)
-                            pos = int(line.split()[0].replace(":", ""), 16)
-                            return read_int_from_memory(pos + 4 * 2 + ofs)
-                        m = re.search(r"ldr\s+\S+,\s*\[pc\]", line)
-                        if m:
-                            pos = int(line.split()[0].replace(":", ""), 16)
-                            return read_int_from_memory(pos + 4 * 2)
+                    x = KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_vmap_area_list():
         # plan 1 (directly)
-        vmap_area_list = get_ksymaddr("vmap_area_list")
-        if vmap_area_list:
-            return vmap_area_list
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("vmap_area_list")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
         # plan 2 (available v3.10 ~ v6.3: vread, v6.4~: vread_iter)
         if kversion and kversion >= "3.17":
-            vread = get_ksymaddr("vread") or get_ksymaddr("vread_iter")
-            if vread:
-                res = gdb.execute("x/100i {:#x}".format(vread), to_string=True)
+            addr = get_ksymaddr("vread") or get_ksymaddr("vread_iter")
+            if addr:
+                res = gdb.execute("x/100i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"cmp\s+\S+,\s*(0x\w+)", line)
-                        if m:
-                            x = int(m.group(1), 16)
-                            if is_valid_addr(x):
-                                y = read_int_from_memory(x)
-                                if is_valid_addr(y):
-                                    return x
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_cmp_const(res, read_valid=True)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"cmp\s+\S+,\s*(0x\w+)", line)
-                        if m:
-                            x = int(m.group(1), 16)
-                            if is_valid_addr(x):
-                                y = read_int_from_memory(x)
-                                if is_valid_addr(y):
-                                    return x
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_cmp_const(res, read_valid=True)
                 elif is_arm64():
                     # too difficult to implement
-                    pass
+                    x = None
                 elif is_arm32():
                     # too difficult to implement
-                    pass
+                    x = None
+                if x:
+                    return x
 
         # plan 3 (available v4.10~)
         if kversion and kversion >= "4.10":
             ret = gdb.execute("ksymaddr-remote --quiet --no-pager --exact s_next", to_string=True)
+            # returns multiple results
             for line in ret.splitlines()[::-1]:
                 s_next = int(line.split()[0], 16)
                 res = gdb.execute("x/20i {:#x}".format(s_next), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+rsi\s*,\s*(0x\S+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            if is_valid_addr(v):
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "rsi")
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+e.x\s*,\s*(0x\S+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            if is_valid_addr(v):
-                                return v
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, r"e.x")
                 elif is_arm64():
-                    bases = {}
-                    x = None
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
-                        if m:
-                            dstreg = m.group(1)
-                            srcreg = m.group(2)
-                            v = int(m.group(3), 16)
-                            if srcreg in bases:
-                                x = bases[srcreg] + v
-                                y = read_int_from_memory(x)
-                                if is_valid_addr(y):
-                                    return x
-                                bases[dstreg] = x
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add_add(res, read_valid=True)
                 elif is_arm32():
-                    for line in res.splitlines():
-                        m = re.search(r"ldr\s+\S+,\s*\[pc,\s*#(\d+)\]", line)
-                        if m:
-                            ofs = int(m.group(1), 0)
-                            pos = int(line.split()[0].replace(":", ""), 16)
-                            x = read_int_from_memory(pos + 4 * 2 + ofs)
-                            if is_valid_addr(x):
-                                return x
-                        m = re.search(r"ldr\s+\S+,\s*\[pc\]", line)
-                        if m:
-                            pos = int(line.split()[0].replace(":", ""), 16)
-                            x = read_int_from_memory(pos + 4 * 2)
-                            if is_valid_addr(x):
-                                return x
-
+                    x = KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_free_vmap_area_list():
         # plan 1 (directly)
-        free_vmap_area_list = get_ksymaddr("free_vmap_area_list")
-        if free_vmap_area_list:
-            return free_vmap_area_list
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("free_vmap_area_list")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (from result of get_vmap_area_list; v5.2~)
+        # plan 2 (from get_vmap_area_list; v5.2~)
         if kversion and kversion >= "5.2":
             if kversion >= "5.4":
                 offset_list = current_arch.ptrsize * 5 # offsetof(struct vmap_area, list)
@@ -48559,467 +47868,211 @@ class KernelAddressHeuristicFinder:
                     if zdata != vend and (zdata & 0xfff) != 0:
                         continue
                     return x
-
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_timer_bases():
         # plan 1 (directly)
-        timer_bases = get_ksymaddr("timer_bases")
-        if timer_bases:
-            return timer_bases
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("timer_bases")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
         # plan 2 (available v4.8 or later)
         if kversion and kversion >= "4.8":
-            run_timer_softirq = get_ksymaddr("run_timer_softirq")
-            if run_timer_softirq:
-                res = gdb.execute("x/20i {:#x}".format(run_timer_softirq), to_string=True)
+            addr = get_ksymaddr("run_timer_softirq")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+r\S+\s*,\s*(0x\S+)", line)
-                        if m:
-                            return int(m.group(1), 16)
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, r"r\w+", skip_msb_check=True)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+e\S+\s*,\s*(0x\S+)", line)
-                        if m:
-                            return int(m.group(1), 16) & 0xffffffff
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, r"e\w+", skip_msb_check=True)
                 elif is_arm64():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
-                        if m:
-                            srcreg = m.group(2)
-                            v = int(m.group(3), 16)
-                            if srcreg in bases:
-                                return bases[srcreg] + v
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res, skip_msb_check=True)
                 elif is_arm32():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 16) << 16
-                            if reg in bases:
-                                return bases[reg] + v
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res, skip_msb_check=True)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_hrtimer_bases():
         # plan 1 (directly)
-        hrtimer_bases = get_ksymaddr("hrtimer_bases")
-        if hrtimer_bases:
-            return hrtimer_bases
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("hrtimer_bases")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
         # plan 2 (available v4.8 or later)
         if kversion and kversion >= "4.8":
-            hrtimer_run_queues = get_ksymaddr("hrtimer_run_queues")
-            if hrtimer_run_queues:
-                res = gdb.execute("x/20i {:#x}".format(hrtimer_run_queues), to_string=True)
+            addr = get_ksymaddr("hrtimer_run_queues")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+r\S+\s*,\s*(0x\S+)", line)
-                        if m:
-                            return int(m.group(1), 16)
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, r"r\w+", skip_msb_check=True)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+e\S+\s*,\s*(0x\S+)", line)
-                        if m:
-                            return int(m.group(1), 16) & 0xffffffff
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, r"e\w+", skip_msb_check=True)
                 elif is_arm64():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
-                        if m:
-                            srcreg = m.group(2)
-                            v = int(m.group(3), 16)
-                            if srcreg in bases:
-                                return bases[srcreg] + v
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res, skip_msb_check=True)
                 elif is_arm32():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 16) << 16
-                            if reg in bases:
-                                return bases[reg] + v
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res, skip_msb_check=True)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_jiffies():
         # plan 1 (directly)
-        jiffies = get_ksymaddr("jiffies")
-        if jiffies:
-            return jiffies
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("jiffies")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
         # plan 2 (available v2.6.18 or later)
         if kversion and kversion >= "2.6.18":
-            jiffies_read = get_ksymaddr("jiffies_read")
-            if jiffies_read:
-                res = gdb.execute("x/20i {:#x}".format(jiffies_read), to_string=True)
+            addr = get_ksymaddr("jiffies_read")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            return v
+                    x = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"ds:(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            return v
+                    x = KernelAddressHeuristicFinderUtil.x86_noptr_ds(res)
                 elif is_arm64():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"ldr\s+\S+,\s*\[(\S+),\s*#(\d+)\]", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 0)
-                            if reg in bases:
-                                return bases[reg] + v
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_ldr(res)
                 elif is_arm32():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 16) << 16
-                            if reg in bases:
-                                return bases[reg] + v
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_pci_root_buses():
         # plan 1 (directly)
-        pci_root_buses = get_ksymaddr("pci_root_buses")
-        if pci_root_buses:
-            return pci_root_buses
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("pci_root_buses")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
         # plan 2 (available v2.5.71 or later)
         if kversion and kversion >= "2.5.71":
-            pci_find_next_bus = get_ksymaddr("pci_find_next_bus")
-            if pci_find_next_bus:
-                res = gdb.execute("x/30i {:#x}".format(pci_find_next_bus), to_string=True)
+            addr = get_ksymaddr("pci_find_next_bus")
+            if addr:
+                res = gdb.execute("x/30i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"QWORD PTR \[rip\+0x\w+\].*#\s*(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffffffffffff
-                            return v
+                    x = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res)
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"ds:(0x\w+)", line)
-                        if m:
-                            v = int(m.group(1), 16) & 0xffffffff
-                            return v
+                    x = KernelAddressHeuristicFinderUtil.x86_noptr_ds(res)
                 elif is_arm64():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
-                        if m:
-                            srcreg = m.group(2)
-                            v = int(m.group(3), 16)
-                            if srcreg in bases:
-                                x = bases[srcreg] + v
-                                if is_valid_addr(read_int_from_memory(x)):
-                                    return x
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res, read_valid=True)
                 elif is_arm32():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 16) << 16
-                            if reg in bases:
-                                x = bases[reg] + v
-                                if is_valid_addr(read_int_from_memory(x)):
-                                    return x
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res, read_valid=True)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_iomem_resource():
         # plan 1 (directly)
-        iomem_resource = get_ksymaddr("iomem_resource")
-        if iomem_resource:
-            return iomem_resource
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("iomem_resource")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
         # plan 2 (available v3.3 or later)
         if kversion and kversion >= "3.3":
-            pci_scan_bus = get_ksymaddr("pci_scan_bus")
-            if pci_scan_bus:
-                res = gdb.execute("x/30i {:#x}".format(pci_scan_bus), to_string=True)
+            addr = get_ksymaddr("pci_scan_bus")
+            if addr:
+                res = gdb.execute("x/30i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    count = 0
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+r\S+\s*,\s*(0x\S+)", line)
-                        if m:
-                            if count == 0:
-                                count += 1
-                                continue
-                            return int(m.group(1), 16)
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, r"r\w+", skip=1)
                 elif is_x86_32():
-                    count = 0
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+e\S+\s*,\s*(0x\S+)", line)
-                        if m:
-                            if count == 0:
-                                count += 1
-                                continue
-                            return int(m.group(1), 16) & 0xffffffff
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, r"e\w+", skip=1)
                 elif is_arm64():
-                    count = 0
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
-                        if m:
-                            srcreg = m.group(2)
-                            v = int(m.group(3), 16)
-                            if srcreg in bases:
-                                count += 1
-                                if count == 2:
-                                    return bases[srcreg] + v
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res, skip=1)
                 elif is_arm32():
-                    count = 0
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 16) << 16
-                            if reg in bases:
-                                count += 1
-                                if count == 2:
-                                    return bases[reg] + v
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res, skip=1)
+                if x:
+                    return x
 
         # plan 3 (available v3.9 or later)
         if kversion and kversion >= "3.9":
-            devm_ioremap_resource = get_ksymaddr("devm_ioremap_resource")
-            if devm_ioremap_resource:
-                res = gdb.execute("x/50i {:#x}".format(devm_ioremap_resource), to_string=True)
+            addr = get_ksymaddr("devm_ioremap_resource")
+            if addr:
+                res = gdb.execute("x/50i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+r\S+\s*,\s*(0x\S+)", line)
-                        if m:
-                            return int(m.group(1), 16)
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, r"r\w+")
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+e\S+\s*,\s*(0x\S+)", line)
-                        if m:
-                            return int(m.group(1), 16) & 0xffffffff
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, r"e\w+")
                 elif is_arm64():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
-                        if m:
-                            srcreg = m.group(2)
-                            v = int(m.group(3), 16)
-                            if srcreg in bases:
-                                return bases[srcreg] + v
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
                 elif is_arm32():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 16) << 16
-                            if reg in bases:
-                                return bases[reg] + v
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                if x:
+                    return x
         return None
 
     @staticmethod
     @switch_to_intel_syntax
     def get_ioport_resource():
         # plan 1 (directly)
-        ioport_resource = get_ksymaddr("ioport_resource")
-        if ioport_resource:
-            return ioport_resource
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("ioport_resource")
+            if x:
+                return x
 
         kversion = KernelVersionCommand.kernel_version()
 
         # plan 2 (available v3.3 or later)
         if kversion and kversion >= "3.3":
-            pci_scan_bus = get_ksymaddr("pci_scan_bus")
-            if pci_scan_bus:
-                res = gdb.execute("x/30i {:#x}".format(pci_scan_bus), to_string=True)
+            addr = get_ksymaddr("pci_scan_bus")
+            if addr:
+                res = gdb.execute("x/30i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+r\S+\s*,\s*(0x\S+)", line)
-                        if m:
-                            return int(m.group(1), 16)
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, r"r\w+")
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+e\S+\s*,\s*(0x\S+)", line)
-                        if m:
-                            return int(m.group(1), 16) & 0xffffffff
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, r"e\w+")
                 elif is_arm64():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
-                        if m:
-                            srcreg = m.group(2)
-                            v = int(m.group(3), 16)
-                            if srcreg in bases:
-                                return bases[srcreg] + v
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
                 elif is_arm32():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 16) << 16
-                            if reg in bases:
-                                return bases[reg] + v
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                if x:
+                    return x
 
         # plan 3 (available v4.9 or later)
         if kversion and kversion >= "4.9":
-            acpi_ec_remove = get_ksymaddr("acpi_ec_remove")
-            if acpi_ec_remove:
-                res = gdb.execute("x/30i {:#x}".format(acpi_ec_remove), to_string=True)
+            addr = get_ksymaddr("acpi_ec_remove")
+            if addr:
+                res = gdb.execute("x/30i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+r\S+\s*,\s*(0x\S+)", line)
-                        if m:
-                            return int(m.group(1), 16)
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, r"r\w+")
                 elif is_x86_32():
-                    for line in res.splitlines():
-                        m = re.search(r"mov\s+e\S+\s*,\s*(0x\S+)", line)
-                        if m:
-                            return int(m.group(1), 16) & 0xffffffff
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, r"e\w+")
                 elif is_arm64():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
-                        if m:
-                            srcreg = m.group(2)
-                            v = int(m.group(3), 16)
-                            if srcreg in bases:
-                                return bases[srcreg] + v
+                    x = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
                 elif is_arm32():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 16) << 16
-                            if reg in bases:
-                                return bases[reg] + v
+                    x = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                if x:
+                    return x
         return None
 
 
 KF = KernelAddressHeuristicFinder # for convenience using from python-interactive
+KFU = KernelAddressHeuristicFinderUtil # for convenience using from python-interactive
 
 
 @register_command
