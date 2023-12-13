@@ -30074,7 +30074,6 @@ asmlinkage long sys_removexattr(const char __user *path, const char __user *name
 asmlinkage long sys_lremovexattr(const char __user *path, const char __user *name);
 asmlinkage long sys_fremovexattr(int fd, const char __user *name);
 asmlinkage long sys_getcwd(char __user *buf, unsigned long size);
-asmlinkage long sys_lookup_dcookie(u64 cookie64, char __user *buf, size_t len);
 asmlinkage long sys_eventfd2(unsigned int count, int flags);
 asmlinkage long sys_epoll_create1(int flags);
 asmlinkage long sys_epoll_ctl(int epfd, int op, int fd, struct epoll_event __user *event);
@@ -30178,6 +30177,9 @@ asmlinkage long sys_futex_time32(u32 __user *uaddr, int op, u32 val, const struc
 asmlinkage long sys_get_robust_list(int pid, struct robust_list_head __user *__user *head_ptr, size_t __user *len_ptr);
 asmlinkage long sys_set_robust_list(struct robust_list_head __user *head, size_t len);
 asmlinkage long sys_futex_waitv(struct futex_waitv *waiters, unsigned int nr_futexes, unsigned int flags, struct __kernel_timespec __user *timeout, clockid_t clockid);
+asmlinkage long sys_futex_wake(void __user *uaddr, unsigned long mask, int nr, unsigned int flags);
+asmlinkage long sys_futex_wait(void __user *uaddr, unsigned long val, unsigned long mask, unsigned int flags, struct __kernel_timespec __user *timespec, clockid_t clockid);
+asmlinkage long sys_futex_requeue(struct futex_waitv __user *waiters, unsigned int flags, int nr_wake, int nr_requeue);
 asmlinkage long sys_nanosleep(struct __kernel_timespec __user *rqtp, struct __kernel_timespec __user *rmtp);
 asmlinkage long sys_nanosleep_time32(struct old_timespec32 __user *rqtp, struct old_timespec32 __user *rmtp);
 asmlinkage long sys_getitimer(int which, struct __kernel_old_itimerval __user *value);
@@ -30502,7 +30504,6 @@ asmlinkage long compat_sys_io_setup(unsigned nr_reqs, u32 __user *ctx32p);
 asmlinkage long compat_sys_io_submit(compat_aio_context_t ctx_id, int nr, u32 __user *iocb);
 asmlinkage long compat_sys_io_pgetevents(compat_aio_context_t ctx_id, compat_long_t min_nr, compat_long_t nr, struct io_event __user *events, struct old_timespec32 __user *timeout, const struct __compat_aio_sigset __user *usig);
 asmlinkage long compat_sys_io_pgetevents_time64(compat_aio_context_t ctx_id, compat_long_t min_nr, compat_long_t nr, struct io_event __user *events, struct __kernel_timespec __user *timeout, const struct __compat_aio_sigset __user *usig);
-asmlinkage long compat_sys_lookup_dcookie(u32, u32, char __user *, compat_size_t);
 asmlinkage long compat_sys_epoll_pwait(int epfd, struct epoll_event __user *events, int maxevents, int timeout, const compat_sigset_t __user *sigmask, compat_size_t sigsetsize);
 asmlinkage long compat_sys_epoll_pwait2(int epfd, struct epoll_event __user *events, int maxevents, const struct __kernel_timespec __user *timeout, const compat_sigset_t __user *sigmask, compat_size_t sigsetsize);
 asmlinkage long compat_sys_fcntl(unsigned int fd, unsigned int cmd, compat_ulong_t arg);
@@ -30858,7 +30859,7 @@ x64_syscall_tbl = """
 209     64      io_submit               sys_io_submit
 210     common  io_cancel               sys_io_cancel
 211     64      get_thread_area
-212     common  lookup_dcookie          sys_lookup_dcookie
+212     common  lookup_dcookie
 213     common  epoll_create            sys_epoll_create
 214     64      epoll_ctl_old
 215     64      epoll_wait_old
@@ -31013,6 +31014,9 @@ x64_syscall_tbl = """
 451     common  cachestat               sys_cachestat
 452     common  fchmodat2               sys_fchmodat2
 453     64      map_shadow_stack        sys_map_shadow_stack
+454     common  futex_wake              sys_futex_wake
+455     common  futex_wait              sys_futex_wait
+456     common  futex_requeue           sys_futex_requeue
 
 #
 # Due to a historical design error, certain syscalls are numbered differently
@@ -31330,7 +31334,7 @@ x86_syscall_tbl = """
 250     i386    fadvise64               sys_ia32_fadvise64
 # 251 is available for reuse (was briefly sys_set_zone_reclaim)
 252     i386    exit_group              sys_exit_group
-253     i386    lookup_dcookie          sys_lookup_dcookie              compat_sys_lookup_dcookie
+253     i386    lookup_dcookie
 254     i386    epoll_create            sys_epoll_create
 255     i386    epoll_ctl               sys_epoll_ctl
 256     i386    epoll_wait              sys_epoll_wait
@@ -31523,6 +31527,10 @@ x86_syscall_tbl = """
 450     i386    set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     i386    cachestat               sys_cachestat
 452     i386    fchmodat2               sys_fchmodat2
+453     i386    map_shadow_stack        sys_map_shadow_stack
+454     i386    futex_wake              sys_futex_wake
+455     i386    futex_wait              sys_futex_wait
+456     i386    futex_requeue           sys_futex_requeue
 """
 
 
@@ -31554,7 +31562,7 @@ arm64_syscall_tbl = """
 15   arm64  lremovexattr             sys_lremovexattr
 16   arm64  fremovexattr             sys_fremovexattr
 17   arm64  getcwd                   sys_getcwd
-18   arm64  lookup_dcookie           sys_lookup_dcookie
+18   arm64  lookup_dcookie           sys_ni_syscall
 19   arm64  eventfd2                 sys_eventfd2
 20   arm64  epoll_create1            sys_epoll_create1
 21   arm64  epoll_ctl                sys_epoll_ctl
@@ -31844,6 +31852,10 @@ arm64_syscall_tbl = """
 450  arm64  set_mempolicy_home_node  sys_set_mempolicy_home_node
 451  arm64  cachestat                sys_cachestat
 452  arm64  fchmodat2                sys_fchmodat2
+453  arm64  map_shadow_stack         sys_map_shadow_stack
+454  arm64  futex_wake               sys_futex_wake
+455  arm64  futex_wait               sys_futex_wait
+456  arm64  futex_requeue            sys_futex_requeue
 """
 
 
@@ -32062,7 +32074,6 @@ arm_compat_syscall_tbl = """
 246  arm  io_submit                     compat_sys_io_submit
 247  arm  io_cancel                     sys_io_cancel
 248  arm  exit_group                    sys_exit_group
-249  arm  lookup_dcookie                compat_sys_lookup_dcookie
 250  arm  epoll_create                  sys_epoll_create
 251  arm  epoll_ctl                     sys_epoll_ctl
 252  arm  epoll_wait                    sys_epoll_wait
@@ -32261,6 +32272,10 @@ arm_compat_syscall_tbl = """
 450  arm  set_mempolicy_home_node       sys_set_mempolicy_home_node
 451  arm  cachestat                     sys_cachestat
 452  arm  fchmodat2                     sys_fchmodat2
+453  arm  map_shadow_stack              sys_map_shadow_stack
+454  arm  futex_wake                    sys_futex_wake
+455  arm  futex_wait                    sys_futex_wait
+456  arm  futex_requeue                 sys_futex_requeue
 """
 
 # ARM (native)
@@ -32531,7 +32546,7 @@ arm_native_syscall_tbl = """
 246     common  io_submit               sys_io_submit
 247     common  io_cancel               sys_io_cancel
 248     common  exit_group              sys_exit_group
-249     common  lookup_dcookie          sys_lookup_dcookie
+249     common  lookup_dcookie          sys_ni_syscall
 250     common  epoll_create            sys_epoll_create
 251     common  epoll_ctl               sys_epoll_ctl           sys_oabi_epoll_ctl
 252     common  epoll_wait              sys_epoll_wait
@@ -32734,6 +32749,10 @@ arm_native_syscall_tbl = """
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     common  cachestat                       sys_cachestat
 452     common  fchmodat2                       sys_fchmodat2
+453     common  map_shadow_stack                sys_map_shadow_stack
+454     common  futex_wake                      sys_futex_wake
+455     common  futex_wait                      sys_futex_wait
+456     common  futex_requeue                   sys_futex_requeue
 """
 
 
@@ -32998,7 +33017,7 @@ mips_o32_syscall_tbl = """
 244     o32     io_submit                       sys_io_submit                   compat_sys_io_submit
 245     o32     io_cancel                       sys_io_cancel
 246     o32     exit_group                      sys_exit_group
-247     o32     lookup_dcookie                  sys_lookup_dcookie              compat_sys_lookup_dcookie
+247     o32     lookup_dcookie                  sys_ni_syscall
 248     o32     epoll_create                    sys_epoll_create
 249     o32     epoll_ctl                       sys_epoll_ctl
 250     o32     epoll_wait                      sys_epoll_wait
@@ -33180,6 +33199,10 @@ mips_o32_syscall_tbl = """
 450     o32     set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     o32     cachestat                       sys_cachestat
 452     o32     fchmodat2                       sys_fchmodat2
+453     o32     map_shadow_stack                sys_map_shadow_stack
+454     o32     futex_wake                      sys_futex_wake
+455     o32     futex_wait                      sys_futex_wait
+456     o32     futex_requeue                   sys_futex_requeue
 """
 
 
@@ -33400,7 +33423,7 @@ mips_n32_syscall_tbl = """
 203     n32     io_submit                       compat_sys_io_submit
 204     n32     io_cancel                       sys_io_cancel
 205     n32     exit_group                      sys_exit_group
-206     n32     lookup_dcookie                  sys_lookup_dcookie
+206     n32     lookup_dcookie                  sys_ni_syscall
 207     n32     epoll_create                    sys_epoll_create
 208     n32     epoll_ctl                       sys_epoll_ctl
 209     n32     epoll_wait                      sys_epoll_wait
@@ -33577,6 +33600,10 @@ mips_n32_syscall_tbl = """
 450     n32     set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     n32     cachestat                       sys_cachestat
 452     n32     fchmodat2                       sys_fchmodat2
+453     n32     map_shadow_stack                sys_map_shadow_stack
+454     n32     futex_wake                      sys_futex_wake
+455     n32     futex_wait                      sys_futex_wait
+456     n32     futex_requeue                   sys_futex_requeue
 """
 
 
@@ -33797,7 +33824,7 @@ mips_n64_syscall_tbl = """
 203     n64     io_submit                       sys_io_submit
 204     n64     io_cancel                       sys_io_cancel
 205     n64     exit_group                      sys_exit_group
-206     n64     lookup_dcookie                  sys_lookup_dcookie
+206     n64     lookup_dcookie                  sys_ni_syscall
 207     n64     epoll_create                    sys_epoll_create
 208     n64     epoll_ctl                       sys_epoll_ctl
 209     n64     epoll_wait                      sys_epoll_wait
@@ -33950,6 +33977,10 @@ mips_n64_syscall_tbl = """
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     n64     cachestat                       sys_cachestat
 452     n64     fchmodat2                       sys_fchmodat2
+453     n64     map_shadow_stack                sys_map_shadow_stack
+454     n64     futex_wake                      sys_futex_wake
+455     n64     futex_wait                      sys_futex_wait
+456     n64     futex_requeue                   sys_futex_requeue
 """
 
 
@@ -34250,7 +34281,7 @@ ppc_syscall_tbl = """
 233     32      fadvise64                       sys_ppc32_fadvise64             compat_sys_ppc32_fadvise64
 233     64      fadvise64                       sys_fadvise64
 234     nospu   exit_group                      sys_exit_group
-235     nospu   lookup_dcookie                  sys_lookup_dcookie              compat_sys_lookup_dcookie
+235     nospu   lookup_dcookie                  sys_ni_syscall
 236     common  epoll_create                    sys_epoll_create
 237     common  epoll_ctl                       sys_epoll_ctl
 238     common  epoll_wait                      sys_epoll_wait
@@ -34495,6 +34526,10 @@ ppc_syscall_tbl = """
 450     nospu   set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     common  cachestat                       sys_cachestat
 452     common  fchmodat2                       sys_fchmodat2
+453     common  map_shadow_stack                sys_ni_syscall
+454     common  futex_wake                      sys_futex_wake
+455     common  futex_wait                      sys_futex_wait
+456     common  futex_requeue                   sys_futex_requeue
 """
 
 
@@ -34750,7 +34785,7 @@ sparc_syscall_tbl = """
 205     common  readahead               sys_readahead                   compat_sys_readahead
 206     common  socketcall              sys_socketcall                  sys32_socketcall
 207     common  syslog                  sys_syslog
-208     common  lookup_dcookie          sys_lookup_dcookie              compat_sys_lookup_dcookie
+208     common  lookup_dcookie          sys_ni_syscall
 209     common  fadvise64               sys_fadvise64                   compat_sys_fadvise64
 210     common  fadvise64_64            sys_fadvise64_64                compat_sys_fadvise64_64
 211     common  tgkill                  sys_tgkill
@@ -34999,6 +35034,10 @@ sparc_syscall_tbl = """
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     common  cachestat                       sys_cachestat
 452     common  fchmodat2                       sys_fchmodat2
+453     common  map_shadow_stack                sys_map_shadow_stack
+454     common  futex_wake                      sys_futex_wake
+455     common  futex_wait                      sys_futex_wait
+456     common  futex_requeue                   sys_futex_requeue
 """
 
 
@@ -35029,7 +35068,7 @@ riscv64_syscall_tbl = """
 15   riscv64  lremovexattr             sys_lremovexattr
 16   riscv64  fremovexattr             sys_fremovexattr
 17   riscv64  getcwd                   sys_getcwd
-18   riscv64  lookup_dcookie           sys_lookup_dcookie
+18   riscv64  lookup_dcookie           sys_ni_syscall
 19   riscv64  eventfd2                 sys_eventfd2
 20   riscv64  epoll_create1            sys_epoll_create1
 21   riscv64  epoll_ctl                sys_epoll_ctl
@@ -35318,6 +35357,10 @@ riscv64_syscall_tbl = """
 450  riscv64  set_mempolicy_home_node  sys_set_mempolicy_home_node
 451  riscv64  cachestat                sys_cachestat
 452  riscv64  fchmodat2                sys_fchmodat2
+453  riscv64  map_shadow_stack         sys_map_shadow_stack
+454  riscv64  futex_wake               sys_futex_wake
+455  riscv64  futex_wait               sys_futex_wait
+456  riscv64  futex_requeue            sys_futex_requeue
 """
 
 
@@ -35347,7 +35390,7 @@ riscv32_syscall_tbl = """
 15   riscv32  lremovexattr                  sys_lremovexattr
 16   riscv32  fremovexattr                  sys_fremovexattr
 17   riscv32  getcwd                        sys_getcwd
-18   riscv32  lookup_dcookie                sys_lookup_dcookie
+18   riscv32  lookup_dcookie                sys_ni_syscall
 19   riscv32  eventfd2                      sys_eventfd2
 20   riscv32  epoll_create1                 sys_epoll_create1
 21   riscv32  epoll_ctl                     sys_epoll_ctl
@@ -35631,6 +35674,10 @@ riscv32_syscall_tbl = """
 450  riscv32  set_mempolicy_home_node       sys_set_mempolicy_home_node
 451  riscv32  cachestat                     sys_cachestat
 452  riscv32  fchmodat2                     sys_fchmodat2
+453  riscv32  map_shadow_stack              sys_map_shadow_stack
+454  riscv32  futex_wake                    sys_futex_wake
+455  riscv32  futex_wait                    sys_futex_wait
+456  riscv32  futex_requeue                 sys_futex_requeue
 """
 
 
@@ -35737,7 +35784,7 @@ s390x_syscall_tbl = """
 106  common     stat                    sys_newstat                     compat_sys_newstat
 107  common     lstat                   sys_newlstat                    compat_sys_newlstat
 108  common     fstat                   sys_newfstat                    compat_sys_newfstat
-110  common     lookup_dcookie          sys_lookup_dcookie              compat_sys_lookup_dcookie
+110  common     lookup_dcookie          -                               -
 111  common     vhangup                 sys_vhangup                     sys_vhangup
 112  common     idle                    -                               -
 114  common     wait4                   sys_wait4                       compat_sys_wait4
@@ -36092,6 +36139,10 @@ s390x_syscall_tbl = """
 450  common     set_mempolicy_home_node sys_set_mempolicy_home_node     sys_set_mempolicy_home_node
 451  common     cachestat               sys_cachestat                   sys_cachestat
 452  common     fchmodat2               sys_fchmodat2                   sys_fchmodat2
+453  common     map_shadow_stack        sys_map_shadow_stack            sys_map_shadow_stack
+454  common     futex_wake              sys_futex_wake                  sys_futex_wake
+455  common     futex_wait              sys_futex_wait                  sys_futex_wait
+456  common     futex_requeue           sys_futex_requeue               sys_futex_requeue
 """
 
 
@@ -36358,7 +36409,7 @@ sh4_syscall_tbl = """
 250     common  fadvise64                       sys_fadvise64
 # 251 is unused
 252     common  exit_group                      sys_exit_group
-253     common  lookup_dcookie                  sys_lookup_dcookie
+253     common  lookup_dcookie                  sys_ni_syscall
 254     common  epoll_create                    sys_epoll_create
 255     common  epoll_ctl                       sys_epoll_ctl
 256     common  epoll_wait                      sys_epoll_wait
@@ -36553,6 +36604,10 @@ sh4_syscall_tbl = """
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     common  cachestat                       sys_cachestat
 452     common  fchmodat2                       sys_fchmodat2
+453     common  map_shadow_stack                sys_map_shadow_stack
+454     common  futex_wake                      sys_futex_wake
+455     common  futex_wait                      sys_futex_wait
+456     common  futex_requeue                   sys_futex_requeue
 """
 
 
@@ -36814,7 +36869,7 @@ m68k_syscall_tbl = """
 245     common  io_cancel                       sys_io_cancel
 246     common  fadvise64                       sys_fadvise64
 247     common  exit_group                      sys_exit_group
-248     common  lookup_dcookie                  sys_lookup_dcookie
+248     common  lookup_dcookie                  sys_ni_syscall
 249     common  epoll_create                    sys_epoll_create
 250     common  epoll_ctl                       sys_epoll_ctl
 251     common  epoll_wait                      sys_epoll_wait
@@ -37011,6 +37066,10 @@ m68k_syscall_tbl = """
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     common  cachestat                       sys_cachestat
 452     common  fchmodat2                       sys_fchmodat2
+453     common  map_shadow_stack                sys_map_shadow_stack
+454     common  futex_wake                      sys_futex_wake
+455     common  futex_wait                      sys_futex_wait
+456     common  futex_requeue                   sys_futex_requeue
 """
 
 
@@ -37351,7 +37410,7 @@ alpha_syscall_tbl = """
 401     common  io_submit                       sys_io_submit
 402     common  io_cancel                       sys_io_cancel
 405     common  exit_group                      sys_exit_group
-406     common  lookup_dcookie                  sys_lookup_dcookie
+406     common  lookup_dcookie                  sys_ni_syscall
 407     common  epoll_create                    sys_epoll_create
 408     common  epoll_ctl                       sys_epoll_ctl
 409     common  epoll_wait                      sys_epoll_wait
@@ -37509,6 +37568,10 @@ alpha_syscall_tbl = """
 560     common  set_mempolicy_home_node         sys_ni_syscall
 561     common  cachestat                       sys_cachestat
 562     common  fchmodat2                       sys_fchmodat2
+563     common  map_shadow_stack                sys_map_shadow_stack
+564     common  futex_wake                      sys_futex_wake
+565     common  futex_wait                      sys_futex_wait
+566     common  futex_requeue                   sys_futex_requeue
 """
 
 
@@ -37760,7 +37823,7 @@ hppa_syscall_tbl = """
 # 220 was alloc_hugepages
 # 221 was free_hugepages
 222     common  exit_group              sys_exit_group
-223     common  lookup_dcookie          sys_lookup_dcookie              compat_sys_lookup_dcookie
+223     common  lookup_dcookie          sys_ni_syscall
 224     common  epoll_create            sys_epoll_create
 225     common  epoll_ctl               sys_epoll_ctl
 226     common  epoll_wait              sys_epoll_wait
@@ -37966,6 +38029,10 @@ hppa_syscall_tbl = """
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     common  cachestat                       sys_cachestat
 452     common  fchmodat2                       sys_fchmodat2
+453     common  map_shadow_stack                sys_map_shadow_stack
+454     common  futex_wake                      sys_futex_wake
+455     common  futex_wait                      sys_futex_wait
+456     common  futex_requeue                   sys_futex_requeue
 """
 
 
@@ -37997,7 +38064,7 @@ or1k_syscall_tbl = """
 15   or1k  lremovexattr             sys_lremovexattr
 16   or1k  fremovexattr             sys_fremovexattr
 17   or1k  getcwd                   sys_getcwd
-18   or1k  lookup_dcookie           sys_lookup_dcookie
+18   or1k  lookup_dcookie           sys_ni_syscall
 19   or1k  eventfd2                 sys_eventfd2
 20   or1k  epoll_create1            sys_epoll_create1
 21   or1k  epoll_ctl                sys_epoll_ctl
@@ -38286,6 +38353,10 @@ or1k_syscall_tbl = """
 450  or1k  set_mempolicy_home_node  sys_set_mempolicy_home_node
 451  or1k  cachestat                sys_cachestat
 452  or1k  fchmodat2                sys_fchmodat2
+453  or1k  map_shadow_stack         sys_map_shadow_stack
+454  or1k  futex_wake               sys_futex_wake
+455  or1k  futex_wait               sys_futex_wait
+456  or1k  futex_requeue            sys_futex_requeue
 """
 
 
@@ -38317,7 +38388,7 @@ nios2_syscall_tbl = """
 15   nios2  lremovexattr             sys_lremovexattr
 16   nios2  fremovexattr             sys_fremovexattr
 17   nios2  getcwd                   sys_getcwd
-18   nios2  lookup_dcookie           sys_lookup_dcookie
+18   nios2  lookup_dcookie           sys_ni_syscall
 19   nios2  eventfd2                 sys_eventfd2
 20   nios2  epoll_create1            sys_epoll_create1
 21   nios2  epoll_ctl                sys_epoll_ctl
@@ -38605,6 +38676,10 @@ nios2_syscall_tbl = """
 450  nios2  set_mempolicy_home_node  sys_set_mempolicy_home_node
 451  nios2  cachestat                sys_cachestat
 452  nios2  fchmodat2                sys_fchmodat2
+453  nios2  map_shadow_stack         sys_map_shadow_stack
+454  nios2  futex_wake               sys_futex_wake
+455  nios2  futex_wait               sys_futex_wait
+456  nios2  futex_requeue            sys_futex_requeue
 """
 
 
@@ -38871,7 +38946,7 @@ microblaze_syscall_tbl = """
 250     common  fadvise64                       sys_fadvise64
 # 251 is available for reuse (was briefly sys_set_zone_reclaim)
 252     common  exit_group                      sys_exit_group
-253     common  lookup_dcookie                  sys_lookup_dcookie
+253     common  lookup_dcookie                  sys_ni_syscall
 254     common  epoll_create                    sys_epoll_create
 255     common  epoll_ctl                       sys_epoll_ctl
 256     common  epoll_wait                      sys_epoll_wait
@@ -39069,6 +39144,10 @@ microblaze_syscall_tbl = """
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     common  cachestat                       sys_cachestat
 452     common  fchmodat2                       sys_fchmodat2
+453     common  map_shadow_stack                sys_map_shadow_stack
+454     common  futex_wake                      sys_futex_wake
+455     common  futex_wait                      sys_futex_wait
+456     common  futex_requeue                   sys_futex_requeue
 """
 
 
@@ -39348,7 +39427,7 @@ xtensa_syscall_tbl = """
 252     common  timer_getoverrun                sys_timer_getoverrun
 # System
 253     common  reserved253                     sys_ni_syscall
-254     common  lookup_dcookie                  sys_lookup_dcookie
+254     common  lookup_dcookie                  sys_ni_syscall
 255     common  available255                    sys_ni_syscall
 256     common  add_key                         sys_add_key
 257     common  request_key                     sys_request_key
@@ -39498,6 +39577,10 @@ xtensa_syscall_tbl = """
 450     common  set_mempolicy_home_node         sys_set_mempolicy_home_node
 451     common  cachestat                       sys_cachestat
 452     common  fchmodat2                       sys_fchmodat2
+453     common  map_shadow_stack                sys_map_shadow_stack
+454     common  futex_wake                      sys_futex_wake
+455     common  futex_wait                      sys_futex_wait
+456     common  futex_requeue                   sys_futex_requeue
 """
 
 
@@ -39897,7 +39980,7 @@ loongarch_syscall_tbl = """
 15   loongarch  lremovexattr             sys_lremovexattr
 16   loongarch  fremovexattr             sys_fremovexattr
 17   loongarch  getcwd                   sys_getcwd
-18   loongarch  lookup_dcookie           sys_lookup_dcookie
+18   loongarch  lookup_dcookie           sys_ni_syscall
 19   loongarch  eventfd2                 sys_eventfd2
 20   loongarch  epoll_create1            sys_epoll_create1
 21   loongarch  epoll_ctl                sys_epoll_ctl
@@ -40181,6 +40264,10 @@ loongarch_syscall_tbl = """
 450  loongarch  set_mempolicy_home_node  sys_set_mempolicy_home_node
 451  loongarch  cachestat                sys_cachestat
 452  loongarch  fchmodat2                sys_fchmodat2
+453  loongarch  map_shadow_stack         sys_map_shadow_stack
+454  loongarch  futex_wake               sys_futex_wake
+455  loongarch  futex_wait               sys_futex_wait
+456  loongarch  futex_requeue            sys_futex_requeue
 """
 
 
@@ -40211,7 +40298,7 @@ arc_syscall_tbl = """
 15   arc  lremovexattr             sys_lremovexattr
 16   arc  fremovexattr             sys_fremovexattr
 17   arc  getcwd                   sys_getcwd
-18   arc  lookup_dcookie           sys_lookup_dcookie
+18   arc  lookup_dcookie           sys_ni_syscall
 19   arc  eventfd2                 sys_eventfd2
 20   arc  epoll_create1            sys_epoll_create1
 21   arc  epoll_ctl                sys_epoll_ctl
@@ -40500,6 +40587,10 @@ arc_syscall_tbl = """
 450  arc  set_mempolicy_home_node  sys_set_mempolicy_home_node
 451  arc  cachestat                sys_cachestat
 452  arc  fchmodat2                sys_fchmodat2
+453  arc  map_shadow_stack         sys_map_shadow_stack
+454  arc  futex_wake               sys_futex_wake
+455  arc  futex_wait               sys_futex_wait
+456  arc  futex_requeue            sys_futex_requeue
 """
 
 
@@ -40530,7 +40621,7 @@ csky_syscall_tbl = """
 15   csky  lremovexattr             sys_lremovexattr
 16   csky  fremovexattr             sys_fremovexattr
 17   csky  getcwd                   sys_getcwd
-18   csky  lookup_dcookie           sys_lookup_dcookie
+18   csky  lookup_dcookie           sys_ni_syscall
 19   csky  eventfd2                 sys_eventfd2
 20   csky  epoll_create1            sys_epoll_create1
 21   csky  epoll_ctl                sys_epoll_ctl
@@ -40818,6 +40909,10 @@ csky_syscall_tbl = """
 450  csky  set_mempolicy_home_node  sys_set_mempolicy_home_node
 451  csky  cachestat                sys_cachestat
 452  csky  fchmodat2                sys_fchmodat2
+453  csky  map_shadow_stack         sys_map_shadow_stack
+454  csky  futex_wake               sys_futex_wake
+455  csky  futex_wait               sys_futex_wait
+456  csky  futex_requeue            sys_futex_requeue
 """
 
 

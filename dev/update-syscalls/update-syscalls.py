@@ -14,6 +14,8 @@ def init():
         print("example: {:s} /tmp/work/linux-6.6-rc7 /tmp/work/gef".format(sys.argv[0]))
         exit()
 
+    which("clang-format-15")
+
     global K_DIR, GEF_DIR, GEF_PATH, GEF_TMP_PATH
     K_DIR = sys.argv[1]
     GEF_DIR = sys.argv[2]
@@ -572,4 +574,5 @@ if __name__ == "__main__":
     arc_syscall_tbl_update()
     csky_syscall_tbl_update()
 
+    print(titlify("patch result"))
     print("patched gef.py is saved to {:s}".format(GEF_TMP_PATH))
