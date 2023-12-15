@@ -49361,10 +49361,34 @@ class KernelTaskCommand(GenericCommand):
         #endif
             struct user_struct *user;
             struct user_namespace *user_ns;
-            ...
-        }
+            struct group_info *group_info;
+            union {
+                int non_rcu;
+                struct rcu_head	rcu;
+            };
+        } __randomize_layout;
 
-        [Example x64; CONFIG_KEYS=y, CONFIG_SECIRYT=y]
+        [Example x64; CONFIG_KEYS=y, CONFIG_SECURITY=y]
+        0xffffffffbb454580|+0x0000|+000: 0x0000000000000004
+        0xffffffffbb454588|+0x0008|+001: 0x0000000000000000
+        0xffffffffbb454590|+0x0010|+002: 0x0000000000000000
+        0xffffffffbb454598|+0x0018|+003: 0x0000000000000000
+        0xffffffffbb4545a0|+0x0020|+004: 0x0000000000000000
+        0xffffffffbb4545a8|+0x0028|+005: 0x0000000000000000
+        0xffffffffbb4545b0|+0x0030|+006: 0x000001ffffffffff
+        0xffffffffbb4545b8|+0x0038|+007: 0x000001ffffffffff
+        0xffffffffbb4545c0|+0x0040|+008: 0x000001ffffffffff
+        0xffffffffbb4545c8|+0x0048|+009: 0x0000000000000000  // cap_ambilent
+        0xffffffffbb4545d0|+0x0050|+010: 0x0000000000000000  // jit_keyring
+        0xffffffffbb4545d8|+0x0058|+011: 0x0000000000000000  // session_keyring
+        0xffffffffbb4545e0|+0x0060|+012: 0x0000000000000000  // process_keyring
+        0xffffffffbb4545e8|+0x0068|+013: 0x0000000000000000  // thread_keyring
+        0xffffffffbb4545f0|+0x0070|+014: 0x0000000000000000  // request_key_auth
+        0xffffffffbb4545f8|+0x0078|+015: 0xffff998d8106cb68  ->  0xffff998d81052eb0  ->  0x0000000000000241 // security
+        0xffffffffbb454600|+0x0080|+016: 0xffffffffbb44c6c0  ->  0x0000004e00000075 // user
+        0xffffffffbb454608|+0x0088|+017: 0xffffffffbb44c740  ->  0x0000000000000001 // user_ns
+
+        [Example x64; CONFIG_KEYS=y, CONFIG_SECURITY=y]
         0xffff9ec6c88379c0|+0x0000|+000: 0x000000000000000a
         0xffff9ec6c88379c8|+0x0008|+001: 0x0000000000000000
         0xffff9ec6c88379d0|+0x0010|+002: 0x0000000000000000
@@ -49383,28 +49407,65 @@ class KernelTaskCommand(GenericCommand):
         0xffff9ec6c8837a38|+0x0078|+015: 0xffff9ec6c8873fe0  ->  0xffff9ec6c1052eb0  ->  0x00000000000002e8 // security
         0xffff9ec6c8837a40|+0x0080|+016: 0xffffffffbb64c5c0  ->  0x0000004f00000084 // user
         0xffff9ec6c8837a48|+0x0088|+017: 0xffff9ec6c820eaa0  ->  0x0000000000000001 // user_ns
+
+        [Example ARM64; CONFIG_KEYS=n, CONFIG_SECURITY=y]
+        0xffffd9e53efef538|+0x0000|+000: 0x0000000000000004
+        0xffffd9e53efef540|+0x0008|+001: 0x0000000000000000
+        0xffffd9e53efef548|+0x0010|+002: 0x0000000000000000
+        0xffffd9e53efef550|+0x0018|+003: 0x0000000000000000
+        0xffffd9e53efef558|+0x0020|+004: 0x0000000000000000
+        0xffffd9e53efef560|+0x0028|+005: 0x0000000000000000
+        0xffffd9e53efef568|+0x0030|+006: 0x000001ffffffffff
+        0xffffd9e53efef570|+0x0038|+007: 0x000001ffffffffff
+        0xffffd9e53efef578|+0x0040|+008: 0x000001ffffffffff
+        0xffffd9e53efef580|+0x0048|+009: 0x0000000000000000  // cap_ambient
+        0xffffd9e53efef588|+0x0050|+010: 0x0000000000000000  // security
+        0xffffd9e53efef590|+0x0058|+011: 0xffffd9e53efeeb10  ->  0x000000000000002a // user
+        0xffffd9e53efef598|+0x0060|+012: 0xffffd9e53efeeb98  ->  0x0000000000000001 // user_ns
+
+        [Example x86; CONFIG_KEYS=y, CONFIG_SECURITY=y]
+        0xc1aabbe0|+0x0000|+000: 0x00000004
+        0xc1aabbe4|+0x0004|+001: 0x00000000
+        0xc1aabbe8|+0x0008|+002: 0x00000000
+        0xc1aabbec|+0x000c|+003: 0x00000000
+        0xc1aabbf0|+0x0010|+004: 0x00000000
+        0xc1aabbf4|+0x0014|+005: 0x00000000
+        0xc1aabbf8|+0x0018|+006: 0x00000000
+        0xc1aabbfc|+0x001c|+007: 0x00000000
+        0xc1aabc00|+0x0020|+008: 0x00000000
+        0xc1aabc04|+0x0024|+009: 0x00000000
+        0xc1aabc08|+0x0028|+010: 0x00000000
+        0xc1aabc0c|+0x002c|+011: 0x00000000
+        0xc1aabc10|+0x0030|+012: 0xffffffff
+        0xc1aabc14|+0x0034|+013: 0x000001ff
+        0xc1aabc18|+0x0038|+014: 0xffffffff
+        0xc1aabc1c|+0x003c|+015: 0x000001ff
+        0xc1aabc20|+0x0040|+016: 0xffffffff
+        0xc1aabc24|+0x0044|+017: 0x000001ff
+        0xc1aabc28|+0x0048|+018: 0x00000000  // camp_abmient
+        0xc1aabc2c|+0x004c|+019: 0x00000000
+        0xc1aabc30|+0x0050|+020: 0x00000000  // jit_keyring
+        0xc1aabc34|+0x0054|+021: 0x00000000  // session_keyring
+        0xc1aabc38|+0x0058|+022: 0x00000000  // process_keyring
+        0xc1aabc3c|+0x005c|+023: 0x00000000  // thread_keyring
+        0xc1aabc40|+0x0060|+024: 0x00000000  // request_key_auth
+        0xc1aabc44|+0x0064|+025: 0xc201e8b0  ->  0xc20ecd94  ->  0x00000234 // security
+        0xc1aabc48|+0x0068|+026: 0xc1aa6b80  ->  0x00000068 // user
+        0xc1aabc4c|+0x006c|+027: 0xc1aa6be0  ->  0x00000001 // user_ns
         """
         uid_gid_size = 4 * 8 # uid_t:4byte. len([uid,gid,suid,sgid,euid,egid,fsuid,fsgid]) == 8
         sizeof_securebits = 4
         cap_size = 8 * 5 # cap_t:8byte. len([cap_inheritable,cap_permitted,cap_effective,cap_bset,cap_ambient]) == 5
-        pos = init_task_cred_ptr + offset_uid + uid_gid_size + sizeof_securebits + cap_size
 
-        x = read_int_from_memory(pos)
-        if not is_valid_addr(x):
-            # CONFIG_KEYS=y
-            pos += current_arch.ptrsize * 5
-
-        x = read_int_from_memory(pos)
-        if not is_valid_addr(x):
-            return None
-        y = read_int_from_memory(x)
-        if is_valid_addr(y) or y == 0:
-            # CONFIG_SECURITY=y
-            pos += current_arch.ptrsize
-
-        # here, pos points user.
-        user_ns = pos + current_arch.ptrsize
-        return user_ns - init_task_cred_ptr
+        for i in range(10):
+            offset_user_ns = offset_uid + uid_gid_size + sizeof_securebits + cap_size + current_arch.ptrsize * i
+            v = read_int_from_memory(init_task_cred_ptr + offset_user_ns)
+            if not is_valid_addr(v):
+                continue
+            w = read_int_from_memory(v)
+            if w == 1:
+                return offset_user_ns
+        return None
 
     class MapleTree:
         """Linux v6.1 introduces maple_tree. This is a simple parser."""
