@@ -61437,8 +61437,16 @@ class BuddyDumpCommand(GenericCommand):
         return
 
     def dump_zone(self, zone):
+        if self.quiet:
+            tqdm = lambda x, leave: x
+        else:
+            try:
+                from tqdm import tqdm
+            except ImportError:
+                tqdm = lambda x, leave: x
+
         free_area_array = zone + self.offset_free_area
-        for order in range(self.MAX_ORDER):
+        for order in tqdm(range(self.MAX_ORDER), leave=False):
             if self.order_filter and order not in self.order_filter:
                 continue
             free_area_i = free_area_array + self.sizeof_free_area * order
