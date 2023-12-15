@@ -189,6 +189,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmalloc-dump.png)
 * `virt2page`/`page2virt`: displays transformation virtual address <-> struct page.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/virt2page-page2virt.png)
+* `phys2page`/`page2phys`: displays transformation physical address <-> struct page.
 * `kmalloc-tracer`: collects and displays information when kmalloc/kfree.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-tracer.png)
 * `kmalloc-allocated-by`: calls a predefined set of system calls and prints structures allocated by kmalloc or freed by kfree.

@@ -73910,12 +73910,13 @@ class PagewalkWithHintsCommand(GenericCommand):
 
 @register_command
 class Page2VirtCommand(GenericCommand):
-    """Transfer from page to virtual address."""
+    """Transfer from page to one of virtual address."""
     _cmdline_ = "page2virt"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("page", metavar="PAGE", type=parse_address, help="the page address you want to translate.")
+    parser.add_argument("-r", "--reparse", action="store_true", help="do not use map cache.")
     parser.add_argument("--from-slub-dump", action="store_true", help="used internally in gef, please don't use it.")
     _syntax_ = parser.format_help()
 
@@ -74052,6 +74053,9 @@ class Page2VirtCommand(GenericCommand):
         self.dont_repeat()
 
         self.from_slub_dump = args.from_slub_dump
+        if args.reparse:
+            self.initialized = False
+            self.maps = None
 
         if is_arm64():
             kversion = KernelVersionCommand.kernel_version()
@@ -74083,6 +74087,7 @@ class Virt2PageCommand(Page2VirtCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("virt", metavar="ADDRESS", type=parse_address, help="the virtual address you want to translate.")
+    parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
     parser.add_argument("--from-slub-dump", action="store_true", help="used internally in gef, please don't use it.")
     _syntax_ = parser.format_help()
 
@@ -74095,6 +74100,9 @@ class Virt2PageCommand(Page2VirtCommand):
         self.dont_repeat()
 
         self.from_slub_dump = args.from_slub_dump
+        if args.reparse:
+            self.initialized = False
+            self.maps = None
 
         if is_arm64():
             kversion = KernelVersionCommand.kernel_version()
@@ -74120,6 +74128,117 @@ class Virt2PageCommand(Page2VirtCommand):
             return
 
         gef_print("Virt: {:#x} -> Page: {:#x}".format(virt, page))
+        return
+
+
+@register_command
+class Page2PhysCommand(Page2VirtCommand):
+    """Transfer from page to physical address."""
+    _cmdline_ = "page2phys"
+    _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("page", metavar="PAGE", type=parse_address, help="the page address you want to translate.")
+    parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        self.from_slub_dump = False
+        if args.reparse:
+            self.initialized = False
+            self.maps = None
+
+        if is_arm64():
+            kversion = KernelVersionCommand.kernel_version()
+            if kversion < "4.7":
+                err("Unsupported (kernel is too old)")
+                return
+
+        if not self.initialized:
+            info("Wait for memory scan")
+            ret = self.initialize()
+            if ret is False:
+                err("Failed to initialize")
+                return
+
+        vaddr = self.page2virt(args.page)
+        if vaddr is None:
+            err("Failed to resolve")
+            return
+
+        ret = gdb.execute("v2p {:#x}".format(vaddr), to_string=True)
+        r = re.search(r"Virt: 0x\S+ -> Phys: (0x\S+)", ret)
+        if not r:
+            err("Failed to resolve")
+            return
+        paddr = int(r.group(1), 16)
+
+        gef_print("Page: {:#x} -> Phys: {:#x}".format(args.page, paddr))
+        return
+
+
+@register_command
+class Phys2PageCommand(Page2VirtCommand):
+    """Transfer from physical address to page."""
+    _cmdline_ = "phys2page"
+    _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("phys", metavar="ADDRESS", type=parse_address, help="the physical address you want to translate.")
+    parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        self.from_slub_dump = False
+        if args.reparse:
+            self.initialized = False
+            self.maps = None
+
+        if is_arm64():
+            kversion = KernelVersionCommand.kernel_version()
+            if kversion < "4.7":
+                err("Unsupported (kernel is too old)")
+                return
+
+        phys = args.phys
+        if args.phys & 0xfff:
+            warn("The address must be 0x1000 aligned, round down and then calculate.")
+            phys = args.phys & gef_getpagesize_mask_high()
+
+        if not self.initialized:
+            info("Wait for memory scan")
+            ret = self.initialize()
+            if ret is False:
+                err("Failed to initialize")
+                return
+
+        ret = gdb.execute("p2v {:#x}".format(phys), to_string=True)
+        r = re.search(r"Phys: 0x\S+ -> Virt: (0x\S+)", ret)
+        if not r:
+            err("Failed to resolve")
+            return
+        vaddr = int(r.group(1), 16)
+
+        page = self.virt2page(vaddr)
+        if page is None:
+            err("Failed to resolve")
+            return
+
+        gef_print("Phys: {:#x} -> Page: {:#x}".format(phys, page))
         return
 
 
