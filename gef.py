@@ -61608,6 +61608,9 @@ class KernelPipeCommand(GenericCommand):
             if not self.quiet:
                 warn("Nothing to dump")
             return False
+        else:
+            if not self.quiet:
+                info("Num of pipe: {:d}".format(len(set(x[1] for x in pipe_files))))
 
         # inode->i_pipe
         """
@@ -61651,7 +61654,7 @@ class KernelPipeCommand(GenericCommand):
             if "unaligned?" in ret:
                 continue
             # pipe_inode_info is allocated from kmalloc-192 (x64) or kmalloc-256 (arm64)
-            if "kmalloc-192" in ret or "kmalloc-256" in ret:
+            if any(x in ret for x in ["kmalloc-192", "kmalloc-256", "kmalloc-cg-192", "kmalloc-cg-256"]):
                 self.offset_i_pipe = current_arch.ptrsize * i
                 if not self.quiet:
                     info("offsetof(inode, i_pipe): {:#x}".format(self.offset_i_pipe))
@@ -61708,7 +61711,7 @@ class KernelPipeCommand(GenericCommand):
             if "unaligned?" in ret:
                 continue
             # pipe_inode_info is allocated from kmalloc-1k (x64)
-            if "kmalloc-1k" in ret:
+            if any(x in ret for x in ["kmalloc-1k", "kmalloc-cg-1k"]):
                 self.offset_bufs = current_arch.ptrsize * i
                 if not self.quiet:
                     info("offsetof(pipe_inode_info, bufs): {:#x}".format(self.offset_bufs))
