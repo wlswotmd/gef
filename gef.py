@@ -52984,29 +52984,27 @@ class KernelOperationsCommand(GenericCommand):
         "tty",
         "tty_ldisc",
         "vm",
+        "dma_buf",
     ]
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("mode", choices=types, help="The structure type.")
+    parser.add_argument("mode", choices=types, help="the structure type.")
     parser.add_argument("address", metavar="ADDRESS", nargs="?", type=parse_address,
                         help="the address interpreted as ops.")
+    parser.add_argument("-V", "--version", help="use specific kernel version")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} -q".format(_cmdline_)
+    _example_ = "{:s} -q\n".format(_cmdline_)
+    _example_ += "{:s} -q -V 6.6.0".format(_cmdline_)
 
     _note_ = "This command needs CONFIG_RANDSTRUCT=n."
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
-        self.initialized = False
         return
 
-    def initialize(self):
-        if self.initialized:
-            return True
-
-        kversion = KernelVersionCommand.kernel_version()
+    def initialize(self, kversion):
         if kversion.major < 3:
             err("Unsupported")
             return False
@@ -53375,7 +53373,34 @@ class KernelOperationsCommand(GenericCommand):
         ]
         self.members["smp"] = adapt_to_kernel_version(smp_operations)
 
-        self.initialized = True
+        dma_buf_ops = [
+            # type,        name                                       minver    maxver
+            ["bool",       "cache_sgt_mapping",                       "5.7.0",  None],
+            ["bool, bool", "cache_sgt_mapping, bool dynamic_mapping", "5.5.0",  "5.6.19"],
+            ["bool",       "cache_sgt_mapping",                       "5.3.0",  "5.4.264"],
+            ["func_ptr",   "attach",                                  "3.2.0",  None],
+            ["func_ptr",   "detach",                                  "3.2.0",  None],
+            ["func_ptr",   "pin",                                     "5.7.0",  None],
+            ["func_ptr",   "unpin",                                   "5.7.0",  None],
+            ["func_ptr",   "map_dma_buf",                             "3.2.0",  None],
+            ["func_ptr",   "unmap_dma_buf",                           "3.2.0",  None],
+            ["func_ptr",   "release",                                 "3.2.0",  None],
+            ["func_ptr",   "begin_cpu_access",                        "3.4.0",  None],
+            ["func_ptr",   "end_cpu_access",                          "3.4.0",  None],
+            ["func_ptr",   "mmap",                                    "5.3.0",  None],
+            ["func_ptr",   "map_atomic",                              "4.12.0", "4.18.20"],
+            ["func_ptr",   "unmap_atomic",                            "4.12.0", "4.18.20"],
+            ["func_ptr",   "kmap_atomic",                             "3.4.0",  "4.11.12"],
+            ["func_ptr",   "kunmap_atomic",                           "3.4.0",  "4.11.12"],
+            ["func_ptr",   "map",                                     "4.12.0", "5.5.19"],
+            ["func_ptr",   "unmap",                                   "4.12.0", "5.5.19"],
+            ["func_ptr",   "kmap",                                    "3.4.0",  "4.11.12"],
+            ["func_ptr",   "kunmap",                                  "3.4.0",  "4.11.12"],
+            ["func_ptr",   "mmap",                                    "3.5.0",  "5.2.21"],
+            ["func_ptr",   "vmap",                                    "3.5.0",  None],
+            ["func_ptr",   "vunmap",                                  "3.5.0",  None],
+        ]
+        self.members["dma_buf"] = adapt_to_kernel_version(dma_buf_ops)
         return True
 
     @parse_args
@@ -53386,10 +53411,26 @@ class KernelOperationsCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        if self.initialize() is False:
+        # parse version
+        if args.version:
+            r = re.search(r"(\d)\.(\d+)(?:\.(\d+))?", args.version)
+            if r:
+                major, minor, patch = int(r.group(1)), int(r.group(2)), int(r.group(3) or 0)
+            else:
+                err("Failed to parse version string")
+                return
+            kversion = KernelVersionCommand.KernelVersion(None, args.version, major, minor, patch)
+        else:
+            kversion = KernelVersionCommand.kernel_version()
+
+        if self.initialize(kversion) is False:
             return
 
         members = self.members[args.mode]
+
+        if not members:
+            warn("Not defined in this version")
+            return
 
         self.out = []
         if args.address:
