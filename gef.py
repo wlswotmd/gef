@@ -57969,7 +57969,7 @@ class DiffOutputListCommand(DiffOutputCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        fmt = "{:>3s}  {:26s}  {:39s}  {:>7s}  {:s}"
+        fmt = "{:<3s}  {:26s}  {:39s}  {:<7s}  {:s}"
         legend = ["#", "mtime", "path", "size", "command"]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
@@ -57979,7 +57979,7 @@ class DiffOutputListCommand(DiffOutputCommand):
             mtime = datetime.datetime.fromtimestamp(os.path.getmtime(path))
             cmd = open(path[:-4] + ".cmd", "rb").read()
             cmd = bytes2str(cmd)
-            gef_print("{:>3d}  {}  {:s}  {:>7d}  {:s}".format(idx, mtime, path, size, cmd))
+            gef_print("{:<3d}  {}  {:s}  {:<7d}  {:s}".format(idx, mtime, path, size, cmd))
         return
 
 
