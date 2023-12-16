@@ -51914,12 +51914,28 @@ class KernelCharacterDevicesCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} -q".format(_cmdline_)
-
-    _note_ = "This command needs CONFIG_RANDSTRUCT=n."
-
-    # character device is managed at chrdevs[] and cdev_map.
-    # we use each of them for getting structure information.
+    _note_ = "This command needs CONFIG_RANDSTRUCT=n.\n"
+    _note_ += "\n"
+    _note_ += "Simplified cdev structure:\n"
+    _note_ += "\n"
+    _note_ += "+-chrdevs[255]-+    +-char_device_struct-+\n"
+    _note_ += "| [0]          |--->| next               |--->...\n"
+    _note_ += "| ...          |    | major              |\n"
+    _note_ += "| [254]        |    | baseminor          |           +--->+-cdev--+  +-->+-kobject-+\n"
+    _note_ += "+--------------+    | minorct            |           |    | kobj  |--+   | name    |\n"
+    _note_ += "                    | name[64]           |           |    | ...   |      | ...     |\n"
+    _note_ += "                    | cdev               |-----------+    | ops   |      | parent  |\n"
+    _note_ += "                    +--------------------+           |    | ...   |      | ...     |\n"
+    _note_ += "                                                     |    | dev   |      +---------+\n"
+    _note_ += "+----------+    +-kobj_map----+    +-probe-+         |    | ...   |\n"
+    _note_ += "| cdev_map |--->| probes[0]   |--->| next  |--->...  |    +-------+\n"
+    _note_ += "+----------+    | ...         |    | dev   |         |\n"
+    _note_ += "                | probes[254] |    | ...   |         |\n"
+    _note_ += "                | lock        |    | data  |---------+\n"
+    _note_ += "                +-------------+    +-------+\n"
+    _note_ += "\n"
+    _note_ += "The character devices are managed at chrdevs[] and cdev_map.\n"
+    _note_ += "This command use each of them for getting structure information."
 
     @staticmethod
     def get_cdev_name(major, minor):
@@ -52793,7 +52809,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
             unsigned int baseminor;
             int minorct;
             char name[64];
-            struct cdev *cdev; /* will die */
+            struct cdev *cdev;
         } *chrdevs[CHRDEV_MAJOR_HASH_SIZE];
         """
         chrdevs = KernelAddressHeuristicFinder.get_chrdevs()
@@ -52822,7 +52838,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
                 struct module *owner;
                 kobj_probe_t *get;
                 int (*lock)(dev_t, void *);
-                void *data;                  // -> cdev
+                void *data;  // -> cdev
             } *probes[255];
             struct mutex *lock;
         };
@@ -52843,7 +52859,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
             struct kobject *parent;
             struct kset *kset;
             const struct kobj_type *ktype;
-            struct kernfs_node *sd; /* sysfs directory entry */
+            struct kernfs_node *sd;
             struct kref kref;
         #ifdef CONFIG_DEBUG_KOBJECT_RELEASE
             struct delayed_work release;
