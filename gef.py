@@ -49423,7 +49423,7 @@ class KernelTaskCommand(GenericCommand):
             struct group_info *group_info;
             union {
                 int non_rcu;
-                struct rcu_head	rcu;
+                struct rcu_head rcu;
             };
         } __randomize_layout;
 
@@ -50207,6 +50207,7 @@ class KernelTaskCommand(GenericCommand):
 
     def get_offset_action(self, sighand):
         """
+        v5.3~
         struct sighand_struct {
             spinlock_t siglock;
             refcount_t count;
@@ -50228,30 +50229,49 @@ class KernelTaskCommand(GenericCommand):
             #endif
             } action[_NSIG]; // 64
         };
+
+        ~v5.3
+        struct sighand_struct {
+            refcount_t count;
+            struct k_sigaction {
+                struct sigaction sa;
+            #ifdef __ARCH_HAS_KA_RESTORER
+                __sigrestore_t ka_restorer;
+            #endif
+            } action[_NSIG]; // 64
+            spinlock_t siglock;
+            wait_queue_head_t signalfd_wqh;
+        };
         """
-        # search signalfd_wqh.list_head
-        found = False
-        for i in range(30):
-            offset_list_head = current_arch.ptrsize * (2 + i)
-            head = sighand + offset_list_head
-            if not is_valid_addr(head):
-                continue
+        kversion = KernelVersionCommand.kernel_version()
 
-            current = read_int_from_memory(head)
-            while True:
-                if current == head:
-                    found = True
+        if kversion >= "5.3":
+            # search signalfd_wqh.list_head
+            found = False
+            for i in range(30):
+                offset_list_head = current_arch.ptrsize * (2 + i)
+                head = sighand + offset_list_head
+                if not is_valid_addr(head):
+                    continue
+
+                current = read_int_from_memory(head)
+                while True:
+                    if current == head:
+                        found = True
+                        break
+                    if not is_valid_addr(current):
+                        break
+                    current = read_int_from_memory(current)
+                if found:
                     break
-                if not is_valid_addr(current):
-                    break
-                current = read_int_from_memory(current)
-            if found:
-                break
 
-        if not found:
-            return None
+            if not found:
+                return None
 
-        offset_action = offset_list_head + current_arch.ptrsize * 2
+            offset_action = offset_list_head + current_arch.ptrsize * 2
+
+        else: # < 5.3
+            offset_action = current_arch.ptrsize
         return offset_action
 
     def get_sizeof_action(self, task_addrs, offset_sighand, offset_action):
