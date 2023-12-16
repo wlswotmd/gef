@@ -67316,44 +67316,57 @@ class XStringCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="dump target address.")
     parser.add_argument("count", metavar="COUNT", nargs="?", default=1, type=parse_address, help="repeat count for displaying.")
+    parser.add_argument("-l", "--max-length", type=parse_address,
+                        help="maximum number of characters to display. 0 means unlimited.")
+    parser.add_argument("-H", "--hex", action="store_true", help="show in hex style.")
     _syntax_ = parser.format_help()
-
-    _example_ = "{:s} 0x11223344".format(_cmdline_)
 
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
         self.dont_repeat()
 
-        max_length = get_gef_setting("context.nb_max_string_length")
+        if args.max_length is not None:
+            max_length = args.max_length
+        else:
+            max_length = get_gef_setting("context.nb_max_string_length")
 
         address = args.address
         for _ in range(args.count):
-            if not is_valid_addr(args.address):
+            if not is_valid_addr(address):
                 err("Memory access error at {:#x}".format(address))
-                return
+                break
 
+            # read string
+            current = address
             size = gef_getpagesize() - (address & gef_getpagesize_mask_low())
+            s = b""
+            while True:
+                # check accessiblity
+                if not is_valid_addr(current):
+                    break
 
-            # read once
-            s = read_memory(address, size)
-            pos = s.find(b"\0")
-            if pos != -1:
-                s = s[:pos]
-            else:
-                # not found 0x0, but too short. read more.
-                if len(s) < max_length:
-                    if is_valid_addr(address + size):
-                        s += read_memory(address + size, gef_getpagesize())
-                        pos = s.find(b"\0")
-                        if pos != -1:
-                            s = s[:pos]
+                # read stirng
+                s += read_memory(current, size)
+                pos = s.find(b"\0")
+                if pos != -1:
+                    s = s[:pos]
+                    break
+
+                # not found 0x0, read more
+                current += size
+                size = gef_getpagesize()
 
             # cut off
-            if len(s) > max_length:
-                s = s[:max_length] + b"..."
+            if max_length and len(s) >= max_length:
+                cs = s[:max_length] + b"..."
+            else:
+                cs = s
 
-            gef_print("{!s}: {:s}".format(lookup_address(address), repr(s)))
+            if args.hex:
+                gef_print("{!s}: {:s} ({:#x} bytes)".format(lookup_address(address), cs.hex(), len(s)))
+            else:
+                gef_print("{!s}: {:s} ({:#x} bytes)".format(lookup_address(address), repr(cs), len(s)))
 
             # go to next address
             if pos == -1:
