@@ -45,7 +45,7 @@ Think of it as a completely different product.
 ## Will each GEF command be more accurate if I have `vmlinux` with debug symbols?
 No, whether `vmlinux` includes debug information has no effect on GEF behavior.
 
-GEF always uses its own resolved address with `kallsyms-remote`.
+GEF always uses its own resolved address with `ksymaddr-remote`.
 It also performs its own heuristic structure member detection in each command.
 
 ## Does GEF support i386 16-bit mode (real mode)?
@@ -92,10 +92,11 @@ Internally, it consists of several steps.
 1. Identify the memory map from the page table structure.
 2. Identify `.rodata` area of kernel from memory map.
 3. Scan `.rodata` to identify the kernel version.
-4. Parse the structure of `kallsyms` in `.rodata` and get all "symbol-address" pairs.
+4. Parse the structure of `kallsyms` in `.rodata` and get all "symbol and address" pairs.
 5. If global variable symbols are available at this point, use it. (= `CONFIG_KALLSYMS_ALL=y`).
     * If not, disassemble the function which uses specified global variable.
     * By parsing the result, we obtain the address of the required global variable.
+    * This is implemented at `KernelAddressHeuristicFinder` class and `KernelAddressHeuristicFinderUtil` class.
 6. Determine the offsets of the structure's members, if necessary.
     * Use facts such as whether a value in memory is an address or whether a structure in memory has a specific structure to identify it heuristically.
     * At this time, I take into account the presence or absence of members and changes in their order due to differences in kernel versions.

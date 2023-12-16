@@ -321,7 +321,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * Glibc heap commands are improved.
     * It changes the color.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-bins.png)
-    * They print info if the chunk is in free-list.
+    * They print bins information if the chunk is in free-list.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-if-in-freelist.png)
     * Thread arena is supported for all `heap` commands.
         * Use `-a` option.
