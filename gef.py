@@ -15851,6 +15851,17 @@ class SearchCfiGadgetsCommand(GenericCommand):
                 elif current_arch.is_jump(insn):
                     if insn.operands[0].startswith("0x"):
                         valid = False
+
+                    # If the GOT cannot be modified, you can jump directly to the jump destination,
+                    # so there is no need to consider it in practice.
+                    if inscount == 2 and "[rip" in insn.operands[0]:
+                        # 0x555555558630 f30f1efa     <free@plt+0x0> endbr64
+                        # 0x555555558634 ff2536e90100 <free@plt+0x4> jmp QWORD PTR [rip+0x1e936] # 0x555555576f70
+                        r = re.search(r"# (0x\w+)", insn.operands[0])
+                        if r:
+                            v = lookup_address(int(r.group(1), 16))
+                            if not v.section.is_writable():
+                                valid = False
                     break
                 elif "XMMWORD" in "".join(insn.operands):
                     valid = False
