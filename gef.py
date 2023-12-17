@@ -63604,7 +63604,10 @@ class VmallocDumpCommand(GenericCommand):
             flags = None
             if used:
                 vm = read_int_from_memory(vmap_area + self.offset_vm)
-                flags = read_int_from_memory(vm + self.offset_flags)
+                if vm:
+                    flags = read_int_from_memory(vm + self.offset_flags)
+                else:
+                    flags = 0
             areas.append([used, va_start, va_end, va_size, flags])
 
             try:
