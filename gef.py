@@ -48862,28 +48862,31 @@ class KernelTaskCommand(GenericCommand):
     def get_offset_tasks(self, init_task):
         # search init_task->tasks
         for i in range(0x200):
-            offset_tasks = i * current_arch.ptrsize
-            pos = init_task + offset_tasks
-            value_list = [pos]
+            offset_tasks = current_arch.ptrsize * i
+            pos1 = init_task + offset_tasks
+            pos2 = init_task + offset_tasks + current_arch.ptrsize
+            list1 = [pos1]
+            list2 = [pos2]
             # validating candidate offset
             while True:
                 # read check
-                try:
-                    pos = read_int_from_memory(pos)
-                except gdb.MemoryError: # memory read error
+                if not is_valid_addr(pos1) or not is_valid_addr(pos2):
                     found = False
                     break
+                pos1 = read_int_from_memory(pos1)
+                pos2 = read_int_from_memory(pos2) + current_arch.ptrsize
                 # list validate
-                if pos in value_list[1:]: # incomplete infinity loop detected
+                if pos1 in list1[1:] or pos2 in list2[1:]: # incomplete infinity loop detected
                     found = False
                     break
-                if pos == value_list[0] and len(value_list) == 1: # self reference
+                if (pos1 == list1[0] and len(list1) == 1) or (pos2 == list2[0] and len(list2) == 1): # self reference
                     found = False
                     break
-                if pos == value_list[0] and len(value_list) > 1: # maybe link list
+                if (pos1 == list1[0] and len(list1) > 5) and (pos2 == list2[0] and len(list2) > 5): # maybe link list
                     found = True
                     break
-                value_list.append(pos)
+                list1.append(pos1)
+                list2.append(pos2)
             if found:
                 return offset_tasks
         return None
@@ -50046,27 +50049,12 @@ class KernelTaskCommand(GenericCommand):
         return offset_d_iname
 
     def get_offset_d_parent(self, dentry, offset_d_iname):
-        current = dentry + offset_d_iname - current_arch.ptrsize * 3
-        # now, `current` points qstr.size
-
-        if is_32bit():
-            mask = KernelbaseCommand.get_kernel_base().text_base & 0xf0000000
-        else:
-            mask = 0xffff_0000_0000_0000
-        while True:
-            x = read_int_from_memory(current)
-            if x == dentry + offset_d_iname:
-                current -= current_arch.ptrsize
-                continue
-
-            if not is_valid_addr(x):
-                current -= current_arch.ptrsize
-                continue
-
-            if (x & mask) == mask:
-                offset_d_parent = current - dentry
-                break
-            current -= current_arch.ptrsize
+        offset_dname_name = offset_d_iname - current_arch.ptrsize * 2
+        if read_int_from_memory(dentry + offset_dname_name) == 0: # skip if padding
+            offset_dname_name -= current_arch.ptrsize
+        offset_d_parent = offset_dname_name - 0x8 - current_arch.ptrsize
+        if read_int_from_memory(dentry + offset_d_parent) == 0: # skip if padding
+            offset_d_parent -= current_arch.ptrsize
         return offset_d_parent
 
     def get_ino(self, file):
