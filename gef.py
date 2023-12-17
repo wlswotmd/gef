@@ -54637,6 +54637,11 @@ class KernelPciDeviceCommand(GenericCommand):
         if not self.quiet:
             info("pci_root_buses: {:#x}".format(self.pci_root_buses))
 
+        first_root_bus = read_int_from_memory(self.pci_root_buses)
+        if self.pci_root_buses == first_root_bus:
+            warn("Nothing to dump")
+            return False
+
         # pci_bus->{node,children,devices}
         """
         struct pci_bus {
@@ -54682,7 +54687,6 @@ class KernelPciDeviceCommand(GenericCommand):
         self.offset_pci_bus_devices = current_arch.ptrsize * 5
 
         # pci_bus->dev
-        first_root_bus = read_int_from_memory(self.pci_root_buses)
         for i in range(100):
             v = read_int_from_memory(first_root_bus + current_arch.ptrsize * i)
             if is_valid_addr(v):
@@ -54858,7 +54862,7 @@ class KernelPciDeviceCommand(GenericCommand):
         return dic
 
     def get_description(self, base_class, sub_class, prgif, vendor, device, subv, subd):
-        # The information provided by the programming interface (prgif) is too detailed, 
+        # The information provided by the programming interface (prgif) is too detailed,
         # so I decided not to use it.
         class_str = self.pci_ids.get(("C", base_class, sub_class), None)
         if class_str is None:
