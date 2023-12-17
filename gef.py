@@ -63016,6 +63016,11 @@ class KernelDeviceIOCommand(GenericCommand):
     _note_ += "| child           |--> resource     | child           |\n"
     _note_ += "+-----------------+                 +-----------------+"
 
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.sizeof_resource_size_t = None
+        return
+
     def dump_resource(self, addr):
         if not is_valid_addr(addr):
             return []
@@ -63023,35 +63028,60 @@ class KernelDeviceIOCommand(GenericCommand):
             return []
         self.seen.append(addr)
 
+        if not self.sizeof_resource_size_t:
+            name_ptr = read_int_from_memory(addr + 0x8 * 2) # sizeof(resource_size_t) == 8
+            if name_ptr and is_valid_addr(name_ptr):
+                name = read_cstring_from_memory(name_ptr, ascii_only=True)
+                if name in ["PCI IO", "PCI mem"]:
+                    self.sizeof_resource_size_t = 0x8
+
+            if not self.sizeof_resource_size_t:
+                name_ptr = read_int_from_memory(addr + 0x4 * 2) # sizeof(resource_size_t) == 4
+                if name_ptr and is_valid_addr(name_ptr):
+                    name = read_cstring_from_memory(name_ptr, ascii_only=True)
+                    if name in ["PCI IO", "PCI mem"]:
+                        self.sizeof_resource_size_t = 0x4
+
         """
         struct resource {
-            resource_size_t start;
-            resource_size_t end;
+            resource_size_t start; // 4 or 8
+            resource_size_t end; // 4 or 8
             const char *name;
             unsigned long flags;
-            unsigned long desc;
+            unsigned long desc; // v4.5~
             struct resource *parent, *sibling, *child;
         };
         """
-        start = u64(read_memory(addr, 8))
-        end = u64(read_memory(addr + 8, 8))
-        name = read_cstring_from_memory(read_int_from_memory(addr + 8 * 2))
-        flags = read_int_from_memory(addr + 8 * 2 + current_arch.ptrsize)
+
+        if self.sizeof_resource_size_t is None:
+            err("Not recognized sizeof(resource_size_t)")
+            return []
+        elif self.sizeof_resource_size_t == 8:
+            start = u64(read_memory(addr, 8))
+            end = u64(read_memory(addr + 8, 8))
+        elif self.sizeof_resource_size_t == 4:
+            start = u32(read_memory(addr, 4))
+            end = u32(read_memory(addr + 4, 4))
+        name = read_cstring_from_memory(read_int_from_memory(addr + self.sizeof_resource_size_t * 2))
+        flags = read_int_from_memory(addr + self.sizeof_resource_size_t * 2 + current_arch.ptrsize)
 
         ret = [(addr, start, end, name, flags)]
 
         kversion = KernelVersionCommand.kernel_version()
         if kversion > "4.5":
-            adjust = 1
+            parent = read_int_from_memory(addr + self.sizeof_resource_size_t * 2 + current_arch.ptrsize * 3)
+            ret += self.dump_resource(parent)
+            sibling = read_int_from_memory(addr + self.sizeof_resource_size_t * 2 + current_arch.ptrsize * 4)
+            ret += self.dump_resource(sibling)
+            child = read_int_from_memory(addr + self.sizeof_resource_size_t * 2 + current_arch.ptrsize * 5)
+            ret += self.dump_resource(child)
         else:
-            adjust = 0
-
-        parent = read_int_from_memory(addr + 8 * 2 + current_arch.ptrsize * (2 + adjust))
-        ret += self.dump_resource(parent)
-        sibling = read_int_from_memory(addr + 8 * 2 + current_arch.ptrsize * (2 + adjust + 1))
-        ret += self.dump_resource(sibling)
-        child = read_int_from_memory(addr + 8 * 2 + current_arch.ptrsize * (2 + adjust + 2))
-        ret += self.dump_resource(child)
+            parent = read_int_from_memory(addr + self.sizeof_resource_size_t * 2 + current_arch.ptrsize * 2)
+            ret += self.dump_resource(parent)
+            sibling = read_int_from_memory(addr + self.sizeof_resource_size_t * 2 + current_arch.ptrsize * 3)
+            ret += self.dump_resource(sibling)
+            child = read_int_from_memory(addr + self.sizeof_resource_size_t * 2 + current_arch.ptrsize * 4)
+            ret += self.dump_resource(child)
         return ret
 
     def get_flags_str(self, flags_value):
@@ -63114,6 +63144,8 @@ class KernelDeviceIOCommand(GenericCommand):
         if not ioport_resource:
             err("Not found ioport_resource")
         else:
+            info("ioport_resource: {:#x}".format(ioport_resource))
+
             self.seen = []
             resources = self.dump_resource(ioport_resource)
             if resources:
@@ -63135,6 +63167,8 @@ class KernelDeviceIOCommand(GenericCommand):
         if not iomem_resource:
             err("Not found iomem_resource")
         else:
+            info("iomem_resource: {:#x}".format(iomem_resource))
+
             self.seen = []
             resources = self.dump_resource(iomem_resource)
             if resources:
