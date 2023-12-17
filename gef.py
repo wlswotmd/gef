@@ -19551,7 +19551,7 @@ class AsmListCommand(GenericCommand):
                 return
             patterns = self.listup_x86(arch, mode)
         else:
-            err("Unsupported")
+            err("Unsupported other than x86/x64")
             return
 
         if patterns is None:
@@ -26422,7 +26422,7 @@ class DereferenceCommand(GenericCommand):
 
         if args.slub_contains or args.phys:
             if not (is_qemu_system() or is_kgdb() or is_vmware()):
-                err("Unsupported")
+                err("Unsupported gdb mode")
                 return
 
         if args.phys:
@@ -26851,7 +26851,7 @@ class VMMapCommand(GenericCommand):
             return
 
         if args.outer and not is_qemu_user():
-            err("Unsupported")
+            err("Unsupported `--outer` option in this gdb mode")
             return
 
         if is_qemu_user():
@@ -53087,7 +53087,7 @@ class KernelOperationsCommand(GenericCommand):
 
     def initialize(self, kversion):
         if kversion.major < 3:
-            err("Unsupported")
+            err("Unsupported v3.0 or before")
             return False
 
         self.members = {}
@@ -54573,7 +54573,7 @@ class KernelTimerCommand(GenericCommand):
 
         kversion = KernelVersionCommand.kernel_version()
         if kversion < "4.8":
-            err("Unsupported")
+            err("Unsupported v4.8 or before")
             return
 
         if not args.quiet:
@@ -55238,7 +55238,7 @@ class KernelSearchCodePtrCommand(GenericCommand):
 
         self.kinfo = KernelbaseCommand.get_kernel_base()
         if self.kinfo.has_none or self.kinfo.rwx:
-            err("Unsupported")
+            err("Unsupported environment which has RWX data area")
             return
         self.ktext_start = self.kinfo.text_base
         self.ktext_end = self.kinfo.text_end
@@ -57042,7 +57042,7 @@ class MemoryCompareCommand(GenericCommand):
 
         if args.phys1 or args.phys2:
             if not is_qemu_system():
-                err("Unsupported")
+                err("Unsupported `--phys` option in this gdb mode")
                 return
 
         if args.size == 0:
@@ -57102,7 +57102,7 @@ class MemorySetCommand(GenericCommand):
 
         if args.phys:
             if not is_qemu_system():
-                err("Unsupported")
+                err("Unsupported `--phys` option in this gdb mode")
                 return
 
         if args.size == 0:
@@ -57170,7 +57170,7 @@ class MemoryCopyCommand(GenericCommand):
 
         if args.phys1 or args.phys2:
             if not is_qemu_system():
-                err("Unsupported")
+                err("Unsupported `--phys` option in this gdb mode")
                 return
 
         if args.size == 0:
@@ -57256,7 +57256,7 @@ class MemorySwapCommand(GenericCommand):
 
         if args.phys1 or args.phys2:
             if not is_qemu_system():
-                err("Unsupported")
+                err("Unsupported `--phys` option in this gdb mode")
                 return
 
         if args.size == 0:
@@ -57352,7 +57352,7 @@ class MemoryInsertCommand(GenericCommand):
 
         if args.phys1 or args.phys2:
             if not is_qemu_system():
-                err("Unsupported")
+                err("Unsupported `--phys` option in this gdb mode")
                 return
 
         if args.size2 == 0:
@@ -57529,7 +57529,7 @@ class IsMemoryZeroCommand(GenericCommand):
 
         if args.phys:
             if not is_qemu_system():
-                err("Unsupported")
+                err("Unsupported `--phys` option in this gdb mode")
                 return
 
         if args.size == 0:
@@ -57605,7 +57605,7 @@ class SequenceLengthCommand(GenericCommand):
 
         if args.phys:
             if not is_qemu_system():
-                err("Unsupported")
+                err("Unsupported `--phys` option in this gdb mode")
                 return
 
         if args.unit >= 0x100000:
@@ -70894,7 +70894,7 @@ class PagewalkX64Command(PagewalkCommand):
                     self.pagewalk_PT()
                     self.merging()
         else:
-            self.err("Unsupported")
+            self.err("Unsupported CPU")
             return
 
         self.flags_strings_cache = None
