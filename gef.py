@@ -61535,7 +61535,10 @@ class BuddyDumpCommand(GenericCommand):
 
             # address info
             virt = self.page2virt(page)
-            phys = Virt2PhysCommand.v2p(virt, self.maps)
+            phys = None
+            if virt:
+                phys = Virt2PhysCommand.v2p(virt, self.maps)
+
             virt_str = "???"
             phys_str = "???"
             if virt:
@@ -74380,7 +74383,11 @@ class Page2VirtCommand(GenericCommand):
             region_start = region_end - (2 ** (64 - T1SZ))
             region_bits = int(math.log2(region_end - region_start))
 
-            FEAT_LVA = ((get_register("$ID_AA64MMFR2_EL1") >> 16) & 0b1111) == 0b0001
+            ID_AA64MMFR2_EL1 = get_register("$ID_AA64MMFR2_EL1")
+            if ID_AA64MMFR2_EL1 is not None:
+                FEAT_LVA = ((ID_AA64MMFR2_EL1 >> 16) & 0b1111) == 0b0001
+            else:
+                FEAT_LVA = False
             if FEAT_LVA:
                 CONFIG_ARM64_VA_BITS = min(52, region_bits)
             else:
