@@ -43426,7 +43426,7 @@ class KernelMagicCommand(GenericCommand):
             fmt = "{:42s} {:#0{:d}x} [{:3s}]               -> {:#0{:d}x}"
             gef_print(fmt.format(sym, addr, width, perm, val, width))
         elif to_string:
-            val = read_cstring_from_memory(addr, ascii_only=True)
+            val = read_cstring_from_memory(addr, ascii_only=True) or "???"
             fmt = "{:42s} {:#0{:d}x} [{:3s}] (+{:#010x}) -> {:s}"
             gef_print(fmt.format(sym, addr, width, perm, addr - base, val))
         else:
@@ -43464,8 +43464,6 @@ class KernelMagicCommand(GenericCommand):
         self.resolve_and_print_kernel("modprobe_path", text_base, maps, KernelAddressHeuristicFinder.get_modprobe_path, to_string=True)
         self.resolve_and_print_kernel("orderly_poweroff", text_base, maps)
         self.resolve_and_print_kernel("poweroff_cmd", text_base, maps, KernelAddressHeuristicFinder.get_poweroff_cmd, to_string=True)
-        self.resolve_and_print_kernel("orderly_reboot", text_base, maps)
-        self.resolve_and_print_kernel("reboot_cmd", text_base, maps, KernelAddressHeuristicFinder.get_reboot_cmd, to_string=True)
         self.resolve_and_print_kernel("core_pattern", text_base, maps, KernelAddressHeuristicFinder.get_core_pattern, to_string=True)
         gef_print(titlify("ROP finalizer"))
         if is_x86_64():
@@ -43485,8 +43483,8 @@ class KernelMagicCommand(GenericCommand):
             self.resolve_and_print_kernel("_copy_to_user", text_base, maps)
             self.resolve_and_print_kernel("_copy_from_user", text_base, maps)
         elif is_arm32():
-            self.resolve_and_print_kernel("arm_copy_to_user", text_base, maps)
-            self.resolve_and_print_kernel("arm_copy_from_user", text_base, maps)
+            self.resolve_and_print_kernel(["arm_copy_to_user", "__copy_to_user"], text_base, maps)
+            self.resolve_and_print_kernel(["arm_copy_from_user", "__copy_from_user"], text_base, maps)
         elif is_arm64():
             self.resolve_and_print_kernel("__arch_copy_to_user", text_base, maps)
             self.resolve_and_print_kernel("__arch_copy_from_user", text_base, maps)
@@ -43505,7 +43503,7 @@ class KernelMagicCommand(GenericCommand):
             self.resolve_and_print_kernel("clocksource_tsc", text_base, maps, KernelAddressHeuristicFinder.get_clocksource_tsc)
         gef_print(titlify("Function pointer table"))
         self.resolve_and_print_kernel("ptmx_fops", text_base, maps, KernelAddressHeuristicFinder.get_ptmx_fops)
-        self.resolve_and_print_kernel("capability_hooks", text_base, maps)
+        self.resolve_and_print_kernel("capability_hooks", text_base, maps, KernelAddressHeuristicFinder.get_capability_hooks)
         self.resolve_and_print_kernel("n_tty_ops", text_base, maps, KernelAddressHeuristicFinder.get_n_tty_ops)
         gef_print(titlify("Function pointer table array"))
         self.resolve_and_print_kernel("tty_ldiscs", text_base, maps, KernelAddressHeuristicFinder.get_tty_ldiscs)
