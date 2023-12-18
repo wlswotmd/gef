@@ -47747,7 +47747,7 @@ class KernelAddressHeuristicFinder:
             if addr:
                 res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "rdi")
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
                 elif is_x86_32():
                     x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "eax")
                 elif is_arm64():
@@ -47775,7 +47775,7 @@ class KernelAddressHeuristicFinder:
             if addr:
                 res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "rdi")
+                    x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
                 elif is_x86_32():
                     x = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "eax")
                 elif is_arm64():
@@ -62053,37 +62053,37 @@ class KernelBpfCommand(GenericCommand):
     _note_ += "\n"
     _note_ += "Simplified bpf structure:\n"
     _note_ += "\n"
-    _note_ += "+-prog_idr--+   +--->+-xa_node----------+   +--------->+-bpf_prog-------------+\n"
-    _note_ += "| xa_head   |   |    | shift            |   |          | ...                  |\n"
-    _note_ += "| xa_flags  |   |    | ...              |   |          | type                 |\n"
-    _note_ += "| xa_head   |---+    | count            |   |          | expected_attach_type |\n"
-    _note_ += "+-----------+        | ...              |   |          | len                  |\n"
-    _note_ += "                     | slots[0]         |---+          | jited_len            |\n"
-    _note_ += "                     | slots[1]         |--->xa_node   | tag[8]               |\n"
-    _note_ += "                     | ...              |    or        | ...                  |\n"
-    _note_ += "                     | slots[15 or 63]  |    bpf_prog  | bpf_func             |---> BPF-code\n"
-    _note_ += "                     | ...              |              | ...                  |\n"
-    _note_ += "                     +------------------+              | aux                  |\n"
-    _note_ += "                                                       | ...                  |\n"
-    _note_ += "                                                       +----------------------+\n"
+    _note_ += "+-prog_idr----+   +--->+-xa_node----------+   +--------->+-bpf_prog-------------+\n"
+    _note_ += "| idr_rt      |   |    | shift            |   |          | ...                  |\n"
+    _note_ += "|   xa_lock   |   |    | ...              |   |          | type                 |\n"
+    _note_ += "|   xa_flags  |   |    | count            |   |          | expected_attach_type |\n"
+    _note_ += "|   xa_head   |---+    | ...              |   |          | len                  |\n"
+    _note_ += "| idr_base    |        | slots[0]         |---+          | jited_len            |\n"
+    _note_ += "| idr_next    |        | slots[1]         |--->xa_node   | tag[8]               |\n"
+    _note_ += "+-------------+        | ...              |    or        | ...                  |\n"
+    _note_ += "                       | slots[15 or 63]  |    bpf_prog  | bpf_func             |---> BPF-code\n"
+    _note_ += "                       | ...              |              | ...                  |\n"
+    _note_ += "                       +------------------+              | aux                  |\n"
+    _note_ += "                                                         | ...                  |\n"
+    _note_ += "                                                         +----------------------+\n"
     _note_ += "\n"
-    _note_ += "+-map_idr---+   +--->+-xa_node----------+   +--------->+-bpf_array------------+\n"
-    _note_ += "| xa_head   |   |    | shift            |   |          | map                  |\n"
-    _note_ += "| xa_flags  |   |    | ...              |   |          |   ...                |\n"
-    _note_ += "| xa_head   |---+    | count            |   |          |   map_type           |\n"
-    _note_ += "+-----------+        | ...              |   |          |   key_size           |\n"
-    _note_ += "                     | slots[0]         |---+          |   value_size         |\n"
-    _note_ += "                     | slots[1]         |--->xa_node   |   max_entries        |\n"
-    _note_ += "                     | ...              |    or        |   ...                |\n"
-    _note_ += "                     | slots[15 or 63]  |    bpf_array | elem_size            |\n"
-    _note_ += "                     | ...              |              | index_mask           |\n"
-    _note_ += "                     +------------------+              | ...                  |\n"
-    _note_ += "                                                       +----------------------+\n"
-    _note_ += "                                                       | value[0]             |\n"
-    _note_ += "                                                       | value[1]             |\n"
-    _note_ += "                                                       | ...                  |\n"
-    _note_ += "                                                       | value[max_entries-1] |\n"
-    _note_ += "                                                       +----------------------+\n"
+    _note_ += "+-map_idr-----+   +--->+-xa_node----------+   +--------->+-bpf_array------------+\n"
+    _note_ += "| idr_rt      |   |    | shift            |   |          | map                  |\n"
+    _note_ += "|   xa_lock   |   |    | ...              |   |          |   ...                |\n"
+    _note_ += "|   xa_flags  |   |    | count            |   |          |   map_type           |\n"
+    _note_ += "|   xa_head   |---+    | ...              |   |          |   key_size           |\n"
+    _note_ += "| idr_base    |        | slots[0]         |---+          |   value_size         |\n"
+    _note_ += "| idr_next    |        | slots[1]         |--->xa_node   |   max_entries        |\n"
+    _note_ += "+-------------+        | ...              |    or        |   ...                |\n"
+    _note_ += "                       | slots[15 or 63]  |    bpf_array | elem_size            |\n"
+    _note_ += "                       | ...              |              | index_mask           |\n"
+    _note_ += "                       +------------------+              | ...                  |\n"
+    _note_ += "                                                         +----------------------+\n"
+    _note_ += "                                                         | value[0]             |\n"
+    _note_ += "                                                         | value[1]             |\n"
+    _note_ += "                                                         | ...                  |\n"
+    _note_ += "                                                         | value[max_entries-1] |\n"
+    _note_ += "                                                         +----------------------+\n"
 
     def parse_xarray(self, ptr, root=False):
         if ptr == 0:
@@ -62137,21 +62137,25 @@ class KernelBpfCommand(GenericCommand):
         """
         # idr->idr_rt->xa_head
         base = prog_idr + 4 * 2
-        for i in range(100):
+        for i in range(20):
             pos = base + current_arch.ptrsize * i
             x = read_int_from_memory(pos)
             if not is_valid_addr(x):
                 continue
             if (x & 2) != 2: # tag
                 continue
-            y = read_int_from_memory(x)
-            if is_valid_addr(y):
+            y = read_cstring_from_memory(x, ascii_only=True)
+            if y and len(y) > 8:
+                continue
+            z = read_int_from_memory(x)
+            if is_valid_addr(z):
                 continue
             self.offset_xa_head = pos - prog_idr
             if not self.quiet:
                 info("offsetof(xarray, xa_head): {:#x}".format(self.offset_xa_head))
             break
         else:
+            err("Not found xa_head. (maybe uninitialized?)")
             return False
 
         """
