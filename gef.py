@@ -62590,7 +62590,8 @@ class KernelIpcsCommand(GenericCommand):
         if self.initialized:
             return True
 
-        if ipc_ns_list == []:
+        if ipc_ns_list == [] or ipc_ns_list == [0]:
+            err("Not found valid ipc_ns (IPCs are disabled?)")
             return False
 
         # ipc_namespace
