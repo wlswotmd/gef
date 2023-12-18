@@ -43491,12 +43491,6 @@ class KernelMagicCommand(GenericCommand):
         gef_print(titlify("Memory remapper"))
         self.resolve_and_print_kernel(["ioremap", "__ioremap", "ioremap_cache"], text_base, maps)
         self.resolve_and_print_kernel(["iounmap", "__iounmap"], text_base, maps)
-        if is_x86_64():
-            gef_print(titlify("Memory base"))
-            self.resolve_and_print_kernel("vmemmap_base", None, maps, KernelAddressHeuristicFinder.get_vmemmap)
-            self.resolve_and_print_kernel("vmalloc_base", None, maps, KernelAddressHeuristicFinder.get_vmalloc_start)
-            self.resolve_and_print_kernel("page_offset (physmap_start)", None, maps, KernelAddressHeuristicFinder.get_page_offset)
-            self.resolve_and_print_kernel("phys_base", text_base, maps, KernelAddressHeuristicFinder.get_phys_base)
         if is_x86():
             gef_print(titlify("Automatically called function pointer"))
             self.resolve_and_print_kernel("kvm_clock", text_base, maps)
@@ -43515,18 +43509,28 @@ class KernelMagicCommand(GenericCommand):
         self.resolve_and_print_kernel("slab_caches", text_base, maps, KernelAddressHeuristicFinder.get_slab_caches)
         gef_print(titlify("Dynamic resolver"))
         self.resolve_and_print_kernel("kallsyms_lookup_name", text_base, maps)
-        gef_print(titlify("vDSO"))
         if is_x86_64():
+            gef_print(titlify("vDSO"))
             self.resolve_and_print_kernel("vdso_image_64", text_base, maps, KernelAddressHeuristicFinder.get_vdso_image_64)
             self.resolve_and_print_kernel("vdso_image_32", text_base, maps, KernelAddressHeuristicFinder.get_vdso_image_32)
             self.resolve_and_print_kernel("vdso_image_x32", text_base, maps, KernelAddressHeuristicFinder.get_vdso_image_x32)
         elif is_x86_32():
+            gef_print(titlify("vDSO"))
             self.resolve_and_print_kernel("vdso_image_32", text_base, maps, KernelAddressHeuristicFinder.get_vdso_image_32)
         elif is_arm64():
-            self.resolve_and_print_kernel("vdso_info", text_base, maps, KernelAddressHeuristicFinder.get_vdso_info)
-            self.resolve_and_print_kernel("vdso_start", text_base, maps, KernelAddressHeuristicFinder.get_vdso_start)
-            self.resolve_and_print_kernel("vdso32_start", text_base, maps, KernelAddressHeuristicFinder.get_vdso32_start)
+            kversion = KernelVersionCommand.kernel_version()
+            if kversion >= "5.8":
+                gef_print(titlify("vDSO"))
+                self.resolve_and_print_kernel("vdso_info", text_base, maps, KernelAddressHeuristicFinder.get_vdso_info)
+                self.resolve_and_print_kernel("vdso_start", text_base, maps, KernelAddressHeuristicFinder.get_vdso_start)
+                self.resolve_and_print_kernel("vdso32_start", text_base, maps, KernelAddressHeuristicFinder.get_vdso32_start)
+            elif kversion >= "5.3":
+                gef_print(titlify("vDSO"))
+                self.resolve_and_print_kernel("vdso_lookup", text_base, maps, KernelAddressHeuristicFinder.get_vdso_lookup)
+                self.resolve_and_print_kernel("vdso_start", text_base, maps, KernelAddressHeuristicFinder.get_vdso_start)
+                self.resolve_and_print_kernel("vdso32_start", text_base, maps, KernelAddressHeuristicFinder.get_vdso32_start)
         elif is_arm32():
+            gef_print(titlify("vDSO"))
             self.resolve_and_print_kernel("vdso_start", text_base, maps, KernelAddressHeuristicFinder.get_vdso_start)
         gef_print(titlify("Others"))
         self.resolve_and_print_kernel(["do_fchmodat", "sys_fchmodat"], text_base, maps)
@@ -43538,6 +43542,12 @@ class KernelMagicCommand(GenericCommand):
             self.resolve_and_print_kernel("GDT base (fixed address?)", None, maps, KernelAddressHeuristicFinder.get_gdt_base)
             self.resolve_and_print_kernel("LDT base (fixed address?)", None, maps, KernelAddressHeuristicFinder.get_ldt_base)
             self.resolve_and_print_kernel("TSS base (fixed address?)", None, maps, KernelAddressHeuristicFinder.get_tss_base)
+        if is_x86_64():
+            gef_print(titlify("Memory base"))
+            self.resolve_and_print_kernel("vmemmap_base", None, maps, KernelAddressHeuristicFinder.get_vmemmap)
+            self.resolve_and_print_kernel("vmalloc_base", None, maps, KernelAddressHeuristicFinder.get_vmalloc_start)
+            self.resolve_and_print_kernel("page_offset_base (physmap_start)", None, maps, KernelAddressHeuristicFinder.get_page_offset)
+            self.resolve_and_print_kernel("&phys_base", text_base, maps, KernelAddressHeuristicFinder.get_phys_base)
         return
 
     @parse_args
