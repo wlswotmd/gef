@@ -54188,13 +54188,15 @@ class KernelTimerCommand(GenericCommand):
                 struct hrtimer_cpu_base *cpu_base;
                 unsigned int index;
                 clockid_t clockid;
-                seqcount_raw_spinlock_t seq;
-                struct hrtimer *running;
+                seqcount_raw_spinlock_t seq; // v4.16~
+                struct hrtimer *running; // v4.16~
                 struct timerqueue_head {
-                    struct rb_root_cached {
-                        struct rb_root rb_root;
-                        struct rb_node *rb_leftmost;
-                    } rb_root;
+                    struct rb_root_cached {          // v5.4~
+                        struct rb_root rb_root;      // v5.4~
+                        struct rb_node *rb_leftmost; // v5.4~
+                    } rb_root;                       // v5.4~
+                    struct rb_root head;             // ~v5.3
+                    struct timerqueue_node *next;    // ~v5.3
                 } active;
                 ktime_t (*get_time)(void);
                 ktime_t offset;
@@ -54211,37 +54213,37 @@ class KernelTimerCommand(GenericCommand):
                     .clockid = CLOCK_MONOTONIC,
                     .get_time = &ktime_get,               -------
                 },                                              ^
-                {                                               |
+                {                                               | calc this
                     .index = HRTIMER_BASE_REALTIME,             |
-                    .clockid = CLOCK_REALTIME,                  |
-                    .get_time = &ktime_get_real,                |
-                },                                              |
-                {                                               |
-                    .index = HRTIMER_BASE_BOOTTIME,             | calc this then divided by 4
-                    .clockid = CLOCK_BOOTTIME,                  |
-                    .get_time = &ktime_get_boottime,            |
-                },                                              |
-                {                                               |
-                    .index = HRTIMER_BASE_TAI,                  |
-                    .clockid = CLOCK_TAI,                       |
-                    .get_time = &ktime_get_clocktai,            |
-                },                                              |
-                {                                               |
-                    .index = HRTIMER_BASE_MONOTONIC_SOFT,       |
-                    .clockid = CLOCK_MONOTONIC,                 v
-                    .get_time = &ktime_get,               -------
+                    .clockid = CLOCK_REALTIME,                  v
+                    .get_time = &ktime_get_real,          -------
                 },
                 {
-                    .index = HRTIMER_BASE_REALTIME_SOFT,
-                    .clockid = CLOCK_REALTIME,
-                    .get_time = &ktime_get_real,
-                },
-                {
-                    .index = HRTIMER_BASE_BOOTTIME_SOFT,
+                    .index = HRTIMER_BASE_BOOTTIME,
                     .clockid = CLOCK_BOOTTIME,
                     .get_time = &ktime_get_boottime,
                 },
                 {
+                    .index = HRTIMER_BASE_TAI,
+                    .clockid = CLOCK_TAI,
+                    .get_time = &ktime_get_clocktai,
+                },
+                {                                         // v4.16~
+                    .index = HRTIMER_BASE_MONOTONIC_SOFT,
+                    .clockid = CLOCK_MONOTONIC,
+                    .get_time = &ktime_get,
+                },
+                {                                         // v4.16~
+                    .index = HRTIMER_BASE_REALTIME_SOFT,
+                    .clockid = CLOCK_REALTIME,
+                    .get_time = &ktime_get_real,
+                },
+                {                                         // v4.16~
+                    .index = HRTIMER_BASE_BOOTTIME_SOFT,
+                    .clockid = CLOCK_BOOTTIME,
+                    .get_time = &ktime_get_boottime,
+                },
+                {                                         // v4.16~
                     .index = HRTIMER_BASE_TAI_SOFT,
                     .clockid = CLOCK_TAI,
                     .get_time = &ktime_get_clocktai,
@@ -54253,20 +54255,33 @@ class KernelTimerCommand(GenericCommand):
         hrtimer_cpu_base = self.per_cpu_hrtimer_cpu_bases[0]
 
         ktime_get = get_ksymaddr("ktime_get")
-        ktime_get_ofs = []
+        ktime_get_real = get_ksymaddr("ktime_get_real")
+        ktime_get_ofs = None
+        ktime_get_real_ofs = None
         i = 0
-        while len(ktime_get_ofs) != 2:
-            v = read_int_from_memory(hrtimer_cpu_base + current_arch.ptrsize * i)
+        while True:
+            ofs = current_arch.ptrsize * i
+            v = read_int_from_memory(hrtimer_cpu_base + ofs)
             if v == ktime_get:
-                ktime_get_ofs.append(current_arch.ptrsize * i)
+                ktime_get_ofs = ofs
+            elif v == ktime_get_real:
+                ktime_get_real_ofs = ofs
+            if ktime_get_ofs and ktime_get_real_ofs:
+                break
             i += 1
-        self.sizeof_hrtimer_clock_base = (ktime_get_ofs[1] - ktime_get_ofs[0]) // 4
+        self.sizeof_hrtimer_clock_base = ktime_get_real_ofs - ktime_get_ofs
 
-        clock_base_1 = ktime_get_ofs[0] + current_arch.ptrsize + 8
+        clock_base_1 = ktime_get_ofs + current_arch.ptrsize + 8 # get_time, offset
         self.offset_clock_base = clock_base_1 - self.sizeof_hrtimer_clock_base
-        self.offset_clockid = current_arch.ptrsize + 4
-        self.offset_get_time = ktime_get_ofs[0] - self.offset_clock_base
+        self.offset_clockid = current_arch.ptrsize + 4 # cpu_base, index
+        self.offset_get_time = ktime_get_ofs - self.offset_clock_base
         self.offset_rb_root = self.offset_get_time - current_arch.ptrsize * 2
+
+        kversion = KernelVersionCommand.kernel_version()
+        if kversion < "4.16":
+            self.num_of_clock_base = 4
+        else:
+            self.num_of_clock_base = 8
 
         self.initialized = True
         return True
@@ -54323,7 +54338,7 @@ class KernelTimerCommand(GenericCommand):
 
         for cpu, hrtimer_cpu_base in enumerate(self.per_cpu_hrtimer_cpu_bases):
             clock_base = hrtimer_cpu_base + self.offset_clock_base
-            for base_n in range(8):
+            for base_n in range(self.num_of_clock_base):
                 htb = clock_base + self.sizeof_hrtimer_clock_base * base_n
                 clockid = u32(read_memory(htb + self.offset_clockid, 4))
                 clockid_s = clockid_dict.get(clockid, "UNKNOWN")
