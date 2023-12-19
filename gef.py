@@ -65,7 +65,7 @@
 #
 #######################################################################################
 # Use this command when check by vulture
-# vulture gef.py --ignore-names="*Command,invoke,ARC64,KF,leave,total"
+# vulture gef.py --ignore-names="*Command"
 #
 #######################################################################################
 # Use this command when check by ruff
@@ -265,16 +265,25 @@ def _displayhook(o):
     if type(o).__name__ in ('int', 'long'):
         print(hex(o))
         __builtins__._ = o
+        return
     else:
         sys.__displayhook__(o)
+        return
+    __builtins__._ # # avoid to be detected as unused # noqa: B018
+    hexon # avoid to be detected as unused # noqa: B018
+    hexoff # avoid to be detected as unused # noqa: B018
+    _displayhook # avoid to be detected as unused # noqa: B018
+    sys.displayhook # avoid to be detected as unused # noqa: B018
 
 
 def hexon():
     sys.displayhook = _displayhook
+    return
 
 
 def hexoff():
     sys.displayhook = sys.__displayhook__
+    return
 
 
 def reset_gef_caches(all=False):
@@ -860,6 +869,7 @@ class Color:
     @staticmethod
     def magentaify(msg):
         return Color.colorify(msg, "magenta")
+    magentaify # avoid to be detected as unused # noqa: B018
 
     @staticmethod
     def cyanify(msg):
@@ -2343,6 +2353,7 @@ class MallocPar:
             return self.get_size_t(self.tcache_count_addr)
         else:
             return None
+        self.tcache_count # avoid to be detected as unused # noqa: B018
 
     @property
     def tcache_unsorted_limit(self):
@@ -12522,6 +12533,7 @@ class GenericCommand(gdb.Command):
             # Since we are intercepting cleaning exceptions here, commands preferably should avoid
             # catching generic Exception, but rather specific ones. This is allows a much cleaner use.
             show_last_exception()
+            self.invoke # avoid to be detected as unused # noqa: B018
         return
 
     def usage(self):
@@ -15376,7 +15388,7 @@ class SearchPatternCommand(GenericCommand):
             step = 0x400 * gef_getpagesize()
         locations = []
 
-        tqdm = lambda x, leave: x
+        tqdm = lambda x, leave: x # noqa: F841
         if self.verbose:
             try:
                 from tqdm import tqdm
@@ -42659,8 +42671,13 @@ def get_syscall_table(arch=None, mode=None):
                 raise
             syscall_list.append([nr, name, sc_def[func]])
 
-    elif arch == "ARC" and mode in ["32v2", "32v3", "64v3", "32", "64"]:
-        register_list = ARC().syscall_parameters
+    elif arch == "ARC":
+        if mode in ["32v2", "32"]:
+            register_list = ARC().syscall_parameters
+        elif mode in ["32v3"]:
+            register_list = ARCv3().syscall_parameters
+        elif mode in ["64v3", "64"]:
+            register_list = ARC64().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(arc_syscall_tbl)
         arch_specific_dic = {
@@ -47900,8 +47917,8 @@ class KernelAddressHeuristicFinder:
         return None
 
 
-KF = KernelAddressHeuristicFinder # for convenience using from python-interactive
-KFU = KernelAddressHeuristicFinderUtil # for convenience using from python-interactive
+KF = KernelAddressHeuristicFinder # for convenience using from python-interactive # noqa: F841
+KFU = KernelAddressHeuristicFinderUtil # for convenience using from python-interactive # noqa: F841
 
 
 @register_command
@@ -50410,12 +50427,12 @@ class KernelTaskCommand(GenericCommand):
             out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
         if args.quiet:
-            tqdm = lambda x, leave: x
+            tqdm = lambda x, leave: x # noqa: F841
         else:
             try:
                 from tqdm import tqdm
             except ImportError:
-                tqdm = lambda x, leave: x
+                tqdm = lambda x, leave: x # noqa: F841
 
         if args.print_namespace:
             kversion = KernelVersionCommand.kernel_version()
@@ -55024,7 +55041,7 @@ class KernelSearchCodePtrCommand(GenericCommand):
         try:
             from tqdm import tqdm
         except ImportError:
-            tqdm = lambda x, leave, total: x
+            tqdm = lambda x, leave, total: x # noqa: F841
 
         for i, rw_d in tqdm(enumerate(rw_data), leave=False, total=len(rw_data)):
             rw_addr = self.kinfo.rw_base + i * current_arch.ptrsize
@@ -61339,12 +61356,12 @@ class BuddyDumpCommand(GenericCommand):
 
     def dump_zone(self, zone):
         if self.quiet:
-            tqdm = lambda x, leave: x
+            tqdm = lambda x, leave: x # noqa: F841
         else:
             try:
                 from tqdm import tqdm
             except ImportError:
-                tqdm = lambda x, leave: x
+                tqdm = lambda x, leave: x # noqa: F841
 
         free_area_array = zone + self.offset_free_area
         for order in tqdm(range(self.MAX_ORDER), leave=False):
@@ -70488,7 +70505,7 @@ class PagewalkX64Command(PagewalkCommand):
         COUNT = 0
         flag_cache = {}
 
-        tqdm = lambda x, leave: x
+        tqdm = lambda x, leave: x # noqa: F841
         if not self.quiet:
             try:
                 from tqdm import tqdm
@@ -71132,7 +71149,7 @@ class PagewalkArmCommand(PagewalkCommand):
         SMALL = []
         COUNT = 0
 
-        tqdm = lambda x, leave: x
+        tqdm = lambda x, leave: x # noqa: F841
         if not self.quiet:
             try:
                 from tqdm import tqdm
@@ -71410,7 +71427,7 @@ class PagewalkArmCommand(PagewalkCommand):
         KB = []
         COUNT = 0
 
-        tqdm = lambda x, leave: x
+        tqdm = lambda x, leave: x # noqa: F841
         if not self.quiet:
             try:
                 from tqdm import tqdm
@@ -72770,7 +72787,7 @@ class PagewalkArm64Command(PagewalkCommand):
             COUNT = 0
             flag_cache = {}
 
-            tqdm = lambda x, leave: x
+            tqdm = lambda x, leave: x # noqa: F841
             if not self.quiet:
                 try:
                     from tqdm import tqdm
@@ -73890,7 +73907,7 @@ class PagewalkWithHintsCommand(GenericCommand):
         try:
             from tqdm import tqdm
         except ImportError:
-            tqdm = lambda x, leave: x
+            tqdm = lambda x, leave: x # noqa: F841
 
         for _region_addr, region in tqdm(old_regions, leave=False):
             if "slab cache" in region.description:
