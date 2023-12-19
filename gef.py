@@ -43561,10 +43561,10 @@ class KernelMagicCommand(GenericCommand):
             self.resolve_and_print_kernel("TSS base (fixed address?)", None, maps, KernelAddressHeuristicFinder.get_tss_base)
         if is_x86_64():
             gef_print(titlify("Memory base"))
-            self.resolve_and_print_kernel("vmemmap_base", None, maps, KernelAddressHeuristicFinder.get_vmemmap)
+            self.resolve_and_print_kernel("page_offset_base (physmem direct map)", None, maps, KernelAddressHeuristicFinder.get_page_offset)
             self.resolve_and_print_kernel("vmalloc_base", None, maps, KernelAddressHeuristicFinder.get_vmalloc_start)
-            self.resolve_and_print_kernel("page_offset_base (physmap_start)", None, maps, KernelAddressHeuristicFinder.get_page_offset)
-            self.resolve_and_print_kernel("&phys_base", text_base, maps, KernelAddressHeuristicFinder.get_phys_base)
+            self.resolve_and_print_kernel("vmemmap_base (struct page)", None, maps, KernelAddressHeuristicFinder.get_vmemmap)
+            self.resolve_and_print_kernel("&phys_base (for page<->phys)", text_base, maps, KernelAddressHeuristicFinder.get_phys_base)
         return
 
     @parse_args
@@ -46341,22 +46341,57 @@ class KernelAddressHeuristicFinder:
             vmalloc_base = page_offset_base - current_arch.ptrsize
             return read_int_from_memory(vmalloc_base)
 
+        kversion = KernelVersionCommand.kernel_version()
+
         # plan 3 (from vmalloc-dump)
-        res = gdb.execute("vmalloc-dump --quiet --no-pager --only-freed", to_string=True)
+        if kversion and kversion >= "5.2":
+            res = gdb.execute("vmalloc-dump --quiet --no-pager --only-freed", to_string=True)
+            """
+            #    state  virtual address                       size               flags
+            0    freed  0x0000000000000001-0xffffc90000000000 0xffffc8ffffffffff
+            """
+            if res:
+                res = Color.remove_color(res)
+                lines = res.splitlines()
+                if len(lines) >= 2:
+                    _, _, vrange, _, *_ = lines[1].split()
+                    s, e = vrange.split("-")
+                    s = int(s, 16)
+                    e = int(e, 16)
+                    if s == 1:
+                        return e
+
+        # plan 4 (from vmalloc-dump and pagewalk)
+        res = gdb.execute("vmalloc-dump --quiet --no-pager --only-used", to_string=True)
         """
+        [vmalloc-dump]
         #    state  virtual address                       size               flags
-        0    freed  0x0000000000000001-0xffffc90000000000 0xffffc8ffffffffff
+        0    in-use 0xffffa1c040000000-0xffffa1c040002000 0x2000             VM_IOREMAP
+
+        [pagewalk]
+        0xffff9927bfe00000-0xffff9927bffe0000 0x1e0000 0x1000 480 [RW- KERN ACCESSED DIRTY]
+        0xffffa1c040000000-0xffffa1c040001000 0x1000   0x1000 1   [RW- KERN ACCESSED DIRTY]
         """
         if res:
             res = Color.remove_color(res)
             lines = res.splitlines()
             if len(lines) >= 2:
                 _, _, vrange, _, *_ = lines[1].split()
-                s, e = vrange.split("-")
+                s, _ = vrange.split("-")
                 s = int(s, 16)
-                e = int(e, 16)
-                if s == 1:
-                    return e
+
+                kinfo = KernelbaseCommand.get_kernel_base()
+                prev = None
+                for vstart, _, _ in kinfo.maps:
+                    if vstart == s:
+                        break
+                    prev = vstart
+
+                if prev is not None:
+                    mask = 0xffff_ff00_0000_0000
+                    if (prev & mask) != (s & mask):
+                        if (s & 0xfff_ffff) == 0:
+                            return s
         return None
 
     @staticmethod
