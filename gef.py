@@ -55794,7 +55794,7 @@ class SyscallTableViewCommand(GenericCommand):
             if i + nr_base in syscall_list.table:
                 expected_name = syscall_list.table[i + nr_base].name
             else:
-                expected_name = "<None>"
+                expected_name = "<UNDEFINED_IN_THIS_ARCH>"
 
             fmt = "{:8s} [{:03d}] {:7s} {:30s} {:#018x} {:#018x}{:s}"
             if seen_count[syscall_function_addr] == 1 and is_valid: # valid entry
