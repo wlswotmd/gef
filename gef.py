@@ -62465,7 +62465,7 @@ class KernelIpcsCommand(GenericCommand):
         init_ipc_ns = ipc_ns_list[0]
         found = []
         first_xa_flags = None
-        for i in range(6, 100):
+        for i in range(6, 120):
             base = self.offset_ids + current_arch.ptrsize * i
             """
             [x64 before using IPC]
