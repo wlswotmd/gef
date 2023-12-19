@@ -61560,7 +61560,7 @@ class KernelPipeCommand(GenericCommand):
         };
         """
         inode = pipe_files[0][1]
-        for i in range(0x80):
+        for i in range(0x100):
             v = read_int_from_memory(inode + current_arch.ptrsize * i)
             # i_pipe is valid addr
             if v < 0x10000 or not is_valid_addr(v):
@@ -61577,7 +61577,8 @@ class KernelPipeCommand(GenericCommand):
             if "unaligned?" in ret:
                 continue
             # pipe_inode_info is allocated from kmalloc-192 (x64) or kmalloc-256 (arm64)
-            if any(x in ret for x in ["kmalloc-192", "kmalloc-256", "kmalloc-cg-192", "kmalloc-cg-256"]):
+            # sometimes it used from kmalloc-512
+            if re.search(r"kmalloc(-cg)?-(192|256|512)", ret):
                 self.offset_i_pipe = current_arch.ptrsize * i
                 if not self.quiet:
                     info("offsetof(inode, i_pipe): {:#x}".format(self.offset_i_pipe))
@@ -61634,7 +61635,7 @@ class KernelPipeCommand(GenericCommand):
             if "unaligned?" in ret:
                 continue
             # pipe_inode_info is allocated from kmalloc-1k (x64)
-            if any(x in ret for x in ["kmalloc-1k", "kmalloc-cg-1k"]):
+            if re.search(r"kmalloc(-cg)?-1k", ret):
                 self.offset_bufs = current_arch.ptrsize * i
                 if not self.quiet:
                     info("offsetof(pipe_inode_info, bufs): {:#x}".format(self.offset_bufs))
@@ -61658,9 +61659,9 @@ class KernelPipeCommand(GenericCommand):
             v2 = read_int_from_memory(pipe_inode_info + current_arch.ptrsize * (i + 1))
             if is_valid_addr(v2):
                 continue
-            # max_usage is too large
+            # max_usage is too large or zero
             v2_4 = u32(read_memory(pipe_inode_info + current_arch.ptrsize * (i + 1), 4))
-            if v2_4 > 0x100:
+            if v2_4 > 0x100 or v2_4 == 0:
                 continue
             self.offset_head = current_arch.ptrsize * i
             if not self.quiet:
