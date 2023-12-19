@@ -62047,7 +62047,7 @@ class KernelBpfCommand(GenericCommand):
             if (x & 2) != 2: # tag
                 continue
             y = read_cstring_from_memory(x, ascii_only=True)
-            if y and len(y) > 8:
+            if y and len(y) > 8 or y == "bpf":
                 continue
             z = read_int_from_memory(x)
             if is_valid_addr(z):
