@@ -63440,7 +63440,7 @@ class VmallocDumpCommand(GenericCommand):
             unsigned long va_start;
             unsigned long va_end;
             unsigned long subtree_max_size; // 5.2~5.3
-            unsigned long flags; // ~5.3
+            unsigned long flags;            // ~5.3
             struct rb_node {
                 unsigned long __rb_parent_color;
                 struct rb_node *rb_right;
@@ -63452,7 +63452,8 @@ class VmallocDumpCommand(GenericCommand):
                 struct vm_struct *vm;           // 5.4~
                 struct llist_node purge_list;   // 5.4~5.10
             };                                  // 5.4~
-            struct llist_node purge_list; // ~5.3
+            struct llist_node purge_list; // 4.7~5.3
+            struct list_head purge_list;  // ~4.7
             struct vm_struct *vm;         // ~5.3
             unsigned long flags; // 6.3~
         };
@@ -63507,8 +63508,10 @@ class VmallocDumpCommand(GenericCommand):
         # vmap_area->vm
         if kversion and kversion >= "5.4":
             self.offset_vm = self.offset_list + current_arch.ptrsize * 2
-        else:
+        elif kversion and kversion >= "4.7":
             self.offset_vm = self.offset_list + current_arch.ptrsize * 3
+        else:
+            self.offset_vm = self.offset_list + current_arch.ptrsize * 4
         if not self.quiet:
             info("offsetof(vmap_area, vm): {:#x}".format(self.offset_vm))
 
