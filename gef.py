@@ -49100,6 +49100,7 @@ class KernelTaskCommand(GenericCommand):
             ...
         };
         """
+        kversion = KernelVersionCommand.kernel_version()
         offset_stack_canary = offset_pid + 4 + 4
         found = True
         for task in task_addrs:
@@ -49110,9 +49111,10 @@ class KernelTaskCommand(GenericCommand):
                 found = False
                 break
 
-            if is_64bit() and (v1 & 0xff) != 0: # 32-bit canary does not have 0xXXXXXX00
-                found = False
-                break
+            if kversion and kversion >= "4.13":
+                if is_64bit() and (v1 & 0xff) != 0: # 32-bit canary does not have 0xXXXXXX00
+                    found = False
+                    break
 
         if found:
             return offset_stack_canary
@@ -50500,9 +50502,9 @@ class KernelTaskCommand(GenericCommand):
             for i in range(63, 49, -1):
                 self.signame_list[i] = "SIGRTMAX-{:d}".format(64 - i)
 
-        return init_task, task_addrs
+        return task_addrs
 
-    def dump(self, args, init_task, task_addrs):
+    def dump(self, args, task_addrs):
         # LWP
         if args.print_thread:
             task_addrs = self.add_lwp_task(task_addrs, self.offset_thread_group)
@@ -50709,13 +50711,13 @@ class KernelTaskCommand(GenericCommand):
         ret = self.initialize(args)
         if ret is False:
             return
-        init_task, task_addrs = ret
+        task_addrs = ret
 
         # skip real parse if specified --meta option
         if args.meta:
             return
 
-        out = self.dump(args, init_task, task_addrs)
+        out = self.dump(args, task_addrs)
         gef_print("\n".join(out), less=not args.no_pager)
         return
 
