@@ -50109,19 +50109,23 @@ class KernelTaskCommand(GenericCommand):
         if kversion >= "5.3":
             # search signalfd_wqh.list_head
             found = False
-            for i in range(30):
-                offset_list_head = current_arch.ptrsize * (2 + i)
+            for i in range(1, 30):
+                offset_list_head = current_arch.ptrsize * i
                 head = sighand + offset_list_head
                 if not is_valid_addr(head):
                     continue
 
                 current = read_int_from_memory(head)
+                seen = []
                 while True:
                     if current == head:
                         found = True
                         break
                     if not is_valid_addr(current):
                         break
+                    if current in seen:
+                        break
+                    seen.append(current)
                     current = read_int_from_memory(current)
                 if found:
                     break
