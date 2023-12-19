@@ -47829,6 +47829,36 @@ class KernelAddressHeuristicFinder:
                         name = read_cstring_from_memory(name_ptr, ascii_only=True)
                         if name == "PCI IO":
                             return x
+
+        # plan 3 (from .rodata)
+        kinfo = KernelbaseCommand.get_kernel_base()
+        if kinfo.ro_base and kinfo.ro_size:
+            ro_data = read_memory(kinfo.ro_base, kinfo.ro_size)
+            rw_data = read_memory(kinfo.rw_base, min(kinfo.rw_size, 0x1000000))
+            pos = -1
+            while True:
+                # search aligned string from .rodata
+                pos = ro_data.find(b"PCI IO\x00", pos + 1)
+                if pos == -1:
+                    break
+
+                # calc address of ELF header
+                if is_32bit():
+                    addr_byteseq = p32(kinfo.ro_base + pos)
+                else:
+                    addr_byteseq = p64(kinfo.ro_base + pos)
+
+                # search it from .data
+                pos2 = -1
+                while True:
+                    pos2 = rw_data.find(addr_byteseq, pos2 + 1)
+                    if pos2 == -1:
+                        break
+                    if pos2 % current_arch.ptrsize != 0:
+                        continue
+                    # TODO: How to find the exact value of sizeof(resource_size_t)
+                    maybe_ioport_resource = kinfo.rw_base + pos2 - current_arch.ptrsize * 2
+                    return maybe_ioport_resource
         return None
 
     @staticmethod
