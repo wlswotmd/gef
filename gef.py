@@ -44989,6 +44989,8 @@ class UnsignedCommand(GenericCommand):
     parser.add_argument("value", metavar="VALUE", type=parse_address, help="the value you want to convert.")
     _syntax_ = parser.format_help()
 
+    _example_ = "{:s} -- -0xa0".format(_cmdline_)
+
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
