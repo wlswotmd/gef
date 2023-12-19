@@ -47161,6 +47161,19 @@ class KernelAddressHeuristicFinder:
                     if "vdso" == read_cstring_from_memory(vdso_name):
                         x = read_int_from_memory(vdso_info + current_arch.ptrsize)
                         return x
+
+        # plan 3 (from .rodata)
+        kinfo = KernelbaseCommand.get_kernel_base()
+        if kinfo.ro_base and kinfo.ro_size:
+            ro_data = read_memory(kinfo.ro_base, kinfo.ro_size)
+            pos = -1
+            while True:
+                # search aligned ELF header from .rodata
+                pos = ro_data.find(b"\x7fELF", pos + 1)
+                if pos == -1:
+                    break
+                if pos % gef_getpagesize() == 0:
+                    return kinfo.ro_base + pos
         return None
 
     @staticmethod
@@ -47496,6 +47509,8 @@ class KernelAddressHeuristicFinder:
                     v = read_int_from_memory(x)
                     if v and not is_valid_addr(v):
                         continue
+                    if v == x:
+                        continue
                     return x
         return None
 
@@ -47503,6 +47518,7 @@ class KernelAddressHeuristicFinder:
     @switch_to_intel_syntax
     def get_node_data0():
         # when CONFIG_NUMA=n
+        # This method can only be called when `get_node_data()` fails.
 
         kversion = KernelVersionCommand.kernel_version()
 
@@ -47517,11 +47533,14 @@ class KernelAddressHeuristicFinder:
                     # TODO
                     g = []
                 elif is_arm64():
-                    g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res, skip=1)
+                    g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
                 elif is_arm32():
                     # TODO
                     g = []
                 for x in g:
+                    v = read_int_from_memory(x)
+                    if v and is_valid_addr(v):
+                        continue
                     return x
         return None
 
@@ -47701,9 +47720,9 @@ class KernelAddressHeuristicFinder:
             if addr:
                 res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, r"r\w+", skip_msb_check=True)
+                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, skip_msb_check=True)
                 elif is_x86_32():
-                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, r"e\w+", skip_msb_check=True)
+                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, skip_msb_check=True)
                 elif is_arm64():
                     g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res, skip_msb_check=True)
                 elif is_arm32():
@@ -47729,9 +47748,9 @@ class KernelAddressHeuristicFinder:
             if addr:
                 res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, r"r\w+", skip_msb_check=True)
+                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, skip_msb_check=True)
                 elif is_x86_32():
-                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, r"e\w+", skip_msb_check=True)
+                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, skip_msb_check=True)
                 elif is_arm64():
                     g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res, skip_msb_check=True)
                 elif is_arm32():
