@@ -50049,7 +50049,7 @@ class KernelTaskCommand(GenericCommand):
             offset_action = current_arch.ptrsize
         return offset_action
 
-    def get_sizeof_action(self, task_addrs, offset_sighand, offset_action):
+    def get_sizeof_action(self, task_addrs, offset_sighand, offset_action, offset_mm):
         """
         case 1 (x64)
         0xffff8f63011e4400|+0x0000|+000: 0x0000000100000000
@@ -50105,6 +50105,11 @@ class KernelTaskCommand(GenericCommand):
         # calc sizeof(action[0])
         sizeof_action = 0xffffffffffffffff
         for task in task_addrs:
+            mm = read_int_from_memory(task + offset_mm)
+            if mm == 0:
+                # for speed up; ignore if kernel thread
+                continue
+
             sighand = read_int_from_memory(task + offset_sighand)
             current = sighand + offset_action
             found_offset_case1 = []
@@ -50355,7 +50360,7 @@ class KernelTaskCommand(GenericCommand):
                 self.quiet_info("offsetof(sighand_struct, action): {:#x}".format(self.offset_action))
 
             if self.sizeof_action is None:
-                self.sizeof_action = self.get_sizeof_action(task_addrs, self.offset_sighand, self.offset_action)
+                self.sizeof_action = self.get_sizeof_action(task_addrs, self.offset_sighand, self.offset_action, self.offset_mm)
                 if self.sizeof_action is None:
                     self.quiet_err("Not found sizeof(action[0])")
                     return False
@@ -62369,8 +62374,11 @@ class KernelIpcsCommand(GenericCommand):
         if self.initialized:
             return True
 
-        if ipc_ns_list == [] or ipc_ns_list == [0]:
-            err("Not found valid ipc_ns (IPCs are disabled?)")
+        if ipc_ns_list == []:
+            return False
+
+        if ipc_ns_list == [0]:
+            err("Not found valid ipc_ns (maybe CONFIG_SYSVIPC=n)")
             return False
 
         # ipc_namespace
