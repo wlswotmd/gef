@@ -19223,6 +19223,7 @@ class AssembleCommand(GenericCommand):
     parser.add_argument("-e", dest="big_endian", action="store_true", help="use big-endian.")
     parser.add_argument("-s", dest="as_shellcode", action="store_true", help="output like shellcode style.")
     parser.add_argument("-l", dest="overwrite_location", metavar="LOCATION", type=parse_address, help="write to memory address.")
+    parser.add_argument("-H", "--hex", action="store_true", help="show in hex style.")
     parser.add_argument("instruction", metavar="INSTRUCTION", nargs="+", help="the code you want to assemble")
     _syntax_ = parser.format_help()
 
@@ -19301,8 +19302,11 @@ class AssembleCommand(GenericCommand):
                 continue
 
             s = binascii.hexlify(res)
-            res = b"\\x" + b"\\x".join([s[i:i + 2] for i in range(0, len(s), 2)])
-            res = res.decode("utf-8")
+            if args.hex:
+                res = bytes2str(s)
+            else:
+                res = b"\\x" + b"\\x".join([s[i:i + 2] for i in range(0, len(s), 2)])
+                res = res.decode("utf-8")
 
             if args.as_shellcode:
                 res = 'sc += "{:s}"'.format(res)
