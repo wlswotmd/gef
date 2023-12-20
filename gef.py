@@ -44862,7 +44862,7 @@ class VisualHeapCommand(GenericCommand):
             addr += chunk.size
             i += 1
 
-            if max_count and max_count < i:
+            if max_count and max_count <= i:
                 break
         return
 
