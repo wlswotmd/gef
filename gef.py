@@ -42965,6 +42965,56 @@ class SyscallArgsCommand(GenericCommand):
         return
 
 
+@register_command
+class SyscallSampleCommand(GenericCommand):
+    """Show the syscall calling sample for specified architecture."""
+    _cmdline_ = "syscall-sample"
+    _category_ = "05-c. Syscall - Show Example"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-l", "--list", action="store_true", help="show valid architecture name.")
+    parser.add_argument("-a", "--arch", nargs="?", help="specify the architecture name. (default: current_arch)")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        arch_list = []
+        queue = Architecture.__subclasses__()
+        while queue:
+            cls = queue.pop(0)
+            arch_list.append(cls)
+            queue = cls.__subclasses__() + queue
+
+        if args.list:
+            for a in arch_list:
+                gef_print(a.__name__)
+            return
+
+        if args.arch:
+            for a in arch_list:
+                if a.__name__ == args.arch:
+                    target_arch = a
+                    break
+            else:
+                err("Not found architecture")
+                return
+        else:
+            target_arch = current_arch
+
+        if not hasattr(target_arch, "mprotect_asm"):
+            err("Unsupported architecture")
+            return
+
+        s = inspect.getsource(target_arch.mprotect_asm).rstrip()
+        for line in s.splitlines():
+            line = re.sub("^    ", "", line)
+            gef_print(line)
+        return
+
+
 @functools.lru_cache(maxsize=None)
 def get_section_base_address(name):
     if name is None:

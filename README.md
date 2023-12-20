@@ -602,6 +602,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/mte-tags.png)
 * `xs`: dumps string like `x/s` command, but with hex-string style.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xs.png)
+* `syscall-sample`: shows the syscall calling sample for specified architecture.
 
 ### Other
 * The category is introduced in `gef help`.
