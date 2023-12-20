@@ -3046,11 +3046,35 @@ class GlibcArena:
 
     def reset_bins_info(self):
         self.cached_tcache_list = self.tcache_list()
+        self.cached_tcache_addr_list = set().union(*[x for x in self.cached_tcache_list.values()])
+
         self.cached_fastbins_list = self.fastbins_list()
+        self.cached_fastbins_addr_list = set().union(*[x for x in self.cached_fastbins_list.values()])
+
         self.cached_unsortedbin_list = self.unsortedbin_list()
+        self.cached_unsortedbin_addr_list = self.cached_unsortedbin_list[0]
+
         self.cached_smallbins_list = self.smallbins_list()
+        self.cached_smallbins_addr_list = set().union(*[x for x in self.cached_smallbins_list.values()])
+
         self.cached_largebins_list = self.largebins_list()
+        self.cached_largebins_addr_list = set().union(*[x for x in self.cached_largebins_list.values()])
         return
+
+    def is_chunk_in_tcache(self, chunk):
+        return chunk.address in self.cached_tcache_addr_list
+
+    def is_chunk_in_fastbins(self, chunk):
+        return chunk.address in self.cached_fastbins_addr_list
+
+    def is_chunk_in_unsortedbin(self, chunk):
+        return chunk.chunk_base_address in self.cached_unsortedbin_addr_list
+
+    def is_chunk_in_smallbins(self, chunk):
+        return chunk.chunk_base_address in self.cached_smallbins_addr_list
+
+    def is_chunk_in_largebins(self, chunk):
+        return chunk.chunk_base_address in self.cached_largebins_addr_list
 
     def make_bins_info(self, address_or_chunk, skip_top=False):
         if isinstance(address_or_chunk, GlibcChunk):
@@ -3308,29 +3332,46 @@ class GlibcChunk:
             flags.append(Color.colorify("NON_MAIN_ARENA", get_gef_setting("theme.heap_chunk_flag_non_main_arena")))
         return "|".join(flags)
 
-    def __str__(self):
+    def to_str(self, arena):
         chunk_c = Color.colorify("Chunk", get_gef_setting("theme.heap_chunk_label"))
         size_c = Color.colorify("{:#x}".format(self.get_chunk_size()), get_gef_setting("theme.heap_chunk_size"))
         addr_c = Color.colorify("{:#x}".format(self.chunk_base_address), get_gef_setting("theme.heap_chunk_address_freed"))
         flags = self.flags_as_string()
 
-        if not is_valid_addr(self.fd):
-            fd = str(lookup_address(self.get_fwd_ptr(sll=True)))
-        else:
-            fd = str(lookup_address(self.fd))
-        bk = str(lookup_address(self.bk))
-
-        if (is_32bit() and self.size < 0x3f0) or (is_64bit() and self.size < 0x400):
-            fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={:s}, bk={:s})"
+        if arena.is_chunk_in_largebins(self):
+            fd = lookup_address(self.fd)
+            bk = lookup_address(self.bk)
+            if is_valid_addr(self.fd_nextsize) or is_valid_addr(self.bk_nextsize):
+                # largebin and valid (fd|bk)_nextsize
+                fd_nextsize = lookup_address(self.fd_nextsize)
+                bk_nextsize = lookup_address(self.bk_nextsize)
+                fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s}, fd_nextsize={!s}, bk_nextsize={!s})"
+                msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, bk, fd_nextsize, bk_nextsize)
+            else:
+                fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
+                msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, bk)
+        elif arena.is_chunk_in_smallbins(self):
+            fd = lookup_address(self.fd)
+            bk = lookup_address(self.bk)
+            fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
             msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, bk)
-        elif is_valid_addr(self.fd_nextsize) or is_valid_addr(self.bk_nextsize):
-            fd_nextsize = str(lookup_address(self.fd_nextsize))
-            bk_nextsize = str(lookup_address(self.bk_nextsize))
-            fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={:s}, bk={:s}, fd_nextsize={:s}, bk_nextsize={:s})"
-            msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, bk, fd_nextsize, bk_nextsize)
-        else:
-            fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={:s}, bk={:s})"
+        elif arena.is_chunk_in_unsortedbin(self):
+            fd = lookup_address(self.fd)
+            bk = lookup_address(self.bk)
+            fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
             msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, bk)
+        elif arena.is_chunk_in_fastbins(self):
+            fd = lookup_address(self.get_fwd_ptr(sll=True)) # decode fd
+            fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={!s})"
+            msg = fmt.format(chunk_c, addr_c, size_c, flags, fd)
+        elif arena.is_chunk_in_tcache(self):
+            fd = lookup_address(self.get_fwd_ptr(sll=True)) # decode fd
+            fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={!s})"
+            msg = fmt.format(chunk_c, addr_c, size_c, flags, fd)
+        else:
+            addr_c = Color.colorify("{:#x}".format(self.chunk_base_address), get_gef_setting("theme.heap_chunk_address_used"))
+            fmt = "{:s}(addr={:s}, size={:s}, flags={:s})"
+            msg = fmt.format(chunk_c, addr_c, size_c, flags)
         return msg
 
     def psprint(self):
@@ -18116,7 +18157,8 @@ class GlibcHeapChunksCommand(GenericCommand):
         arena.reset_bins_info()
         while True:
             if current_chunk.chunk_base_address == arena.top:
-                self.out.append("{!s} {:s}".format(current_chunk, Color.colorify("{:s} top".format(LEFT_ARROW), freelist_hint_color)))
+                top_str = Color.colorify("{:s} top".format(LEFT_ARROW), freelist_hint_color)
+                self.out.append("{:s} {:s}".format(current_chunk.to_str(arena), top_str))
                 break
             if current_chunk.chunk_base_address > arena.top:
                 self.err("Corrupted: chunk > top")
@@ -18125,12 +18167,13 @@ class GlibcHeapChunksCommand(GenericCommand):
                 # EOF
                 break
 
-            line = str(current_chunk)
+            line = current_chunk.to_str(arena)
 
             # in or not in free-list
             info = arena.make_bins_info(current_chunk)
             if info:
-                line += Color.colorify(" {:s} {:s}".format(LEFT_ARROW, ", ".join(info)), freelist_hint_color)
+                freelist_hint = Color.colorify(" {:s} {:s}".format(LEFT_ARROW, ", ".join(info)), freelist_hint_color)
+                line += freelist_hint
 
             self.out.append(line)
 
@@ -18294,7 +18337,7 @@ class GlibcHeapBinsCommand(GenericCommand):
                 break
             seen.append(chunk.address)
             try:
-                m.append("{:s}{!s}".format(RIGHT_ARROW, chunk))
+                m.append("{:s}{:s}".format(RIGHT_ARROW, chunk.to_str(arena)))
             except gdb.MemoryError:
                 fmt = "{:s}{:#x} [Corrupted chunk]"
                 m.append(Color.colorify(fmt.format(RIGHT_ARROW, chunk.chunk_base_address), corrupted_msg_color))
@@ -18355,6 +18398,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
 
         # doit
         for arena in arenas:
+            arena.reset_bins_info()
             self.print_tcache(arena, args.verbose)
         return
 
@@ -18376,7 +18420,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
                 if chunk is None:
                     break
                 try:
-                    m.append("{:s}{!s}".format(RIGHT_ARROW, chunk))
+                    m.append("{:s}{:s}".format(RIGHT_ARROW, chunk.to_str(arena)))
                     if chunk.address in chunks:
                         m.append(Color.colorify("{:s}{:#x} [loop detected]".format(RIGHT_ARROW, chunk.address), corrupted_msg_color))
                         break
@@ -18452,6 +18496,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
 
         # doit
         for arena in arenas:
+            arena.reset_bins_info()
             self.print_fastbin(arena, args.verbose)
         return
 
@@ -18477,7 +18522,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
                     break
 
                 try:
-                    m.append("{:s}{!s}".format(RIGHT_ARROW, chunk))
+                    m.append("{:s}{:s}".format(RIGHT_ARROW, chunk.to_str(arena)))
                     if chunk.address in chunks:
                         m.append(Color.colorify("{:s}{:#x} [loop detected]".format(RIGHT_ARROW, chunk.address), corrupted_msg_color))
                         break
@@ -18556,6 +18601,7 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
         # doit
         for arena in arenas:
             gef_print(titlify("Unsorted Bin for arena '{:s}'".format(arena.name)))
+            arena.reset_bins_info()
             nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, 0, "unsorted_bins", args.verbose)
             info("Found {:d} chunks in unsorted bin.".format(nb_chunk))
         return
@@ -18606,6 +18652,7 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
         # doit
         for arena in arenas:
             gef_print(titlify("Small Bins for arena '{:s}'".format(arena.name)))
+            arena.reset_bins_info()
             bins = {}
             for i in range(1, 63):
                 nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, i, "small_bins", args.verbose)
@@ -18662,6 +18709,7 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
         # doit
         for arena in arenas:
             gef_print(titlify("Large Bins for arena '{:s}'".format(arena.name)))
+            arena.reset_bins_info()
             bins = {}
             for i in range(63, 126):
                 nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, i, "large_bins", args.verbose)
