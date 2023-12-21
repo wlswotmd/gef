@@ -43615,7 +43615,6 @@ class KernelMagicCommand(GenericCommand):
             self.resolve_and_print_kernel("kvm_clock", text_base, maps)
             self.resolve_and_print_kernel("clocksource_tsc", text_base, maps, KernelAddressHeuristicFinder.get_clocksource_tsc)
         gef_print(titlify("Function pointer table"))
-        self.resolve_and_print_kernel("ptmx_fops", text_base, maps, KernelAddressHeuristicFinder.get_ptmx_fops)
         self.resolve_and_print_kernel("capability_hooks", text_base, maps, KernelAddressHeuristicFinder.get_capability_hooks)
         self.resolve_and_print_kernel("n_tty_ops", text_base, maps, KernelAddressHeuristicFinder.get_n_tty_ops)
         gef_print(titlify("Function pointer table array"))
