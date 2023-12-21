@@ -3046,19 +3046,19 @@ class GlibcArena:
 
     def reset_bins_info(self):
         self.cached_tcache_list = self.tcache_list()
-        self.cached_tcache_addr_list = set().union(*[x for x in self.cached_tcache_list.values()])
+        self.cached_tcache_addr_list = set().union(*self.cached_tcache_list.values())
 
         self.cached_fastbins_list = self.fastbins_list()
-        self.cached_fastbins_addr_list = set().union(*[x for x in self.cached_fastbins_list.values()])
+        self.cached_fastbins_addr_list = set().union(*self.cached_fastbins_list.values())
 
         self.cached_unsortedbin_list = self.unsortedbin_list()
         self.cached_unsortedbin_addr_list = self.cached_unsortedbin_list[0]
 
         self.cached_smallbins_list = self.smallbins_list()
-        self.cached_smallbins_addr_list = set().union(*[x for x in self.cached_smallbins_list.values()])
+        self.cached_smallbins_addr_list = set().union(*self.cached_smallbins_list.values())
 
         self.cached_largebins_list = self.largebins_list()
-        self.cached_largebins_addr_list = set().union(*[x for x in self.cached_largebins_list.values()])
+        self.cached_largebins_addr_list = set().union(*self.cached_largebins_list.values())
         return
 
     def is_chunk_in_tcache(self, chunk):
@@ -3368,15 +3368,19 @@ class GlibcChunk:
             fd = lookup_address(self.get_fwd_ptr(sll=True)) # decode fd
             fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={!s})"
             msg = fmt.format(chunk_c, addr_c, size_c, flags, fd)
+        elif arena.top == self.chunk_base_address:
+            fmt = "{:s}(addr={:s}, size={:s}, flags={:s})"
+            msg = fmt.format(chunk_c, addr_c, size_c, flags)
         else:
             addr_c = Color.colorify("{:#x}".format(self.chunk_base_address), get_gef_setting("theme.heap_chunk_address_used"))
             fmt = "{:s}(addr={:s}, size={:s}, flags={:s})"
             msg = fmt.format(chunk_c, addr_c, size_c, flags)
         return msg
 
-    def psprint(self):
+    def psprint(self, arena):
+        arena.reset_bins_info()
         msg = []
-        msg.append(str(self))
+        msg.append(self.to_str(arena))
         if self.is_used():
             msg.append(self.str_as_alloced())
         else:
@@ -17820,6 +17824,18 @@ class GlibcHeapTopCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
+        # parse arena
+        arena = get_arena(args.arena_addr)
+
+        if arena is None:
+            err("No valid arena")
+            return
+
+        if arena.heap_base is None or not is_valid_addr(arena.heap_base):
+            err("Heap is not initialized")
+            return
+
+        # get top
         if args.arena_addr:
             res = gdb.execute("heap arena --no-pager --arena-addr {:#x}".format(args.arena_addr), to_string=True)
         else:
@@ -17833,7 +17849,7 @@ class GlibcHeapTopCommand(GenericCommand):
         top = int(m.group(1), 16)
         info("arena.top: {:#x}".format(top))
         top += current_arch.ptrsize * 2
-        gef_print(GlibcChunk(top).psprint())
+        gef_print(GlibcChunk(top).psprint(arena))
         return
 
 
@@ -18084,7 +18100,7 @@ class GlibcHeapChunkCommand(GenericCommand):
 
         # dump
         try:
-            gef_print(chunk.psprint())
+            gef_print(chunk.psprint(arena))
         except gdb.MemoryError:
             err("Invalid address")
             return
