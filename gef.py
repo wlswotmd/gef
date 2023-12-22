@@ -44898,11 +44898,10 @@ class VisualHeapCommand(GenericCommand):
             # This is fast, but does not return an accurate list in some cases.
             # For example, sparc64 may not include the heap area.
             # So it detects the end of the page from arena.top.
-            end = arena.top + GlibcChunk(arena.top).size
+            end = arena.top + GlibcChunk(arena.top, from_base=True).size
 
         addr = dump_start
         i = 0
-        self.out = []
         while addr < end:
             chunk = GlibcChunk(addr + current_arch.ptrsize * 2)
             # corrupt check
@@ -44961,6 +44960,7 @@ class VisualHeapCommand(GenericCommand):
         else:
             dump_start = args.location
 
+        self.out = []
         reset_gef_caches(all=True)
         arena.reset_bins_info()
         self.generate_visual_heap(arena, dump_start, args.max_count)
