@@ -66809,7 +66809,6 @@ class uClibcChunk:
             self.address = addr
 
         self.size_addr = int(self.address - self.ptrsize)
-        self.prev_size_addr = self.chunk_base_address
         return
 
     def get_chunk_size(self):
@@ -66818,24 +66817,6 @@ class uClibcChunk:
     @property
     def size(self):
         return self.get_chunk_size()
-
-    def get_usable_size(self):
-        cursz = self.get_chunk_size()
-        if cursz == 0:
-            return cursz
-        if self.has_m_bit():
-            return cursz - 2 * self.ptrsize
-        return cursz - self.ptrsize
-
-    def get_prev_chunk_size(self):
-        return read_int_from_memory(self.prev_size_addr)
-
-    def get_next_chunk(self):
-        try:
-            addr = self.address + self.get_chunk_size()
-            return uClibcChunk(addr)
-        except gdb.MemoryError:
-            return None
 
     # if freed functions
     def get_fwd_ptr(self, sll):
@@ -66871,72 +66852,6 @@ class uClibcChunk:
     def has_m_bit(self):
         return read_int_from_memory(self.size_addr) & 0x02
 
-    def is_used(self):
-        """Check if the current block is used by:
-        - checking the M bit is true
-        - or checking that next chunk PREV_INUSE flag is true"""
-        if self.has_m_bit():
-            return True
-        next_chunk = self.get_next_chunk()
-        return True if next_chunk.has_p_bit() else False
-
-    def str_chunk_size_flag(self):
-        msg = []
-        if self.has_p_bit():
-            msg.append("  PREV_INUSE flag: {}".format(Color.greenify("On")))
-        else:
-            msg.append("  PREV_INUSE flag: {}".format(Color.redify("Off")))
-        if self.has_m_bit():
-            msg.append("  IS_MMAPPED flag: {}".format(Color.greenify("On")))
-        else:
-            msg.append("  IS_MMAPPED flag: {}".format(Color.redify("Off")))
-        return "\n".join(msg)
-
-    def _str_sizes(self):
-        msg = []
-        failed = False
-
-        try:
-            msg.append("  Chunk size: {0:d} ({0:#x})".format(self.get_chunk_size()))
-            msg.append("  Usable size: {0:d} ({0:#x})".format(self.get_usable_size()))
-        except gdb.MemoryError:
-            msg.append("  Chunk size: Cannot read at {:#x} (corrupted?)".format(self.size_addr))
-            failed = True
-
-        try:
-            msg.append("  Previous chunk size: {0:d} ({0:#x})".format(self.get_prev_chunk_size()))
-        except gdb.MemoryError:
-            msg.append("  Previous chunk size: Cannot read at {:#x} (corrupted?)".format(self.chunk_base_address))
-            failed = True
-
-        if not failed:
-            msg.append(self.str_chunk_size_flag())
-
-        return "\n".join(msg)
-
-    def _str_pointers(self):
-        fwd = self.address
-        bkw = self.address + self.ptrsize
-
-        msg = []
-        try:
-            msg.append("  Forward pointer: {:#x}".format(self.get_fwd_ptr(False)))
-        except gdb.MemoryError:
-            msg.append("  Forward pointer: {:#x} (corrupted?)".format(fwd))
-
-        try:
-            msg.append("  Backward pointer: {:#x}".format(self.get_bkw_ptr()))
-        except gdb.MemoryError:
-            msg.append("  Backward pointer: {:#x} (corrupted?)".format(bkw))
-
-        return "\n".join(msg)
-
-    def str_as_alloced(self):
-        return self._str_sizes()
-
-    def str_as_freed(self):
-        return "{}\n\n{}".format(self._str_sizes(), self._str_pointers())
-
     def flags_as_string(self):
         flags = []
         if self.has_p_bit():
@@ -66945,27 +66860,22 @@ class uClibcChunk:
             flags.append(Color.colorify("IS_MMAPPED", get_gef_setting("theme.heap_chunk_flag_is_mmapped")))
         return "|".join(flags)
 
-    def __str__(self):
+    def to_str(self, is_fastbin=False):
         chunk_c = Color.colorify("Chunk", get_gef_setting("theme.heap_chunk_label"))
         size_c = Color.colorify("{:#x}".format(self.get_chunk_size()), get_gef_setting("theme.heap_chunk_size"))
         addr_c = Color.colorify("{:#x}".format(self.chunk_base_address), get_gef_setting("theme.heap_chunk_address_freed"))
         flags = self.flags_as_string()
 
-        fd = str(lookup_address(self.fd))
-        bk = str(lookup_address(self.bk))
-
-        fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={:s}, bk={:s})"
-        msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, bk)
-        return msg
-
-    def psprint(self):
-        msg = []
-        msg.append(str(self))
-        if self.is_used():
-            msg.append(self.str_as_alloced())
+        if is_fastbin:
+            fd = lookup_address(self.get_fwd_ptr(sll=True))
+            fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={!s})"
+            msg = fmt.format(chunk_c, addr_c, size_c, flags, fd)
         else:
-            msg.append(self.str_as_freed())
-        return "\n".join(msg)
+            fd = lookup_address(self.fd)
+            bk = lookup_address(self.bk)
+            fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
+            msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, bk)
+        return msg
 
 
 @register_command
@@ -67158,7 +67068,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
         # - static build + stripped
         return None
 
-    def read_malloc_state(self):
+    def read_malloc_state(self, specified_malloc_state_ptr):
         """
         struct malloc_state {
           /* The maximum chunk size to be eligible for fastbin */
@@ -67205,12 +67115,12 @@ class UclibcNgHeapDumpCommand(GenericCommand):
         """
 
         _malloc_state = {}
-        if self.malloc_state is None:
+        if specified_malloc_state_ptr is None:
             _malloc_state["address"] = current = self.get_malloc_state()
             if current is None:
                 return None
         else:
-            _malloc_state["address"] = current = self.malloc_state
+            _malloc_state["address"] = current = specified_malloc_state_ptr
 
         _malloc_state["max_fast"] = max_fast = read_int_from_memory(current)
         current += current_arch.ptrsize
@@ -67314,17 +67224,15 @@ class UclibcNgHeapDumpCommand(GenericCommand):
                     colored_size = Color.colorify("{:#4x}".format(size), chunk_size_color)
                 else:
                     colored_size = Color.colorify(size, chunk_size_color)
-                colored_addr = str(lookup_address(addr))
-                colored_n = str(lookup_address(n))
-                fmt = "fastbins[idx={:d}, size={:s}, @{:s}]: fd={:s}"
-                self.out.append(fmt.format(i, colored_size, colored_addr, colored_n))
+                fmt = "fastbins[idx={:d}, size={:s}, @{!s}]: fd={!s}"
+                self.out.append(fmt.format(i, colored_size, lookup_address(addr), lookup_address(n)))
 
             if n != 0:
                 seen = []
                 while is_valid_addr(n) and n not in seen:
                     seen.append(n)
                     chunk = uClibcChunk(n, from_base=True)
-                    self.out.append(" -> {}".format(chunk))
+                    self.out.append(" -> {}".format(chunk.to_str(is_fastbin=True)))
                     n = chunk.get_fwd_ptr(True)
 
         self.verbose_print("top:                 {!s}".format(lookup_address(malloc_state.top)))
@@ -67339,20 +67247,17 @@ class UclibcNgHeapDumpCommand(GenericCommand):
                 else:
                     colored_size = Color.colorify(size, chunk_size_color)
                 if i == 1:
-                    fmt = "unsortedbin[idx={:d}, size={:s}, @{:s}]: fd={:s}, bk={:s}"
+                    fmt = "unsortedbin[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}"
                 else:
-                    fmt = "smallbins[idx={:d}, size={:s}, @{:s}]: fd={:s}, bk={:s}"
-                colored_addr = str(lookup_address(addr))
-                colored_n = str(lookup_address(n))
-                colored_p = str(lookup_address(p))
-                self.out.append(fmt.format(i, colored_size, colored_addr, colored_n, colored_p))
+                    fmt = "smallbins[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}"
+                self.out.append(fmt.format(i, colored_size, lookup_address(addr), lookup_address(n), lookup_address(p)))
 
             if n and addr - current_arch.ptrsize * 2 != n:
                 seen = [addr - current_arch.ptrsize * 2]
                 while is_valid_addr(n) and n not in seen:
                     seen.append(n)
                     chunk = uClibcChunk(n, from_base=True)
-                    self.out.append(" -> {}".format(chunk))
+                    self.out.append(" -> {}".format(chunk.to_str()))
                     n = chunk.fwd
 
         self.out.append(titlify("largebins"))
@@ -67363,18 +67268,15 @@ class UclibcNgHeapDumpCommand(GenericCommand):
                     colored_size = Color.colorify("{:#x}-{:#x}".format(*size), chunk_size_color)
                 else:
                     colored_size = Color.colorify(size, chunk_size_color)
-                fmt = "largebins[idx={:d}, size={:s}, @{:s}]: fd={:s}, bk={:s}"
-                colored_addr = str(lookup_address(addr))
-                colored_n = str(lookup_address(n))
-                colored_p = str(lookup_address(p))
-                self.out.append(fmt.format(i + 32, colored_size, colored_addr, colored_n, colored_p))
+                fmt = "largebins[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}"
+                self.out.append(fmt.format(self.NSMALLBINS + i, colored_size, lookup_address(addr), lookup_address(n), lookup_address(p)))
 
             if addr - current_arch.ptrsize * 2 != n:
                 seen = [addr - current_arch.ptrsize * 2]
                 while is_valid_addr(n) and n not in seen:
                     seen.append(n)
                     chunk = uClibcChunk(n, from_base=True)
-                    self.out.append(" -> {}".format(chunk))
+                    self.out.append(" -> {}".format(chunk.to_str()))
                     n = chunk.fwd
 
         for i in range(self.BINMAPSIZE + 1):
@@ -67401,11 +67303,10 @@ class UclibcNgHeapDumpCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        self.malloc_state = args.malloc_state
         self.verbose = args.verbose
         self.out = []
 
-        malloc_state = self.read_malloc_state()
+        malloc_state = self.read_malloc_state(args.malloc_state)
         if malloc_state is None:
             err("malloc_state is not found")
             return
