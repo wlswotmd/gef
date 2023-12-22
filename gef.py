@@ -67316,6 +67316,262 @@ class UclibcNgHeapDumpCommand(GenericCommand):
 
 
 @register_command
+class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
+    """Visualize chunks on a heap for uClibc-ng."""
+    _cmdline_ = "uclibc-ng-visual-heap"
+    _category_ = "06-b. Heap - Other"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+                        help="the address you want to interpret as the beginning of a contiguous chunk. (default: [heap] of vmmap)")
+    parser.add_argument("--malloc_state", type=parse_address, help="use specific address for malloc_context.")
+    parser.add_argument("-c", dest="max_count", type=parse_address,
+                        help="Maximum count to parse. It is used when there is a very large amount of chunks.")
+    parser.add_argument("-f", "--full", action="store_true", help="display the same line without omitting.")
+    parser.add_argument("-d", "--dark-color", action="store_true", help="use the dark color if chunk is allocated.")
+    parser.add_argument("-s", "--safe-linking-decode", action="store_true",
+                        help="decode safe-linking encoded pointer if tcache or fastbins.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    _syntax_ = parser.format_help()
+
+    color = [
+        Color.redify,
+        Color.greenify,
+        Color.blueify,
+        Color.yellowify
+    ]
+    dark_color = [
+        lambda x: Color.colorify(x, "bright_black"),
+        lambda x: Color.colorify(x, "graphite"),
+    ]
+
+    def __init__(self):
+        super().__init__(complete=gdb.COMPLETE_LOCATION)
+        return
+
+    def init_bins_info(self, malloc_state):
+        bins_info = {
+            "fastbins": {},
+            "small_bins": {},
+            "large_bins": {},
+        }
+        # fastbins
+        for i in range(self.NFASTBINS):
+            addr, n, size = malloc_state.fastbins[i]
+            seen = []
+            while n and n not in seen:
+                seen.append(n)
+                try:
+                    chunk = uClibcChunk(n, from_base=True)
+                    n = chunk.get_fwd_ptr(True)
+                except gdb.MemoryError:
+                    break
+            bins_info["fastbins"][i] = seen
+        # smallbins / unsortedbin
+        for i in range(len(malloc_state.smallbins)):
+            addr, n, p, size = malloc_state.smallbins[i]
+            seen = []
+            while n and addr - current_arch.ptrsize * 2 != n and n not in seen:
+                seen.append(n)
+                try:
+                    chunk = uClibcChunk(n, from_base=True)
+                    n = chunk.fwd
+                except gdb.MemoryError:
+                    break
+            bins_info["small_bins"][i] = seen
+        # largebins
+        for i in range(len(malloc_state.largebins)):
+            addr, n, p, size = malloc_state.largebins[i]
+            seen = []
+            while n and addr - current_arch.ptrsize * 2 != n and n not in seen:
+                seen.append(n)
+                try:
+                    chunk = uClibcChunk(n, from_base=True)
+                    n = chunk.fwd
+                except gdb.MemoryError:
+                    break
+            bins_info["large_bins"][i] = seen
+        return bins_info
+
+    def make_bins_info(self, malloc_state, bins_info, address):
+        info = []
+        for k, v in bins_info["fastbins"].items():
+            if address in v:
+                pos = ",".join([str(i + 1) for i, x in enumerate(v) if x == address])
+                sz = self.fast_size_table[k][is_32bit()]
+                m = "fastbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(k, sz, pos, len(v))
+                info.append(m)
+        for k, v in bins_info["small_bins"].items():
+            if address in v:
+                pos = ",".join([str(i + 1) for i, x in enumerate(v) if x == address])
+                if k == 0:
+                    m = "unsortedbins[{:s}/{:d}]".format(pos, len(v))
+                else:
+                    size = self.size_table[k][is_32bit()]
+                    if isinstance(size, tuple):
+                        sz = "{:#x}-{:#x}".format(size[0], size[1])
+                    else:
+                        sz = size
+                    m = "smallbins[idx={:d},sz={:s}][{:s}/{:d}]".format(k, sz, pos, len(v))
+                info.append(m)
+        for k, v in bins_info["large_bins"].items():
+            if address in v:
+                pos = ",".join([str(i + 1) for i, x in enumerate(v) if x == address])
+                size = self.size_table[self.NSMALLBINS + k][is_32bit()]
+                if isinstance(size, tuple):
+                    sz = "{:#x}-{:#x}".format(size[0], size[1])
+                else:
+                    sz = size
+                m = "largebins[idx={:d},sz={:s}][{:s}/{:d}]".format(self.NSMALLBINS + k, sz, pos, len(v))
+                info.append(m)
+        if address == malloc_state.top:
+            info.append("top")
+        return info
+
+    def generate_visual_chunk(self, malloc_state, bins_info, chunk, idx):
+        unpack = u32 if current_arch.ptrsize == 4 else u64
+        data = slicer(chunk.data, current_arch.ptrsize * 2)
+        group_line_threshold = 8
+
+        addr = chunk.chunk_base_address
+        width = current_arch.ptrsize * 2 + 2
+        exceed_top = False
+        has_subinfo = False
+
+        out_tmp = []
+        # Group rows to display rows with the same value together.
+        prev_sub_info = ""
+        for blk, blks in itertools.groupby(data):
+            repeat_count = len(list(blks))
+            d1, d2 = unpack(blk[:current_arch.ptrsize]), unpack(blk[current_arch.ptrsize:])
+            dascii = "".join([chr(x) if 0x20 <= x < 0x7f else "." for x in blk])
+
+            fmt = "{:#x}: {:#0{:d}x} {:#0{:d}x} | {:s} | {:s}"
+            if self.full or repeat_count < group_line_threshold:
+                # non-collapsed line
+                for _ in range(repeat_count):
+                    sub_info = self.make_bins_info(malloc_state, bins_info, addr)
+                    if sub_info:
+                        sub_info = "{:s} {:s}".format(LEFT_ARROW, ", ".join(sub_info))
+                        has_subinfo = True
+                    else:
+                        sub_info = ""
+
+                    if self.safe_linking_decode:
+                        if chunk.address == addr and "fastbins" in prev_sub_info:
+                            d1 = chunk.get_fwd_ptr(True)
+
+                    out_tmp.append(fmt.format(addr, d1, width, d2, width, dascii, sub_info))
+                    addr += current_arch.ptrsize * 2
+                    prev_sub_info = sub_info
+
+                    if addr > malloc_state.top + current_arch.ptrsize * 4:
+                        exceed_top = True
+                        break
+            else:
+                # collapsed line
+                sub_info = self.make_bins_info(malloc_state, bins_info, addr)
+                if sub_info:
+                    sub_info = "{:s} {:s}".format(LEFT_ARROW, ", ".join(sub_info))
+                    has_subinfo = True
+                else:
+                    sub_info = ""
+                out_tmp.append(fmt.format(addr, d1, width, d2, width, dascii, sub_info))
+                addr += current_arch.ptrsize * 2 * repeat_count
+                out_tmp.append("* {:#d} lines, {:#x} bytes".format(repeat_count - 1, (repeat_count - 1) * current_arch.ptrsize * 2))
+
+            prev_sub_info = sub_info
+
+            if exceed_top:
+                break
+
+        # coloring
+        if self.use_dark_color and not has_subinfo:
+            color_func = self.dark_color[idx % len(self.dark_color)]
+        else:
+            color_func = self.color[idx % len(self.color)]
+        self.out.append("\n".join(map(color_func, out_tmp)))
+
+        # corrupted case
+        if exceed_top:
+            self.out.append(Color.boldify("..."))
+        return
+
+    def generate_visual_heap(self, malloc_state, bins_info, dump_start, max_count):
+        sect = process_lookup_address(dump_start)
+        if sect:
+            end = sect.page_end
+        else:
+            # If qemu-user 8.1 or higher, the process_lookup_address to obtain the section list uses info proc mappings internally.
+            # This is fast, but does not return an accurate list in some cases.
+            # For example, sparc64 may not include the heap area.
+            # So it detects the end of the page from malloc_state.top.
+            end = malloc_state.top + uClibcChunk(malloc_state.top, from_base=True).size
+
+        addr = dump_start
+        i = 0
+        while addr < end:
+            chunk = GlibcChunk(addr + current_arch.ptrsize * 2)
+            # corrupt check
+            if addr != malloc_state.top and addr + chunk.size > malloc_state.top:
+                msg = "{} Corrupted (addr + chunk.size > malloc_state.top)".format(Color.colorify("[!]", "bold red"))
+                self.out.append(msg)
+                chunk.data = read_memory(addr, malloc_state.top - addr + 0x10)
+                self.generate_visual_chunk(malloc_state, bins_info, chunk, i)
+                break
+            elif addr + chunk.size > end:
+                msg = "{} Corrupted (addr + chunk.size > sect.page_end)".format(Color.colorify("[!]", "bold red"))
+                self.out.append(msg)
+                chunk.data = read_memory(addr, malloc_state.top - addr + 0x10)
+                self.generate_visual_chunk(malloc_state, bins_info, chunk, i)
+                break
+            # maybe not corrupted
+            try:
+                chunk.data = read_memory(addr, chunk.size)
+            except gdb.MemoryError:
+                break
+            self.generate_visual_chunk(malloc_state, bins_info, chunk, i)
+            addr += chunk.size
+            i += 1
+
+            if max_count and max_count <= i:
+                break
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        self.full = args.full
+        self.use_dark_color = args.dark_color
+        self.safe_linking_decode = args.safe_linking_decode
+
+        malloc_state = self.read_malloc_state(args.malloc_state)
+        if malloc_state is None:
+           err("malloc_state is not found")
+           return
+
+        bins_info = self.init_bins_info(malloc_state)
+
+        if args.location is None:
+            heap_base = process_lookup_path("[heap]")
+            if heap_base is None or not is_valid_addr(heap_base.page_start):
+                err("Not found heap base")
+                return
+            dump_start = heap_base.page_start
+        else:
+            dump_start = args.location
+
+        self.out = []
+        reset_gef_caches(all=True)
+        self.generate_visual_heap(malloc_state, bins_info, dump_start, args.max_count)
+        gef_print("\n".join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
 class XStringCommand(GenericCommand):
     """Dump string like x/s command, but with hex-string style."""
     _cmdline_ = "xs"
