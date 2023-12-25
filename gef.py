@@ -57148,6 +57148,24 @@ class MemoryCopyCommand(GenericCommand):
     parser.add_argument("size", metavar="SIZE", type=parse_address, help="the size for memcpy.")
     _syntax_ = parser.format_help()
 
+    _note_ = "memcpy dst src 8\n"
+    _note_ += "                                 <--size-->\n"
+    _note_ += "            dst                   src\n"
+    _note_ += "  Before: [ AAAAAAAA | BBBBBBBB | CCCCCCCC ]\n"
+    _note_ += "  After : [ CCCCCCCC | BBBBBBBB | CCCCCCCC ]\n"
+    _note_ += "\n"
+    _note_ += "memswap dst src 8\n"
+    _note_ += "                                 <--size-->\n"
+    _note_ += "            dst                   src\n"
+    _note_ += "  Before: [ AAAAAAAA | BBBBBBBB | CCCCCCCC ]\n"
+    _note_ += "  After : [ CCCCCCCC | BBBBBBBB | AAAAAAAA ]\n"
+    _note_ += "\n"
+    _note_ += "meminsert dst src 16 8\n"
+    _note_ += "           <-------size1-------> <--size2->\n"
+    _note_ += "            dst                   src\n"
+    _note_ += "  Before: [ AAAAAAAA | BBBBBBBB | CCCCCCCC ]\n"
+    _note_ += "  After : [ CCCCCCCC | AAAAAAAA | BBBBBBBB ]\n"
+
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
@@ -57211,6 +57229,8 @@ class MemorySwapCommand(GenericCommand):
     parser.add_argument("swap_addr2", metavar="SWAP_ADDRESS2", type=parse_address, help="another swap target address.")
     parser.add_argument("size", metavar="SIZE", type=parse_address, help="the size for memory swap.")
     _syntax_ = parser.format_help()
+
+    _note_ = MemoryCopyCommand._note_
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -57299,23 +57319,7 @@ class MemoryInsertCommand(GenericCommand):
     parser.add_argument("size2", metavar="SIZE2", type=parse_address, help="the inserted(slided) size for meminsert.")
     _syntax_ = parser.format_help()
 
-    _note_ = "memcpy dst src 8\n"
-    _note_ += "                                 <--size-->\n"
-    _note_ += "            dst                   src\n"
-    _note_ += "  Before: [ AAAAAAAA | BBBBBBBB | CCCCCCCC ]\n"
-    _note_ += "  After : [ CCCCCCCC | BBBBBBBB | CCCCCCCC ]\n"
-    _note_ += "\n"
-    _note_ += "memswap dst src 8\n"
-    _note_ += "                                 <--size-->\n"
-    _note_ += "            dst                   src\n"
-    _note_ += "  Before: [ AAAAAAAA | BBBBBBBB | CCCCCCCC ]\n"
-    _note_ += "  After : [ CCCCCCCC | BBBBBBBB | AAAAAAAA ]\n"
-    _note_ += "\n"
-    _note_ += "meminsert dst src 16 8\n"
-    _note_ += "           <-------size1-------> <--size2->\n"
-    _note_ += "            dst                   src\n"
-    _note_ += "  Before: [ AAAAAAAA | BBBBBBBB | CCCCCCCC ]\n"
-    _note_ += "  After : [ CCCCCCCC | AAAAAAAA | BBBBBBBB ]\n"
+    _note_ = MemoryCopyCommand._note_
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
