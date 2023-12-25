@@ -2954,20 +2954,21 @@ class GlibcArena:
             try:
                 chunk = self.tcachebin(i)
             except gdb.MemoryError:
-                err("tcache[{:d}] is maybe corrupted.".format(i))
+                err("tcache[{:d}] is corrupted.".format(i))
                 continue
             chunks = set()
             while True:
                 if chunk is None:
                     break
                 if chunk.address in chunks:
+                    err("tcache[{:d}] has a loop.".format(i))
                     break # loop detected
                 chunks.add(chunk.address)
                 next_chunk = chunk.get_fwd_ptr(True)
                 if next_chunk == 0:
                     break
                 if next_chunk is None:
-                    err("tcache[{:d}] is maybe corrupted.".format(i))
+                    err("tcache[{:d}] is corrupted.".format(i))
                     break
                 chunk = GlibcChunk(next_chunk)
             chunks_all[i] = chunks
@@ -2985,20 +2986,21 @@ class GlibcArena:
             try:
                 chunk = self.fastbin(i)
             except gdb.MemoryError:
-                err("fastbin[{:d}] is maybe corrupted.".format(i))
+                err("fastbins[{:d}] is corrupted.".format(i))
                 continue
             chunks = set()
             while True:
                 if chunk is None:
                     break
                 if chunk.address in chunks:
+                    err("fastbins[{:d}] has a loop.".format(i))
                     break # loop detected
                 chunks.add(chunk.address)
                 next_chunk = chunk.get_fwd_ptr(True)
                 if next_chunk == 0:
                     break
                 if next_chunk is None:
-                    err("fastbin[{:d}] is maybe corrupted.".format(i))
+                    err("fastbins[{:d}] is corrupted.".format(i))
                     break
                 chunk = GlibcChunk(next_chunk, from_base=True)
             chunks_all[i] = chunks
@@ -3018,12 +3020,12 @@ class GlibcArena:
         while fw != head:
             chunk = GlibcChunk(fw, from_base=True)
             if chunk.address in chunks:
-                err("bins[{:d}] is corrupted (the loop exit condition of parsing is troubled)".format(index))
+                err("bins[{:d}] has a loop.".format(index))
                 break
             chunks.add(chunk.chunk_base_address)
             fw = chunk.fwd
             if fw is None:
-                err("bins[{:d}] is corrupted (failed to get fwd)".format(index))
+                err("bins[{:d}] is corrupted.".format(index))
                 break
         return chunks
 
@@ -3338,6 +3340,7 @@ class GlibcChunk:
         addr_c = Color.colorify("{:#x}".format(self.chunk_base_address), get_gef_setting("theme.heap_chunk_address_freed"))
         flags = self.flags_as_string()
 
+        # large bins
         if arena.is_chunk_in_largebins(self):
             fd = lookup_address(self.fd)
             bk = lookup_address(self.bk)
@@ -3350,27 +3353,32 @@ class GlibcChunk:
             else:
                 fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
                 msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, bk)
-        elif arena.is_chunk_in_smallbins(self):
+
+        # small bins / unsorted bin
+        elif arena.is_chunk_in_smallbins(self) or arena.is_chunk_in_unsortedbin(self):
             fd = lookup_address(self.fd)
             bk = lookup_address(self.bk)
             fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
             msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, bk)
-        elif arena.is_chunk_in_unsortedbin(self):
-            fd = lookup_address(self.fd)
-            bk = lookup_address(self.bk)
-            fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
-            msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, bk)
-        elif arena.is_chunk_in_fastbins(self):
-            fd = lookup_address(self.get_fwd_ptr(sll=True)) # decode fd
-            fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={!s})"
-            msg = fmt.format(chunk_c, addr_c, size_c, flags, fd)
-        elif arena.is_chunk_in_tcache(self):
-            fd = lookup_address(self.get_fwd_ptr(sll=True)) # decode fd
-            fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={!s})"
-            msg = fmt.format(chunk_c, addr_c, size_c, flags, fd)
+
+        # tcache / fastbins
+        elif arena.is_chunk_in_fastbins(self) or arena.is_chunk_in_tcache(self):
+            fd = self.get_fwd_ptr(sll=False)
+            if get_libc_version() < (2, 32):
+                fd = lookup_address(fd)
+                fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={!s})"
+                msg = fmt.format(chunk_c, addr_c, size_c, flags, fd)
+            else:
+                decoded_fd = lookup_address(self.get_fwd_ptr(sll=True))
+                fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={:#x}(={!s}))"
+                msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, decoded_fd)
+
+        # top
         elif arena.top == self.chunk_base_address:
             fmt = "{:s}(addr={:s}, size={:s}, flags={:s})"
             msg = fmt.format(chunk_c, addr_c, size_c, flags)
+
+        # used chunk
         else:
             addr_c = Color.colorify("{:#x}".format(self.chunk_base_address), get_gef_setting("theme.heap_chunk_address_used"))
             fmt = "{:s}(addr={:s}, size={:s}, flags={:s})"
@@ -18288,11 +18296,6 @@ class GlibcHeapBinsCommand(GenericCommand):
             err("Heap is not initialized")
             return
 
-        if args.verbose:
-            verbose = "-v"
-        else:
-            verbose = ""
-
         arenas = [arena]
         if args.all:
             while arena:
@@ -18301,13 +18304,41 @@ class GlibcHeapBinsCommand(GenericCommand):
                     arenas.append(arena)
 
         # doit
-        bin_types = ["tcache", "fast", "unsorted", "small", "large"]
         for arena in arenas:
-            for bin_t in bin_types:
-                if arena.is_main_arena:
-                    gdb.execute("heap bins {:s} {:s}".format(bin_t, verbose))
-                else:
-                    gdb.execute("heap bins {:s} -a {:#x} {:s}".format(bin_t, arena.addr, verbose))
+            arena.reset_bins_info()
+
+            # tcache
+            GlibcHeapTcachebinsCommand.print_tcache(arena, args.verbose)
+
+            # fastbins
+            GlibcHeapFastbinsYCommand.print_fastbin(arena, args.verbose)
+
+            # unsorted bin
+            gef_print(titlify("Unsorted Bin for arena '{:s}'".format(arena.name)))
+            nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, 0, "unsorted_bin", args.verbose)
+            info("Found {:d} valid chunks in unsorted bin.".format(nb_chunk))
+
+            # small bins
+            gef_print(titlify("Small Bins for arena '{:s}'".format(arena.name)))
+            bins = {}
+            for i in range(1, 63):
+                nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, i, "small_bins", args.verbose)
+                if nb_chunk < 0:
+                    break
+                if nb_chunk > 0:
+                    bins[i] = nb_chunk
+            info("Found {:d} valid chunks in {:d} small bins.".format(sum(bins.values()), len(bins)))
+
+            # large bins
+            gef_print(titlify("Large Bins for arena '{:s}'".format(arena.name)))
+            bins = {}
+            for i in range(63, 126):
+                nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, i, "large_bins", args.verbose)
+                if nb_chunk < 0:
+                    break
+                if nb_chunk > 0:
+                    bins[i] = nb_chunk
+            info("Found {:d} valid chunks in {:d} large bins.".format(sum(bins.values()), len(bins)))
         return
 
     @staticmethod
@@ -18336,11 +18367,11 @@ class GlibcHeapBinsCommand(GenericCommand):
             size_str = "any"
 
         m = []
-        colored_bins_addr = str(lookup_address(bins_addr))
-        colored_fw = str(lookup_address(fw))
-        colored_bk = str(lookup_address(bk))
-        fmt = "{:s}[idx={:d}, size={:s}, @{:s}]: fd={:s}, bk={:s}"
-        m.append(fmt.format(bin_name, index, size_str, colored_bins_addr, colored_fw, colored_bk))
+        bins_addr = lookup_address(bins_addr)
+        fw_ = lookup_address(fw)
+        bk_ = lookup_address(bk)
+        fmt = "{:s}[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}"
+        m.append(fmt.format(bin_name, index, size_str, bins_addr, fw_, bk_))
         corrupted_msg_color = get_gef_setting("theme.heap_corrupted_msg")
 
         seen = []
@@ -18415,14 +18446,15 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
         # doit
         for arena in arenas:
             arena.reset_bins_info()
-            self.print_tcache(arena, args.verbose)
+            GlibcHeapTcachebinsCommand.print_tcache(arena, args.verbose)
         return
 
-    def print_tcache(self, arena, verbose):
+    @staticmethod
+    def print_tcache(arena, verbose):
         # Get tcache_perthread_struct for this arena
         tcache_perthread_struct = arena.heap_base + 0x10
 
-        gef_print(titlify("Tcachebins for arena '{:s}'".format(arena.name)))
+        gef_print(titlify("Tcache Bins for arena '{:s}'".format(arena.name)))
         corrupted_msg_color = get_gef_setting("theme.heap_corrupted_msg")
 
         nb_chunk = 0
@@ -18453,18 +18485,20 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
                     fmt = "{:s}{:#x} [Corrupted chunk]"
                     m.append(Color.colorify(fmt.format(RIGHT_ARROW, chunk.address), corrupted_msg_color))
                     break
+
             if m or verbose:
                 if get_libc_version() < (2, 30):
                     count = ord(read_memory(tcache_perthread_struct + i, 1))
                 else:
                     count = u16(read_memory(tcache_perthread_struct + 2 * i, 2))
                 size = get_binsize_table()["tcache"][i]["size"]
-                colored_bins_addr = str(lookup_address(arena.tcachebins_addr(i)))
-                gef_print("tcachebins[idx={:d}, size={:#x}, @{:s}] count={:d}".format(i, size, colored_bins_addr, count))
+                bins_addr = lookup_address(arena.tcachebins_addr(i))
+                fd = lookup_address(read_int_from_memory(bins_addr.value))
+                gef_print("tcachebins[idx={:d}, size={:#x}, @{!s}]: fd={!s} count={:d}".format(i, size, bins_addr, fd, count))
                 if m:
                     gef_print("\n".join(m))
 
-        info("Found {:d} chunks in tcache.".format(nb_chunk))
+        info("Found {:d} valid chunks in tcache.".format(nb_chunk))
         return
 
 
@@ -18513,10 +18547,11 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
         # doit
         for arena in arenas:
             arena.reset_bins_info()
-            self.print_fastbin(arena, args.verbose)
+            GlibcHeapFastbinsYCommand.print_fastbin(arena, args.verbose)
         return
 
-    def print_fastbin(self, arena, verbose):
+    @staticmethod
+    def print_fastbin(arena, verbose):
         def fastbin_index(sz):
             return (sz >> 4) - 2 if SIZE_SZ == 8 else (sz >> 3) - 2
 
@@ -18524,7 +18559,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
         MAX_FAST_SIZE = 80 * SIZE_SZ // 4
         NFASTBINS = fastbin_index(MAX_FAST_SIZE) - 1
 
-        gef_print(titlify("Fastbins for arena '{:s}'".format(arena.name)))
+        gef_print(titlify("Fast Bins for arena '{:s}'".format(arena.name)))
         corrupted_msg_color = get_gef_setting("theme.heap_corrupted_msg")
 
         nb_chunk = 0
@@ -18540,7 +18575,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
                 try:
                     m.append("{:s}{:s}".format(RIGHT_ARROW, chunk.to_str(arena)))
                     if chunk.address in chunks:
-                        m.append(Color.colorify("{:s}{:#x} [loop detected]".format(RIGHT_ARROW, chunk.address), corrupted_msg_color))
+                        m.append(Color.colorify("{:s}{:#x} [loop detected]".format(RIGHT_ARROW, chunk.chunk_base_address), corrupted_msg_color))
                         break
 
                     if fastbin_index(chunk.get_chunk_size()) != i:
@@ -18556,19 +18591,20 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
                     chunk = GlibcChunk(next_chunk, from_base=True)
                 except gdb.MemoryError:
                     fmt = "{:s}{:#x} [Corrupted chunk]"
-                    m.append(Color.colorify(fmt.format(RIGHT_ARROW, chunk.address), corrupted_msg_color))
+                    m.append(Color.colorify(fmt.format(RIGHT_ARROW, chunk.chunk_base_address), corrupted_msg_color))
                     break
 
             if m or verbose:
                 bin_table = get_binsize_table()["fastbins"]
                 if i in bin_table:
                     size = bin_table[i]["size"]
-                    colored_bins_addr = str(lookup_address(arena.fastbins_addr(i)))
-                    gef_print("fastbins[idx={:d}, size={:#x}, @{:s}] ".format(i, size, colored_bins_addr))
+                    bins_addr = lookup_address(arena.fastbins_addr(i))
+                    fd = lookup_address(read_int_from_memory(bins_addr.value))
+                    gef_print("fastbins[idx={:d}, size={:#x}, @{!s}]: fd={!s}".format(i, size, bins_addr, fd))
                     if m:
                         gef_print("\n".join(m))
 
-        info("Found {:d} chunks in fastbin.".format(nb_chunk))
+        info("Found {:d} valid chunks in fastbins.".format(nb_chunk))
         return
 
 
@@ -18616,10 +18652,10 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
 
         # doit
         for arena in arenas:
-            gef_print(titlify("Unsorted Bin for arena '{:s}'".format(arena.name)))
             arena.reset_bins_info()
-            nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, 0, "unsorted_bins", args.verbose)
-            info("Found {:d} chunks in unsorted bin.".format(nb_chunk))
+            gef_print(titlify("Unsorted Bin for arena '{:s}'".format(arena.name)))
+            nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, 0, "unsorted_bin", args.verbose)
+            info("Found {:d} valid chunks in unsorted bin.".format(nb_chunk))
         return
 
 
@@ -18667,8 +18703,8 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
 
         # doit
         for arena in arenas:
-            gef_print(titlify("Small Bins for arena '{:s}'".format(arena.name)))
             arena.reset_bins_info()
+            gef_print(titlify("Small Bins for arena '{:s}'".format(arena.name)))
             bins = {}
             for i in range(1, 63):
                 nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, i, "small_bins", args.verbose)
@@ -18676,7 +18712,7 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
                     break
                 if nb_chunk > 0:
                     bins[i] = nb_chunk
-            info("Found {:d} chunks in {:d} small non-empty bins.".format(sum(bins.values()), len(bins)))
+            info("Found {:d} valid chunks in {:d} small bins.".format(sum(bins.values()), len(bins)))
         return
 
 
@@ -18724,8 +18760,8 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
 
         # doit
         for arena in arenas:
-            gef_print(titlify("Large Bins for arena '{:s}'".format(arena.name)))
             arena.reset_bins_info()
+            gef_print(titlify("Large Bins for arena '{:s}'".format(arena.name)))
             bins = {}
             for i in range(63, 126):
                 nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, i, "large_bins", args.verbose)
@@ -18733,7 +18769,7 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
                     break
                 if nb_chunk > 0:
                     bins[i] = nb_chunk
-            info("Found {:d} chunks in {:d} large non-empty bins.".format(sum(bins.values()), len(bins)))
+            info("Found {:d} valid chunks in {:d} large bins.".format(sum(bins.values()), len(bins)))
         return
 
 
@@ -18742,7 +18778,7 @@ def __get_binsize_table():
     table = {
         "tcache": {},
         "fastbins": {},
-        "unsorted_bins": {},
+        "unsorted_bin": {},
         "small_bins": {},
         "large_bins": {},
     }
@@ -18783,7 +18819,7 @@ def __get_binsize_table():
             table["fastbins"][i] = {"size": size}
 
     # unsorted bins
-    table["unsorted_bins"][0] = {}
+    table["unsorted_bin"][0] = {}
 
     # smallbins
     for i in range(1, 63):
@@ -66871,9 +66907,10 @@ class uClibcChunk:
         flags = self.flags_as_string()
 
         if is_fastbin:
-            fd = lookup_address(self.get_fwd_ptr(sll=True))
-            fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={!s})"
-            msg = fmt.format(chunk_c, addr_c, size_c, flags, fd)
+            decoded_fd = lookup_address(self.get_fwd_ptr(sll=True))
+            fd = self.get_fwd_ptr(sll=False)
+            fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={:#x}(={!s})"
+            msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, decoded_fd)
         else:
             fd = lookup_address(self.fd)
             bk = lookup_address(self.bk)
@@ -66893,6 +66930,10 @@ class UclibcNgHeapDumpCommand(GenericCommand):
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="also dump an empty active index.")
     _syntax_ = parser.format_help()
+
+    _note_ = "The main structural differences between uclibc-ng (malloc-standard) and glibc are:\n"
+    _note_ += "- No tcache. There are fastbins, unsorted bin, small bins and larege bins.\n"
+    _note_ += "- No thread arena. So the chunk has no NON_MAIN_ARENA flag."
 
     fast_size_table = [
         # 64bit  32bit
@@ -67220,7 +67261,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
         max_fast_flags = "|".join(malloc_state.max_fast_flags)
         self.verbose_print("max_fast:            {:#x} ({:s})".format(malloc_state.max_fast, max_fast_flags))
 
-        self.out.append(titlify("fastbins"))
+        self.out.append(titlify("Fast Bins"))
         for i in range(self.NFASTBINS):
             addr, n, size = malloc_state.fastbins[i]
             if n != 0 or self.verbose:
@@ -67242,7 +67283,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
         self.verbose_print("top:                 {!s}".format(lookup_address(malloc_state.top)))
         self.verbose_print("last_remainder:      {!s}".format(lookup_address(malloc_state.last_remainder)))
 
-        self.out.append(titlify("smallbins / unsortedbin"))
+        self.out.append(titlify("Unsorted Bin / Small Bins"))
         for i in range(len(malloc_state.smallbins)):
             addr, n, p, size = malloc_state.smallbins[i]
             if (n and addr - current_arch.ptrsize * 2 != n) or self.verbose:
@@ -67251,9 +67292,9 @@ class UclibcNgHeapDumpCommand(GenericCommand):
                 else:
                     colored_size = Color.colorify(size, chunk_size_color)
                 if i == 1:
-                    fmt = "unsortedbin[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}"
+                    fmt = "unsorted_bin[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}"
                 else:
-                    fmt = "smallbins[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}"
+                    fmt = "small_bins[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}"
                 self.out.append(fmt.format(i, colored_size, lookup_address(addr), lookup_address(n), lookup_address(p)))
 
             if n and addr - current_arch.ptrsize * 2 != n:
@@ -67264,7 +67305,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
                     self.out.append(" -> {}".format(chunk.to_str()))
                     n = chunk.fwd
 
-        self.out.append(titlify("largebins"))
+        self.out.append(titlify("Large Bins"))
         for i in range(len(malloc_state.largebins)):
             addr, n, p, size = malloc_state.largebins[i]
             if addr - current_arch.ptrsize * 2 != n or self.verbose:
@@ -67272,7 +67313,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
                     colored_size = Color.colorify("{:#x}-{:#x}".format(*size), chunk_size_color)
                 else:
                     colored_size = Color.colorify(size, chunk_size_color)
-                fmt = "largebins[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}"
+                fmt = "large_bins[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}"
                 self.out.append(fmt.format(self.NSMALLBINS + i, colored_size, lookup_address(addr), lookup_address(n), lookup_address(p)))
 
             if addr - current_arch.ptrsize * 2 != n:
