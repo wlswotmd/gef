@@ -74687,15 +74687,17 @@ class Page2VirtCommand(GenericCommand):
             pass
         return False
 
-    def page2virt(self, page):
+    def page2virts(self, page):
         # https://qiita.com/akachochin/items/121d2bf3aa1cfc9bb95a
         if is_x86_64():
             paddr = (page - self.vmemmap) << 6
+            vaddrs = []
             for vstart, _vend, pstart, pend in self.maps:
                 if pstart <= paddr < pend:
                     offset = paddr - pstart
                     vaddr = vstart + offset
-                    return vaddr
+                    vaddrs.append(vaddr)
+            return vaddrs
         elif is_x86_32():
             pass
         elif is_arm64():
@@ -74708,7 +74710,7 @@ class Page2VirtCommand(GenericCommand):
                 addr = self.PAGE_OFFSET + idx * self.PAGE_SIZE
             virt = addr & 0xffffffffffffffff
             if is_valid_addr(virt):
-                return virt
+                return [virt]
             else:
                 err("Address in invalid range")
                 return None
@@ -74774,12 +74776,13 @@ class Page2VirtCommand(GenericCommand):
                 err("Failed to initialize")
                 return
 
-        vaddr = self.page2virt(args.page)
-        if vaddr is None:
+        vaddrs = self.page2virts(args.page)
+        if vaddrs is None:
             err("Failed to resolve")
             return
 
-        gef_print("Page: {:#x} -> Virt: {:#x}".format(args.page, vaddr))
+        for vaddr in vaddrs:
+            gef_print("Page: {:#x} -> Virt: {:#x}".format(args.page, vaddr))
         return
 
 
@@ -74872,19 +74875,25 @@ class Page2PhysCommand(Page2VirtCommand):
                 err("Failed to initialize")
                 return
 
-        vaddr = self.page2virt(args.page)
-        if vaddr is None:
+        vaddrs = self.page2virts(args.page)
+        if vaddrs is None:
             err("Failed to resolve")
             return
 
-        ret = gdb.execute("v2p {:#x}".format(vaddr), to_string=True)
-        r = re.search(r"Virt: 0x\S+ -> Phys: (0x\S+)", ret)
-        if not r:
-            err("Failed to resolve")
-            return
-        paddr = int(r.group(1), 16)
+        out = []
+        for vaddr in vaddrs:
+            ret = gdb.execute("v2p {:#x}".format(vaddr), to_string=True)
+            r = re.search(r"Virt: 0x\S+ -> Phys: (0x\S+)", ret)
+            if not r:
+                err("Failed to resolve")
+                return
+            paddr = int(r.group(1), 16)
 
-        gef_print("Page: {:#x} -> Phys: {:#x}".format(args.page, paddr))
+            msg = "Page: {:#x} -> Phys: {:#x}".format(args.page, paddr)
+            if msg not in out:
+                out.append(msg)
+
+        gef_print("\n".join(out))
         return
 
 
