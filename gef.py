@@ -78849,7 +78849,7 @@ class BincompareCommand(GenericCommand):
 
         # file_data
         if not os.path.isfile(args.filename):
-            err("Especified file '{:s}' not exists".format(args.filename))
+            err("specified file '{:s}' not exists".format(args.filename))
             return
         file_data = open(args.filename, "rb").read()
         if args.file_offset:
@@ -78874,7 +78874,7 @@ class BincompareCommand(GenericCommand):
         try:
             memory_data = read_memory(args.address, size)
         except gdb.MemoryError:
-            err("Cannot reach memory {:#x}".format(args.address))
+            err("cannot reach memory {:#x}".format(args.address))
             return
 
         self.compare(file_data, memory_data)
