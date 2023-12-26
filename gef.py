@@ -26547,7 +26547,8 @@ class DereferenceCommand(GenericCommand):
                 return
 
         if args.phys:
-            _read_int_from_memory = lambda x: (u32 if ptr_width() == 4 else u64)(read_physmem(x, ptr_width()))
+            unpack = u32 if is_32bit() else u64
+            _read_int_from_memory = lambda x: unpack(read_physmem(x, current_arch.ptrsize))
         else:
             _read_int_from_memory = read_int_from_memory
 
