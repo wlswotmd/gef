@@ -79032,55 +79032,45 @@ class GefCommand(GenericCommand):
         self.add_setting("tempdir", GEF_TEMP_DIR, "Directory to use for temporary/cache content")
         self.add_setting("always_no_pager", False, "Always disable pager in gef_print()")
         self.add_setting("keep_pager_result", False, "Leaves temporary files in gef_print()")
-        self.loaded_commands = []
+        self.loaded_commands = {}
         self.missing_commands = {}
         return
 
     def load_commands(self):
         """Load all the commands and functions defined by GEF into GDB."""
         nb_missing = 0
-        self.commands = [(x._cmdline_, x) for x in __commands__]
-
-        def is_loaded(x):
-            return any(filter(lambda u: x == u[0], self.loaded_commands))
-
         time_elapsed = []
-        for cmd, class_name in self.commands:
-            if is_loaded(cmd):
-                continue
-
+        for cmd_class in __commands__:
+            cmdline = cmd_class._cmdline_
             try:
                 start_time_real = time.perf_counter()
                 start_time_proc = time.process_time()
-                if cmd == "gef":
-                    self.loaded_commands.append((cmd, class_name, self))
+                if cmdline == "gef":
+                    instance = self
                 else:
-                    self.loaded_commands.append((cmd, class_name, class_name())) # command loading is here
+                    instance = cmd_class() # command loading is here
+                self.loaded_commands[cmdline] = (cmd_class, instance)
                 end_time_real = time.perf_counter()
                 end_time_proc = time.process_time()
-                time_elapsed.append((cmd, end_time_real - start_time_real, end_time_proc - start_time_proc))
+                time_elapsed.append((cmdline, end_time_real - start_time_real, end_time_proc - start_time_proc))
 
                 repeat = False
-                if hasattr(class_name, "_repeat_"):
-                    repeat = class_name._repeat_
+                if hasattr(cmd_class, "_repeat_"):
+                    repeat = cmd_class._repeat_
 
-                if hasattr(class_name, "_aliases_"):
-                    aliases = class_name._aliases_
-                    for alias in aliases:
-                        GefAlias(alias, cmd, repeat=repeat)
+                if hasattr(cmd_class, "_aliases_"):
+                    for alias in cmd_class._aliases_:
+                        GefAlias(alias, cmdline, repeat=repeat)
 
             except Exception as reason:
-                self.missing_commands[cmd] = reason
+                self.missing_commands[cmdline] = reason
                 nb_missing += 1
 
         DEBUG = False
         if DEBUG:
             print(titlify("Top 10 commands that took the longest to load"))
-            for cmd, real, cpu in sorted(time_elapsed, key=lambda x: x[1], reverse=True)[:10]:
-                print("{:30s} Real:{:.10f} s, CPU:{:.10f} s".format(cmd, real, cpu))
-
-        # sort by command name
-        self.loaded_commands = sorted(self.loaded_commands, key=lambda x: x[1]._cmdline_)
+            for cmdline, real, cpu in sorted(time_elapsed, key=lambda x: x[1], reverse=True)[:10]:
+                print("{:30s} Real:{:.10f} s, CPU:{:.10f} s".format(cmdline, real, cpu))
 
         # print message
         gef_print("{:s} is ready, type '{:s}' to start, '{:s}' to configure".format(
@@ -79106,8 +79096,8 @@ class GefCommand(GenericCommand):
 
         # save globally for debug
         global __LCO__
-        for commands in self.loaded_commands:
-            __LCO__[commands[0]] = commands[2]
+        for cmdline, (_, instance) in self.loaded_commands.items():
+            __LCO__[cmdline] = instance
         return
 
     def reload_auto_breakpoints(self):
@@ -79195,17 +79185,16 @@ class GefHelpCommand(GenericCommand):
     def generate_help(self):
         """Generate builtin commands documentation."""
         docs = []
-        for command in __gef__.loaded_commands:
-            cmd, class_name, _ = command
-            doc = getattr(class_name, "__doc__", "").lstrip()
+        for cmdline, (cmd_class, _) in __gef__.loaded_commands.items():
+            doc = getattr(cmd_class, "__doc__", "").lstrip()
             doc_lines = [Color.greenify(x) for x in doc.split("\n")]
             doc = "\n                         ".join(doc_lines)
-            if hasattr(class_name, "_aliases_") and class_name._aliases_ != []:
-                aliases = " (alias: {:s})".format(", ".join(class_name._aliases_))
+            if hasattr(cmd_class, "_aliases_") and cmd_class._aliases_ != []:
+                aliases = " (alias: {:s})".format(", ".join(cmd_class._aliases_))
             else:
                 aliases = ""
-            msg = "  {:<23s} -- {:s}{:s}".format(cmd, doc, aliases)
-            category = class_name._category_ if hasattr(class_name, "_category_") else "Uncategorized"
+            msg = "  {:<23s} -- {:s}{:s}".format(cmdline, doc, aliases)
+            category = cmd_class._category_ if hasattr(cmd_class, "_category_") else "Uncategorized"
             docs.append([category, msg])
 
         newdoc = ""
@@ -79273,9 +79262,9 @@ class GefConfigCommand(GenericCommand):
             err("Invalid command format")
             return
 
-        loaded_commands = [x[0].replace(" ", "_").replace("-", "_") for x in __gef__.loaded_commands] + ["gef"]
+        loaded_cmdlines = [x.replace(" ", "_").replace("-", "_") for x in __gef__.loaded_commands.keys()]
         command_name = config_name.split(".", 1)[0]
-        if command_name not in loaded_commands:
+        if command_name not in loaded_cmdlines:
             err("Unknown command '{:s}'".format(command_name))
             return
 
@@ -79739,10 +79728,10 @@ class GefAlias(gdb.Command):
         self._command = command
         self._alias = alias
         self._repeat = repeat
-        r = self.lookup_command(command)
+        r = __gef__.loaded_commands.get(command, None)
         self.__doc__ = "Alias for '{}'".format(Color.greenify(command))
         if r is not None:
-            _instance = r[2]
+            _instance = r[1]
             self.__doc__ += ": {}".format(_instance.__doc__)
 
             if hasattr(_instance, "complete"):
@@ -79757,13 +79746,6 @@ class GefAlias(gdb.Command):
             self.dont_repeat()
         gdb.execute("{} {}".format(self._command, args), from_tty=from_tty)
         return
-
-    def lookup_command(self, cmd):
-        global __gef__
-        for _name, _class, _instance in __gef__.loaded_commands:
-            if cmd == _name:
-                return _name, _class, _instance
-        return None
 
 
 @register_command
