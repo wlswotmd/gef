@@ -1773,9 +1773,12 @@ class Instruction:
     # Allow formatting an instruction with {:o} to show opcodes.
     # The number of bytes to display can be configured, e.g. {:4o} to only show 4 bytes of the opcodes
     def __format__(self, format_spec):
-        if len(format_spec) == 0 or format_spec[-1] not in ["o", "O"]:  # format_spec example: "4o"
+        if len(format_spec) == 0:
+            return str(self)
+        if format_spec[-1] not in ["o", "O", "p"]:
             return str(self)
 
+        old_context = format_spec[-1] == "p"
         to_highlight = format_spec[-1] == "O"
 
         # format address
@@ -1937,7 +1940,12 @@ class Instruction:
 
         # formatting
         fmt = "{:s} {:s}   {:s}   {:s} {:s} {:s}"
-        return fmt.format(address, opcodes_text, location, mnemonic, operands, additional_1)
+        out = fmt.format(address, opcodes_text, location, mnemonic, operands, additional_1)
+
+        if old_context:
+            out = Color.remove_color(out)
+            out = Color.colorify(out, get_gef_setting("theme.old_context"))
+        return out
 
     def __str__(self):
         location = self.smartify_text(self.location)
@@ -24237,7 +24245,9 @@ class ContextCommand(GenericCommand):
             if show_opcodes_size == 0:
                 text = str(insn)
             else:
-                if insn.address == pc:
+                if insn.address < pc:
+                    insn_fmt = "{{:{}p}}".format(show_opcodes_size)
+                elif insn.address == pc:
                     insn_fmt = "{{:{}O}}".format(show_opcodes_size)
                 else:
                     insn_fmt = "{{:{}o}}".format(show_opcodes_size)
