@@ -54012,6 +54012,7 @@ class KernelFileSystemsCommand(GenericCommand):
     """Dump filesystems."""
     _cmdline_ = "kfilesystems"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
+    _aliases_ = ["kmounts"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
@@ -54020,14 +54021,41 @@ class KernelFileSystemsCommand(GenericCommand):
 
     _note_ = "Simplified file_systems structure:\n"
     _note_ += "\n"
-    _note_ += "                  +-->+-file_system_type-+  +-->file_system_type\n"
-    _note_ += "                  |   | name             |  |\n"
-    _note_ += "+--------------+  |   | ...              |  |\n"
-    _note_ += "| file_systems |--+   | next             |--+\n"
-    _note_ += "+--------------+      | ...              |\n"
-    _note_ += "                      +------------------+"
+    _note_ += "                  +-->+-file_system_type-+  +-->+-file_system_type-+  +-->...\n"
+    _note_ += "                  |   | name             |  |   | name             |  |\n"
+    _note_ += "+--------------+  |   | ...              |  |   | ...              |  |\n"
+    _note_ += "| file_systems |--+   | next             |--+   | next             |--+\n"
+    _note_ += "+--------------+      | fs_supers        |--+   | fs_supers        |\n"
+    _note_ += "                      | ...              |  |   | ...              |\n"
+    _note_ += "                      +------------------+  |   +------------------+\n"
+    _note_ += "                                            |\n"
+    _note_ += "   +----------------------------------------+\n"
+    _note_ += "   |\n"
+    _note_ += "   |   +-super_block-+   +-super_block-+\n"
+    _note_ += "   |   | s_list      |   | s_list      |\n"
+    _note_ += "   |   | ...         |   | ...         |\n"
+    _note_ += "   +-->| s_instances |-->| s_instances |-->...\n"
+    _note_ += "       | ...         |   | ...         |\n"
+    _note_ += "       +-------------+   +-------------+"
 
-    def get_offset_next(self, file_systems):
+    def __init__(self):
+        super().__init__()
+        self.initialized = False
+        return
+
+    def initialize(self):
+        if self.initialized:
+            return True
+
+        # file_systems
+        self.file_systems = KernelAddressHeuristicFinder.get_file_systems()
+        if self.file_systems is None:
+            if not self.quiet:
+                err("Not found file_systems")
+            return
+        if not self.quiet:
+            info("file_systems: {:#x}".format(self.file_systems))
+
         """
         struct file_system_type {
             const char *name;
@@ -54049,10 +54077,16 @@ class KernelFileSystemsCommand(GenericCommand):
             struct lock_class_key i_mutex_dir_key;
         };
         """
+        # file_system_type->name
+        self.offset_name = 0
+        if not self.quiet:
+            info("offsetof(file_systems, name): {:#x}".format(self.offset_name))
+
+        # file_system_type->next
         for i in range(10):
-            offset_next = i * current_arch.ptrsize
+            offset_next = current_arch.ptrsize * i
             valid = True
-            current = read_int_from_memory(file_systems)
+            current = read_int_from_memory(self.file_systems)
             seen = []
             while current != 0:
                 if not is_valid_addr(current):
@@ -54076,8 +54110,150 @@ class KernelFileSystemsCommand(GenericCommand):
                 valid = False
 
             if valid:
-                return offset_next
-        return None
+                self.offset_next = offset_next
+                break
+        else:
+            if not self.quiet:
+                err("Not found file_system_type->next")
+            return False
+        if not self.quiet:
+            info("offsetof(file_systems, next): {:#x}".format(self.offset_next))
+
+        self.offset_fs_supers = self.offset_next + current_arch.ptrsize
+        if not self.quiet:
+            info("offsetof(file_systems, fs_supers): {:#x}".format(self.offset_fs_supers))
+
+        """
+        struct super_block {
+            struct list_head s_list;
+            dev_t s_dev;
+            unsigned char s_blocksize_bits;
+            unsigned long s_blocksize;
+            loff_t s_maxbytes;
+            struct file_system_type *s_type;
+            const struct super_operations *s_op;
+            const struct dquot_operations *dq_op;
+            const struct quotactl_ops *s_qcop;
+            const struct export_operations *s_export_op;
+            unsigned long s_flags;
+            unsigned long s_iflags;
+            unsigned long s_magic;
+            struct dentry *s_root;
+            struct rw_semaphore s_umount;
+            int s_count;
+            atomic_t s_active;
+        #ifdef CONFIG_SECURITY
+            void *s_security;
+        #endif
+            const struct xattr_handler **s_xattr;
+        #ifdef CONFIG_FS_ENCRYPTION
+            const struct fscrypt_operations *s_cop;
+            struct fscrypt_keyring *s_master_keys;
+        #endif
+        #ifdef CONFIG_FS_VERITY
+            const struct fsverity_operations *s_vop;
+        #endif
+        #ifdef CONFIG_UNICODE
+            struct unicode_map *s_encoding;
+            __u16 s_encoding_flags;
+        #endif
+            struct hlist_bl_head s_roots;
+            struct list_head s_mounts;
+            struct block_device *s_bdev;
+            struct backing_dev_info *s_bdi;
+            struct mtd_info *s_mtd;
+            struct hlist_node s_instances;  <--- fs_supers points here
+            ...
+        } __randomize_layout;
+        """
+        # super_block->s_instances
+        current = read_int_from_memory(self.file_systems)
+        while True:
+            if current == 0:
+                if not self.quiet:
+                    err("Not found file_systems who has valid fs_supres")
+                return False
+            fs_supers = read_int_from_memory(current + self.offset_fs_supers)
+            if is_valid_addr(fs_supers):
+                break
+            current = read_int_from_memory(current + self.offset_next)
+
+        for i in range(1, 100):
+            offset_base = current_arch.ptrsize * i
+            """
+            0xffff8cb085375800|+0x0000|+000: 0xffff8cb085373000  -> // s_list.next
+            0xffff8cb085375808|+0x0008|+001: 0xffff8cb088b77000  -> // s_list.prev
+            0xffff8cb085375810|+0x0010|+002: 0x0000000c00000021 // s_blocksize_bits, s_dev
+            0xffff8cb085375818|+0x0018|+003: 0x0000000000001000 // s_blocksize
+            0xffff8cb085375820|+0x0020|+004: 0x7fffffffffffffff
+            0xffff8cb085375828|+0x0028|+005: 0xffffffff8c33f260 <shmem_fs_type>
+            0xffff8cb085375830|+0x0030|+006: 0xffffffff8ba36da0 <shmem_ops>
+            """
+            # check s_list
+            a = read_int_from_memory(fs_supers - offset_base)
+            if not is_valid_addr(a):
+                continue
+            b = read_int_from_memory(fs_supers - offset_base + current_arch.ptrsize)
+            if not is_valid_addr(b):
+                continue
+
+            # check s_blocksize
+            c = read_int_from_memory(fs_supers - offset_base + current_arch.ptrsize * 2 + 4 * 2)
+            if c == 0x1000:
+                self.offset_s_instance = offset_base
+                break
+        else:
+            if not self.quiet:
+                err("Not found super_block->s_instances")
+            return False
+        if not self.quiet:
+            info("offsetof(super_block, s_instance): {:#x}".format(self.offset_s_instance))
+
+        # super_block->s_dev
+        self.offset_s_dev = current_arch.ptrsize * 2
+        if not self.quiet:
+            info("offsetof(super_block, s_dev): {:#x}".format(self.offset_s_dev))
+
+        self.initialized = True
+        return True
+
+    def get_dev_num(self, dev):
+        major = dev >> 20
+        minor = dev & ((1 << 20) - 1)
+        name = KernelBlockDevicesCommand.get_bdev_name(major, minor)
+        return major, minor, name
+
+    def parse_file_systems(self):
+        if not self.quiet:
+            fmt = "{:18s} {:12s} {:18s} {:18s} {:6s} {:6s}"
+            legend = ["file_system_type", "fsname", "super_block", "devname (guessed)", "major", "minor"]
+            self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
+        fst = read_int_from_memory(self.file_systems)
+        while fst != 0:
+            # parse name
+            name_addr = read_int_from_memory(fst + self.offset_name)
+            name = read_cstring_from_memory(name_addr, ascii_only=True)
+
+            # parse suber_block
+            fs_supers = read_int_from_memory(fst + self.offset_fs_supers)
+            if fs_supers == 0:
+                self.out.append("{:#018x} {:12s} -".format(fst, name))
+            else:
+                s_instances = fs_supers
+                while s_instances:
+                    sb = s_instances - self.offset_s_instance
+                    # dev
+                    dev = u32(read_memory(sb + self.offset_s_dev, 4))
+                    major, minor, devname = self.get_dev_num(dev)
+                    # dump
+                    self.out.append("{:#018x} {:12s} {:#018x} {:18s} {:<6d} {:<6d}".format(fst, name, sb, devname, major, minor))
+                    # go to next
+                    s_instances = read_int_from_memory(s_instances)
+
+            # go to next
+            fst = read_int_from_memory(fst + self.offset_next)
+        return
 
     @parse_args
     @only_if_gdb_running
@@ -54090,32 +54266,13 @@ class KernelFileSystemsCommand(GenericCommand):
         if not args.quiet:
             info("Wait for memory scan")
 
-        file_systems = KernelAddressHeuristicFinder.get_file_systems()
-        if file_systems is None:
-            if not args.quiet:
-                err("Not found file_systems")
-            return
-        if not args.quiet:
-            info("file_systems: {:#x}".format(file_systems))
+        self.quiet = args.quiet
 
-        offset_next = self.get_offset_next(file_systems)
-        if offset_next is None:
+        if not self.initialize():
             return
-        if not args.quiet:
-            info("offsetof(file_systems, next): {:#x}".format(offset_next))
 
         self.out = []
-        if not args.quiet:
-            fmt = "{:<18s} {:s}"
-            legend = ["file_system_type", "name"]
-            self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
-        current = read_int_from_memory(file_systems)
-        while current != 0:
-            name_addr = read_int_from_memory(current)
-            name = read_cstring_from_memory(name_addr)
-            self.out.append("{:#018x} {:s}".format(current, name))
-            current = read_int_from_memory(current + offset_next)
-
+        self.parse_file_systems()
         if self.out:
             gef_print("\n".join(self.out), less=not args.no_pager)
         return
