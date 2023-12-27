@@ -17271,6 +17271,7 @@ class UnicornEmulateCommand(GenericCommand):
     group.add_argument("-g", "--nb-gadget", type=parse_address, help="the number of gadgets to execute. (default mode, NB_GADGET: 10)")
     group.add_argument("-t", "--to-location", type=parse_address, help="the end address of the emulated run.")
     group.add_argument("-n", "--nb-insn", type=parse_address, help="the number of instructions from `FROM_LOCATION`.")
+    parser.add_argument("-i", "--only-insns", action="store_true", help="show only instructions (no registers, memories, etc).")
     parser.add_argument("-o", "--output-path", help="writes the persistent Unicorn script into this file.")
     parser.add_argument("-s", "--skip-emulation", action="store_true", help="do not run, just save the script.")
     parser.add_argument("-v", "--verbose", action="store_true", help="displays the register values for each instruction is executed.")
@@ -17324,6 +17325,7 @@ class UnicornEmulateCommand(GenericCommand):
             "quiet": args.quiet,
             "thumb_mode": is_arm32() and (start_insn & 1),
             "add_sse": is_x86() and args.add_sse,
+            "only_insns": args.only_insns,
         }
 
         if end_insn is not None:
@@ -17387,6 +17389,7 @@ class UnicornEmulateCommand(GenericCommand):
         content += "uc = None\n"
         content += "verbose = {!s}\n".format(kwargs["verbose"])
         content += "quiet = {!s}\n".format(kwargs["quiet"])
+        content += "only_insns = {!s}\n".format(kwargs["only_insns"])
         content += "syscall_register = '{:s}'\n".format(current_arch.syscall_register)
         content += "count = 0\n"
         content += "changed_mem = {}\n"
@@ -17444,6 +17447,8 @@ class UnicornEmulateCommand(GenericCommand):
         content += "\n"
         content += "\n"
         content += "def mem_write_hook(emu, access, address, size, value, user_data):\n"
+        content += "    if only_insns:\n"
+        content += "        return\n"
         content += "    before = emu.mem_read(address, size)\n"
         content += "    for i in range(size):\n"
         content += "        accessed_address = address + i\n"
@@ -17467,6 +17472,8 @@ class UnicornEmulateCommand(GenericCommand):
         content += "\n"
         content += "\n"
         content += "def print_regs(emu, regs):\n"
+        content += "    if only_insns:\n"
+        content += "        return\n"
         content += "    for i, r in enumerate(regs):\n"
         content += "        if r.startswith('$xmm'):\n"
         content += "          fmt = '{{:7s}} = {{:#0{:d}x}}  '\n".format(32 + 2)
@@ -17482,6 +17489,8 @@ class UnicornEmulateCommand(GenericCommand):
         content += "\n"
         content += "\n"
         content += "def print_mems(emu):\n"
+        content += "    if only_insns:\n"
+        content += "        return\n"
         content += "    aligned_addrs = set([x & ~0xf for x in changed_mem.keys()])\n"
         content += "    for aligned_addr in aligned_addrs:\n"
         content += "        for pad_addr in range(aligned_addr, aligned_addr + 0x10):\n"
@@ -17620,21 +17629,24 @@ class UnicornEmulateCommand(GenericCommand):
         content += "\n"
         content += "\n"
         content += "def emulate(emu, start_addr, end_addr, count):\n"
-        content += "    print('========================= Initial registers =========================')\n"
-        content += "    print_regs(emu, registers)\n"
+        content += "    if not only_insns:\n"
+        content += "        print('========================= Initial registers =========================')\n"
+        content += "        print_regs(emu, registers)\n"
         content += "\n"
-        content += "    try:\n"
+        content += "    if not only_insns:\n"
         content += "        print('========================= Starting emulation =========================')\n"
+        content += "    try:\n"
         content += "        emu.emu_start(start_addr, end_addr, count=count)\n"
         content += "    except Exception:\n"
         content += "        emu.emu_stop()\n"
         content += "        print('========================= Emulation failed =========================')\n"
         content += "        traceback.print_exc(file=sys.stdout)\n"
         content += "\n"
-        content += "    print('========================= Final registers =========================')\n"
-        content += "    print_regs(emu, registers)\n"
-        content += "    print('========================= Modified memories (before | after) =========================')\n"
-        content += "    print_mems(emu)\n"
+        content += "    if not only_insns:\n"
+        content += "        print('========================= Final registers =========================')\n"
+        content += "        print_regs(emu, registers)\n"
+        content += "        print('========================= Modified memories (before | after) =========================')\n"
+        content += "        print_mems(emu)\n"
         content += "    return\n"
         content += "\n"
         content += "\n"
