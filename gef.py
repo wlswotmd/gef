@@ -45915,7 +45915,7 @@ class KernelAddressHeuristicFinder:
             current = KernelAddressHeuristicFinder.get_current_task_for_current_thread()
         elif is_x86_64() or is_x86_32():
             current_task = KernelAddressHeuristicFinder.get_current_task()
-            if is_msb_on(current_task):
+            if current_task and is_msb_on(current_task):
                 # no __per_cpu_offset
                 current = read_int_from_memory(current_task)
             else:
