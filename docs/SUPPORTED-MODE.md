@@ -9,7 +9,9 @@
     * x86, x64, ARM and ARM64
 * Note
     * Most commands should work fine unless `CONFIG_RANDSTRUCT=y`.
-    * It works with any version qemu-system, but qemu-6.x or higher is recommended.
+    * It works with any version qemu-system, but latest version is recommended.
+    * It is preferable to run qemu-system on `localhost`.
+        * If you run qemu-system on remotely (another host), you can not handle SecureWorld's memory.
 
 ## Qemu-user cooperation
 * Usage
@@ -19,7 +21,11 @@
 * Supported architectures
     * See [docs/QEMU-USER-SUPPORTED-ARCH.md](https://github.com/bata24/gef/blob/dev/docs/QEMU-USER-SUPPORTED-ARCH.md)
 * Note
-    * It works with any version qemu-user, but qemu-6.x or higher is recommended.
+    * It works with any version qemu-user, but latest version is recommended.
+        * This is because from qemu-user 8.1, `info proc mappings` command is available, which makes memory map generation faster.
+        * In some architectures this may not be possible (e.g. `x86_64`), in which case it will fall back to heuristic detection.
+    * It is preferable to run qemu-user on `localhost`.
+        * If you run qemu-user on remotely (another host), you can not use the memory patching.
 
 ## Intel Pin/SDE cooperation
 * Usage for Intel Pin
