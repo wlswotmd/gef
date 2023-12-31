@@ -10257,6 +10257,10 @@ def parse_args(f):
             self.parser.exit = lambda *_: exec("if _: print(_[1]);\nraise(ArgparseExitProxyException())")
             args = self.parser.parse_args(argv)
         except ArgparseExitProxyException:
+            if hasattr(self, "_example_") and self._example_:
+                gef_print("\nexample:\n" + self._example_)
+            if hasattr(self, "_note_") and self._note_:
+                gef_print("\nnote:\n" + self._note_)
             return
         except Exception as e:
             err("Invalid argument: {}".format(e))
