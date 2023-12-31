@@ -53626,6 +53626,7 @@ class KernelSysctlCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP filter.")
+    parser.add_argument("-s", "--skip-symlink", action="store_true", help="do not follow symlink (net.* and user.*).")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
@@ -53721,19 +53722,20 @@ class KernelSysctlCommand(GenericCommand):
                 # `net.*` and `user.*` have a symlink attribute and they are redirected to another location.
                 # These must be traced from another root.
                 if (mode & 0o0120000) == 0o0120000: # symlink
-                    root = read_int_from_memory(ctl_table + current_arch.ptrsize)
-                    lookup = read_int_from_memory(root + self.OFFSET_lookup)
-                    if lookup == get_ksymaddr("net_ctl_header_lookup"): # net.*
-                        ctset = self.net_ctset
-                    elif lookup == get_ksymaddr("set_lookup"): # user.*
-                        ctset = self.user_ctset
-                    else:
-                        ctset = None
-                    if ctset:
-                        symlink_rb_node = read_int_from_memory(ctset + current_arch.ptrsize + self.OFFSET_rb_node)
-                        if ctset not in self.seen_ctset:
-                            self.seen_ctset.append(ctset)
-                            self.sysctl_dump(symlink_rb_node)
+                    if not self.skip_symlink:
+                        root = read_int_from_memory(ctl_table + current_arch.ptrsize)
+                        lookup = read_int_from_memory(root + self.OFFSET_lookup)
+                        if lookup == get_ksymaddr("net_ctl_header_lookup"): # net.*
+                            ctset = self.net_ctset
+                        elif lookup == get_ksymaddr("set_lookup"): # user.*
+                            ctset = self.user_ctset
+                        else:
+                            ctset = None
+                        if ctset:
+                            symlink_rb_node = read_int_from_memory(ctset + current_arch.ptrsize + self.OFFSET_rb_node)
+                            if ctset not in self.seen_ctset:
+                                self.seen_ctset.append(ctset)
+                                self.sysctl_dump(symlink_rb_node)
 
                 if self.should_be_print(param_path):
                     # If it's not a directory, it should hold data, so dump it.
@@ -53964,6 +53966,7 @@ class KernelSysctlCommand(GenericCommand):
         self.exact = args.exact
         self.exact_found = False
         self.verbose = args.verbose
+        self.skip_symlink = args.skip_symlink
 
         if self.exact and not self.filter:
             if not args.quiet:
