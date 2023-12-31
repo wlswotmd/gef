@@ -45535,8 +45535,23 @@ class KernelAddressHeuristicFinderUtil:
         return KernelAddressHeuristicFinderUtil.common_addr_gen(res, regexp, skip, skip_msb_check, read_valid)
 
     @staticmethod
+    def x64_qword_ptr_ds(res, skip=0, skip_msb_check=False, read_valid=False):
+        regexp = r"QWORD PTR ds:\s*(0x\w+)"
+        return KernelAddressHeuristicFinderUtil.common_addr_gen(res, regexp, skip, skip_msb_check, read_valid)
+
+    @staticmethod
+    def x64_qword_ptr_gs(res, skip=0, skip_msb_check=False, read_valid=False):
+        regexp = r"QWORD PTR gs:\s*(0x\w+)"
+        return KernelAddressHeuristicFinderUtil.common_addr_gen(res, regexp, skip, skip_msb_check, read_valid)
+
+    @staticmethod
     def x86_dword_ptr_ds(res, skip=0, skip_msb_check=False, read_valid=False):
         regexp = r"DWORD PTR ds:\s*(0x\w+)"
+        return KernelAddressHeuristicFinderUtil.common_addr_gen(res, regexp, skip, skip_msb_check, read_valid)
+
+    @staticmethod
+    def x86_dword_ptr_fs(res, skip=0, skip_msb_check=False, read_valid=False):
+        regexp = r"DWORD PTR fs:\s*(0x\w+)"
         return KernelAddressHeuristicFinderUtil.common_addr_gen(res, regexp, skip, skip_msb_check, read_valid)
 
     @staticmethod
@@ -45808,6 +45823,26 @@ class KernelAddressHeuristicFinder:
                 elif is_x86_32():
                     g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, skip_msb_check=True)
                 for x in g:
+                    return x
+
+        # plan 3 (available v2.5.33 or later)
+        if kversion and kversion >= "2.5.33":
+            addr = get_ksymaddr("setup_arg_pages")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
+                if is_x86_64():
+                    g = itertools.chain(
+                        KernelAddressHeuristicFinderUtil.x64_qword_ptr_ds(res),
+                        KernelAddressHeuristicFinderUtil.x64_qword_ptr_gs(res, skip_msb_check=True),
+                    )
+                elif is_x86_32():
+                    g = itertools.chain(
+                        KernelAddressHeuristicFinderUtil.x86_dword_ptr_ds(res),
+                        KernelAddressHeuristicFinderUtil.x86_dword_ptr_fs(res, skip_msb_check=True)
+                    )
+                for x in g:
+                    if x < 0x100:
+                        continue
                     return x
         return None
 
@@ -46304,7 +46339,10 @@ class KernelAddressHeuristicFinder:
                             KernelAddressHeuristicFinderUtil.x64_dword_ptr(res),
                         )
                 elif is_x86_32():
-                    g = KernelAddressHeuristicFinderUtil.x86_dword_ptr(res)
+                    g = itertools.chain(
+                            KernelAddressHeuristicFinderUtil.x86_dword_ptr_array_base(res),
+                            KernelAddressHeuristicFinderUtil.x86_dword_ptr(res)
+                        )
                 elif is_arm64():
                     g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
                 elif is_arm32():
@@ -48691,11 +48729,33 @@ class KernelCurrentCommand(GenericCommand):
             self.__per_cpu_offset = __per_cpu_offset
 
         # resolve each cpu_offset
-        num_of_threads = len(gdb.selected_inferior().threads())
+        """
+        Note that the number of CPUs and the number of threads may not match.
+        x64 example:
+        len(gdb.selected_inferior().threads()) == 2; but __per_cpu_offset entry is 1
+        0xffffffff93980680|+0x0000|+000: 0xffff9724c7800000  ->  0x0000000000000000
+        0xffffffff93980688|+0x0008|+001: 0xffffffff93d0d000
+        0xffffffff93980690|+0x0010|+002: 0xffffffff93d0d000
+        Therefore, when the same address is repeated, it is considered to be the end.
+        """
         self.cpu_offset = []
-        for i in range(num_of_threads):
+        i = 0
+        while True:
             off = read_int_from_memory(__per_cpu_offset + i * current_arch.ptrsize)
+            """
+            off itself may refer to inaccessible memory.
+            x86 example:
+            __per_cpu_offset: 0xc6a27440
+            0xc6a27440|+0x0000|+000: 0x2d849000 -> inaccessible
+            0xc6a27444|+0x0004|+001: 0x00000000
+            """
+            if off == 0:
+                break
+            if len(self.cpu_offset) >= 1 and off == self.cpu_offset[-1]:
+                self.cpu_offset.pop() # remove last one
+                break
             self.cpu_offset.append(off)
+            i += 1
 
         if not self.quiet:
             info("num of cpu: {:d}".format(len(self.cpu_offset)))
