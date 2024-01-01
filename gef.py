@@ -49346,7 +49346,7 @@ class KernelTaskCommand(GenericCommand):
         };
         """
         kversion = KernelVersionCommand.kernel_version()
-        offset_stack_canary = offset_pid + 4 + 4
+        offset_stack_canary = align_address_to_size(offset_pid + 4 + 4, current_arch.ptrsize)
         found = True
         for task in task_addrs:
             v1 = read_int_from_memory(task + offset_stack_canary)
@@ -49384,7 +49384,7 @@ class KernelTaskCommand(GenericCommand):
         };
         """
         if offset_kcanary is None:
-            offset_real_parent = offset_pid + 8
+            offset_real_parent = align_address_to_size(offset_pid + 4 + 4, current_arch.ptrsize)
         else:
             offset_real_parent = offset_kcanary + current_arch.ptrsize
         offset_group_leader = offset_real_parent + current_arch.ptrsize * (1 + 1 + 2 + 2)
