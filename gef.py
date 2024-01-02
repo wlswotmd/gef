@@ -46718,26 +46718,6 @@ class KernelAddressHeuristicFinder:
 
     @staticmethod
     @switch_to_intel_syntax
-    def get_ptmx_fops():
-        # plan 1 (directly)
-        if KernelAddressHeuristicFinder.USE_DIRECTLY:
-            x = get_ksymaddr("ptmx_fops")
-            if x:
-                return x
-
-        # plan 2 (from kcdev)
-        res = gdb.execute("kcdev --quiet --no-pager", to_string=True)
-        for line in res.splitlines():
-            if "/dev/ptmx" not in line:
-                continue
-            elem = line.split()
-            if elem[-1].endswith(">"):
-                return int(elem[-2], 16)
-            return int(elem[-1], 16)
-        return None
-
-    @staticmethod
-    @switch_to_intel_syntax
     def get_capability_hooks():
         # plan 1 (directly)
         if KernelAddressHeuristicFinder.USE_DIRECTLY:
