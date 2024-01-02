@@ -89,35 +89,24 @@ print("Loading GEF...")
 
 import abc
 import argparse
-import base64
 import binascii
 import codecs
 import collections
 import configparser
 import ctypes
-import datetime
 import fcntl
 import functools
-import gzip
 import hashlib
-import inspect
 import itertools
-import json
-import math
-import multiprocessing
 import os
 import re
-import site
-import socket
 import string
 import struct
 import subprocess
 import sys
 import tempfile
-import termios
 import time
 import traceback
-import urllib.request
 
 
 LEFT_ARROW = " <- "
@@ -132,6 +121,7 @@ GEF_PROMPT_OFF = "\001\033[1;31m\002{:s}\001\033[0m\002".format(GEF_PROMPT)
 
 def http_get(url):
     """Basic HTTP wrapper for GET request."""
+    import urllib.request
     try:
         req = urllib.request.Request(url)
         req.add_header("Cache-Control", "no-cache, no-store")
@@ -174,6 +164,7 @@ except ImportError:
 
 
 __gef__                         = None
+__gef_fpath__                   = __file__
 __commands__                    = []
 __LCO__                         = {} # for debug access each objects. (It means `loaded command objs`)
 __aliases__                     = []
@@ -3465,6 +3456,12 @@ def get_libc_version():
     # set cache
     set_gef_setting("libc.assume_version", libc_version, tuple, "The value returned by get_libc_version if libc is not found")
     return libc_version
+
+
+def get_source(function):
+    import inspect
+    s = inspect.getsource(function)
+    return s.rstrip()
 
 
 def titlify(text, color=None, msg_color=None):
@@ -10512,7 +10509,9 @@ def exclude_specific_arch(arch=()):
 
 
 def timeout(duration):
+
     def wrapper(function):
+        import multiprocessing
         queue = multiprocessing.Queue(maxsize=1)
 
         def run_function(function, *args, **kwargs):
@@ -10761,6 +10760,7 @@ def get_tcp_sess(pid):
 
     def decode(addr):
         ip, port = addr.split(":")
+        import socket
         ip = socket.inet_ntop(socket.AF_INET, bytes.fromhex(ip)[::-1])
         port = int(port, 16)
         return (ip, port)
@@ -11565,6 +11565,7 @@ def load_libc_args():
         return
 
     __libc_args_definitions__[_arch_mode] = {}
+    import json
     try:
         with open(_libc_args_file) as _libc_args:
             __libc_args_definitions__[_arch_mode] = json.load(_libc_args)
@@ -11579,8 +11580,9 @@ def load_libc_args():
 
 def get_terminal_size():
     """Return the current terminal size."""
+    TIOCGWINSZ = 0x5413
     try:
-        tty_rows, tty_columns = struct.unpack("hh", fcntl.ioctl(1, termios.TIOCGWINSZ, "1234"))
+        tty_rows, tty_columns = struct.unpack("hh", fcntl.ioctl(1, TIOCGWINSZ, "1234"))
         return tty_rows, tty_columns
     except OSError:
         return 600, 100
@@ -11745,6 +11747,7 @@ def get_unicorn_registers(to_string=False, add_sse=False):
 @load_keystone
 def keystone_assemble(code, arch, mode, *args, **kwargs):
     """Assembly encoding function based on keystone."""
+    import multiprocessing
     keystone = sys.modules["keystone"]
     code = gef_pybytes(code)
     addr = kwargs.get("addr", 0x1000)
@@ -12938,9 +12941,9 @@ class VersionCommand(GenericCommand):
             return "Not recognized"
 
     def gef_version(self):
-        gef_fpath = os.path.abspath(os.path.realpath(os.path.expanduser(inspect.stack()[0][1])))
-        gef_hash = hashlib.sha1(open(gef_fpath, "rb").read()).hexdigest()
-        dt = datetime.datetime.fromtimestamp(os.stat(gef_fpath).st_mtime)
+        gef_hash = hashlib.sha1(open(__gef_fpath__, "rb").read()).hexdigest()
+        import datetime
+        dt = datetime.datetime.fromtimestamp(os.stat(__gef_fpath__).st_mtime)
         return "Last modified: {} SHA1: {}".format(dt.strftime("%Y-%m-%d %H:%M:%S"), gef_hash)
 
     def gdb_version(self):
@@ -14580,6 +14583,7 @@ class ProcInfoCommand(GenericCommand):
 
     def parse_ip_port(self, addr):
         ip, port = addr.split(":")
+        import socket
         return socket.inet_ntoa(struct.pack("<I", int(ip, 16))), int(port, 16)
 
     def show_connections(self):
@@ -15279,6 +15283,7 @@ class HijackFdCommand(GenericCommand):
         return open_fd
 
     def get_fd_from_connect_server(self, args):
+        import socket
         address = socket.gethostbyname(args.new_output.split(":")[0])
         port = int(args.new_output.split(":")[1])
 
@@ -15706,7 +15711,7 @@ class PtrDemangleCommand(GenericCommand):
         self.dont_repeat()
 
         if args.source:
-            s = inspect.getsource(current_arch.decode_cookie).rstrip()
+            s = get_source(current_arch.decode_cookie)
             gef_print(s)
             return
 
@@ -15746,7 +15751,7 @@ class PtrMangleCommand(GenericCommand):
         self.dont_repeat()
 
         if args.source:
-            s = inspect.getsource(current_arch.encode_cookie).rstrip()
+            s = get_source(current_arch.encode_cookie)
             gef_print(s)
             return
 
@@ -19602,6 +19607,7 @@ class AsmListCommand(GenericCommand):
             err("Connection timed out: {:s}".format(url))
             return None
         x86 = x86.split(b"// ${JSON:BEGIN}")[1].split(b"// ${JSON:END}")[0]
+        import json
         x86 = json.loads(x86)
 
         # manually added
@@ -43092,7 +43098,7 @@ class SyscallSampleCommand(GenericCommand):
             err("Unsupported architecture")
             return
 
-        s = inspect.getsource(target_arch.mprotect_asm).rstrip()
+        s = get_source(target_arch.mprotect_asm)
         for line in s.splitlines():
             line = re.sub("^    ", "", line)
             gef_print(line)
@@ -44741,7 +44747,7 @@ class ExtractHeapAddrCommand(GenericCommand):
         self.dont_repeat()
 
         if args.source:
-            s = inspect.getsource(ExtractHeapAddrCommand.reveal).rstrip()
+            s = get_source(ExtractHeapAddrCommand.reveal)
             gef_print(s)
             return
 
@@ -55410,6 +55416,7 @@ class KernelConfigCommand(GenericCommand):
             info("IKCFG_ED: {:#x}".format(kinfo.ro_base + end_pos))
             configz = ro_data[start_pos + len("IKCFG_ST"):end_pos]
 
+            import gzip
             try:
                 self.configs = bytes2str(gzip.decompress(configz))
             except gzip.BadGzipFile:
@@ -58289,6 +58296,7 @@ class DiffOutputListCommand(DiffOutputCommand):
         legend = ["#", "mtime", "path", "size", "command"]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
+        import datetime
         for idx, path in enumerate(self.get_saved_files()):
             data = open(path, "rb").read()
             size = len(data)
@@ -65769,6 +65777,7 @@ class V8Command(GenericCommand):
                 # https://chromium.googlesource.com/v8/v8/+/refs/heads/main/tools/gdbinit
                 url = "https://chromium.googlesource.com/v8/v8/+/refs/heads/main/tools/gdbinit?format=TEXT"
                 gdbinit_data = http_get(url)
+                import base64
                 gdbinit_data = base64.b64decode(gdbinit_data)
                 open(gdbinit_filename, "wb").write(gdbinit_data)
                 info("download gdbinit from internet.")
@@ -73674,6 +73683,7 @@ class PagewalkArm64Command(PagewalkCommand):
             return
         region_start = 0
         region_end = region_start + (2 ** (64 - T0SZ))
+        import math
         region_bits = int(math.log2(region_end - region_start))
         page_size = 2 ** (granule_bits - 10)
         intermediate_pa_size = 32 + (IPS * 4)
@@ -73722,6 +73732,7 @@ class PagewalkArm64Command(PagewalkCommand):
             return
         region_end = 2 ** 64
         region_start = region_end - (2 ** (64 - T1SZ))
+        import math
         region_bits = int(math.log2(region_end - region_start))
         page_size = 2 ** (granule_bits - 10)
         intermediate_pa_size = 32 + (IPS * 4)
@@ -73775,6 +73786,7 @@ class PagewalkArm64Command(PagewalkCommand):
             return
         region_start = 0
         region_end = region_start + (2 ** (64 - T0SZ))
+        import math
         region_bits = int(math.log2(region_end - region_start))
         page_size = 2 ** (granule_bits - 10)
         pa_size = 32 + (PS * 4)
@@ -73892,6 +73904,7 @@ class PagewalkArm64Command(PagewalkCommand):
             return
         region_start = 0
         region_end = region_start + (2 ** (64 - T0SZ))
+        import math
         region_bits = int(math.log2(region_end - region_start))
         page_size = 2 ** (granule_bits - 10)
         if self.EL2_E2H:
@@ -73956,6 +73969,7 @@ class PagewalkArm64Command(PagewalkCommand):
             return
         region_end = 2 ** 64
         region_start = region_end - (2 ** (64 - T1SZ))
+        import math
         region_bits = int(math.log2(region_end - region_start))
         page_size = 2 ** (granule_bits - 10)
         intermediate_pa_size = 32 + (IPS * 4)
@@ -74004,6 +74018,7 @@ class PagewalkArm64Command(PagewalkCommand):
             return
         region_start = 0
         region_end = region_start + (2 ** (64 - T0SZ))
+        import math
         region_bits = int(math.log2(region_end - region_start))
         page_size = 2 ** (granule_bits - 10)
         pa_size = 32 + (PS * 4)
@@ -74879,6 +74894,7 @@ class Page2VirtCommand(GenericCommand):
             T1SZ = (get_register("$TCR_EL1") >> 16) & 0b111111
             region_end = 2 ** 64
             region_start = region_end - (2 ** (64 - T1SZ))
+            import math
             region_bits = int(math.log2(region_end - region_start))
 
             ID_AA64MMFR2_EL1 = get_register("$ID_AA64MMFR2_EL1")
@@ -77626,6 +77642,7 @@ class KmallocAllocatedByCommand(GenericCommand):
             yield ("fd = socket(AF_INET, SOCK_STREAM, 0)", "socket", [2, 1, 0])
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
+                import socket
                 sockaddr = p16(socket.AF_INET)          # sin_len, sin_family
                 sockaddr += p16(socket.htons(13337))    # sin_port
                 sockaddr += socket.inet_aton("0.0.0.0") # sin_addr.s_addr
@@ -77642,6 +77659,7 @@ class KmallocAllocatedByCommand(GenericCommand):
             yield ("fd = socket(AF_INET, SOCK_DGRAM , 0)", "socket", [2, 2, 0])
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
+                import socket
                 sockaddr = p16(socket.AF_INET)          # sin_len, sin_family
                 sockaddr += p16(socket.htons(13337))    # sin_port
                 sockaddr += socket.inet_aton("0.0.0.0") # sin_addr.s_addr
@@ -79672,13 +79690,10 @@ class GefReloadCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        gef_fpath = os.path.expanduser(inspect.stack()[0][1])
-        gef_fpath = os.path.abspath(os.path.realpath(gef_fpath))
-
-        info("Check syntax {:s}".format(gef_fpath))
+        info("Check syntax {:s}".format(__gef_fpath__))
         pythonbin = which("python3")
         try:
-            subprocess.check_output([pythonbin, gef_fpath])
+            subprocess.check_output([pythonbin, __gef_fpath__])
         except subprocess.CalledProcessError:
             err("Reload aborted")
             return
@@ -79691,8 +79706,8 @@ class GefReloadCommand(GenericCommand):
         gef_on_regchanged_unhook(regchanged_handler)
         reset_gef_caches(all=True)
 
-        info("Reload {:s}".format(gef_fpath))
-        s = gdb.execute("source {:s}".format(gef_fpath), to_string=True)
+        info("Reload {:s}".format(__gef_fpath__))
+        s = gdb.execute("source {:s}".format(__gef_fpath__), to_string=True)
         for line in s.splitlines():
             if ".gnu_debugaltlink" in line:
                 continue
@@ -80079,6 +80094,7 @@ def main():
         PYENV_VERSION = gef_pystring(subprocess.check_output([pyenv, "version-name"]).strip())
         site_packages_dir = os.path.join(PYENV_ROOT, "versions", PYENV_VERSION, "lib",
                                          "python{}".format(PYENV_VERSION[:3]), "site-packages")
+        import site
         site.addsitedir(site_packages_dir)
     except FileNotFoundError:
         pass
