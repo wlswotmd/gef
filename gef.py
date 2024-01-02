@@ -79595,7 +79595,7 @@ class GefRestoreCommand(GenericCommand):
 
         if not os.access(GEF_RC, os.R_OK):
             if not args.quiet:
-                info("Not found {:s}, use default settings.".format(GEF_RC))
+                info("Not found {:s}, GEF uses default settings.".format(GEF_RC))
             return
 
         cfg = configparser.ConfigParser()
