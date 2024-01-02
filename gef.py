@@ -80083,37 +80083,38 @@ def __gef_prompt__(_current_prompt):
     return GEF_PROMPT_OFF
 
 
+def fix_venv():
+    # venv check is very slow, so skip if unneeded
+    skip_config = os.path.join(GEF_TEMP_DIR, "skip-venv")
+    if os.path.exists(skip_config):
+        return
+
+    try:
+        pythonbin = which("python3")
+    except FileNotFoundError:
+        open(skip_config, "w").close()
+        return
+
+    cmds = [pythonbin, "-c", "import os,sys;print(sys.prefix)"]
+    PREFIX = gef_pystring(subprocess.check_output(cmds)).strip("\\n")
+    if PREFIX != sys.base_prefix:
+        cmds = [pythonbin, "-c", "import os,sys;print(os.linesep.join(sys.path).strip())"]
+        SITE_PACKAGES_DIRS = subprocess.check_output(cmds).decode("utf-8").split()
+        sys.path.extend(SITE_PACKAGES_DIRS)
+    else:
+        open(skip_config, "w").close()
+    return
+
+
 def main():
     if GDB_VERSION < GDB_MIN_VERSION:
         err("GDB is too old. Try upgrading it.")
         return
 
-    try:
-        pyenv = which("pyenv")
-        PYENV_ROOT = gef_pystring(subprocess.check_output([pyenv, "root"]).strip())
-        PYENV_VERSION = gef_pystring(subprocess.check_output([pyenv, "version-name"]).strip())
-        site_packages_dir = os.path.join(PYENV_ROOT, "versions", PYENV_VERSION, "lib",
-                                         "python{}".format(PYENV_VERSION[:3]), "site-packages")
-        import site
-        site.addsitedir(site_packages_dir)
-    except FileNotFoundError:
-        pass
-
-    # When using a Python virtual environment, GDB still loads the system-installed Python
-    # so GEF doesn't load site-packages dir from environment
-    # In order to fix it, from the shell with venv activated we run the python binary,
-    # take and parse its path, add the path to the current python process using sys.path.extend
-
-    try:
-        pythonbin = which("python3")
-        cmds = [pythonbin, "-c", "import os,sys;print(sys.prefix)"]
-        PREFIX = gef_pystring(subprocess.check_output(cmds)).strip("\\n")
-        if PREFIX != sys.base_prefix:
-            cmds = [pythonbin, "-c", "import os,sys;print(os.linesep.join(sys.path).strip())"]
-            SITE_PACKAGES_DIRS = subprocess.check_output(cmds).decode("utf-8").split()
-            sys.path.extend(SITE_PACKAGES_DIRS)
-    except FileNotFoundError:
-        pass
+    # When using a python virtual environment (pyenv, venv, etc.), GDB still loads the system-installed python,
+    # so GEF doesn't load site-packages dir from environment. In order to fix it, from the shell we run the python3 binary,
+    # take and parse its path, add the path to the current python process.
+    fix_venv()
 
     # create tmp dir
     if not os.path.exists(GEF_TEMP_DIR):
