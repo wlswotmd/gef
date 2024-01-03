@@ -59249,9 +59249,9 @@ class SlubDumpCommand(GenericCommand):
         current_kmem_cache = self.get_next_kmem_cache(self.slab_caches, point_to_base=False)
         parsed_caches = [{"name": "slab_caches", "next": current_kmem_cache}]
 
+        # first, parse kmem_cache
         while current_kmem_cache + self.kmem_cache_offset_list != self.slab_caches:
             kmem_cache = {}
-
             # parse member
             kmem_cache["name"] = self.get_name(current_kmem_cache)
             if target_names != [] and kmem_cache["name"] not in target_names:
@@ -59260,35 +59260,52 @@ class SlubDumpCommand(GenericCommand):
             kmem_cache["address"] = current_kmem_cache
             kmem_cache["flags"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_flags, 4))
             kmem_cache["flags_str"] = self.get_flags_str(kmem_cache["flags"])
-            kmem_cache["size"] = chunk_size = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_size, 4))
+            kmem_cache["size"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_size, 4))
             kmem_cache["object_size"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_object_size, 4))
             kmem_cache["offset"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_offset, 4))
             kmem_cache["random"] = self.get_random(current_kmem_cache)
+            kmem_cache["next"] = self.get_next_kmem_cache(current_kmem_cache)
+            parsed_caches.append(kmem_cache)
+            # goto next
+            current_kmem_cache = kmem_cache["next"]
 
+        if self.listup:
+            return parsed_caches
+
+        # second, parse kmem_cache_cpu then update
+        if self.quiet:
+            tqdm = lambda x, leave: x # noqa: F841
+        else:
+            try:
+                from tqdm import tqdm
+            except ImportError:
+                tqdm = lambda x, leave: x # noqa: F841
+
+        for kmem_cache in tqdm(parsed_caches[1:], leave=False): # parsed_caches[0] is slab_caches, so skip
             # parse kmem_cache_cpu
             kmem_cache["kmem_cache_cpu"] = {}
-            kmem_cache["kmem_cache_cpu"]["address"] = kmem_cache_cpu = self.get_kmem_cache_cpu(current_kmem_cache, cpu)
-            active_chunk_fast = read_int_from_memory(kmem_cache_cpu + self.kmem_cache_cpu_offset_freelist)
+            kmem_cache["kmem_cache_cpu"]["address"] = self.get_kmem_cache_cpu(kmem_cache["address"], cpu)
+            active_chunk_fast = read_int_from_memory(kmem_cache["kmem_cache_cpu"]["address"] + self.kmem_cache_cpu_offset_freelist)
             kmem_cache["kmem_cache_cpu"]["freelist"] = self.walk_freelist(active_chunk_fast, kmem_cache)
 
             # parse page
             active_page = {}
-            active_page["address"] = page = read_int_from_memory(kmem_cache_cpu + self.kmem_cache_cpu_offset_page)
+            active_page["address"] = page = read_int_from_memory(kmem_cache["kmem_cache_cpu"]["address"] + self.kmem_cache_cpu_offset_page)
             if is_valid_addr(page):
                 x = read_int_from_memory(page + self.page_offset_inuse_objects_frozen)
                 active_page["inuse"] = x & 0xffff
-                active_page["objects"] = objects = (x >> 16) & 0x7fff
+                active_page["objects"] = (x >> 16) & 0x7fff
                 active_page["frozen"] = (x >> 31) & 1
                 active_chunk = read_int_from_memory(page + self.page_offset_freelist)
                 active_page["freelist"] = self.walk_freelist(active_chunk, kmem_cache)
-                active_page["num_pages"] = (chunk_size * objects + gef_getpagesize_mask_low()) // gef_getpagesize()
+                active_page["num_pages"] = (kmem_cache["size"] * active_page["objects"] + gef_getpagesize_mask_low()) // gef_getpagesize()
                 active_page["virt_addr"] = self.page2virt(active_page, kmem_cache, kmem_cache["kmem_cache_cpu"]["freelist"])
             kmem_cache["kmem_cache_cpu"]["active_page"] = active_page
 
             # parse partial
             if self.verbose:
                 kmem_cache["kmem_cache_cpu"]["partial_pages"] = []
-                current_partial_page = read_int_from_memory(kmem_cache_cpu + self.kmem_cache_cpu_offset_partial)
+                current_partial_page = read_int_from_memory(kmem_cache["kmem_cache_cpu"]["address"] + self.kmem_cache_cpu_offset_partial)
                 while True:
                     partial_page = {}
                     partial_page["address"] = current_partial_page
@@ -59296,14 +59313,14 @@ class SlubDumpCommand(GenericCommand):
                         kmem_cache["kmem_cache_cpu"]["partial_pages"].append(partial_page)
                         break
                     x = read_int_from_memory(current_partial_page + self.page_offset_inuse_objects_frozen)
-                    partial_page["inuse"] = inuse = x & 0xffff
-                    partial_page["objects"] = objects = (x >> 16) & 0x7fff
-                    if objects == 0 or inuse > objects: # something is wrong
+                    partial_page["inuse"] = x & 0xffff
+                    partial_page["objects"] = (x >> 16) & 0x7fff
+                    if partial_page["objects"] == 0 or partial_page["inuse"] > partial_page["objects"]: # something is wrong
                         break
                     partial_page["frozen"] = (x >> 31) & 1
                     partial_chunk = read_int_from_memory(current_partial_page + self.page_offset_freelist)
                     partial_page["freelist"] = self.walk_freelist(partial_chunk, kmem_cache)
-                    partial_page["num_pages"] = (chunk_size * objects + gef_getpagesize_mask_low()) // gef_getpagesize()
+                    partial_page["num_pages"] = (kmem_cache["size"] * partial_page["objects"] + gef_getpagesize_mask_low()) // gef_getpagesize()
                     partial_page["virt_addr"] = self.page2virt(partial_page, kmem_cache)
                     kmem_cache["kmem_cache_cpu"]["partial_pages"].append(partial_page)
                     next_partial_page = read_int_from_memory(current_partial_page + self.page_offset_next)
@@ -59314,7 +59331,7 @@ class SlubDumpCommand(GenericCommand):
             # parse node
             if self.vverbose and self.kmem_cache_offset_node:
                 kmem_cache["nodes"] = []
-                kmem_cache_node_array = current_kmem_cache + self.kmem_cache_offset_node
+                kmem_cache_node_array = kmem_cache["address"] + self.kmem_cache_offset_node
                 current_kmem_cache_node_ptr = kmem_cache_node_array
                 while True:
                     current_kmem_cache_node = read_int_from_memory(current_kmem_cache_node_ptr)
@@ -59334,23 +59351,19 @@ class SlubDumpCommand(GenericCommand):
                             node_page_list.append(node_page)
                             break
                         x = read_int_from_memory(node_page["address"] + self.page_offset_inuse_objects_frozen)
-                        node_page["inuse"] = inuse = x & 0xffff
-                        node_page["objects"] = objects = (x >> 16) & 0x7fff
-                        if objects == 0 or inuse > objects: # something is wrong
+                        node_page["inuse"] = x & 0xffff
+                        node_page["objects"] = (x >> 16) & 0x7fff
+                        if node_page["objects"] == 0 or node_page["inuse"] > node_page["objects"]: # something is wrong
                             break
                         node_page["frozen"] = (x >> 31) & 1
                         node_chunk = read_int_from_memory(node_page["address"] + self.page_offset_freelist)
                         node_page["freelist"] = self.walk_freelist(node_chunk, kmem_cache)
-                        node_page["num_pages"] = (chunk_size * objects + gef_getpagesize_mask_low()) // gef_getpagesize()
+                        node_page["num_pages"] = (kmem_cache["size"] * node_page["objects"] + gef_getpagesize_mask_low()) // gef_getpagesize()
                         node_page["virt_addr"] = self.page2virt(node_page, kmem_cache)
                         node_page_list.append(node_page)
                         current_node_page = read_int_from_memory(node_page["address"] + self.page_offset_next)
                     kmem_cache["nodes"].append(node_page_list)
                     current_kmem_cache_node_ptr += current_arch.ptrsize
-
-            # goto next
-            kmem_cache["next"] = current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
-            parsed_caches.append(kmem_cache)
         return parsed_caches
 
     def dump_page(self, page, kmem_cache, tag, freelist_fastpath=()):
@@ -60010,9 +60023,9 @@ class SlubTinyDumpCommand(GenericCommand):
         current_kmem_cache = self.get_next_kmem_cache(self.slab_caches, point_to_base=False)
         parsed_caches = [{"name": "slab_caches", "next": current_kmem_cache}]
 
+        # first, parse kmem_cache
         while current_kmem_cache + self.kmem_cache_offset_list != self.slab_caches:
             kmem_cache = {}
-
             # parse member
             kmem_cache["name"] = self.get_name(current_kmem_cache)
             if target_names != [] and kmem_cache["name"] not in target_names:
@@ -60021,13 +60034,30 @@ class SlubTinyDumpCommand(GenericCommand):
             kmem_cache["address"] = current_kmem_cache
             kmem_cache["flags"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_flags, 4))
             kmem_cache["flags_str"] = self.get_flags_str(kmem_cache["flags"])
-            kmem_cache["size"] = chunk_size = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_size, 4))
+            kmem_cache["size"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_size, 4))
             kmem_cache["object_size"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_object_size, 4))
             kmem_cache["offset"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_offset, 4))
+            kmem_cache["next"] = self.get_next_kmem_cache(current_kmem_cache)
+            parsed_caches.append(kmem_cache)
+            # goto next
+            current_kmem_cache = kmem_cache["next"]
 
+        if self.listup:
+            return parsed_caches
+
+        # second, parse node then update
+        if self.quiet:
+            tqdm = lambda x, leave: x # noqa: F841
+        else:
+            try:
+                from tqdm import tqdm
+            except ImportError:
+                tqdm = lambda x, leave: x # noqa: F841
+
+        for kmem_cache in tqdm(parsed_caches[1:], leave=False): # parsed_caches[0] is slab_caches, so skip
             # parse node
             kmem_cache["nodes"] = []
-            kmem_cache_node_array = current_kmem_cache + self.kmem_cache_offset_node
+            kmem_cache_node_array = kmem_cache["address"] + self.kmem_cache_offset_node
             current_kmem_cache_node_ptr = kmem_cache_node_array
             while True:
                 current_kmem_cache_node = read_int_from_memory(current_kmem_cache_node_ptr)
@@ -60045,23 +60075,19 @@ class SlubTinyDumpCommand(GenericCommand):
                         node_page_list.append(node_page)
                         break
                     x = read_int_from_memory(node_page["address"] + self.page_offset_inuse_objects_frozen)
-                    node_page["inuse"] = inuse = x & 0xffff
-                    node_page["objects"] = objects = (x >> 16) & 0x7fff
-                    if objects == 0 or inuse > objects: # something is wrong
+                    node_page["inuse"] = x & 0xffff
+                    node_page["objects"] = (x >> 16) & 0x7fff
+                    if node_page["objects"] == 0 or node_page["inuse"] > node_page["objects"]: # something is wrong
                         break
                     node_page["frozen"] = (x >> 31) & 1
                     node_chunk = read_int_from_memory(node_page["address"] + self.page_offset_freelist)
                     node_page["freelist"] = self.walk_freelist(node_chunk, kmem_cache)
-                    node_page["num_pages"] = (chunk_size * objects + gef_getpagesize_mask_low()) // gef_getpagesize()
+                    node_page["num_pages"] = (kmem_cache["size"] * node_page["objects"] + gef_getpagesize_mask_low()) // gef_getpagesize()
                     node_page["virt_addr"] = self.page2virt(node_page, kmem_cache)
                     node_page_list.append(node_page)
                     current_node_page = read_int_from_memory(node_page["address"] + self.page_offset_next)
                 kmem_cache["nodes"].append(node_page_list)
                 current_kmem_cache_node_ptr += current_arch.ptrsize
-
-            # goto next
-            kmem_cache["next"] = current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
-            parsed_caches.append(kmem_cache)
         return parsed_caches
 
     def dump_page(self, page, kmem_cache, tag, freelist=None):
@@ -60781,9 +60807,9 @@ class SlabDumpCommand(GenericCommand):
         current_kmem_cache = self.get_next_kmem_cache(self.slab_caches, point_to_base=False)
         parsed_caches = [{"name": "slab_caches", "next": current_kmem_cache}]
 
+        # first, parse kmem_cache
         while current_kmem_cache + self.kmem_cache_offset_list != self.slab_caches:
             kmem_cache = {}
-
             # parse member
             kmem_cache["name"] = self.get_name(current_kmem_cache)
             if target_names != [] and kmem_cache["name"] not in target_names:
@@ -60797,20 +60823,37 @@ class SlabDumpCommand(GenericCommand):
             kmem_cache["objperslab"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_num, 4))
             gfporder = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_gfporder, 4))
             kmem_cache["pagesperslab"] = 1 << gfporder
+            kmem_cache["next"] = self.get_next_kmem_cache(current_kmem_cache)
+            parsed_caches.append(kmem_cache)
+            # goto next
+            current_kmem_cache = kmem_cache["next"]
 
+        if self.listup:
+            return parsed_caches
+
+        # second, parse array_cache and node then update
+        if self.quiet:
+            tqdm = lambda x, leave: x # noqa: F841
+        else:
+            try:
+                from tqdm import tqdm
+            except ImportError:
+                tqdm = lambda x, leave: x # noqa: F841
+
+        for kmem_cache in tqdm(parsed_caches[1:], leave=False): # parsed_caches[0] is slab_caches, so skip
             # parse array_cache
             kmem_cache["array_cache"] = {}
-            kmem_cache["array_cache"]["address"] = array_cache = self.get_array_cache_cpu(current_kmem_cache, cpu)
-            kmem_cache["array_cache"]["avail"] = u32(read_memory(array_cache + self.array_cache_offset_avail, 4))
-            kmem_cache["array_cache"]["limit"] = u32(read_memory(array_cache + self.array_cache_offset_limit, 4))
-            kmem_cache["array_cache"]["freelist"] = self.walk_array_cache(array_cache, kmem_cache)
+            kmem_cache["array_cache"]["address"] = self.get_array_cache_cpu(kmem_cache["address"], cpu)
+            kmem_cache["array_cache"]["avail"] = u32(read_memory(kmem_cache["array_cache"]["address"] + self.array_cache_offset_avail, 4))
+            kmem_cache["array_cache"]["limit"] = u32(read_memory(kmem_cache["array_cache"]["address"] + self.array_cache_offset_limit, 4))
+            kmem_cache["array_cache"]["freelist"] = self.walk_array_cache(kmem_cache["array_cache"]["address"], kmem_cache)
 
             # parse node
             kmem_cache["nodes"] = []
             if kversion >= "3.18":
-                kmem_cache_node_array = current_kmem_cache + self.kmem_cache_offset_node
+                kmem_cache_node_array = kmem_cache["address"] + self.kmem_cache_offset_node
             else:
-                kmem_cache_node_array = read_int_from_memory(current_kmem_cache + self.kmem_cache_offset_node)
+                kmem_cache_node_array = read_int_from_memory(kmem_cache["address"] + self.kmem_cache_offset_node)
             current_kmem_cache_node_ptr = kmem_cache_node_array
             while True:
                 current_kmem_cache_node = read_int_from_memory(current_kmem_cache_node_ptr)
@@ -60832,10 +60875,6 @@ class SlabDumpCommand(GenericCommand):
 
                 kmem_cache["nodes"].append(slabs_list)
                 current_kmem_cache_node_ptr += current_arch.ptrsize
-
-            # goto next
-            kmem_cache["next"] = current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
-            parsed_caches.append(kmem_cache)
         return parsed_caches
 
     def dump_page(self, page, kmem_cache, tag, freelist=None):
@@ -61320,7 +61359,6 @@ class SlobDumpCommand(GenericCommand):
 
         while current_kmem_cache + self.kmem_cache_offset_list != self.slab_caches:
             kmem_cache = {}
-
             # parse member
             kmem_cache["name"] = self.get_name(current_kmem_cache)
             if target_names != [] and kmem_cache["name"] not in target_names:
@@ -61331,10 +61369,13 @@ class SlobDumpCommand(GenericCommand):
             kmem_cache["flags_str"] = self.get_flags_str(kmem_cache["flags"])
             kmem_cache["size"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_size, 4))
             kmem_cache["object_size"] = u32(read_memory(current_kmem_cache + self.kmem_cache_offset_object_size, 4))
-
-            # goto next
-            kmem_cache["next"] = current_kmem_cache = self.get_next_kmem_cache(current_kmem_cache)
+            kmem_cache["next"] = self.get_next_kmem_cache(current_kmem_cache)
             parsed_caches.append(kmem_cache)
+            # goto next
+            current_kmem_cache = kmem_cache["next"]
+
+        if self.listup:
+            return parsed_caches, None
 
         parsed_freelist = {}
         if self.large:
