@@ -48707,7 +48707,7 @@ class KernelCurrentCommand(GenericCommand):
         __per_cpu_offset = KernelAddressHeuristicFinder.get_per_cpu_offset()
         if __per_cpu_offset is None:
             if not self.quiet:
-                err("Failed to resolve `__per_cpu_offset`")
+                warn("Failed to resolve `__per_cpu_offset`")
             return None
         else:
             if not self.quiet:
