@@ -43655,6 +43655,8 @@ class KernelMagicCommand(GenericCommand):
             return
         gef_print("{:42s} {:#x} ({:#x} bytes)".format("kernel_base", text_base, text_size))
 
+        kversion = KernelVersionCommand.kernel_version()
+
         gef_print(titlify("Legend"))
         fmt = "{:42s} {:{:d}s} {:5s} (+{:10s}) -> {:{:d}s}"
         width = get_format_address_width()
@@ -43718,15 +43720,16 @@ class KernelMagicCommand(GenericCommand):
         gef_print(titlify("Dynamic resolver"))
         self.resolve_and_print_kernel("kallsyms_lookup_name", text_base, maps)
         if is_x86_64():
-            gef_print(titlify("vDSO"))
-            self.resolve_and_print_kernel("vdso_image_64", text_base, maps, KernelAddressHeuristicFinder.get_vdso_image_64)
-            self.resolve_and_print_kernel("vdso_image_32", text_base, maps, KernelAddressHeuristicFinder.get_vdso_image_32)
-            self.resolve_and_print_kernel("vdso_image_x32", text_base, maps, KernelAddressHeuristicFinder.get_vdso_image_x32)
+            if kversion >= "3.16":
+                gef_print(titlify("vDSO"))
+                self.resolve_and_print_kernel("vdso_image_64", text_base, maps, KernelAddressHeuristicFinder.get_vdso_image_64)
+                self.resolve_and_print_kernel("vdso_image_32", text_base, maps, KernelAddressHeuristicFinder.get_vdso_image_32)
+                self.resolve_and_print_kernel("vdso_image_x32", text_base, maps, KernelAddressHeuristicFinder.get_vdso_image_x32)
         elif is_x86_32():
-            gef_print(titlify("vDSO"))
-            self.resolve_and_print_kernel("vdso_image_32", text_base, maps, KernelAddressHeuristicFinder.get_vdso_image_32)
+            if kversion >= "3.16":
+                gef_print(titlify("vDSO"))
+                self.resolve_and_print_kernel("vdso_image_32", text_base, maps, KernelAddressHeuristicFinder.get_vdso_image_32)
         elif is_arm64():
-            kversion = KernelVersionCommand.kernel_version()
             if kversion >= "5.8":
                 gef_print(titlify("vDSO"))
                 self.resolve_and_print_kernel("vdso_info", text_base, maps, KernelAddressHeuristicFinder.get_vdso_info)
@@ -43737,9 +43740,13 @@ class KernelMagicCommand(GenericCommand):
                 self.resolve_and_print_kernel("vdso_lookup", text_base, maps, KernelAddressHeuristicFinder.get_vdso_lookup)
                 self.resolve_and_print_kernel("vdso_start", text_base, maps, KernelAddressHeuristicFinder.get_vdso_start)
                 self.resolve_and_print_kernel("vdso32_start", text_base, maps, KernelAddressHeuristicFinder.get_vdso32_start)
+            elif kversion >= "3.7":
+                gef_print(titlify("vDSO"))
+                self.resolve_and_print_kernel("vdso_start", text_base, maps, KernelAddressHeuristicFinder.get_vdso_start)
         elif is_arm32():
-            gef_print(titlify("vDSO"))
-            self.resolve_and_print_kernel("vdso_start", text_base, maps, KernelAddressHeuristicFinder.get_vdso_start)
+            if kversion >= "4.1":
+                gef_print(titlify("vDSO"))
+                self.resolve_and_print_kernel("vdso_start", text_base, maps, KernelAddressHeuristicFinder.get_vdso_start)
         gef_print(titlify("Others"))
         self.resolve_and_print_kernel(["do_fchmodat", "sys_fchmodat"], text_base, maps)
         self.resolve_and_print_kernel("mmap_min_addr", text_base, maps, KernelAddressHeuristicFinder.get_mmap_min_addr)
@@ -47176,6 +47183,21 @@ class KernelAddressHeuristicFinder:
                     v = read_int_from_memory(x)
                     if read_memory(v, 4) == b"\x7fELF":
                         return x
+
+                # another pattern
+                # gef> |x/40i arch_setup_additional_pages | grep mov
+                # 0xffffffff82401030 <arch_setup_additional_pages>:    mov eax,DWORD PTR [rip+0x43738a] # 0xffffffff828383c0 <vdso64_enabled>
+                # 0xffffffff8240103e <arch_setup_additional_pages+14>: mov edx,DWORD PTR [rip+0x1ffb24] # 0xffffffff82600b68 <vdso_image_64+8>
+                g = KernelAddressHeuristicFinderUtil.x64_dword_ptr(res)
+                for x in g:
+                    if not is_valid_addr(x):
+                        continue
+                    for i in range(10):
+                        v = read_int_from_memory(x - current_arch.ptrsize * i)
+                        if not is_valid_addr(v):
+                            continue
+                        if read_memory(v, 4) == b"\x7fELF":
+                            return x - current_arch.ptrsize * i
         return None
 
     @staticmethod
