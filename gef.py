@@ -46411,8 +46411,8 @@ class KernelAddressHeuristicFinder:
                 for x in g:
                     return x
 
-        # plan 3 (available v4.10.17 or before)
-        if kversion and kversion <= "4.10.17":
+        # plan 3 (available v4.10 or before and CONFIG_MEMCG=y)
+        if kversion and kversion < "4.11":
             addr = get_ksymaddr("memcg_update_all_caches")
             if addr:
                 res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
@@ -46427,8 +46427,8 @@ class KernelAddressHeuristicFinder:
                 for x in g:
                     return x
 
-        # plan 4 (available v4.10.17 or before)
-        if kversion and kversion <= "4.10.17":
+        # plan 4 (available v3.11 ~ v4.10 and CONFIG_SLABINFO=y)
+        if kversion and kversion >= "3.11" and kversion < "4.11":
             addr = get_ksymaddr("slab_next")
             if addr:
                 res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
@@ -46446,9 +46446,9 @@ class KernelAddressHeuristicFinder:
                     return x
 
         # plan 5 (available if CONFIG_SLAB=y)
-        cache_reap = get_ksymaddr("cache_reap")
-        if cache_reap:
-            res = gdb.execute("x/30i {:#x}".format(cache_reap), to_string=True)
+        addr = get_ksymaddr("cache_reap")
+        if addr:
+            res = gdb.execute("x/30i {:#x}".format(addr), to_string=True)
             if is_x86_64():
                 g = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res)
             elif is_x86_32():
@@ -46461,6 +46461,30 @@ class KernelAddressHeuristicFinder:
                 g = KernelAddressHeuristicFinderUtil.arm32_ldr_reg_const(res, reg=r"r\d+", skip=1)
             for x in g:
                 return x
+
+        # plan 6 (available v2.6.24 ~ v3.10 and CONFIG_SLABINFO=y)
+        if kversion and kversion >= "2.6.24" and kversion < "3.11":
+            ret = gdb.execute("ksymaddr-remote --quiet --no-pager --exact s_next", to_string=True)
+            # returns multiple results
+            for line in ret.splitlines():
+                s_next = int(line.split()[0], 16)
+                res = gdb.execute("x/20i {:#x}".format(s_next), to_string=True)
+                if is_x86_64():
+                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, read_valid=True)
+                elif is_x86_32():
+                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, read_valid=True)
+                elif is_arm64():
+                    # TODO
+                    g = []
+                elif is_arm32():
+                    # TODO
+                    g = []
+                for x in g:
+                    v1 = read_int_from_memory(x)
+                    v2 = read_int_from_memory(x + current_arch.ptrsize)
+                    if is_valid_addr(v1) and is_valid_addr(v2):
+                        return x
+
         return None
 
     @staticmethod
