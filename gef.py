@@ -49053,7 +49053,7 @@ class KernelTaskCommand(GenericCommand):
                 unsigned long __rb_parent_color;
                 struct rb_node *rb_right;
                 struct rb_node *rb_left;
-            } pushable_dl_tasks;
+            } pushable_dl_tasks; // v3.14~
         #endif
             struct mm_struct *mm;
             struct mm_struct *active_mm;
@@ -49064,7 +49064,11 @@ class KernelTaskCommand(GenericCommand):
         r = read_int_from_memory(task_addr + offset_mm)
         if 0 < r <= 0xffffffff:
             # maybe prio, so CONFIG_SMP is y
-            offset_mm = offset_tasks + 10 * current_arch.ptrsize
+            kversion = KernelVersionCommand.kernel_version()
+            if kversion >= "3.14":
+                offset_mm = offset_tasks + 10 * current_arch.ptrsize
+            else:
+                offset_mm = offset_tasks + 7 * current_arch.ptrsize
         return offset_mm
 
     def get_offset_comm(self, task_addrs):
@@ -49445,14 +49449,21 @@ class KernelTaskCommand(GenericCommand):
             unsigned long last_switch_count;
             unsigned long last_switch_time;
         #endif
+            struct thread_struct thread; // ~v4.2
             struct fs_struct *fs;
-            struct files_struct *files;
+            struct files_struct *files; <-------- here
             ...
         };
         """
         base = offset_comm + 16 # comm
         base += current_arch.ptrsize # nameidata
-        for i in range(6):
+        kversion = KernelVersionCommand.kernel_version()
+        if kversion >= "4.2":
+            repeat_times = 6
+        else:
+            # sizeof(struct thread_struct) is very large, need more exproring
+            repeat_times = 100
+        for i in range(repeat_times):
             # check fs
             v1 = read_int_from_memory(task_addrs[0] + base + current_arch.ptrsize * i)
             if not is_valid_addr(v1):
