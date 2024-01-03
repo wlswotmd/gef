@@ -47965,14 +47965,29 @@ class KernelAddressHeuristicFinder:
                 res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
                     g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, skip_msb_check=True)
+                    g2 = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res)
                 elif is_x86_32():
                     g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, skip_msb_check=True)
+                    g2 = KernelAddressHeuristicFinderUtil.x86_dword_ptr(res)
                 elif is_arm64():
                     g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res, skip_msb_check=True)
+                    g2 = []
                 elif is_arm32():
                     g = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res, skip_msb_check=True)
+                    g2 = []
+                # pattern1: per_cpu
+                #    0xffffffff8cf25b05 <run_timer_softirq+5>:    mov    rdi,0x24b40 <-- timer_bases
                 for x in g:
-                    return x
+                    if not is_valid_addr(x):
+                        return x
+                # pattern2: not per_cpu
+                #    0xffffffff8aa6e450 <run_timer_softirq>:      mov    rax,QWORD PTR [rip+0x7cfba9] # 0xffffffff8b23e000 <jiffies_64>
+                #    0xffffffff8aa6e457 <run_timer_softirq+7>:    cmp    rax,QWORD PTR [rip+0x7ce92a] # 0xffffffff8b23cd88 <timer_bases+8>
+                #    0xffffffff8aa6e474 <run_timer_softirq+36>:   mov    rdx,QWORD PTR [rip+0x7cfb85] # 0xffffffff8b23e000 <jiffies_64>
+                #    0xffffffff8aa6e47b <run_timer_softirq+43>:   mov    rax,QWORD PTR [rip+0x7ce906] # 0xffffffff8b23cd88 <timer_bases+8>
+                addrs = [x for x in g2 if is_valid_addr(x)]
+                if addrs:
+                    return min(addrs)
         return None
 
     @staticmethod
@@ -47993,14 +48008,29 @@ class KernelAddressHeuristicFinder:
                 res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
                     g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, skip_msb_check=True)
+                    g2 = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
                 elif is_x86_32():
                     g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, skip_msb_check=True)
+                    g2 = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
                 elif is_arm64():
                     g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res, skip_msb_check=True)
+                    g2 = []
                 elif is_arm32():
                     g = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res, skip_msb_check=True)
+                    g2 = []
+                # pattern1: per_cpu
+                #    0xffffffff9b127acb:  mov    rbx,0x27040 <-- hrtimer_bases
                 for x in g:
-                    return x
+                    if not is_valid_addr(x):
+                        return x
+                # pattern2: not per_cpu
+                #   0xffffffffbb8668bc <hrtimer_run_queues+12>:  mov    rdx,0xffffffffbc046138
+                #   0xffffffffbb8668c3 <hrtimer_run_queues+19>:  mov    rcx,0xffffffffbc046178
+                #   0xffffffffbb8668ca <hrtimer_run_queues+26>:  mov    rsi,0xffffffffbc0460f8
+                #   0xffffffffbb8668d1 <hrtimer_run_queues+33>:  mov    rdi,0xffffffffbc046048 <-- hrtimer_bases+8
+                addrs = [x for x in g2 if is_valid_addr(x)]
+                if addrs:
+                    return min(addrs)
         return None
 
     @staticmethod
@@ -54719,7 +54749,7 @@ class KernelTimerCommand(GenericCommand):
         return True
 
     def parse_rb_node(self, rb_node):
-        if not rb_node:
+        if not rb_node or not is_valid_addr(rb_node):
             return []
 
         right = read_int_from_memory(rb_node + current_arch.ptrsize * 1) & ~1 # remove RB_BLACK
