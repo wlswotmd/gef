@@ -61479,10 +61479,14 @@ class SlubContainsCommand(GenericCommand):
 
                 if (kmem_cache & gef_getpagesize_mask_high()) == 0xdead000000000000:
                     current -= gef_getpagesize()
+                    if not args.quiet:
+                        warn("Detected invalid value, continue exploring...")
                     continue
 
                 if kmem_cache & 1:
                     current -= gef_getpagesize()
+                    if not args.quiet:
+                        warn("Detected invalid value, continue exploring...")
                     continue
 
                 if not args.quiet:
