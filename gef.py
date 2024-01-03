@@ -62003,19 +62003,19 @@ class KernelPipeCommand(GenericCommand):
     _note_ += "                                                                                               |\n"
     _note_ += "+----------------------------------------------------------------------------------------------+\n"
     _note_ += "|\n"
-    _note_ += "|  +-inode-----+  +->+-pipe_inode_info-+  +->+-pipe_buffer-+\n"
-    _note_ += "|  | ...       |  |  | ...             |  |  | page        |--->page\n"
-    _note_ += "+->| i_pipe    |--+  | head            |  |  | offset      |\n"
-    _note_ += "   | ...       |     | tail            |  |  | len         |\n"
-    _note_ += "   +-----------+     | max_usage       |  |  | ...         |\n"
-    _note_ += "                     | ring_size       |  |  +-------------+\n"
-    _note_ += "                     | ...             |  |  | page        |--->page\n"
-    _note_ += "                     | bufs            |--+  | offset      |\n"
-    _note_ += "                     | ...             |     | len         |\n"
-    _note_ += "                     +-----------------+     | ...         |\n"
-    _note_ += "                                             +-------------+\n"
-    _note_ += "                                             | ...         |\n"
-    _note_ += "                                             +-------------+\n"
+    _note_ += "|  +-inode-----+  +->+-pipe_inode_info--------+  +->+-pipe_buffer-+\n"
+    _note_ += "|  | ...       |  |  | ...                    |  |  | page        |--->page\n"
+    _note_ += "+->| i_pipe    |--+  | head, tail, (v5.5~)    |  |  | offset      |\n"
+    _note_ += "   | ...       |     | max_usage, (v5.5~)     |  |  | len         |\n"
+    _note_ += "   +-----------+     | ring_size, (v5.5~)     |  |  | ...         |\n"
+    _note_ += "                     | nrbuf, curbuf, (~v5.5) |  |  +-------------+\n"
+    _note_ += "                     | buffers (~v5.5)        |  |  | page        |--->page\n"
+    _note_ += "                     | ...                    |  |  | offset      |\n"
+    _note_ += "                     | bufs                   |--+  | len         |\n"
+    _note_ += "                     | ...                    |     | ...         |\n"
+    _note_ += "                     +------------------------+     +-------------+\n"
+    _note_ += "                                                    | ...         |\n"
+    _note_ += "                                                    +-------------+\n"
 
     def initialize(self):
         # kbase
@@ -62084,9 +62084,10 @@ class KernelPipeCommand(GenericCommand):
             ret = gdb.execute("slub-contains --quiet {:#x}".format(v), to_string=True)
             if "unaligned?" in ret:
                 continue
-            # pipe_inode_info is allocated from kmalloc-192 (x64) or kmalloc-256 (arm64)
-            # sometimes it used from kmalloc-512
-            if re.search(r"kmalloc(-cg)?-(192|256|512)", ret):
+            # pipe_inode_info is allocated from kmalloc-192 (x64) or kmalloc-256 (arm64).
+            # sometimes it is allocated from kmalloc-512, kmalloc-128.
+            # Other candidates found are kmalloc-2k and inode_cache, so I think these should be excluded.
+            if re.search(r"kmalloc(-cg)?-(128|192|256|512)", ret):
                 self.offset_i_pipe = current_arch.ptrsize * i
                 if not self.quiet:
                     info("offsetof(inode, i_pipe): {:#x}".format(self.offset_i_pipe))
@@ -62098,33 +62099,54 @@ class KernelPipeCommand(GenericCommand):
 
         # pipe_inode_info->bufs
         """
+        [v5.5~]
         struct pipe_inode_info {
             struct mutex mutex;
-            wait_queue_head_t rd_wait, wr_wait;
+            wait_queue_head_t rd_wait, wr_wait; // v5.6~
+            wait_queue_head_t wait; // ~v5.6
             unsigned int head;
             unsigned int tail;
             unsigned int max_usage;
             unsigned int ring_size;
-        #ifdef CONFIG_WATCH_QUEUE
-            bool note_loss;
-        #endif
-            unsigned int nr_accounted;
+        #ifdef CONFIG_WATCH_QUEUE // v5.8~
+            bool note_loss;       // v5.8~
+        #endif                    // v5.8~
+            unsigned int nr_accounted; // v5.8~
             unsigned int readers;
             unsigned int writers;
             unsigned int files;
             unsigned int r_counter;
             unsigned int w_counter;
-            bool poll_usage;
+            bool poll_usage; // v5.10~
             struct page *tmp_page;
             struct fasync_struct *fasync_readers;
             struct fasync_struct *fasync_writers;
             struct pipe_buffer *bufs;  <--- here
             struct user_struct *user;
-        #ifdef CONFIG_WATCH_QUEUE
-            struct watch_queue *watch_queue;
-        #endif
+        #ifdef CONFIG_WATCH_QUEUE            // v5.8~
+            struct watch_queue *watch_queue; // v5.8~
+        #endif                               // v5.8~
+        };
+
+        [~v5.5]
+        struct pipe_inode_info {
+            struct mutex mutex;
+            wait_queue_head_t wait;
+            unsigned int nrbufs, curbuf, buffers;
+            unsigned int readers;
+            unsigned int writers;
+            unsigned int files;
+            unsigned int waiting_writers;
+            unsigned int r_counter;
+            unsigned int w_counter;
+            struct page *tmp_page;
+            struct fasync_struct *fasync_readers;
+            struct fasync_struct *fasync_writers;
+            struct pipe_buffer *bufs; <--- here
+            struct user_struct *user;
         };
         """
+        kversion = KernelVersionCommand.kernel_version()
         pipe_inode_info = read_int_from_memory(inode + self.offset_i_pipe)
         for i in range(0x80):
             v = read_int_from_memory(pipe_inode_info + current_arch.ptrsize * i)
@@ -62143,8 +62165,14 @@ class KernelPipeCommand(GenericCommand):
             if "unaligned?" in ret:
                 continue
             # pipe_inode_info is allocated from kmalloc-1k (x64)
-            if re.search(r"kmalloc(-cg)?-1k", ret):
+            if re.search(r"kmalloc(-cg)?-(1k|1024)", ret):
                 self.offset_bufs = current_arch.ptrsize * i
+                if not self.quiet:
+                    info("offsetof(pipe_inode_info, bufs): {:#x}".format(self.offset_bufs))
+                break
+            # before v5.5, pipe_buffer is allocated not from slub, but `user` is allocated from slub.
+            if kversion < "5.5" and "uid_cache" in ret:
+                self.offset_bufs = current_arch.ptrsize * (i - 1)
                 if not self.quiet:
                     info("offsetof(pipe_inode_info, bufs): {:#x}".format(self.offset_bufs))
                 break
@@ -62153,41 +62181,75 @@ class KernelPipeCommand(GenericCommand):
                 err("Not found pipe_inode_info->bufs")
             return False
 
-        # pipe_inode_info->{head,tail,max_usage,ring_size}
-        for i in range(3, 0x40):
-            # head is not address
-            v1 = read_int_from_memory(pipe_inode_info + current_arch.ptrsize * i)
-            if is_valid_addr(v1):
-                continue
-            # head is too large
-            v1_4 = u32(read_memory(pipe_inode_info + current_arch.ptrsize * i, 4))
-            if v1_4 > 0x100:
-                continue
-            # max_usage is not address
-            v2 = read_int_from_memory(pipe_inode_info + current_arch.ptrsize * (i + 1))
-            if is_valid_addr(v2):
-                continue
-            # max_usage is too large or zero
-            v2_4 = u32(read_memory(pipe_inode_info + current_arch.ptrsize * (i + 1), 4))
-            if v2_4 > 0x100 or v2_4 == 0:
-                continue
-            self.offset_head = current_arch.ptrsize * i
-            if not self.quiet:
-                info("offsetof(pipe_inode_info, head): {:#x}".format(self.offset_head))
-            self.offset_tail = self.offset_head + 4
-            if not self.quiet:
-                info("offsetof(pipe_inode_info, tail): {:#x}".format(self.offset_tail))
-            self.offset_max_usage = self.offset_tail + 4
-            if not self.quiet:
-                info("offsetof(pipe_inode_info, max_usage): {:#x}".format(self.offset_max_usage))
-            self.offset_ring_size = self.offset_max_usage + 4
-            if not self.quiet:
-                info("offsetof(pipe_inode_info, ring_size): {:#x}".format(self.offset_ring_size))
-            break
+        if kversion >= "5.5":
+            # pipe_inode_info->{head,tail,max_usage,ring_size}
+            for i in range(3, 0x40):
+                # head is not address
+                v1 = read_int_from_memory(pipe_inode_info + current_arch.ptrsize * i)
+                if is_valid_addr(v1):
+                    continue
+                # head is too large
+                v1_4 = u32(read_memory(pipe_inode_info + current_arch.ptrsize * i, 4))
+                if v1_4 > 0x100:
+                    continue
+                # max_usage is not address
+                v2 = read_int_from_memory(pipe_inode_info + current_arch.ptrsize * (i + 1))
+                if is_valid_addr(v2):
+                    continue
+                # max_usage is too large or zero
+                v2_4 = u32(read_memory(pipe_inode_info + current_arch.ptrsize * (i + 1), 4))
+                if v2_4 > 0x100 or v2_4 == 0:
+                    continue
+                self.offset_head = current_arch.ptrsize * i
+                if not self.quiet:
+                    info("offsetof(pipe_inode_info, head): {:#x}".format(self.offset_head))
+                self.offset_tail = self.offset_head + 4
+                if not self.quiet:
+                    info("offsetof(pipe_inode_info, tail): {:#x}".format(self.offset_tail))
+                self.offset_max_usage = self.offset_tail + 4
+                if not self.quiet:
+                    info("offsetof(pipe_inode_info, max_usage): {:#x}".format(self.offset_max_usage))
+                self.offset_ring_size = self.offset_max_usage + 4
+                if not self.quiet:
+                    info("offsetof(pipe_inode_info, ring_size): {:#x}".format(self.offset_ring_size))
+                break
+            else:
+                if not self.quiet:
+                    err("Not found pipe_inode_info->head")
+                return False
         else:
-            if not self.quiet:
-                err("Not found pipe_inode_info->head")
-            return False
+            # pipe_inode_info->{nrbuf,curbuf,buffers}
+            for i in range(3, 0x40):
+                # nrbuf is not address
+                v1 = read_int_from_memory(pipe_inode_info + current_arch.ptrsize * i)
+                if is_valid_addr(v1):
+                    continue
+                # nrbuf is too large
+                v1_4 = u32(read_memory(pipe_inode_info + current_arch.ptrsize * i, 4))
+                if v1_4 > 0x100:
+                    continue
+                # buffers is not address
+                v2 = read_int_from_memory(pipe_inode_info + current_arch.ptrsize * (i + 1))
+                if is_valid_addr(v2):
+                    continue
+                # buffers is too large or zero
+                v2_4 = u32(read_memory(pipe_inode_info + current_arch.ptrsize * (i + 1), 4))
+                if v2_4 > 0x100 or v2_4 == 0:
+                    continue
+                self.offset_nrbuf = current_arch.ptrsize * i
+                if not self.quiet:
+                    info("offsetof(pipe_inode_info, nrbuf): {:#x}".format(self.offset_nrbuf))
+                self.offset_curbuf = self.offset_nrbuf + 4
+                if not self.quiet:
+                    info("offsetof(pipe_inode_info, curbuf): {:#x}".format(self.offset_curbuf))
+                self.offset_buffers = self.offset_curbuf + 4
+                if not self.quiet:
+                    info("offsetof(pipe_inode_info, buffers): {:#x}".format(self.offset_buffers))
+                break
+            else:
+                if not self.quiet:
+                    err("Not found pipe_inode_info->nrbuf")
+                return False
 
         # pipe_buffer->{page, offset, len, flags}
         """
@@ -62247,6 +62309,7 @@ class KernelPipeCommand(GenericCommand):
         heap_page_color = get_gef_setting("theme.heap_page_address")
         freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
         used_address_color = get_gef_setting("theme.heap_chunk_address_used")
+        kversion = KernelVersionCommand.kernel_version()
 
         inodes = {}
         for file, inode in pipe_files:
@@ -62268,11 +62331,20 @@ class KernelPipeCommand(GenericCommand):
             pipe_buffer = read_int_from_memory(pipe_inode_info + self.offset_bufs)
             self.out.append("    pipe_buffer: {:#x}".format(pipe_buffer))
 
-            head = u32(read_memory(pipe_inode_info + self.offset_head, 4))
-            tail = u32(read_memory(pipe_inode_info + self.offset_tail, 4))
-            max_usage = u32(read_memory(pipe_inode_info + self.offset_max_usage, 4))
-            ring_size = u32(read_memory(pipe_inode_info + self.offset_ring_size, 4))
-            self.out.append("    head: {:d}, tail: {:d}, max: {:d}, ring_size: {:d}".format(head, tail, max_usage, ring_size))
+            if kversion >= "5.5":
+                head = u32(read_memory(pipe_inode_info + self.offset_head, 4))
+                tail = u32(read_memory(pipe_inode_info + self.offset_tail, 4))
+                max_usage = u32(read_memory(pipe_inode_info + self.offset_max_usage, 4))
+                ring_size = u32(read_memory(pipe_inode_info + self.offset_ring_size, 4))
+                self.out.append("    head: {:d}, tail: {:d}, max: {:d}, ring_size: {:d}".format(head, tail, max_usage, ring_size))
+            else:
+                nrbuf = u32(read_memory(pipe_inode_info + self.offset_nrbuf, 4))
+                curbuf = u32(read_memory(pipe_inode_info + self.offset_curbuf, 4))
+                buffers = u32(read_memory(pipe_inode_info + self.offset_buffers, 4))
+                self.out.append("    nrbuf: {:d}, curbuf: {:d}, buffers: {:d}".format(nrbuf, curbuf, buffers))
+                head = curbuf + nrbuf
+                tail = curbuf
+                max_usage = buffers
 
             used_range = [x % max_usage for x in range(tail, head)]
             for idx in range(max_usage):
