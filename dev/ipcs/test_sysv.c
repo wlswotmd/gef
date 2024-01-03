@@ -20,8 +20,8 @@ struct msgbuf {
 };
 
 int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        printf("%s <PATH> [s|r|d]\n", argv[0]);
+    if (argc < 3) {
+        printf("%s <PATH> s|r|d\n", argv[0]);
         puts("* System-V IPCs can be dumped by `ipcs`");
         exit(1);
     }
@@ -32,7 +32,7 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
 
-    if (argc < 3 || argv[2][0] == 's') {
+    if (argv[2][0] == 's') {
         /* SystemV semaphore */
         int semid = semget(key, NSEMS, IPC_CREAT | 0666);
         printf("semid: %d\n", semid);

@@ -10,29 +10,29 @@
 #include <sys/mman.h>
 
 int main(int argc, char* argv[]) {
-    if (argc < 1) {
-        printf("%s [ [s|r|d]\n", argv[0]);
+    if (argc < 2) {
+        printf("%s s|r|d\n", argv[0]);
         puts("* POSIX sem/shm can be accessed from under /dev/shm");
         puts("* POSIX mq can be accessed from under /dev/mqueue");
         exit(1);
     }
 
-    if (argc < 2 || argv[1][0] == 's') {
+    if (argv[1][0] == 's') {
         /* POSIX semaphore */
         sem_t* semid = sem_open("/sample", O_CREAT, 0666, 0);
-        printf("semid: %lx\n", (unsigned long)semid);
+        printf("semid /sample: %lx\n", (unsigned long)semid);
         sem_close(semid);
 
         /* POSIX message queue */
         mqd_t msqid = mq_open("/sample", O_WRONLY | O_CREAT, 0666, NULL);
-        printf("msqid: %d\n", msqid);
+        printf("msqid /sample: %d\n", msqid);
         char buf[] = "AAAA";
         mq_send(msqid, (char*)&buf, strlen(buf), 0);
         mq_close(msqid);
 
         /* POSIX shared memory */
         int shmid = shm_open("/sample", O_RDWR | O_CREAT, 0666);
-        printf("shmid: %d\n", shmid);
+        printf("shmid /sample: %d\n", shmid);
         close(shmid);
 
     } else if (argv[1][0] == 'r') {
@@ -45,6 +45,7 @@ int main(int argc, char* argv[]) {
         mq_getattr(msqid, &attr);
         char *buf = malloc(attr.mq_msgsize);
         mq_receive(msqid, (char*)buf, attr.mq_msgsize, NULL);
+        puts("mq /sample: receive");
         puts(buf);
         free(buf);
         mq_close(msqid);
@@ -54,12 +55,15 @@ int main(int argc, char* argv[]) {
 
     } else if (argv[1][0] == 'd') {
         /* POSIX semaphore */
+        puts("sem /sample: unlink");
         sem_unlink("/sample");
 
         /* POSIX message queue */
+        puts("mq /sample: unlink");
         mq_unlink("/sample");
 
         /* POSIX shared memory */
+        puts("shm /sample: unlink");
         shm_unlink("/sample");
     }
     return 0;
