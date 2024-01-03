@@ -20898,7 +20898,7 @@ class KernelChecksecCommand(GenericCommand):
         gef_print("{:<40s}: {:d}.{:d}.{:d}".format("Kernel version", kversion.major, kversion.minor, kversion.patch))
 
         kcmdline = KernelCmdlineCommand.kernel_cmdline()
-        if kcmdline is None:
+        if kcmdline is None or kcmdline.cmdline is None:
             gef_print("{:<40s}: {:s}".format("Kernel cmdline", "Not found"))
         else:
             gef_print("{:<40s}: {:s}".format("Kernel cmdline", kcmdline.cmdline.strip()))
@@ -21436,107 +21436,125 @@ class KernelChecksecCommand(GenericCommand):
 
         # vm.unprivileged_userfaultfd
         cfg = "vm.unprivileged_userfaultfd"
-        stv_uff_ret = gdb.execute("syscall-table-view -f userfaultfd --quiet --no-pager", to_string=True)
-        if "userfaultfd" not in stv_uff_ret:
-            additional = "userfaultfd syscall: Unimplemented"
-            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Syscall unsupported", "bold green"), additional))
-        elif "invalid userfaultfd" in stv_uff_ret:
-            additional = "userfaultfd syscall: Disabled"
-            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Syscall unsupported", "bold green"), additional))
-        elif kversion < "5.2":
-            additional = "vm.unprivileged_userfaultfd: implemented from linux 5.2"
+        if kversion < "5.2":
+            additional = "{:s}: implemented from linux 5.2".format(cfg)
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unimplemented", "bold red"), additional))
         else:
-            sysctl_unprivileged_userfaultfd = KernelAddressHeuristicFinder.get_sysctl_unprivileged_userfaultfd()
-            if sysctl_unprivileged_userfaultfd is None:
-                additional = "vm.unprivileged_userfaultfd: Not found"
-                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
+            stv_uff_ret = gdb.execute("syscall-table-view -f userfaultfd --quiet --no-pager", to_string=True)
+            if "userfaultfd" not in stv_uff_ret:
+                additional = "userfaultfd syscall: Unimplemented"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Syscall unsupported", "bold green"), additional))
+            elif "invalid userfaultfd" in stv_uff_ret:
+                additional = "userfaultfd syscall: Disabled"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Syscall unsupported", "bold green"), additional))
             else:
-                v = u32(read_memory(sysctl_unprivileged_userfaultfd, 4))
-                additional = "vm.unprivileged_userfaultfd: {:d}".format(v)
-                if v == 0:
-                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold green"), additional))
+                sysctl_unprivileged_userfaultfd = KernelAddressHeuristicFinder.get_sysctl_unprivileged_userfaultfd()
+                if sysctl_unprivileged_userfaultfd is None:
+                    additional = "vm.unprivileged_userfaultfd: Not found"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
                 else:
-                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold red"), additional))
+                    v = u32(read_memory(sysctl_unprivileged_userfaultfd, 4))
+                    additional = "vm.unprivileged_userfaultfd: {:d}".format(v)
+                    if v == 0:
+                        gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold green"), additional))
+                    else:
+                        gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold red"), additional))
 
         # kernel.unprivileged_bpf_disabled
         cfg = "kernel.unprivileged_bpf_disabled"
-        stv_bpf_ret = gdb.execute("syscall-table-view -f bpf --quiet --no-pager", to_string=True)
-        if "bpf" not in stv_bpf_ret:
-            additional = "bpf syscall: Unimplemented"
-            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Syscall unsupported", "bold green"), additional))
-        elif "invalid bpf" in stv_bpf_ret:
-            additional = "bpf syscall: Disabled"
-            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Syscall unsupported", "bold green"), additional))
-        elif kversion < "4.4":
-            additional = "kernel.unprivileged_bpf_disabled: implemented from linux 4.4"
+        if kversion < "4.4":
+            additional = "{:s}: implemented from linux 4.4".format(cfg)
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unimplemented", "bold red"), additional))
         else:
-            sysctl_unprivileged_bpf_disabled = KernelAddressHeuristicFinder.get_sysctl_unprivileged_bpf_disabled()
-            if sysctl_unprivileged_bpf_disabled is None:
-                additional = "kernel.unprivileged_bpf_disabled: Not found"
-                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
+            stv_bpf_ret = gdb.execute("syscall-table-view -f bpf --quiet --no-pager", to_string=True)
+            if "bpf" not in stv_bpf_ret:
+                additional = "bpf syscall: Unimplemented"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Syscall unsupported", "bold green"), additional))
+            elif "invalid bpf" in stv_bpf_ret:
+                additional = "bpf syscall: Disabled"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Syscall unsupported", "bold green"), additional))
             else:
-                v = u32(read_memory(sysctl_unprivileged_bpf_disabled, 4))
-                additional = "kernel.unprivileged_bpf_disabled: {:d}".format(v)
-                if v == 0:
-                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                sysctl_unprivileged_bpf_disabled = KernelAddressHeuristicFinder.get_sysctl_unprivileged_bpf_disabled()
+                if sysctl_unprivileged_bpf_disabled is None:
+                    additional = "kernel.unprivileged_bpf_disabled: Not found"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
                 else:
-                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+                    v = u32(read_memory(sysctl_unprivileged_bpf_disabled, 4))
+                    additional = "kernel.unprivileged_bpf_disabled: {:d}".format(v)
+                    if v == 0:
+                        gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                    else:
+                        gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
 
         # kernel.kexec_load_disabled
         cfg = "kernel.kexec_load_disabled"
-        r1 = gdb.execute("syscall-table-view -f kexec_load --quiet --no-pager", to_string=True)
-        r2 = gdb.execute("syscall-table-view -f kexec_file_load --quiet --no-pager", to_string=True)
-        additional = ""
-        if ("kexec_load" not in r1 or "invalid kexec_load" in r1) and ("kexec_file_load" not in r2 or "invalid kexec_file_load" in r2):
-            if "kexec_load" not in r1:
-                additional = "kexec_load syscall: Unimplemented"
-            elif "invalid kexec_load" in r1:
-                additional = "kexec_load syscall: Disabled"
-            if "kexec_file_load" not in r2:
-                additional += ", " + "kexec_file_load syscall: Unimplemented"
-            elif "invalid kexec_file_load" in r2:
-                additional += ", " + "kexec_file_load syscall: Disabled"
-            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Syscall unsupported", "bold green"), additional))
-        elif kversion < "3.14":
-            additional = "kernel.kexec_load_disabled: implemented from linux 3.14"
+        if kversion < "3.14":
+            additional = "{:s}: implemented from linux 3.14".format(cfg)
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unimplemented", "bold red"), additional))
         else:
-            kexec_load_disabled = KernelAddressHeuristicFinder.get_kexec_load_disabled()
-            if kexec_load_disabled is None:
-                additional = "kernel.kexec_load_disabled: Not found"
-                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
+            r1 = gdb.execute("syscall-table-view -f kexec_load --quiet --no-pager", to_string=True)
+            r2 = gdb.execute("syscall-table-view -f kexec_file_load --quiet --no-pager", to_string=True)
+            if ("kexec_load" not in r1 or "invalid kexec_load" in r1) and ("kexec_file_load" not in r2 or "invalid kexec_file_load" in r2):
+                additional = ""
+                if "kexec_load" not in r1:
+                    additional = "kexec_load syscall: Unimplemented"
+                elif "invalid kexec_load" in r1:
+                    additional = "kexec_load syscall: Disabled"
+                if "kexec_file_load" not in r2:
+                    additional += ", " + "kexec_file_load syscall: Unimplemented"
+                elif "invalid kexec_file_load" in r2:
+                    additional += ", " + "kexec_file_load syscall: Disabled"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Syscall unsupported", "bold green"), additional))
             else:
-                v1 = u32(read_memory(kexec_load_disabled, 4))
-                additional = "kernel.kexec_load_disabled: {:d}".format(v1)
-                if v1 == 0:
-                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                kexec_load_disabled = KernelAddressHeuristicFinder.get_kexec_load_disabled()
+                if kexec_load_disabled is None:
+                    additional = "kernel.kexec_load_disabled: Not found"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
                 else:
-                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+                    v1 = u32(read_memory(kexec_load_disabled, 4))
+                    additional = "kernel.kexec_load_disabled: {:d}".format(v1)
+                    if v1 == 0:
+                        gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                    else:
+                        gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
 
         gef_print(titlify("namespaces"))
+        ksysctl_ret = gdb.execute("ksysctl --quiet --no-pager --exact --filter kernel.version", to_string=True)
         cfgs = [
-            "user.max_user_namespaces",
-            "user.max_pid_namespaces",
-            "user.max_uts_namespaces",
-            "user.max_ipc_namespaces",
-            "user.max_net_namespaces",
-            "user.max_mnt_namespaces",
-            "user.max_cgroup_namespaces",
-            "user.max_time_namespaces",
+            ["4.9", "user.max_user_namespaces"],
+            ["4.9", "user.max_pid_namespaces"],
+            ["4.9", "user.max_uts_namespaces"],
+            ["4.9", "user.max_ipc_namespaces"],
+            ["4.9", "user.max_net_namespaces"],
+            ["4.9", "user.max_mnt_namespaces"],
+            ["4.9", "user.max_cgroup_namespaces"],
+            ["5.6", "user.max_time_namespaces"],
         ]
-        for cfg in cfgs:
-            addr = get_ksysctl(cfg)
+        prev_fail = False
+        for kv, cfg in cfgs:
+            if kversion < kv:
+                additional = "{:s}: implemented from linux {:s}".format(cfg, kv)
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unimplemented", "bold red"), additional))
+                continue
+            if not ksysctl_ret: # maybe CONFIG_RANDSTRUCT=y
+                additional = "{:s}: Not found".format(cfg)
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
+                continue
+            if prev_fail: # get_ksysctl is very slow, so skip if previous get_ksysctl() was failed
+                additional = "{:s}: Not found".format(cfg)
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
+                continue
+            addr = get_ksysctl(cfg) # very slow
             if addr is None:
                 additional = "{:s}: Not found".format(cfg)
                 gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
+                prev_fail = True
+                continue
+            val = u32(read_memory(addr, 4))
+            if val:
+                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("{:d}".format(val), "bold red")))
             else:
-                val = u32(read_memory(addr, 4))
-                if val:
-                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("{:d}".format(val), "bold red")))
-                else:
-                    gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("{:d}".format(val), "bold green")))
+                gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("{:d}".format(val), "bold green")))
 
         gef_print(titlify("Other"))
 
@@ -21577,67 +21595,35 @@ class KernelChecksecCommand(GenericCommand):
 
         # CONFIG_STATIC_USERMODEHELPER
         cfg = "CONFIG_STATIC_USERMODEHELPER"
-        call_usermodehelper_setup = get_ksymaddr("call_usermodehelper_setup")
-        if call_usermodehelper_setup is None:
-            additional = "call_usermodehelper_setup: Not found"
-            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
+        if kversion < "4.11":
+            additional = "{:s}: implemented from linux 4.11".format(cfg)
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unimplemented", "bold red"), additional))
         else:
-            res = gdb.execute("x/50i {:#x}".format(call_usermodehelper_setup), to_string=True)
-            use_static = False
-            if is_x86():
-                for line in res.splitlines():
-                    if re.search("ret$", line):
-                        break
-                    r = re.search("mov\s.*,\s*(0x[0-9a-f]+)", line)
-                    if not r:
-                        continue
-                    addr = int(r.group(1), 16)
-                    if is_valid_addr(addr) and read_memory(addr, 5) == b"/sbin":
-                        use_static = True
-            elif is_arm64():
-                bases = {}
-                for line in res.splitlines():
-                    m = re.search(r"adrp\s+(\S+),\s*(0x\S+)", line)
-                    if m:
-                        reg = m.group(1)
-                        base = int(m.group(2), 16)
-                        bases[reg] = base
-                        continue
-                    m = re.search(r"add\s+(\S+),\s*(\S+),\s*#(0x\w+)", line)
-                    if m:
-                        srcreg = m.group(2)
-                        v = int(m.group(3), 16)
-                        if srcreg in bases:
-                            addr = bases[srcreg] + v
-                            if is_valid_addr(addr) and read_memory(addr, 5) == b"/sbin":
-                                use_static = True
-                                break
-            elif is_arm32():
-                for line in res.splitlines():
-                    bases = {}
-                    for line in res.splitlines():
-                        m = re.search(r"movw\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            base = int(m.group(2), 16)
-                            bases[reg] = base
-                            continue
-                        m = re.search(r"movt\s+(\S+),.+[;@]\s*(0x\S+)", line)
-                        if m:
-                            reg = m.group(1)
-                            v = int(m.group(2), 16) << 16
-                            if reg in bases:
-                                addr = bases[reg] + v
-                                if is_valid_addr(addr) and read_memory(addr, 5) == b"/sbin":
-                                    use_static = True
-                                    break
-
-            if use_static:
-                additional = "call_usermodehelper_setup uses static path"
-                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+            call_usermodehelper_setup = get_ksymaddr("call_usermodehelper_setup")
+            if call_usermodehelper_setup is None:
+                additional = "call_usermodehelper_setup: Not found"
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
             else:
-                additional = "call_usermodehelper_setup uses dynamic path"
-                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
+                res = gdb.execute("x/50i {:#x}".format(call_usermodehelper_setup), to_string=True)
+                use_static = False
+                if is_x86_64():
+                    g = KernelAddressHeuristicFinderUtil.x64_x86_any_const(res)
+                elif is_x86_32():
+                    g = KernelAddressHeuristicFinderUtil.x64_x86_any_const(res)
+                elif is_arm64():
+                    g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
+                elif is_arm32():
+                    g = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                for x in g:
+                    if is_valid_addr(x) and read_memory(x, 5) == b"/sbin":
+                        use_static = True
+                        break
+                if use_static:
+                    additional = "call_usermodehelper_setup uses static path"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+                else:
+                    additional = "call_usermodehelper_setup uses dynamic path"
+                    gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
 
         # CONFIG_STACKPROTECTOR
         cfg = "CONFIG_STACKPROTECTOR"
@@ -21754,7 +21740,10 @@ class KernelChecksecCommand(GenericCommand):
                 supported_syscall.append("arm64")
             if KernelAddressHeuristicFinder.get_sys_call_table_arm64_compat():
                 supported_syscall.append("arm32(compat)")
-        gef_print("{:<40s}: {:s}".format(cfg, ", ".join(supported_syscall)))
+        if supported_syscall:
+            gef_print("{:<40s}: {:s}".format(cfg, ", ".join(supported_syscall)))
+        else:
+            gef_print("{:<40s}: {:s}".format(cfg, "???"))
 
         return
 
@@ -46202,6 +46191,24 @@ class KernelAddressHeuristicFinder:
                 g = KernelAddressHeuristicFinderUtil.x64_qword_ptr_array_base(res)
                 for x in g:
                     return x
+
+        # plan 3 (available v4.2 ~ v4.13)
+        if kversion and kversion >= "4.2" and kversion < "4.14":
+            addr = get_ksymaddr("entry_SYSCALL_64_fastpath")
+            if addr:
+                res = gdb.execute("x/10i {:#x}".format(addr), to_string=True)
+                g = KernelAddressHeuristicFinderUtil.x64_qword_ptr_array_base(res)
+                for x in g:
+                    return x
+
+        # plan 4 (available v2.6.27 ~ v4.1)
+        if kversion and kversion >= "2.6.27" and kversion < "4.2":
+            addr = get_ksymaddr("system_call_fastpath")
+            if addr:
+                res = gdb.execute("x/10i {:#x}".format(addr), to_string=True)
+                g = KernelAddressHeuristicFinderUtil.x64_qword_ptr_array_base(res)
+                for x in g:
+                    return x
         return None
 
     @staticmethod
@@ -46217,9 +46224,11 @@ class KernelAddressHeuristicFinder:
                 return x
 
         kversion = KernelVersionCommand.kernel_version()
+        if kversion and kversion < "5.4":
+            return None
 
-        # plan 2 (available v4.6 or later)
-        if kversion and kversion >= "4.6":
+        # plan 2 (available v5.4 or later)
+        if kversion and kversion >= "5.4":
             addr = get_ksymaddr("do_syscall_64")
             if addr:
                 res = gdb.execute("x/30i {:#x}".format(addr), to_string=True)
@@ -46245,17 +46254,26 @@ class KernelAddressHeuristicFinder:
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v4.6 or later)
+        # plan 2 (available v2.6.24 or later)
         if kversion and kversion >= "4.6":
             addr = get_ksymaddr("do_int80_syscall_32")
-            if addr:
-                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
-                if is_x86_64():
-                    g = KernelAddressHeuristicFinderUtil.x64_qword_ptr_array_base(res)
-                elif is_x86_32():
-                    g = KernelAddressHeuristicFinderUtil.x86_dword_ptr_array_base(res)
-                for x in g:
-                    return x
+        elif kversion and kversion >= "4.4" and kversion < "4.6":
+            if is_x86_64():
+                addr = get_ksymaddr("do_syscall_32_irqs_off")
+            else:
+                addr = get_ksymaddr("do_syscall_32_irqs_on")
+        elif kversion and kversion >= "2.6.24" and kversion < "4.4":
+            addr = get_ksymaddr("syscall_call")
+        else:
+            addr = None
+        if addr:
+            res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
+            if is_x86_64():
+                g = KernelAddressHeuristicFinderUtil.x64_qword_ptr_array_base(res)
+            elif is_x86_32():
+                g = KernelAddressHeuristicFinderUtil.x86_dword_ptr_array_base(res)
+            for x in g:
+                return x
         return None
 
     @staticmethod
