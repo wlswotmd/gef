@@ -47984,6 +47984,25 @@ class KernelAddressHeuristicFinder:
                     g = KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative(res)
                 for x in g:
                     return x
+
+        # plan 4 (available v2.6.28 ~ v5.1)
+        if kversion and kversion >= "2.6.28" and kversion < "5.2":
+            addr = get_ksymaddr("__insert_vmap_area")
+            if addr:
+                res = gdb.execute("x/100i {:#x}".format(addr), to_string=True)
+                if is_x86_64():
+                    g = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res, read_valid=True)
+                elif is_x86_32():
+                    # TODO
+                    g = []
+                elif is_arm64():
+                    # TODO
+                    g = []
+                elif is_arm32():
+                    # TODO
+                    g = []
+                for x in g:
+                    return x
         return None
 
     @staticmethod
@@ -64064,6 +64083,34 @@ class VmallocDumpCommand(GenericCommand):
 
     _example_ = "{:s} -q".format(_cmdline_)
 
+    _note_ = "Simplified vmalloc structure:\n"
+    _note_ += "\n"
+    _note_ += "                           +-vmap_area--+\n"
+    _note_ += "                           | va_start   |\n"
+    _note_ += "                           | va_end     |\n"
+    _note_ += "+---------------------+    | ...        |\n"
+    _note_ += "| vmap_area_list      |--->| list       |--->...\n"
+    _note_ += "+---------------------+    | ...        |\n"
+    _note_ += "                           | vm         |----+\n"
+    _note_ += "                           | ...        |    |\n"
+    _note_ += "                           +------------+    |\n"
+    _note_ += "                                             |\n"
+    _note_ += "                       +---------------------+\n"
+    _note_ += "                       |\n"
+    _note_ += "                       +-->+-vm_struct--+\n"
+    _note_ += "                           | ...        |\n"
+    _note_ += "                           | flags      |\n"
+    _note_ += "                           | ...        |\n"
+    _note_ += "                           +------------+\n"
+    _note_ += "\n"
+    _note_ += "                           +-vmap_area--+\n"
+    _note_ += "                           | va_start   |\n"
+    _note_ += "(This also exists v5.2~)   | va_end     |\n"
+    _note_ += "+---------------------+    | ...        |\n"
+    _note_ += "| free_vmap_area_list |--->| list       |--->...\n"
+    _note_ += "+---------------------+    | ...        |\n"
+    _note_ += "                           +------------+"
+
     def __init__(self, *args, **kwargs):
         super().__init__()
         self.initialized = False
@@ -64129,6 +64176,8 @@ class VmallocDumpCommand(GenericCommand):
             else:
                 if not self.quiet:
                     info("free_vmap_area_list: {:#x}".format(self.free_vmap_area_list))
+        else:
+            self.free_vmap_area_list = None
 
         if not self.vmap_area_list and not self.free_vmap_area_list:
             return False
@@ -64251,11 +64300,6 @@ class VmallocDumpCommand(GenericCommand):
         if not args.quiet:
             info("Wait for memory scan")
 
-        kversion = KernelVersionCommand.kernel_version()
-        if kversion < "3.10":
-            err("Unsupported kernel version")
-            return
-
         ret = self.initialize()
         if ret is False:
             return
@@ -64266,6 +64310,7 @@ class VmallocDumpCommand(GenericCommand):
         if not args.only_freed:
             areas += self.parse_vmap_area_list(self.vmap_area_list, used=True)
 
+        kversion = KernelVersionCommand.kernel_version()
         if kversion and kversion >= "5.2":
             if not args.only_used:
                 areas += self.parse_vmap_area_list(self.free_vmap_area_list, used=False)
