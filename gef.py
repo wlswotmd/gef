@@ -62198,6 +62198,9 @@ class KernelPipeCommand(GenericCommand):
             };
             struct file_lock_context *i_flctx;
             struct address_space i_data;
+        #ifdef CONFIG_QUOTA                   // ~3.18
+            struct dquot *i_dquot[MAXQUOTAS]; // ~3.18 // MAXQUOTAS=2
+        #endif                                // ~3.18
             struct list_head i_devices;
             union {
                 struct pipe_inode_info *i_pipe;  <--- here
@@ -62227,9 +62230,9 @@ class KernelPipeCommand(GenericCommand):
             if "unaligned?" in ret:
                 continue
             # pipe_inode_info is allocated from kmalloc-192 (x64) or kmalloc-256 (arm64).
-            # sometimes it is allocated from kmalloc-512, kmalloc-128.
+            # sometimes it is allocated from kmalloc-512, kmalloc-128, kmalloc-96.
             # Other candidates found are kmalloc-2k and inode_cache, so I think these should be excluded.
-            if re.search(r"kmalloc(-cg)?-(128|192|256|512)", ret):
+            if re.search(r"kmalloc(-cg)?-(96|128|192|256|512)", ret):
                 self.offset_i_pipe = current_arch.ptrsize * i
                 if not self.quiet:
                     info("offsetof(inode, i_pipe): {:#x}".format(self.offset_i_pipe))
