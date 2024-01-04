@@ -60395,6 +60395,9 @@ class SlabDumpCommand(GenericCommand):
     parser.add_argument("--cpu", type=int, help="filter by specific cpu.")
     parser.add_argument("--list", action="store_true", help="list up all slab cache names.")
     parser.add_argument("--meta", action="store_true", help="display offset information.")
+    parser.add_argument("--skip-partial", action="store_true", help="skip displaying slabs_partial.")
+    parser.add_argument("--skip-full", action="store_true", help="skip displaying slabs_full.")
+    parser.add_argument("--skip-free", action="store_true", help="skip displaying slabs_free.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
@@ -61086,26 +61089,29 @@ class SlabDumpCommand(GenericCommand):
                 self.out.append("      {:s}: (none)".format(Color.colorify("node pages", label_inactive_color)))
             else:
                 for node_index, slabs_list in enumerate(kmem_cache["nodes"]):
-                    if len(slabs_list["slabs_partial"]) == 0:
-                        tag = Color.colorify("node[{:d}].slabs_partial".format(node_index), label_inactive_color)
-                        self.out.append("      {:s}: (none)".format(tag))
-                    else:
-                        for node_page in slabs_list["slabs_partial"]:
-                            self.dump_page(node_page, kmem_cache, tag="node[{:d}].slabs_partial".format(node_index))
+                    if not self.skip_partial:
+                        if len(slabs_list["slabs_partial"]) == 0:
+                            tag = Color.colorify("node[{:d}].slabs_partial".format(node_index), label_inactive_color)
+                            self.out.append("      {:s}: (none)".format(tag))
+                        else:
+                            for node_page in slabs_list["slabs_partial"]:
+                                self.dump_page(node_page, kmem_cache, tag="node[{:d}].slabs_partial".format(node_index))
 
-                    if len(slabs_list["slabs_full"]) == 0:
-                        tag = Color.colorify("node[{:d}].slabs_full".format(node_index), label_inactive_color)
-                        self.out.append("      {:s}: (none)".format(tag))
-                    else:
-                        for node_page in slabs_list["slabs_full"]:
-                            self.dump_page(node_page, kmem_cache, tag="node[{:d}].slabs_full".format(node_index))
+                    if not self.skip_full:
+                        if len(slabs_list["slabs_full"]) == 0:
+                            tag = Color.colorify("node[{:d}].slabs_full".format(node_index), label_inactive_color)
+                            self.out.append("      {:s}: (none)".format(tag))
+                        else:
+                            for node_page in slabs_list["slabs_full"]:
+                                self.dump_page(node_page, kmem_cache, tag="node[{:d}].slabs_full".format(node_index))
 
-                    if len(slabs_list["slabs_free"]) == 0:
-                        tag = Color.colorify("node[{:d}].slabs_free".format(node_index), label_inactive_color)
-                        self.out.append("      {:s}: (none)".format(tag))
-                    else:
-                        for node_page in slabs_list["slabs_free"]:
-                            self.dump_page(node_page, kmem_cache, tag="node[{:d}].slabs_free".format(node_index))
+                    if not self.skip_free:
+                        if len(slabs_list["slabs_free"]) == 0:
+                            tag = Color.colorify("node[{:d}].slabs_free".format(node_index), label_inactive_color)
+                            self.out.append("      {:s}: (none)".format(tag))
+                        else:
+                            for node_page in slabs_list["slabs_free"]:
+                                self.dump_page(node_page, kmem_cache, tag="node[{:d}].slabs_free".format(node_index))
 
             self.out.append("    next: {:#x}".format(kmem_cache["next"]))
         return
@@ -61163,6 +61169,9 @@ class SlabDumpCommand(GenericCommand):
 
         self.listup = args.list
         self.meta = args.meta
+        self.skip_partial = args.skip_partial
+        self.skip_full = args.skip_full
+        self.skip_free = args.skip_free
         self.quiet = args.quiet
 
         if not self.quiet:
