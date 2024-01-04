@@ -46630,16 +46630,18 @@ class KernelAddressHeuristicFinder:
         if not is_x86_64():
             return None
 
+        # plan 1 (fixed address)
         kversion = KernelVersionCommand.kernel_version()
         if kversion and kversion < "4.8":
+            # kASLR and Level5 pagetable is unsupported, so fixed address
             return 0xffff880000000000
 
-        # plan 1 (from get_page_offset_base)
+        # plan 2 (from get_page_offset_base)
         page_offset_base = KernelAddressHeuristicFinder.get_page_offset_base()
         if page_offset_base:
             return read_int_from_memory(page_offset_base)
 
-        # plan 2 (from pagewalk)
+        # plan 3 (from pagewalk)
         kinfo = KernelbaseCommand.get_kernel_base()
         if kinfo.maps and len(kinfo.maps) > 0:
             page_offset_base_raw = kinfo.maps[0][0]
@@ -46652,23 +46654,25 @@ class KernelAddressHeuristicFinder:
         if not is_x86_64():
             return None
 
+        # plan 1 (fixed address)
         kversion = KernelVersionCommand.kernel_version()
         if kversion and kversion < "4.8":
+            # kASLR and Level5 pagetable is unsupported, so fixed address
             return 0xffffc90000000000
 
-        # plan 1 (directly)
+        # plan 2 (directly)
         if KernelAddressHeuristicFinder.USE_DIRECTLY:
             vmalloc_base = get_ksymaddr("vmalloc_base")
             if vmalloc_base:
                 return read_int_from_memory(vmalloc_base)
 
-        # plan 2 (from get_page_offset_base)
+        # plan 3 (from get_page_offset_base)
         page_offset_base = KernelAddressHeuristicFinder.get_page_offset_base()
         if page_offset_base:
             vmalloc_base = page_offset_base - current_arch.ptrsize
             return read_int_from_memory(vmalloc_base)
 
-        # plan 3 (from vmalloc-dump)
+        # plan 4 (from vmalloc-dump)
         if kversion and kversion >= "5.2":
             res = gdb.execute("vmalloc-dump --quiet --no-pager --only-freed", to_string=True)
             """
@@ -46686,7 +46690,7 @@ class KernelAddressHeuristicFinder:
                     if s == 1:
                         return e
 
-        # plan 4 (from vmalloc-dump and pagewalk)
+        # plan 5 (from vmalloc-dump and pagewalk)
         res = gdb.execute("vmalloc-dump --quiet --no-pager --only-used", to_string=True)
         """
         [vmalloc-dump]
@@ -46721,50 +46725,48 @@ class KernelAddressHeuristicFinder:
 
     @staticmethod
     @switch_to_intel_syntax
-    def get_vmemmap(from_slub_dump=False):
+    def get_vmemmap():
         if not is_x86_64():
             return None
 
+        # plan 1 (fixed address)
         kversion = KernelVersionCommand.kernel_version()
         if kversion and kversion < "4.8":
+            # kASLR and Level5 pagetable is unsupported, so fixed address
             return 0xffffea0000000000
 
-        # plan 1 (directly)
+        # plan 2 (directly)
         if KernelAddressHeuristicFinder.USE_DIRECTLY:
             vmemmap_base = get_ksymaddr("vmemmap_base")
             if vmemmap_base:
                 return read_int_from_memory(vmemmap_base)
 
-        # plan 2 (from get_page_offset_base)
-        page_offset_base = KernelAddressHeuristicFinder.get_page_offset_base()
-        if page_offset_base:
-            vmemmap_base = page_offset_base - current_arch.ptrsize * 2
-            return read_int_from_memory(vmemmap_base)
-
-        # plan 3 (from slub-dump)
-        if not from_slub_dump:
-            allocator = KernelChecksecCommand.get_slab_type()
-            if allocator == "SLUB":
-                command = "slub-dump"
-            elif allocator == "SLUB_TINY":
-                command = "slub-tiny-dump"
-            else:
-                return None
+        # plan 3 (from slub-dump / slub-tiny-dump)
+        allocator = KernelChecksecCommand.get_slab_type()
+        if allocator in ["SLUB", "SLUB_TINY"]:
+            command = {"SLUB": "slub-dump", "SLUB_TINY": "slub-tiny-dump"}[allocator]
             for n in [8, 16, 32, 64, 96, 128, 192, 256, 512]:
-                ret = gdb.execute("{:s} --no-pager --quiet kmalloc-{:d}".format(command, n), to_string=True)
-                lines = ret.splitlines()
-                for i in range(len(lines) - 1):
-                    if ("active page" in lines[i] or "node[0] page" in lines[i]) and "virtual address" in lines[i+1]:
-                        page = int(Color.remove_color(lines[i]).split()[-1], 16)
-                        vaddr = int(Color.remove_color(lines[i + 1]).split()[-1], 16)
-                        ret = gdb.execute("monitor gva2gpa {:#x}".format(vaddr), to_string=True)
-                        r = re.search(r"gpa: (0x\w+)", ret)
-                        if not r:
-                            ret = gdb.execute("v2p {:#x}".format(vaddr), to_string=True)
-                            r = re.search(r"Virt: 0x\w+ -> Phys: (0x\w+)", ret)
-                        if r:
-                            paddr = int(r.group(1), 16)
-                            return page - (paddr >> 6)
+                ret = gdb.execute("{:s} --no-pager --quiet --skip-page2virt kmalloc-{:d}".format(command, n), to_string=True)
+                r = re.findall(r"active page: (0x\S+)", Color.remove_color(ret))
+                if r:
+                    min_page = min(int(x, 16) for x in r)
+                    return min_page & 0xffff_ffff_c000_0000 # ~((1 << PUD_SHIFT) - 1)
+
+        # plan 4 (from slab-dump)
+        if allocator == "SLAB":
+            ret = gdb.execute("slab-dump --no-pager --quiet kmalloc-256", to_string=True)
+            r = re.findall(r"node\[\d+\]\.slabs_(?:partial|full): (0x\S+)", Color.remove_color(ret))
+            if r:
+                min_page = min(int(x, 16) for x in r)
+                return min_page & 0xffff_ffff_c000_0000 # ~((1 << PUD_SHIFT) - 1)
+
+        # plan 5 (from slob-dump)
+        if allocator == "SLOB":
+            ret = gdb.execute("slob-dump --large --no-pager --quiet", to_string=True)
+            r = re.findall(r"page: (0x\S+)", Color.remove_color(ret))
+            if r:
+                min_page = min(int(x, 16) for x in r)
+                return min_page & 0xffff_ffff_c000_0000 # ~((1 << PUD_SHIFT) - 1)
         return None
 
     @staticmethod
@@ -58719,12 +58721,6 @@ class SlubDumpCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("cache_name", metavar="SLUB_CACHE_NAME", nargs="*", help="filter by specific slub cache name.")
     parser.add_argument("--cpu", type=int, help="filter by specific cpu.")
-    parser.add_argument("--no-xor", action="store_true",
-                        help="skip xor to chunk->next. it is used when `kmem_cache.random` is falsely detected.")
-    parser.add_argument("--offset-random", type=lambda x: int(x, 16),
-                        help="specified offsetof(kmem_cache, random). it is used when `kmem_cache.random` is falsely detected.")
-    parser.add_argument("--no-byte-swap", action="store_true", default=None,
-                        help="skip byteswap to chunk->next. it is used when `kmem_cache.random` is falsely detected.")
     parser.add_argument("--list", action="store_true", help="list up all slub cache names.")
     parser.add_argument("--meta", action="store_true", help="display offset information.")
     parser.add_argument("--hexdump-used", type=lambda x: int(x, 16), default=0,
@@ -58735,6 +58731,13 @@ class SlubDumpCommand(GenericCommand):
                         help="telescope `used chunks` if layout is resolved.")
     parser.add_argument("--telescope-freed", type=lambda x: int(x, 16), default=0,
                         help="telescope `unused (freed) chunks` if layout is resolved.")
+    parser.add_argument("--skip-page2virt", action="store_true", help="used internally in gef, please don't use it.")
+    parser.add_argument("--no-xor", action="store_true",
+                        help="skip xor to chunk->next. it is used when `kmem_cache.random` is falsely detected (for developper).")
+    parser.add_argument("--offset-random", type=lambda x: int(x, 16),
+                        help="specified offsetof(kmem_cache, random). it is used when `kmem_cache.random` is falsely detected (for developper).")
+    parser.add_argument("--no-byte-swap", action="store_true", default=None,
+                        help="skip byteswap to chunk->next. it is used when `kmem_cache.random` is falsely detected (for developper).")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", "--partial", action="store_true", help="dump partial pages")
     parser.add_argument("-vv", "--vverbose", "--node", action="store_true", help="dump partial pages and node pages.")
@@ -59259,10 +59262,11 @@ class SlubDumpCommand(GenericCommand):
         return align_address(kmem_cache_cpu)
 
     def page2virt(self, page, kmem_cache, freelist_fastpath=()):
-        ret = gdb.execute("page2virt --from-slub-dump {:#x}".format(page["address"]), to_string=True)
-        r = re.search(r"Virt: (\S+)", ret)
-        if r:
-            return int(r.group(1), 16)
+        if not self.skip_page2virt:
+            ret = gdb.execute("page2virt {:#x}".format(page["address"]), to_string=True)
+            r = re.search(r"Virt: (\S+)", ret)
+            if r:
+                return int(r.group(1), 16)
 
         # setup for heuristic search from freelist
         freelist = list(freelist_fastpath) + page["freelist"]
@@ -59394,14 +59398,14 @@ class SlubDumpCommand(GenericCommand):
 
         # second, parse kmem_cache_cpu then update
         if self.quiet:
-            tqdm = lambda x, leave: x # noqa: F841
+            tqdm = lambda x, leave, desc: x # noqa: F841
         else:
             try:
                 from tqdm import tqdm
             except ImportError:
-                tqdm = lambda x, leave: x # noqa: F841
+                tqdm = lambda x, leave, desc: x # noqa: F841
 
-        for kmem_cache in tqdm(parsed_caches[1:], leave=False): # parsed_caches[0] is slab_caches, so skip
+        for kmem_cache in tqdm(parsed_caches[1:], leave=False, desc="cpu{:d}".format(cpu)): # parsed_caches[0] is slab_caches, so skip
             # parse kmem_cache_cpu
             kmem_cache["kmem_cache_cpu"] = {}
             kmem_cache["kmem_cache_cpu"]["address"] = self.get_kmem_cache_cpu(kmem_cache["address"], cpu)
@@ -59724,10 +59728,16 @@ class SlubDumpCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        self.no_xor = args.no_xor
+        if is_x86_64() and not self.initialized and not args.skip_page2virt:
+            # The slub-dump command is also called by page2virt and kmagic to determine vmemmap and sizeof(struct page).
+            # Therefore, slub-dump itself may be called recursively (up to once) from slub-dump.
+            # If a recursive call is made, various parameters held by self will be destroyed.
+            # It's very tricky, but if we make sure to call page2virt first, no further calls will be made and
+            # it will work without any problems.
+            gdb.execute("page2virt 0", to_string=True)
+
         self.listup = args.list
         self.meta = args.meta
-        self.offset_random = args.offset_random
         self.quiet = args.quiet
         self.verbose = args.verbose or args.vverbose
         self.vverbose = args.vverbose
@@ -59735,6 +59745,9 @@ class SlubDumpCommand(GenericCommand):
         self.hexdump_freed_size = args.hexdump_freed
         self.telescope_used_size = args.telescope_used
         self.telescope_freed_size = args.telescope_freed
+        self.no_xor = args.no_xor
+        self.offset_random = args.offset_random
+        self.skip_page2virt = args.skip_page2virt
 
         if args.no_byte_swap is None:
             self.swap = None
@@ -59768,6 +59781,7 @@ class SlubTinyDumpCommand(GenericCommand):
     parser.add_argument("cache_name", metavar="SLUB_CACHE_NAME", nargs="*", help="filter by specific slub cache name.")
     parser.add_argument("--list", action="store_true", help="list up all slub cache names.")
     parser.add_argument("--meta", action="store_true", help="display offset information.")
+    parser.add_argument("--skip-page2virt", action="store_true", help="used internally in gef, please don't use it.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
@@ -60064,10 +60078,11 @@ class SlubTinyDumpCommand(GenericCommand):
         return read_cstring_from_memory(name_addr)
 
     def page2virt(self, page, kmem_cache):
-        ret = gdb.execute("page2virt --from-slub-dump {:#x}".format(page["address"]), to_string=True)
-        r = re.search(r"Virt: (\S+)", ret)
-        if r:
-            return int(r.group(1), 16)
+        if not self.skip_page2virt:
+            ret = gdb.execute("page2virt {:#x}".format(page["address"]), to_string=True)
+            r = re.search(r"Virt: (\S+)", ret)
+            if r:
+                return int(r.group(1), 16)
 
         # setup for heuristic search from freelist
         freelist = page["freelist"]
@@ -60365,9 +60380,18 @@ class SlubTinyDumpCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
+        if is_x86_64() and not self.initialized and not args.skip_page2virt:
+            # The slub-tiny-dump command is also called by page2virt and kmagic to determine vmemmap and sizeof(struct page).
+            # Therefore, slub-tiny-dump itself may be called recursively (up to once) from slub-tiny-dump.
+            # If a recursive call is made, various parameters held by self will be destroyed.
+            # It's very tricky, but if we make sure to call page2virt first, no further calls will be made and
+            # it will work without any problems.
+            gdb.execute("page2virt 0", to_string=True)
+
         self.listup = args.list
         self.meta = args.meta
         self.quiet = args.quiet
+        self.skip_page2virt = args.skip_page2virt
 
         if not self.quiet:
             info("Wait for memory scan")
@@ -60952,14 +60976,14 @@ class SlabDumpCommand(GenericCommand):
 
         # second, parse array_cache and node then update
         if self.quiet:
-            tqdm = lambda x, leave: x # noqa: F841
+            tqdm = lambda x, leave, desc: x # noqa: F841
         else:
             try:
                 from tqdm import tqdm
             except ImportError:
-                tqdm = lambda x, leave: x # noqa: F841
+                tqdm = lambda x, leave, desc: x # noqa: F841
 
-        for kmem_cache in tqdm(parsed_caches[1:], leave=False): # parsed_caches[0] is slab_caches, so skip
+        for kmem_cache in tqdm(parsed_caches[1:], leave=False, desc="cpu{:d}".format(cpu)): # parsed_caches[0] is slab_caches, so skip
             # parse array_cache
             kmem_cache["array_cache"] = {}
             kmem_cache["array_cache"]["address"] = self.get_array_cache_cpu(kmem_cache["address"], cpu)
@@ -75241,8 +75265,20 @@ class Page2VirtCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("page", metavar="PAGE", type=parse_address, help="the page address you want to translate.")
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use map cache.")
-    parser.add_argument("--from-slub-dump", action="store_true", help="used internally in gef, please don't use it.")
     _syntax_ = parser.format_help()
+
+    _note_ = "Simplified x64 page structure (CONFIG_SPARSEMEM_VMEMMAP):\n"
+    _note_ += "\n"
+    _note_ += "+---------+\n"
+    _note_ += "| vmemmap |----------->+-struct page[]-+\n"
+    _note_ += "+---------+            | pfn#1 page    | --> manage 0x0000-0x1000 physmem\n"
+    _note_ += "                       +---------------+\n"
+    _note_ += "                       | pfn#2 page    | --> manage 0x1000-0x2000 physmem\n"
+    _note_ += "                       +---------------+\n"
+    _note_ += "                       | ...           |\n"
+    _note_ += "                    ^  +---------------+\n"
+    _note_ += "sizeof(struct page) |  | pfn#N page    | --> manage 0xXXX000-0xXXY000 physmem (physmem end)\n"
+    _note_ += "                    v  +---------------+"
 
     def __init__(self, *args, **kwargs):
         super().__init__()
@@ -75251,19 +75287,94 @@ class Page2VirtCommand(GenericCommand):
         self.maps = None
         return
 
+    @staticmethod
+    def v2p_fast(vaddr):
+        # v2p is slow since it needs maps parsing for each time.
+        # more faster using gva2gpa if available.
+        ret = gdb.execute("monitor gva2gpa {:#x}".format(vaddr), to_string=True)
+        r = re.search(r"gpa: (0x\S+)", ret)
+        if not r:
+            ret = gdb.execute("v2p {:#x}".format(vaddr), to_string=True)
+            r = re.search(r"Virt: 0x\S+ -> Phys: (0x\S+)", ret)
+        if not r:
+            return None
+        paddr = int(r.group(1), 16)
+        return paddr
+
     def initialize(self):
         if is_x86_64():
+            self.SHIFT_SIZE = 12
+
             if self.vmemmap is None:
-                self.vmemmap = KernelAddressHeuristicFinder.get_vmemmap(self.from_slub_dump)
+                self.vmemmap = KernelAddressHeuristicFinder.get_vmemmap()
             if self.vmemmap:
                 info("vmemmap: {:#x}".format(self.vmemmap))
+
             if self.maps is None:
                 self.maps = Virt2PhysCommand.get_maps(None)
-            if self.vmemmap and self.maps:
-                self.initialized = True
-                return True
+            if not self.vmemmap or not self.maps:
+                return False
+
+            allocator = KernelChecksecCommand.get_slab_type()
+            if allocator in ["SLUB", "SLUB_TINY"]:
+                # get valid page and vaddr pair
+                command = {"SLUB": "slub-dump", "SLUB_TINY": "slub-tiny-dump"}[allocator]
+                for n in [8, 16, 32, 64, 96, 128, 192, 256, 512]:
+                    # this page2virt command is called from slub-dump itself.
+                    # * slub-dump (not --skip-page2virt)
+                    #   -> page2virt
+                    #     -> get_vmemmap
+                    #       -> slub-dump --skip-page2virt
+                    #     -> calculates sizeof_struct_page
+                    #       -> slub-dump --skip-page2virt
+                    # To avoid infinite recursion, must add the `--skip-page2virt` option when calling slub-dump from page2virt.
+                    ret = gdb.execute("{:s} --no-pager --quiet --skip-page2virt kmalloc-{:d}".format(command, n), to_string=True)
+                    r1 = re.findall(r"active page: (0x\S+)", Color.remove_color(ret))
+                    r2 = re.findall(r"virtual address: (0x\S+|\?\?\?)", Color.remove_color(ret))
+                    valid_pair = [ (p, v) for p, v in zip(r1, r2) if v != "???"]
+                    if valid_pair:
+                        page = int(valid_pair[0][0], 16)
+                        vaddr = int(valid_pair[0][1], 16)
+                        break
+                else:
+                    return False
+            elif allocator == "SLAB":
+                # get valid page and vaddr pair
+                ret = gdb.execute("slab-dump --cpu 0 --no-pager --quiet kmalloc-256", to_string=True)
+                r1 = re.search(r"node\[\d+\]\.slabs_(?:partial|full): (0x\S+)", Color.remove_color(ret))
+                r2 = re.search(r"virtual address \(s_mem\): (0x\S+)", Color.remove_color(ret))
+                if not r1 or not r2:
+                    return False
+                page = int(r1.group(1), 16)
+                vaddr = int(r2.group(1), 16)
+            elif allocator == "SLOB":
+                # get valid page and vaddr pair
+                ret = gdb.execute("slob-dump --large --no-pager --quiet", to_string=True)
+                r1 = re.search(r"page: (0x\S+)", Color.remove_color(ret))
+                r2 = re.search(r"virtual address: (0x\S+)", Color.remove_color(ret))
+                if not r1 or not r2:
+                    return False
+                page = int(r1.group(1), 16)
+                vaddr = int(r2.group(1), 16)
+            else:
+                return None
+
+            # virt -> phys
+            paddr = Page2VirtCommand.v2p_fast(vaddr)
+            if paddr is None:
+                return False
+            # phys -> pfn
+            pfn = paddr >> self.SHIFT_SIZE
+            # calc sizeof(struct page)
+            self.sizeof_struct_page = (page - self.vmemmap) // pfn
+            info("sizeof(struct page): {:#x}".format(self.sizeof_struct_page))
+
+            self.initialized = True
+            return True
+
         elif is_x86_32():
             pass
+
         elif is_arm64():
             T1SZ = (get_register("$TCR_EL1") >> 16) & 0b111111
             region_end = 2 ** 64
@@ -75305,16 +75416,19 @@ class Page2VirtCommand(GenericCommand):
                 self.PAGE_OFFSET = -(1 << (VA_BITS))
                 VMEMMAP_SHIFT = PAGE_SHIFT - STRUCT_PAGE_MAX_SHIFT
                 self.VMEMMAP_START = -(1 << (VA_BITS - VMEMMAP_SHIFT)) & 0xffffffffffffffff
+
             self.initialized = True
             return True
+
         elif is_arm32():
             pass
+
         return False
 
     def page2virts(self, page):
-        # https://qiita.com/akachochin/items/121d2bf3aa1cfc9bb95a
         if is_x86_64():
-            paddr = (page - self.vmemmap) << 6
+            pfn = (page - self.vmemmap) // self.sizeof_struct_page
+            paddr = pfn << self.SHIFT_SIZE
             vaddrs = []
             for vstart, _vend, pstart, pend in self.maps:
                 if pstart <= paddr < pend:
@@ -75344,16 +75458,11 @@ class Page2VirtCommand(GenericCommand):
 
     def virt2page(self, vaddr):
         if is_x86_64():
-            ret = gdb.execute("monitor gva2gpa {:#x}".format(vaddr), to_string=True)
-            r = re.search(r"gpa: (0x\S+)", ret)
-
-            if not r:
-                ret = gdb.execute("v2p {:#x}".format(vaddr), to_string=True)
-                r = re.search(r"Virt: 0x\S+ -> Phys: (0x\S+)", ret)
-
-            if r:
-                paddr = int(r.group(1), 16)
-                return (paddr >> 6) + self.vmemmap
+            paddr = Page2VirtCommand.v2p_fast(vaddr)
+            if paddr is None:
+                return None
+            pfn = paddr >> self.SHIFT_SIZE
+            return (pfn * self.sizeof_struct_page) + self.vmemmap
         elif is_x86_32():
             pass
         elif is_arm64():
@@ -75382,7 +75491,6 @@ class Page2VirtCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        self.from_slub_dump = args.from_slub_dump
         if args.reparse:
             self.initialized = False
             self.maps = None
@@ -75419,7 +75527,6 @@ class Virt2PageCommand(Page2VirtCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("virt", metavar="ADDRESS", type=parse_address, help="the virtual address you want to translate.")
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
-    parser.add_argument("--from-slub-dump", action="store_true", help="used internally in gef, please don't use it.")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -75430,7 +75537,6 @@ class Virt2PageCommand(Page2VirtCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        self.from_slub_dump = args.from_slub_dump
         if args.reparse:
             self.initialized = False
             self.maps = None
@@ -75481,7 +75587,6 @@ class Page2PhysCommand(Page2VirtCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        self.from_slub_dump = False
         if args.reparse:
             self.initialized = False
             self.maps = None
@@ -75540,7 +75645,6 @@ class Phys2PageCommand(Page2VirtCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        self.from_slub_dump = False
         if args.reparse:
             self.initialized = False
             self.maps = None
