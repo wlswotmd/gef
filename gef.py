@@ -60638,7 +60638,7 @@ class SlabDumpCommand(GenericCommand):
         else:
             # Search heuristically using useroffset and usersize as markers
             start_offset = self.kmem_cache_offset_list + current_arch.ptrsize * 2
-            for candidate_offset in range(start_offset, start_offset + 0x100, current_arch.ptrsize):
+            for candidate_offset in range(start_offset, start_offset + 0x100, 4):
                 found = True
                 for kmem_cache in kmem_caches:
                     user_offset = u32(read_memory(kmem_cache - self.kmem_cache_offset_list + candidate_offset, 4))
@@ -60652,14 +60652,15 @@ class SlabDumpCommand(GenericCommand):
                     if object_size < user_size:
                         found = False
                         break
-                    node_offset = kmem_cache - self.kmem_cache_offset_list + candidate_offset + 4 + 4
-                    node_addr = read_int_from_memory(node_offset)
+                    node_addr_ptr = kmem_cache - self.kmem_cache_offset_list + candidate_offset + 4 + 4
+                    node_addr_ptr = align_address_to_size(node_addr_ptr, current_arch.ptrsize)
+                    node_addr = read_int_from_memory(node_addr_ptr)
                     if not is_valid_addr(node_addr):
                         found = False
                         break
 
                 if found:
-                    self.kmem_cache_offset_node = candidate_offset + 4 * 2
+                    self.kmem_cache_offset_node = align_address_to_size(candidate_offset + 4 * 2, current_arch.ptrsize)
                     if not self.quiet:
                         info("offsetof(kmem_cache, node): {:#x}".format(self.kmem_cache_offset_node))
                     break
@@ -60749,27 +60750,27 @@ class SlabDumpCommand(GenericCommand):
                         seen.append(x)
                         x = read_int_from_memory(x)
 
-                # slab_partial.next
+                # slabs_partial.next
                 if not is_link_list(kmem_cache_node_0 + candidate_offset + current_arch.ptrsize * 0):
                     found = False
                     break
-                # slab_partial.prev
+                # slabs_partial.prev
                 if not is_link_list(kmem_cache_node_0 + candidate_offset + current_arch.ptrsize * 1):
                     found = False
                     break
-                # slab_full.next
+                # slabs_full.next
                 if not is_link_list(kmem_cache_node_0 + candidate_offset + current_arch.ptrsize * 2):
                     found = False
                     break
-                # slab_full.prev
+                # slabs_full.prev
                 if not is_link_list(kmem_cache_node_0 + candidate_offset + current_arch.ptrsize * 3):
                     found = False
                     break
-                # slab_free.next
+                # slabs_free.next
                 if not is_link_list(kmem_cache_node_0 + candidate_offset + current_arch.ptrsize * 4):
                     found = False
                     break
-                # slab_free.prev
+                # slabs_free.prev
                 if not is_link_list(kmem_cache_node_0 + candidate_offset + current_arch.ptrsize * 5):
                     found = False
                     break
@@ -60782,7 +60783,7 @@ class SlabDumpCommand(GenericCommand):
         else:
             if not self.quiet:
                 info("offsetof(kmem_cache_node, slabs_partial): Not found")
-                return
+            return False
 
         # offsetof(kmem_cache_node, slabs_full)
         self.kmem_cache_node_offset_slabs_full = self.kmem_cache_node_offset_slabs_partial + current_arch.ptrsize * 2
@@ -61093,7 +61094,7 @@ class SlabDumpCommand(GenericCommand):
                             self.dump_page(node_page, kmem_cache, tag="node[{:d}].slabs_partial".format(node_index))
 
                     if len(slabs_list["slabs_full"]) == 0:
-                        tag = Color.colorify("node[{:d}].slabs_fulll".format(node_index), label_inactive_color)
+                        tag = Color.colorify("node[{:d}].slabs_full".format(node_index), label_inactive_color)
                         self.out.append("      {:s}: (none)".format(tag))
                     else:
                         for node_page in slabs_list["slabs_full"]:
