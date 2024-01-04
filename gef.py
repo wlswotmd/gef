@@ -74994,7 +74994,7 @@ class PagewalkWithHintsCommand(GenericCommand):
             line = line.split()
             module_name = line[1]
             module_base = int(line[2], 16)
-            module_size = int(line[3], 16)
+            module_size = align_address_to_size(int(line[3], 16), gef_getpagesize())
             description = "kernel module ({:s})".format(module_name)
             self.insert_region(module_base, module_size, description)
         return
@@ -75044,7 +75044,10 @@ class PagewalkWithHintsCommand(GenericCommand):
 
                 if x not in [z10, ff10, cc10]:
                     continue
-                x = read_memory(addr, page_size)
+                try:
+                    x = read_memory(addr, page_size)
+                except gdb.MemoryError:
+                    continue
                 if x == z1000:
                     self.insert_region(addr, page_size, "0x00-filled")
                 elif x == cc1000:
