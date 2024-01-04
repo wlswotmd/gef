@@ -45915,6 +45915,10 @@ class KernelAddressHeuristicFinder:
                     elif is_x86_32():
                         g = KernelAddressHeuristicFinderUtil.x64_x86_cmp_const(res)
                     for x in g:
+                        # There are cases where init_pid_ns is falsely detected as init_task.
+                        # The initial value of kref is 2, so exclude this.
+                        if read_int_from_memory(x) == 2:
+                            continue
                         return x
 
         # On arm32/arm64, I couldn't find that pattern.
