@@ -48972,40 +48972,33 @@ class KernelTaskCommand(GenericCommand):
     _note_ += "    | ...          |   |   ma_root    |-----+    |   slot[]          |--+  |\n"
     _note_ += "    | stack_canary |   | ...          |          +-------------------+     |\n"
     _note_ += "    | ...          |   +--------------+                                    |\n"
-    _note_ += "    | group_leader |                                                       |\n"
-    _note_ += "    | ...          |         +-->+-cred--------------+        +------------+\n"
-    _note_ += "    | thread_group |-->...   |   | ...               |        |\n"
-    _note_ += "    | ...          |         |   | uid, gid          |        |\n"
-    _note_ += "    | cred         |---------+   | suid, sgid        |        |\n"
-    _note_ += "    | ...          |             | euid, egid        |        |\n"
-    _note_ += "    | comm[16]     |             | fsuid, fsgid      |        |\n"
-    _note_ += "    | ...          |             | ..., user_ns, ... |        |\n"
-    _note_ += "    | files        |--+          +-------------------+        |\n"
-    _note_ += "    | ...          |  |                                       |\n"
-    _note_ += "    | nsproxy      |------->+-nsproxy----------------+        |\n"
-    _note_ += "    | ...          |  |     | count                  |        |                        +-mount----------+\n"
-    _note_ += "    | sighand      |-----+  | uts_ns, ipc_ns, mnt_ns |        |                        | ...            |\n"
-    _note_ += "    | ...          |  |  |  | pid_ns_for_children    |        |                        | mnt_parent     |-->mount\n"
-    _note_ += "    +--------------+  |  |  | net_ns, time_ns, ...   |        |                        | mnt_mountpoint |-->dentry\n"
-    _note_ += "                      |  |  +------------------------+        |                  +---->| mnt (vfsmount) |\n"
-    _note_ += "                      |  |                                    |                  |     |   mnt_root     |-->dentry\n"
-    _note_ += "                      |  +->+-sighand_struct----+             |                  |     |   ...          |\n"
-    _note_ += "                      |     | ...               |             |                  |     | ...            |\n"
-    _note_ += "                      |     | action[64]        |             |                  |     +----------------+\n"
-    _note_ += "+---------------------+     +-------------------+             |                  |\n"
-    _note_ += "|                                                             v                  | +-->+-dentry-----+\n"
-    _note_ += "+-->+-files_struct-+  +-->+-fdtable---+  +-->+-file*[]-----+  +-->+-file------+  | |   | ...        |\n"
-    _note_ += "    | ...          |  |   | max_fds   |  |   | [0]         |--+   | ...       |  | |   | d_parent   |\n"
-    _note_ += "    | fdt          |--+   | fd        |--+   | ...         |      | f_path    |  | |   | ...        |\n"
-    _note_ += "    | ...          |      | ...       |      | [max_fds-1] |      |   mnt     |--+ |   | d_iname    |\n"
-    _note_ += "    +--------------+      +-----------+      +-------------+      |   dentry  |----+   | ...        |\n"
-    _note_ += "                                                                  | f_inode   |--+     +------------+\n"
-    _note_ += "                                                                  | ...       |  |\n"
-    _note_ += "                                                                  +-----------+  +---->+-inode------+\n"
-    _note_ += "                                                                                       | ...        |\n"
-    _note_ += "                                                                                       | i_ino      |\n"
-    _note_ += "                                                                                       | ...        |\n"
-    _note_ += "                                                                                       +------------+"
+    _note_ += "    | group_leader |                                          +------------+                   +-mount----------+\n"
+    _note_ += "    | ...          |         +-->+-cred--------------+        |                                | ...            |\n"
+    _note_ += "    | thread_group |-->...   |   | ...               |        |                                | mnt_parent     |-->mount\n"
+    _note_ += "    | ...          |         |   | uid, gid          |        |                                | mnt_mountpoint |-->dentry\n"
+    _note_ += "    | cred         |---------+   | suid, sgid        |        |                         +----->| mnt (vfsmount) |\n"
+    _note_ += "    | ...          |             | euid, egid        |        |                         |      |   mnt_root     |-->dentry\n"
+    _note_ += "    | comm[16]     |             | fsuid, fsgid      |        |                         |      |   ...          |\n"
+    _note_ += "    | ...          |             | ..., user_ns, ... |        |                         |      | ...            |\n"
+    _note_ += "    | files        |--+          +-------------------+        |                         |      +----------------+\n"
+    _note_ += "    | ...          |  |                                       |                         |\n"
+    _note_ += "    | nsproxy      |------->+-nsproxy----------------+        |                         | +--->+-dentry-----+\n"
+    _note_ += "    | ...          |  |     | count                  |        |                         | |    | ...        |\n"
+    _note_ += "    | sighand      |-----+  | uts_ns, ipc_ns, mnt_ns |        |                         | |    | d_parent   |-->dentry\n"
+    _note_ += "    | ...          |  |  |  | pid_ns_for_children    |        |                         | |    | ...        |\n"
+    _note_ += "    +--------------+  |  |  | net_ns, time_ns, ...   |        |                         | |    | d_inode    |--+\n"
+    _note_ += "                      |  |  +------------------------+        |                         | |    | d_iname    |  |\n"
+    _note_ += "                      |  |                                    |                         | |    | ...        |  |\n"
+    _note_ += "                      |  +->+-sighand_struct----+             |                         | |    +------------+  |\n"
+    _note_ += "                      |     | ...               |             v                         | |                    |\n"
+    _note_ += "                      |     | action[64]        |             +--->+-file------------+  | | +------------------+\n"
+    _note_ += "+---------------------+     +-------------------+             |    | ...             |  | | |\n"
+    _note_ += "|                                                             |    | f_path          |  | | v\n"
+    _note_ += "+-->+-files_struct-+  +-->+-fdtable---+  +-->+-file*[]-----+  |    |   mnt           |--+ | +->+-inode------+\n"
+    _note_ += "    | ...          |  |   | max_fds   |  |   | [0]         |--+    |   dentry        |----+ |  | ...        |\n"
+    _note_ += "    | fdt          |--+   | fd        |--+   | ...         |       | f_inode (v3.9~) |------+  | i_ino      |\n"
+    _note_ += "    | ...          |      | ...       |      | [max_fds-1] |       | ...             |         | ...        |\n"
+    _note_ += "    +--------------+      +-----------+      +-------------+       +-----------------+         +------------+"
 
     def __init__(self):
         super().__init__()
@@ -49036,10 +49029,10 @@ class KernelTaskCommand(GenericCommand):
         # file
         self.offset_mnt = None
         self.offset_dentry = None
-        self.offset_f_inode = None
         # dentry
         self.offset_d_iname = None
         self.offset_d_parent = None
+        self.offset_d_inode = None
         # inode
         self.offset_i_ino = None
         # sighand_struct
@@ -50116,7 +50109,7 @@ class KernelTaskCommand(GenericCommand):
                 struct vfsmount *mnt;
                 struct dentry *dentry;
             } f_path;
-            struct inode *f_inode;
+            struct inode *f_inode;            // v3.9~
             ...
         };
 
@@ -50185,8 +50178,47 @@ class KernelTaskCommand(GenericCommand):
     def get_offset_dentry(self, offset_mnt):
         return offset_mnt + current_arch.ptrsize
 
-    def get_offset_f_inode(self, offset_dentry):
-        return offset_dentry + current_arch.ptrsize
+    def get_offset_d_iname(self, dentry):
+        """
+        struct dentry {
+            unsigned int d_flags;
+            seqcount_spinlock_t d_seq;
+            struct hlist_bl_node d_hash;
+            struct dentry *d_parent;
+            struct qstr {
+                union {
+                    struct {
+                        HASH_LEN_DECLARE;
+                    };
+                    u64 hash_len;
+                };
+                const unsigned char *name; // this points d_iname
+            } d_name;
+            struct inode *d_inode;
+            unsigned char d_iname[DNAME_INLINE_LEN];
+            ...
+        };
+        """
+        current = dentry
+        while True:
+            name = read_int_from_memory(current)
+            if 0 < name - current <= 0x20:
+                offset_d_iname = name - dentry
+                break
+            current += current_arch.ptrsize
+        return offset_d_iname
+
+    def get_offset_d_inode(self, offset_d_iname):
+        return offset_d_iname - current_arch.ptrsize
+
+    def get_offset_d_parent(self, dentry, offset_d_iname):
+        offset_dname_name = offset_d_iname - current_arch.ptrsize * 2
+        if read_int_from_memory(dentry + offset_dname_name) == 0: # skip if padding
+            offset_dname_name -= current_arch.ptrsize
+        offset_d_parent = offset_dname_name - 0x8 - current_arch.ptrsize
+        if read_int_from_memory(dentry + offset_d_parent) == 0: # skip if padding
+            offset_d_parent -= current_arch.ptrsize
+        return offset_d_parent
 
     def get_offset_i_ino(self, inode):
         """
@@ -50231,47 +50263,9 @@ class KernelTaskCommand(GenericCommand):
             break
         return offset_i_ino
 
-    def get_offset_d_iname(self, dentry):
-        """
-        struct dentry {
-            unsigned int d_flags;
-            seqcount_spinlock_t d_seq;
-            struct hlist_bl_node d_hash;
-            struct dentry *d_parent;
-            struct qstr {
-                union {
-                    struct {
-                        HASH_LEN_DECLARE;
-                    };
-                    u64 hash_len;
-                };
-                const unsigned char *name; // this points d_iname
-            } d_name;
-            struct inode *d_inode;
-            unsigned char d_iname[DNAME_INLINE_LEN];
-            ...
-        };
-        """
-        current = dentry
-        while True:
-            name = read_int_from_memory(current)
-            if 0 < name - current <= 0x20:
-                offset_d_iname = name - dentry
-                break
-            current += current_arch.ptrsize
-        return offset_d_iname
-
-    def get_offset_d_parent(self, dentry, offset_d_iname):
-        offset_dname_name = offset_d_iname - current_arch.ptrsize * 2
-        if read_int_from_memory(dentry + offset_dname_name) == 0: # skip if padding
-            offset_dname_name -= current_arch.ptrsize
-        offset_d_parent = offset_dname_name - 0x8 - current_arch.ptrsize
-        if read_int_from_memory(dentry + offset_d_parent) == 0: # skip if padding
-            offset_d_parent -= current_arch.ptrsize
-        return offset_d_parent
-
     def get_ino(self, file):
-        inode = read_int_from_memory(file + self.offset_f_inode)
+        dentry = read_int_from_memory(file + self.offset_dentry)
+        inode = read_int_from_memory(dentry + self.offset_d_inode)
         i_ino = read_int_from_memory(inode + self.offset_i_ino)
         return i_ino
 
@@ -50675,9 +50669,9 @@ class KernelTaskCommand(GenericCommand):
         # vm_area_struct->vm_file
         # file->f_path.mnt
         # file->f_path.dentry
-        # file->f_inode
         # dentry->d_iname
         # dentry->d_parent
+        # dentry->d_inode
         # inode->i_ino
         if args.print_maps or args.print_fd:
             if self.offset_vm_mm is None:
@@ -50715,14 +50709,14 @@ class KernelTaskCommand(GenericCommand):
                 self.offset_dentry = self.get_offset_dentry(self.offset_mnt)
             self.quiet_info("offsetof(file, f_path.dentry): {:#x}".format(self.offset_dentry))
 
-            if self.offset_f_inode is None:
-                self.offset_f_inode = self.get_offset_f_inode(self.offset_dentry)
-            self.quiet_info("offsetof(file, f_inode): {:#x}".format(self.offset_f_inode))
-
             if self.offset_d_iname is None:
                 dentry = read_int_from_memory(vm_file + self.offset_dentry)
                 self.offset_d_iname = self.get_offset_d_iname(dentry)
             self.quiet_info("offsetof(dentry, d_iname): {:#x}".format(self.offset_d_iname))
+
+            if self.offset_d_inode is None:
+                self.offset_d_inode = self.get_offset_d_inode(self.offset_d_iname)
+            self.quiet_info("offsetof(file, d_inode): {:#x}".format(self.offset_d_inode))
 
             if self.offset_d_parent is None:
                 dentry = read_int_from_memory(vm_file + self.offset_dentry)
@@ -50730,7 +50724,8 @@ class KernelTaskCommand(GenericCommand):
             self.quiet_info("offsetof(dentry, d_parent): {:#x}".format(self.offset_d_parent))
 
             if self.offset_i_ino is None:
-                inode = read_int_from_memory(vm_file + self.offset_f_inode)
+                dentry = read_int_from_memory(vm_file + self.offset_dentry)
+                inode = read_int_from_memory(dentry + self.offset_d_inode)
                 self.offset_i_ino = self.get_offset_i_ino(inode)
             self.quiet_info("offsetof(inode, i_ino): {:#x}".format(self.offset_i_ino))
 
@@ -50974,7 +50969,7 @@ class KernelTaskCommand(GenericCommand):
                         if file == 0:
                             continue
                         dentry = read_int_from_memory(file + self.offset_dentry)
-                        inode = read_int_from_memory(file + self.offset_f_inode)
+                        inode = read_int_from_memory(dentry + self.offset_d_inode)
                         filepath = self.get_filepath(file)
                         out.append("{:<3d} {:#018x} {:#018x} {:#018x} {:s}".format(i, file, dentry, inode, filepath))
                     if not args.print_sighand:
@@ -62143,25 +62138,26 @@ class KernelPipeCommand(GenericCommand):
     _note_ += "\n"
     _note_ += "+-task_struct-+  +->+-files_struct-+  +->+-fdtable---+  +->+-files*[]----+  +->+-file------+\n"
     _note_ += "| ...         |  |  | ...          |  |  | max_fds   |  |  | [0]         |--+  | ...       |\n"
-    _note_ += "| files       |--+  | fdt          |--+  | fd        |--+  | ...         |     | f_inode   |---+\n"
-    _note_ += "| ...         |     | ...          |     | ...       |     | [max_fds-1] |     | ...       |   |\n"
-    _note_ += "+-------------+     +--------------+     +-----------+     +-------------+     +-----------+   |\n"
+    _note_ += "| files       |--+  | fdt          |--+  | fd        |--+  | ...         |     | f_path    |\n"
+    _note_ += "| ...         |     | ...          |     | ...       |     | [max_fds-1] |     |   dentry  |---+\n"
+    _note_ += "+-------------+     +--------------+     +-----------+     +-------------+     | ...       |   |\n"
+    _note_ += "                                                                               +-----------+   |\n"
     _note_ += "                                                                                               |\n"
     _note_ += "+----------------------------------------------------------------------------------------------+\n"
     _note_ += "|\n"
-    _note_ += "|  +-inode-----+  +->+-pipe_inode_info--------+  +->+-pipe_buffer-+\n"
-    _note_ += "|  | ...       |  |  | ...                    |  |  | page        |--->page\n"
-    _note_ += "+->| i_pipe    |--+  | head, tail, (v5.5~)    |  |  | offset      |\n"
-    _note_ += "   | ...       |     | max_usage, (v5.5~)     |  |  | len         |\n"
-    _note_ += "   +-----------+     | ring_size, (v5.5~)     |  |  | ...         |\n"
-    _note_ += "                     | nrbuf, curbuf, (~v5.5) |  |  +-------------+\n"
-    _note_ += "                     | buffers (~v5.5)        |  |  | page        |--->page\n"
-    _note_ += "                     | ...                    |  |  | offset      |\n"
-    _note_ += "                     | bufs                   |--+  | len         |\n"
-    _note_ += "                     | ...                    |     | ...         |\n"
-    _note_ += "                     +------------------------+     +-------------+\n"
-    _note_ += "                                                    | ...         |\n"
-    _note_ += "                                                    +-------------+\n"
+    _note_ += "|  +-dentry---+  +->+-inode-----+  +->+-pipe_inode_info--------+  +->+-pipe_buffer-+\n"
+    _note_ += "|  | ...      |  |  | ...       |  |  | ...                    |  |  | page        |--->page\n"
+    _note_ += "+->| d_inode  |--+  | i_pipe    |--+  | head, tail, (v5.5~)    |  |  | offset      |\n"
+    _note_ += "   | ...      |     | ...       |     | max_usage, (v5.5~)     |  |  | len         |\n"
+    _note_ += "   +----------+     +-----------+     | ring_size, (v5.5~)     |  |  | ...         |\n"
+    _note_ += "                                      | nrbuf, curbuf, (~v5.5) |  |  +-------------+\n"
+    _note_ += "                                      | buffers (~v5.5)        |  |  | page        |--->page\n"
+    _note_ += "                                      | ...                    |  |  | offset      |\n"
+    _note_ += "                                      | bufs                   |--+  | len         |\n"
+    _note_ += "                                      | ...                    |     | ...         |\n"
+    _note_ += "                                      +------------------------+     +-------------+\n"
+    _note_ += "                                                                     | ...         |\n"
+    _note_ += "                                                                     +-------------+\n"
 
     def initialize(self):
         # kbase
