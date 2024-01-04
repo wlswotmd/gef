@@ -43679,8 +43679,8 @@ class KernelMagicCommand(GenericCommand):
             self.resolve_and_print_kernel("text_poke", text_base, maps)
         self.resolve_and_print_kernel("memcpy", text_base, maps)
         if is_x86():
-            self.resolve_and_print_kernel("_copy_to_user", text_base, maps)
-            self.resolve_and_print_kernel("_copy_from_user", text_base, maps)
+            self.resolve_and_print_kernel(["_copy_to_user", "copy_to_user"], text_base, maps)
+            self.resolve_and_print_kernel(["_copy_from_user", "copy_from_user"], text_base, maps)
         elif is_arm32():
             self.resolve_and_print_kernel(["arm_copy_to_user", "__copy_to_user"], text_base, maps)
             self.resolve_and_print_kernel(["arm_copy_from_user", "__copy_from_user"], text_base, maps)
@@ -43750,7 +43750,7 @@ class KernelMagicCommand(GenericCommand):
             self.resolve_and_print_kernel("page_offset_base (physmem direct map)", None, maps, KernelAddressHeuristicFinder.get_page_offset)
             self.resolve_and_print_kernel("vmalloc_base", None, maps, KernelAddressHeuristicFinder.get_vmalloc_start)
             self.resolve_and_print_kernel("vmemmap_base (struct page)", None, maps, KernelAddressHeuristicFinder.get_vmemmap)
-            self.resolve_and_print_kernel("&phys_base (for page<->phys)", text_base, maps, KernelAddressHeuristicFinder.get_phys_base)
+            self.resolve_and_print_kernel("phys_base (for page<->phys)", text_base, maps, KernelAddressHeuristicFinder.get_phys_base)
         return
 
     @parse_args
@@ -45498,7 +45498,7 @@ class KernelAddressHeuristicFinderUtil:
             v = align_address(int(m.group(1), 16))
             if not skip_msb_check and not is_msb_on(v):
                 continue
-            if read_valid and not is_valid_addr_addr(v):
+            if read_valid and not is_valid_addr_addr(v): # not is_valid_addr, but is_valid_addr_addr
                 continue
             if skip > 0:
                 skip -= 1
@@ -46292,7 +46292,7 @@ class KernelAddressHeuristicFinder:
     @staticmethod
     def get_sys_call_table_arm64():
         if not is_arm64():
-            return
+            return None
 
         # plan 1 (directly)
         if KernelAddressHeuristicFinder.USE_DIRECTLY:
@@ -46321,7 +46321,7 @@ class KernelAddressHeuristicFinder:
     @staticmethod
     def get_sys_call_table_arm64_compat():
         if not is_arm64():
-            return
+            return None
 
         # plan 1 (directly)
         if KernelAddressHeuristicFinder.USE_DIRECTLY:
@@ -46538,13 +46538,13 @@ class KernelAddressHeuristicFinder:
     @switch_to_intel_syntax
     def get_phys_base():
         if not is_x86_64():
-            return
+            return None
 
         # plan 1 (directly)
         if KernelAddressHeuristicFinder.USE_DIRECTLY:
             x = get_ksymaddr("phys_base")
             if x:
-                return x
+                return read_int_from_memory(x)
 
         kversion = KernelVersionCommand.kernel_version()
 
@@ -46555,7 +46555,18 @@ class KernelAddressHeuristicFinder:
                 res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 g = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res)
                 for x in g:
-                    return x
+                    return read_int_from_memory(x)
+
+        # plan 3 (available v2.6.25 ~ v5.5)
+        if kversion and kversion >= "2.6.25" and kversion < "5.5":
+            addr = get_ksymaddr("arch_crash_save_vmcoreinfo")
+            if addr:
+                res = gdb.execute("x/10i {:#x}".format(addr), to_string=True)
+                g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
+                for x in g:
+                    s = read_cstring_from_memory(x, ascii_only=True)
+                    if not s:
+                        return read_int_from_memory(x)
         return None
 
     @staticmethod
@@ -46729,7 +46740,7 @@ class KernelAddressHeuristicFinder:
     @switch_to_intel_syntax
     def get_clocksource_tsc():
         if not is_x86():
-            return
+            return None
 
         # plan 1 (directly)
         if KernelAddressHeuristicFinder.USE_DIRECTLY:
