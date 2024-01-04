@@ -10251,13 +10251,14 @@ def parse_args(f):
     @functools.wraps(f)
     def wrapper(self, argv, **kwargs):
         try:
-            self.parser.exit = lambda *_: exec("if _: print(_[1]);\nraise(ArgparseExitProxyException())")
+            self.parser.exit = lambda *_: exec("if _: print(_[1]);\nraise(ArgparseExitProxyException(_))")
             args = self.parser.parse_args(argv)
-        except ArgparseExitProxyException:
-            if hasattr(self, "_example_") and self._example_:
-                gef_print("\nexample:\n" + self._example_)
-            if hasattr(self, "_note_") and self._note_:
-                gef_print("\nnote:\n" + self._note_)
+        except ArgparseExitProxyException as e:
+            if not e.args[0]: # when --help or -h
+                if hasattr(self, "_example_") and self._example_:
+                    gef_print("\nexample:\n" + "  " + self._example_.strip().replace("\n", "\n  "))
+                if hasattr(self, "_note_") and self._note_:
+                    gef_print("\nnote:\n" + "  " + self._note_.strip().replace("\n", "\n  "))
             return
         except Exception as e:
             err("Invalid argument: {}".format(e))
@@ -12569,17 +12570,17 @@ class GenericCommand(gdb.Command):
 
         if self._example_:
             self.__doc__ += "\n"
-            example = Color.colorify("Example:\n", "bold yellow") + self._example_.strip()
+            example = Color.colorify("Example:\n", "bold yellow") + "  " + self._example_.strip().replace("\n", "\n  ")
             self.__doc__ += example + "\n"
 
         if self._note_:
             self.__doc__ += "\n"
-            note = Color.colorify("Note:\n", "bold yellow") + self._note_.strip()
+            note = Color.colorify("Note:\n", "bold yellow") + "  " + self._note_.strip().replace("\n", "\n  ")
             self.__doc__ += note + "\n"
 
         if hasattr(self, "_aliases_") and self._aliases_:
             self.__doc__ += "\n"
-            aliases = Color.colorify("Aliases:\n", "bold yellow") + str(self._aliases_)
+            aliases = Color.colorify("Aliases:\n", "bold yellow") + "  " + str(self._aliases_)
             self.__doc__ += aliases + "\n"
 
         self.repeat = False
@@ -26443,8 +26444,7 @@ class DereferenceCommand(GenericCommand):
     _example_ = "{:s} $sp 20".format(_cmdline_)
 
     _note_ = "Use blacklist feature if reading the address causes process crash.\n"
-    _note_ += "e.g.: `gef config dereference.blacklist \"[ [0xffffffffc9000000, 0xffffffffc9001000], ]\"`\n"
-    _note_ += "then `gef save`"
+    _note_ += "e.g.: `gef config dereference.blacklist \"[ [0xffffffffc9000000, 0xffffffffc9001000], ]\"`, then `gef save`"
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
