@@ -45619,7 +45619,6 @@ class KernelAddressHeuristicFinderUtil:
                         skip -= 1
                         continue
                     yield w
-        return None
 
     @staticmethod
     def aarch64_adrp_add_add(res, skip=0, skip_msb_check=False, read_valid=False):
@@ -45765,6 +45764,29 @@ class KernelAddressHeuristicFinderUtil:
                 if is_valid_addr(v):
                     if skip <= 0:
                         yield v
+                    skip -= 1
+                    continue
+
+    @staticmethod
+    def arm32_ldr_pc_relative_ldr(res, skip=0):
+        bases = {}
+        for line in res.splitlines():
+            m = re.search(r"ldr\s+(\w+),\s*\[pc,\s*#(\d+)\]", line)
+            if m:
+                reg = m.group(1)
+                ofs = align_address(int(m.group(2), 0))
+                pos = align_address(int(line.split()[0].replace(":", ""), 16))
+                v = read_int_from_memory(pos + 4 * 2 + ofs)
+                bases[reg] = v
+                continue
+            m = re.search(r"ldr\s+\w+,\s*\[(\w+),\s*#(\d*)\]", line)
+            if m:
+                reg = m.group(1)
+                ofs = align_address(int(m.group(2), 0))
+                if reg in bases:
+                    w = align_address(bases[reg] + ofs)
+                    if skip <= 0:
+                        yield w
                     skip -= 1
                     continue
 
@@ -47620,11 +47642,31 @@ class KernelAddressHeuristicFinder:
         if kversion and kversion >= "5.10":
             return False
 
-        # plan 2 (available v3.11 or later)
-        if kversion and kversion >= "3.11":
+        # plan 2 (available v3.5 or later)
+        if kversion and kversion >= "3.5":
             log_next_idx = KernelAddressHeuristicFinder.get_log_next_idx()
             if log_next_idx:
-                return log_next_idx + 0x10 # u64 + u32 + pad32
+                # static u64 log_first_seq;
+                # static u32 log_first_idx;
+                # static u64 log_next_seq;
+                # static u32 log_next_idx;
+                if is_x86_64() or is_x86_32():
+                    # no reordering, but reverse order:
+                    # - log_next_idx (u32) + padding
+                    # - log_next_seq (u64)
+                    # - log_first_idx (u32) + padding
+                    # - log_first_seq (u64)
+                    return log_next_idx + 0x10
+                elif is_arm64():
+                    # maybe reordering:
+                    # - log_first_seq (u64)
+                    # - log_next_seq (u64)
+                    # - log_next_idx (u32)
+                    # - log_first_idx (u32)
+                    return log_next_idx + 4
+                elif is_arm32():
+                    # It is difficult to implement because there are several unexplainable reordering.
+                    pass
         return None
 
     @staticmethod
@@ -47642,8 +47684,8 @@ class KernelAddressHeuristicFinder:
         if kversion and kversion >= "5.10":
             return False
 
-        # plan 2 (available v3.11 or later)
-        if kversion and kversion >= "3.11":
+        # plan 2 (available v3.5 or later)
+        if kversion and kversion >= "3.5":
             addr = get_ksymaddr("kmsg_dump_rewind_nolock")
             if addr:
                 res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
@@ -47657,7 +47699,10 @@ class KernelAddressHeuristicFinder:
                             KernelAddressHeuristicFinderUtil.aarch64_adrp_add_ldr(res),
                         )
                 elif is_arm32():
-                    g = KernelAddressHeuristicFinderUtil.arm32_movw_movt_ldr(res)
+                    g = itertools.chain(
+                            KernelAddressHeuristicFinderUtil.arm32_movw_movt_ldr(res),
+                            KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative_ldr(res),
+                        )
                 for x in g:
                     v = u32(read_memory(x, 4))
                     if v and v >= 0x1000:
@@ -47679,17 +47724,37 @@ class KernelAddressHeuristicFinder:
         if kversion and kversion >= "5.10":
             return False
 
-        # plan 2 (available v3.11 or later)
-        if kversion and kversion >= "3.11":
+        # plan 2 (available v3.5 or later)
+        if kversion and kversion >= "3.5":
             log_buf_len = KernelAddressHeuristicFinder.get_log_buf_len()
             if log_buf_len:
-                __log_buf = read_int_from_memory(log_buf_len + 4)
-                if is_valid_addr(__log_buf):
-                    return __log_buf
-
-                if is_64bit():
-                    # maybe padding 0
-                    __log_buf = read_int_from_memory(log_buf_len + 8)
+                # static char *log_buf = __log_buf;
+                # static u32 log_buf_len = __LOG_BUF_LEN;
+                if is_32bit():
+                    # pattern1 (x86): log_buf_len -> log_buf
+                    # 0xc1ba30b8|+0x0000|+000: 0x00040000
+                    # 0xc1ba30bc|+0x0004|+001: 0xc1cf7720  ->  0x00000000
+                    # pattern2 (ARM): log_buf -> log_buf_len
+                    # 0xc03d26dc|+0x0000|+000: 0xc03ec9f8  ->  0x00000000
+                    # 0xc03d26e0|+0x0004|+001: 0x00004000
+                    pattern = [4, -4]
+                elif is_64bit():
+                    # pattern1 (x64): log_buf_len -> log_buf
+                    # 0xffffffffaa240720|+0x0000|+000: 0x0000000000020000
+                    # 0xffffffffaa240728|+0x0008|+001: 0xffffffffaa2f87dc  ->  0x0000000000000000
+                    # pattern1 (ARM64): log_buf_len -> log_buf
+                    # 0xffff000011256c68|+0x0000|+000: 0x0000000000020000
+                    # 0xffff000011256c70|+0x0008|+001: 0xffff0000113f5350 <__log_buf>  ->  0x0000000000000000
+                    # pattern2 (x64): log_buf_len -> log_buf (no-padding)
+                    # 0xffffffffa5c476cc|+0x0000|+000: 0xa62e9cf400040000
+                    # 0xffffffffa5c476d4|+0x0008|+001: 0x00000000ffffffff (=0xffffffffa62e9cf4)
+                    # pattern3 (x64): log_buf -> log_buf_len
+                    # 0xffffffff81c1df48|+0x0008|+001: 0xffffffff81d98e20  ->  0x0000000000000000
+                    # 0xffffffff81c1df50|+0x0010|+002: 0xffffffff00040000 (=0x00040000)
+                    pattern = [8, 4, -8]
+                for diff in pattern:
+                    log_buf = log_buf_len + diff
+                    __log_buf = read_int_from_memory(log_buf)
                     if is_valid_addr(__log_buf):
                         return __log_buf
         return None
@@ -47721,17 +47786,20 @@ class KernelAddressHeuristicFinder:
                 elif is_arm64():
                     g = KernelAddressHeuristicFinderUtil.aarch64_adrp_ldr(res)
                 elif is_arm32():
-                    g = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                    g = itertools.chain(
+                        KernelAddressHeuristicFinderUtil.arm32_movw_movt(res),
+                        KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative_ldr(res),
+                    )
                 for x in g:
                     v = u32(read_memory(x, 4))
                     if v and (v & 0xfff) == 0:
                         return x
 
-        # plan 3 (available v3.11 or later)
-        if kversion and kversion >= "3.11":
+        # plan 3 (available v3.5 or later)
+        if kversion and kversion >= "3.5":
             addr = get_ksymaddr("do_syslog")
             if addr:
-                res = gdb.execute("x/100i {:#x}".format(addr), to_string=True)
+                res = gdb.execute("x/300i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
                     g = KernelAddressHeuristicFinderUtil.x64_dword_ptr(res)
                 elif is_x86_32():
@@ -56047,27 +56115,38 @@ class KernelDmesgCommand(GenericCommand):
             if log_first_idx_ptr is None:
                 err("Not found log_first_idx")
                 return
+            if not self.quiet:
+                info("log_first_idx: {:#x}".format(log_first_idx_ptr))
+
             log_next_idx_ptr = KernelAddressHeuristicFinder.get_log_next_idx()
             if log_next_idx_ptr is None:
                 err("Not found log_next_idx")
                 return
+            if not self.quiet:
+                info("log_next_idx: {:#x}".format(log_next_idx_ptr))
+
             log_buf_start = KernelAddressHeuristicFinder.get___log_buf()
             if log_buf_start is None:
                 err("Not found __log_buf")
                 return
+            if not self.quiet:
+                info("__log_buf: {:#x}".format(log_buf_start))
+
             log_buf_len_ptr = KernelAddressHeuristicFinder.get_log_buf_len()
             if log_buf_len_ptr is None:
                 err("Not found log_buf_len")
                 return
-            log_first_idx = read_int_from_memory(log_first_idx_ptr)
-            log_next_idx = read_int_from_memory(log_next_idx_ptr)
+            if not self.quiet:
+                info("log_buf_len: {:#x}".format(log_buf_len_ptr))
+
+            log_first_idx = u32(read_memory(log_first_idx_ptr, 4))
+            log_next_idx = u32(read_memory(log_next_idx_ptr, 4))
             log_buf_len = u32(read_memory(log_buf_len_ptr, 4))
             log_buf_end = log_buf_start + log_buf_len
             if not self.quiet:
-                info("log_first_idx: {:#x}".format(log_first_idx))
-                info("log_next_idx: {:#x}".format(log_next_idx))
-                info("__log_buf: {:#x}".format(log_buf_start))
-                info("log_buf_len: {:#x}".format(log_buf_len))
+                info("*log_first_idx: {:#x}".format(log_first_idx))
+                info("*log_next_idx: {:#x}".format(log_next_idx))
+                info("*log_buf_len: {:#x}".format(log_buf_len))
             self.dump_printk_log_buffer(log_first_idx, log_next_idx, log_buf_start, log_buf_end)
 
         if self.out:
