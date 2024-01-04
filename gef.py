@@ -48897,25 +48897,8 @@ class KernelCurrentCommand(GenericCommand):
         self.offset_comm = None
         return
 
-    def get_cpu_offset(self):
-        if self.cpu_offset:
-            if not self.quiet:
-                info("__per_cpu_offset: {:#x}".format(self.__per_cpu_offset))
-                info("num of cpu: {:d}".format(len(self.cpu_offset)))
-            return self.cpu_offset
-
-        # resolve __per_cpu_offset
-        __per_cpu_offset = KernelAddressHeuristicFinder.get_per_cpu_offset()
-        if __per_cpu_offset is None:
-            if not self.quiet:
-                warn("Failed to resolve `__per_cpu_offset`")
-            return None
-        else:
-            if not self.quiet:
-                info("__per_cpu_offset: {:#x}".format(__per_cpu_offset))
-            self.__per_cpu_offset = __per_cpu_offset
-
-        # resolve each cpu_offset
+    @staticmethod
+    def get_each_cpu_offset(__per_cpu_offset):
         """
         Note that the number of CPUs and the number of threads may not match.
         x64 example:
@@ -48925,7 +48908,7 @@ class KernelCurrentCommand(GenericCommand):
         0xffffffff93980690|+0x0010|+002: 0xffffffff93d0d000
         Therefore, when the same address is repeated, it is considered to be the end.
         """
-        self.cpu_offset = []
+        cpu_offset = []
         i = 0
         while True:
             off = read_int_from_memory(__per_cpu_offset + i * current_arch.ptrsize)
@@ -48938,12 +48921,35 @@ class KernelCurrentCommand(GenericCommand):
             """
             if off == 0:
                 break
-            if len(self.cpu_offset) >= 1 and off == self.cpu_offset[-1]:
-                self.cpu_offset.pop() # remove last one
+            if len(cpu_offset) >= 1 and off == cpu_offset[-1]:
+                cpu_offset.pop() # remove last one
                 break
-            self.cpu_offset.append(off)
+            cpu_offset.append(off)
             i += 1
+        return cpu_offset
 
+    def get_cpu_offset(self):
+        # use cache
+        if self.cpu_offset:
+            if not self.quiet:
+                info("__per_cpu_offset: {:#x}".format(self.__per_cpu_offset))
+                info("num of cpu: {:d}".format(len(self.cpu_offset)))
+            return self.cpu_offset
+
+        # resolve __per_cpu_offset
+        __per_cpu_offset = KernelAddressHeuristicFinder.get_per_cpu_offset()
+
+        # not found
+        if __per_cpu_offset is None:
+            if not self.quiet:
+                warn("Failed to resolve `__per_cpu_offset`")
+            return None
+
+        # found
+        if not self.quiet:
+            info("__per_cpu_offset: {:#x}".format(__per_cpu_offset))
+        self.__per_cpu_offset = __per_cpu_offset
+        self.cpu_offset = KernelCurrentCommand.get_each_cpu_offset(__per_cpu_offset)
         if not self.quiet:
             info("num of cpu: {:d}".format(len(self.cpu_offset)))
         return self.cpu_offset
@@ -54710,12 +54716,7 @@ class KernelTimerCommand(GenericCommand):
         else:
             if not self.quiet:
                 info("__per_cpu_offset: {:#x}".format(__per_cpu_offset))
-            # resolve each cpu_offset
-            num_of_threads = len(gdb.selected_inferior().threads())
-            self.cpu_offset = []
-            for i in range(num_of_threads):
-                off = read_int_from_memory(__per_cpu_offset + i * current_arch.ptrsize)
-                self.cpu_offset.append(off)
+            self.cpu_offset = KernelCurrentCommand.get_each_cpu_offset(__per_cpu_offset)
 
         ### classic timer (unit: tick)
 
@@ -58944,12 +58945,7 @@ class SlubDumpCommand(GenericCommand):
         else:
             if not self.quiet:
                 info("__per_cpu_offset: {:#x}".format(__per_cpu_offset))
-            # resolve each cpu_offset
-            num_of_threads = len(gdb.selected_inferior().threads())
-            self.cpu_offset = []
-            for i in range(num_of_threads):
-                off = read_int_from_memory(__per_cpu_offset + i * current_arch.ptrsize)
-                self.cpu_offset.append(off)
+            self.cpu_offset = KernelCurrentCommand.get_each_cpu_offset(__per_cpu_offset)
 
         # offsetof(kmem_cache, list)
         for candidate_offset in range(current_arch.ptrsize * 2, 0x70, current_arch.ptrsize):
@@ -60579,12 +60575,7 @@ class SlabDumpCommand(GenericCommand):
         else:
             if not self.quiet:
                 info("__per_cpu_offset: {:#x}".format(__per_cpu_offset))
-            # resolve each cpu_offset
-            num_of_threads = len(gdb.selected_inferior().threads())
-            self.cpu_offset = []
-            for i in range(num_of_threads):
-                off = read_int_from_memory(__per_cpu_offset + i * current_arch.ptrsize)
-                self.cpu_offset.append(off)
+            self.cpu_offset = KernelCurrentCommand.get_each_cpu_offset(__per_cpu_offset)
 
         # offsetof(kmem_cache, list)
         kversion = KernelVersionCommand.kernel_version()
