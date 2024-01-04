@@ -43615,7 +43615,7 @@ class KernelMagicCommand(GenericCommand):
                     return
 
         if not is_valid_addr(addr):
-            gef_print("{:42s} {:>{:d}s}".format(sym, "Not found", width))
+            gef_print("{:42s} {:#0{:d}x} [---]               -> Inaccessible".format(sym, addr, width))
             return
 
         perm = get_permission(addr, maps)
@@ -43635,6 +43635,7 @@ class KernelMagicCommand(GenericCommand):
 
     def magic_kernel(self):
         info("Wait for memory scan")
+        kversion = KernelVersionCommand.kernel_version()
 
         kinfo = KernelbaseCommand.get_kernel_base()
         maps = kinfo.maps
@@ -43643,8 +43644,6 @@ class KernelMagicCommand(GenericCommand):
         if maps is None or text_base is None or text_size is None:
             return
         gef_print("{:42s} {:#x} ({:#x} bytes)".format("kernel_base", text_base, text_size))
-
-        kversion = KernelVersionCommand.kernel_version()
 
         gef_print(titlify("Legend"))
         fmt = "{:42s} {:{:d}s} {:5s} (+{:10s}) -> {:{:d}s}"
@@ -46589,6 +46588,10 @@ class KernelAddressHeuristicFinder:
         if not is_x86_64():
             return None
 
+        kversion = KernelVersionCommand.kernel_version()
+        if kversion and kversion < "4.8":
+            return 0xffff880000000000
+
         # plan 1 (from get_page_offset_base)
         page_offset_base = KernelAddressHeuristicFinder.get_page_offset_base()
         if page_offset_base:
@@ -46607,6 +46610,10 @@ class KernelAddressHeuristicFinder:
         if not is_x86_64():
             return None
 
+        kversion = KernelVersionCommand.kernel_version()
+        if kversion and kversion < "4.8":
+            return 0xffffc90000000000
+
         # plan 1 (directly)
         if KernelAddressHeuristicFinder.USE_DIRECTLY:
             vmalloc_base = get_ksymaddr("vmalloc_base")
@@ -46618,8 +46625,6 @@ class KernelAddressHeuristicFinder:
         if page_offset_base:
             vmalloc_base = page_offset_base - current_arch.ptrsize
             return read_int_from_memory(vmalloc_base)
-
-        kversion = KernelVersionCommand.kernel_version()
 
         # plan 3 (from vmalloc-dump)
         if kversion and kversion >= "5.2":
@@ -46677,6 +46682,10 @@ class KernelAddressHeuristicFinder:
     def get_vmemmap(from_slub_dump=False):
         if not is_x86_64():
             return None
+
+        kversion = KernelVersionCommand.kernel_version()
+        if kversion and kversion < "4.8":
+            return 0xffffea0000000000
 
         # plan 1 (directly)
         if KernelAddressHeuristicFinder.USE_DIRECTLY:
