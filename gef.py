@@ -3464,6 +3464,11 @@ def get_source(function):
     return s.rstrip()
 
 
+def log2(x):
+    import math
+    return int(math.log2(x))
+
+
 def titlify(text, color=None, msg_color=None):
     """Print a centered title."""
     cols = get_terminal_size()[1]
@@ -74043,8 +74048,7 @@ class PagewalkArm64Command(PagewalkCommand):
             return
         region_start = 0
         region_end = region_start + (2 ** (64 - T0SZ))
-        import math
-        region_bits = int(math.log2(region_end - region_start))
+        region_bits = log2(region_end - region_start)
         page_size = 2 ** (granule_bits - 10)
         intermediate_pa_size = 32 + (IPS * 4)
 
@@ -74092,8 +74096,7 @@ class PagewalkArm64Command(PagewalkCommand):
             return
         region_end = 2 ** 64
         region_start = region_end - (2 ** (64 - T1SZ))
-        import math
-        region_bits = int(math.log2(region_end - region_start))
+        region_bits = log2(region_end - region_start)
         page_size = 2 ** (granule_bits - 10)
         intermediate_pa_size = 32 + (IPS * 4)
 
@@ -74146,8 +74149,7 @@ class PagewalkArm64Command(PagewalkCommand):
             return
         region_start = 0
         region_end = region_start + (2 ** (64 - T0SZ))
-        import math
-        region_bits = int(math.log2(region_end - region_start))
+        region_bits = log2(region_end - region_start)
         page_size = 2 ** (granule_bits - 10)
         pa_size = 32 + (PS * 4)
 
@@ -74264,8 +74266,7 @@ class PagewalkArm64Command(PagewalkCommand):
             return
         region_start = 0
         region_end = region_start + (2 ** (64 - T0SZ))
-        import math
-        region_bits = int(math.log2(region_end - region_start))
+        region_bits = log2(region_end - region_start)
         page_size = 2 ** (granule_bits - 10)
         if self.EL2_E2H:
             intermediate_pa_size = 32 + (IPS * 4)
@@ -74329,8 +74330,7 @@ class PagewalkArm64Command(PagewalkCommand):
             return
         region_end = 2 ** 64
         region_start = region_end - (2 ** (64 - T1SZ))
-        import math
-        region_bits = int(math.log2(region_end - region_start))
+        region_bits = log2(region_end - region_start)
         page_size = 2 ** (granule_bits - 10)
         intermediate_pa_size = 32 + (IPS * 4)
 
@@ -74378,8 +74378,7 @@ class PagewalkArm64Command(PagewalkCommand):
             return
         region_start = 0
         region_end = region_start + (2 ** (64 - T0SZ))
-        import math
-        region_bits = int(math.log2(region_end - region_start))
+        region_bits = log2(region_end - region_start)
         page_size = 2 ** (granule_bits - 10)
         pa_size = 32 + (PS * 4)
 
@@ -75257,8 +75256,7 @@ class Page2VirtCommand(GenericCommand):
             T1SZ = (get_register("$TCR_EL1") >> 16) & 0b111111
             region_end = 2 ** 64
             region_start = region_end - (2 ** (64 - T1SZ))
-            import math
-            region_bits = int(math.log2(region_end - region_start))
+            region_bits = log2(region_end - region_start)
 
             ID_AA64MMFR2_EL1 = get_register("$ID_AA64MMFR2_EL1")
             if ID_AA64MMFR2_EL1 is not None:
