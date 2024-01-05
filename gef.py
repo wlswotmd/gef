@@ -58816,7 +58816,9 @@ class SlubDumpCommand(GenericCommand):
     _note_ += "                                |\n"
     _note_ += "                                v\n"
     _note_ += "                               ...\n"
-    _note_ += "If all chunks in certain page are in use, they will not be displayed since they cannot be reached from slab_caches."
+    _note_ += "* If all chunks in certain page are in use, they will not be displayed this command.\n"
+    _note_ += "  This because they cannot be reached by parsing from slab_caches.\n"
+    _note_ += "  So use `slub-contains` (if you know the address) or `pagewalk-with-hints` (if you'd to know the whole even if it takes time)."
 
     def __init__(self, *args, **kwargs):
         super().__init__()
@@ -59811,7 +59813,7 @@ class SlubTinyDumpCommand(GenericCommand):
     _note_ += "    +-----------------+       +---------+  +---------+\n"
     _note_ += "    |\n"
     _note_ += "    v\n"
-    _note_ += "     ...\n"
+    _note_ += "   ...\n"
 
     def __init__(self, *args, **kwargs):
         super().__init__()
