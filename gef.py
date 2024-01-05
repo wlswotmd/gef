@@ -80482,14 +80482,14 @@ def main():
         err("GDB is too old. Try upgrading it.")
         return
 
+    # create tmp dir
+    if not os.path.exists(GEF_TEMP_DIR):
+        os.mkdir(GEF_TEMP_DIR)
+
     # When using a python virtual environment (pyenv, venv, etc.), GDB still loads the system-installed python,
     # so GEF doesn't load site-packages dir from environment. In order to fix it, from the shell we run the python3 binary,
     # take and parse its path, add the path to the current python process.
     fix_venv()
-
-    # create tmp dir
-    if not os.path.exists(GEF_TEMP_DIR):
-        os.mkdir(GEF_TEMP_DIR)
 
     # setup prompt
     gdb.prompt_hook = __gef_prompt__
