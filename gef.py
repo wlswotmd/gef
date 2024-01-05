@@ -64146,7 +64146,7 @@ class KernelDmaBufCommand(GenericCommand):
 
         kversion = KernelVersionCommand.kernel_version()
         if kversion < "5.11":
-            err("Unsupported (kernel is too old)")
+            err("Unsupported v5.10 or before")
             return
 
         ret = self.initialize()
