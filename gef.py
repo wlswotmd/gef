@@ -61711,7 +61711,7 @@ class SlubContainsCommand(GenericCommand):
         self.initialized = True
         return True
 
-    def virt2page(self, vaddr):
+    def virt2page_wrapper(self, vaddr):
         ret = gdb.execute("virt2page {:#x}".format(vaddr), to_string=True)
         r = re.search(r"Page: (\S+)", ret)
         if r:
@@ -61751,7 +61751,7 @@ class SlubContainsCommand(GenericCommand):
         kversion = KernelVersionCommand.kernel_version()
         try:
             while True:
-                page = self.virt2page(current)
+                page = self.virt2page_wrapper(current)
                 if page is None:
                     if not args.quiet:
                         err("Invalid address")
@@ -62093,7 +62093,7 @@ class BuddyDumpCommand(GenericCommand):
         self.initialized = True
         return True
 
-    def page2virt(self, page):
+    def page2virt_wrapper(self, page):
         ret = gdb.execute("page2virt {:#x}".format(page), to_string=True)
         r = re.search(r"Virt: (\S+)", ret)
         if r:
@@ -62121,7 +62121,7 @@ class BuddyDumpCommand(GenericCommand):
             page_str = Color.colorify("{:#0{:d}x}".format(page, align), freed_address_color)
 
             # address info
-            virt = self.page2virt(page)
+            virt = self.page2virt_wrapper(page)
             phys = None
             if virt:
                 phys = Virt2PhysCommand.v2p(virt, self.maps)
@@ -62246,7 +62246,7 @@ class BuddyDumpCommand(GenericCommand):
 
                 # sort_verbose
                 if prev_page is None:
-                    virt = self.page2virt(page)
+                    virt = self.page2virt_wrapper(page)
                     if virt:
                         phys = Virt2PhysCommand.v2p(virt, self.maps)
                         if phys:
@@ -62577,7 +62577,7 @@ class KernelPipeCommand(GenericCommand):
             info("sizeof(pipe_buffer): {:#x}".format(self.sizeof_pipe_buffer))
         return pipe_files
 
-    def page2virt(self, page):
+    def page2virt_wrapper(self, page):
         ret = gdb.execute("page2virt {:#x}".format(page), to_string=True)
         r = re.search(r"Virt: (\S+)", ret)
         if r:
@@ -62652,7 +62652,7 @@ class KernelPipeCommand(GenericCommand):
                 offset = u32(read_memory(base + self.offset_offset, 4))
                 len_ = u32(read_memory(base + self.offset_len, 4))
                 flags = u32(read_memory(base + self.offset_flags, 4))
-                virt = self.page2virt(page)
+                virt = self.page2virt_wrapper(page)
 
                 if idx in used_range:
                     status = Color.colorify("used", used_address_color)
@@ -75257,13 +75257,14 @@ class PagewalkWithHintsCommand(GenericCommand):
 
 
 @register_command
-class Page2VirtCommand(GenericCommand):
-    """Transfer from page to one of virtual address."""
-    _cmdline_ = "page2virt"
+class PageCommand(GenericCommand):
+    """The base command for converting virtual addresses and physical addresses from page."""
+    _cmdline_ = "page"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("page", metavar="PAGE", type=parse_address, help="the page address you want to translate.")
+    parser.add_argument("mode", choices=["to-virt", "to-phys", "from-virt", "from-phys"], help="conversion mode.")
+    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="the address to convert.")
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use map cache.")
     _syntax_ = parser.format_help()
 
@@ -75287,8 +75288,7 @@ class Page2VirtCommand(GenericCommand):
         self.maps = None
         return
 
-    @staticmethod
-    def v2p_fast(vaddr):
+    def v2p_fast(self, vaddr):
         # v2p is slow since it needs maps parsing for each time.
         # more faster using gva2gpa if available.
         ret = gdb.execute("monitor gva2gpa {:#x}".format(vaddr), to_string=True)
@@ -75360,7 +75360,7 @@ class Page2VirtCommand(GenericCommand):
                 return None
 
             # virt -> phys
-            paddr = Page2VirtCommand.v2p_fast(vaddr)
+            paddr = self.v2p_fast(vaddr)
             if paddr is None:
                 return False
             # phys -> pfn
@@ -75436,8 +75436,10 @@ class Page2VirtCommand(GenericCommand):
                     vaddr = vstart + offset
                     vaddrs.append(vaddr)
             return vaddrs
+
         elif is_x86_32():
             pass
+
         elif is_arm64():
             kversion = KernelVersionCommand.kernel_version()
             if kversion < "5.4":
@@ -75452,19 +75454,23 @@ class Page2VirtCommand(GenericCommand):
             else:
                 err("Address in invalid range")
                 return None
+
         elif is_arm32():
             pass
+
         return None
 
     def virt2page(self, vaddr):
         if is_x86_64():
-            paddr = Page2VirtCommand.v2p_fast(vaddr)
+            paddr = self.v2p_fast(vaddr)
             if paddr is None:
                 return None
             pfn = paddr >> self.SHIFT_SIZE
             return (pfn * self.sizeof_struct_page) + self.vmemmap
+
         elif is_x86_32():
             pass
+
         elif is_arm64():
             kversion = KernelVersionCommand.kernel_version()
             if kversion < "5.4":
@@ -75479,14 +75485,16 @@ class Page2VirtCommand(GenericCommand):
             else:
                 err("Address in invalid range")
                 return None
+
         elif is_arm32():
             pass
+
         return None
 
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_specific_arch(arch=("x86_64", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
@@ -75508,19 +75516,110 @@ class Page2VirtCommand(GenericCommand):
                 err("Failed to initialize")
                 return
 
-        vaddrs = self.page2virts(args.page)
-        if vaddrs is None:
-            err("Failed to resolve")
-            return
+        out = []
+        # doit
+        if args.mode == "to-virt":
+            # page (-> phys) -> multiple virts
 
-        for vaddr in vaddrs:
-            gef_print("Page: {:#x} -> Virt: {:#x}".format(args.page, vaddr))
+            # A page may be associated with multiple virtual addresses.
+            vaddrs = self.page2virts(args.address)
+            if vaddrs is None:
+                err("Failed to resolve")
+                return
+            for vaddr in vaddrs:
+                out.append("Page: {:#x} -> Virt: {:#x}".format(args.address, vaddr))
+
+        elif args.mode == "to-phys":
+            # page (-> phys) -> multiple virts -> multiple phys -> uniq
+
+            # A page may be associated with multiple virtual addresses.
+            vaddrs = self.page2virts(args.address)
+            if vaddrs is None:
+                err("Failed to resolve")
+                return
+
+            # Get the physical addresses pointed to by those virtual addresses.
+            # The assumption is that there should be one, but just to be sure, all different values will be displayed.
+            for vaddr in vaddrs:
+                paddr = self.v2p_fast(vaddr)
+                if not paddr:
+                    err("Failed to resolve")
+                    return
+                msg = "Page: {:#x} -> Phys: {:#x}".format(args.address, paddr)
+                if msg not in out:
+                    out.append(msg)
+
+        elif args.mode == "from-virt":
+            # virt (-> phys) -> page
+
+            vaddr = args.address
+            if args.address & 0xfff:
+                warn("The address must be 0x1000 aligned, round down and then calculate.")
+                vaddr = args.address & gef_getpagesize_mask_high()
+
+            # A virtual address is always associated with one physical address.
+            page = self.virt2page(vaddr)
+            if page is None:
+                err("Failed to resolve")
+                return
+            out.append("Virt: {:#x} -> Page: {:#x}".format(vaddr, page))
+
+        elif args.mode == "from-phys":
+            # phys -> multiple virts (-> each phys) -> each pages -> uniq
+
+            paddr = args.address
+            if args.address & 0xfff:
+                warn("The address must be 0x1000 aligned, round down and then calculate.")
+                paddr = args.address & gef_getpagesize_mask_high()
+
+            ret = gdb.execute("p2v {:#x}".format(paddr), to_string=True)
+            r = re.findall(r"Phys: 0x\S+ -> Virt: (0x\S+)", ret)
+            if not r:
+                err("Failed to resolve")
+                return
+
+            for vaddr in r:
+                # A virtual address is always associated with one page.
+                vaddr = int(vaddr, 16)
+                page = self.virt2page(vaddr)
+                if page is None:
+                    err("Failed to resolve")
+                    return
+                # The assumption is that there should be one, but just to be sure, all different values will be displayed.
+                msg = "Phys: {:#x} -> Page: {:#x}".format(paddr, page)
+                if msg not in out:
+                    out.append(msg)
+
+        gef_print("\n".join(out))
         return
 
 
 @register_command
-class Virt2PageCommand(Page2VirtCommand):
-    """Transfer from virtual address to page."""
+class Page2VirtCommand(GenericCommand):
+    """Transfer from page to virtual address (shortcut for `page to-virt ...`)."""
+    _cmdline_ = "page2virt"
+    _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("page", metavar="ADDRESS", type=parse_address, help="the page address you want to translate.")
+    parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_64", "ARM64"))
+    @only_if_in_kernel
+    def do_invoke(self, args):
+        self.dont_repeat()
+        rstr = "-r" if args.reparse else ""
+        gdb.execute("page to-virt {:s} {:#x}".format(rstr, args.page))
+        return
+
+
+@register_command
+class Virt2PageCommand(GenericCommand):
+    """Transfer from virtual address to page (shortcut for `page from-virt ...`)."""
     _cmdline_ = "virt2page"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -75532,103 +75631,41 @@ class Virt2PageCommand(Page2VirtCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_specific_arch(arch=("x86_64", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
-
-        if args.reparse:
-            self.initialized = False
-            self.maps = None
-
-        if is_arm64():
-            kversion = KernelVersionCommand.kernel_version()
-            if kversion < "4.7":
-                err("Unsupported (kernel is too old)")
-                return
-
-        virt = args.virt
-        if args.virt & 0xfff:
-            warn("The address must be 0x1000 aligned, round down and then calculate.")
-            virt = args.virt & gef_getpagesize_mask_high()
-
-        if not self.initialized:
-            info("Wait for memory scan")
-            ret = self.initialize()
-            if ret is False:
-                err("Failed to initialize")
-                return
-
-        page = self.virt2page(virt)
-        if page is None:
-            err("Failed to resolve")
-            return
-
-        gef_print("Virt: {:#x} -> Page: {:#x}".format(virt, page))
+        rstr = "-r" if args.reparse else ""
+        gdb.execute("page from-virt {:s} {:#x}".format(rstr, args.virt))
         return
 
 
 @register_command
-class Page2PhysCommand(Page2VirtCommand):
-    """Transfer from page to physical address."""
+class Page2PhysCommand(GenericCommand):
+    """Transfer from page to physical address (shortcut for `page to-phys ...`)."""
     _cmdline_ = "page2phys"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("page", metavar="PAGE", type=parse_address, help="the page address you want to translate.")
+    parser.add_argument("page", metavar="ADDRESS", type=parse_address, help="the page address you want to translate.")
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
     _syntax_ = parser.format_help()
 
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_specific_arch(arch=("x86_64", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
-
-        if args.reparse:
-            self.initialized = False
-            self.maps = None
-
-        if is_arm64():
-            kversion = KernelVersionCommand.kernel_version()
-            if kversion < "4.7":
-                err("Unsupported (kernel is too old)")
-                return
-
-        if not self.initialized:
-            info("Wait for memory scan")
-            ret = self.initialize()
-            if ret is False:
-                err("Failed to initialize")
-                return
-
-        vaddrs = self.page2virts(args.page)
-        if vaddrs is None:
-            err("Failed to resolve")
-            return
-
-        out = []
-        for vaddr in vaddrs:
-            ret = gdb.execute("v2p {:#x}".format(vaddr), to_string=True)
-            r = re.search(r"Virt: 0x\S+ -> Phys: (0x\S+)", ret)
-            if not r:
-                err("Failed to resolve")
-                return
-            paddr = int(r.group(1), 16)
-
-            msg = "Page: {:#x} -> Phys: {:#x}".format(args.page, paddr)
-            if msg not in out:
-                out.append(msg)
-
-        gef_print("\n".join(out))
+        rstr = "-r" if args.reparse else ""
+        gdb.execute("page to-phys {:s} {:#x}".format(rstr, args.page))
         return
 
 
 @register_command
-class Phys2PageCommand(Page2VirtCommand):
-    """Transfer from physical address to page."""
+class Phys2PageCommand(GenericCommand):
+    """Transfer from physical address to page (shortcut for `page from-phys ...`)."""
     _cmdline_ = "phys2page"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -75640,46 +75677,12 @@ class Phys2PageCommand(Page2VirtCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_specific_arch(arch=("x86_64", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
-
-        if args.reparse:
-            self.initialized = False
-            self.maps = None
-
-        if is_arm64():
-            kversion = KernelVersionCommand.kernel_version()
-            if kversion < "4.7":
-                err("Unsupported (kernel is too old)")
-                return
-
-        phys = args.phys
-        if args.phys & 0xfff:
-            warn("The address must be 0x1000 aligned, round down and then calculate.")
-            phys = args.phys & gef_getpagesize_mask_high()
-
-        if not self.initialized:
-            info("Wait for memory scan")
-            ret = self.initialize()
-            if ret is False:
-                err("Failed to initialize")
-                return
-
-        ret = gdb.execute("p2v {:#x}".format(phys), to_string=True)
-        r = re.search(r"Phys: 0x\S+ -> Virt: (0x\S+)", ret)
-        if not r:
-            err("Failed to resolve")
-            return
-        vaddr = int(r.group(1), 16)
-
-        page = self.virt2page(vaddr)
-        if page is None:
-            err("Failed to resolve")
-            return
-
-        gef_print("Phys: {:#x} -> Page: {:#x}".format(phys, page))
+        rstr = "-r" if args.reparse else ""
+        gdb.execute("page from-phys {:s} {:#x}".format(rstr, args.phys))
         return
 
 
