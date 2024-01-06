@@ -59741,6 +59741,9 @@ class SlubDumpCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
+        if not args.quiet:
+            info("Wait for memory scan")
+
         if is_x86_64() and not self.initialized and not args.skip_page2virt:
             # The slub-dump command is also called by page2virt and kmagic to determine vmemmap and sizeof(struct page).
             # Therefore, slub-dump itself may be called recursively (up to once) from slub-dump.
@@ -59766,9 +59769,6 @@ class SlubDumpCommand(GenericCommand):
             self.swap = None
         else:
             self.swap = not args.no_byte_swap
-
-        if not self.quiet:
-            info("Wait for memory scan")
 
         allocator = KernelChecksecCommand.get_slab_type()
         if allocator != "SLUB":
@@ -60393,6 +60393,9 @@ class SlubTinyDumpCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
+        if not args.quiet:
+            info("Wait for memory scan")
+
         if is_x86_64() and not self.initialized and not args.skip_page2virt:
             # The slub-tiny-dump command is also called by page2virt and kmagic to determine vmemmap and sizeof(struct page).
             # Therefore, slub-tiny-dump itself may be called recursively (up to once) from slub-tiny-dump.
@@ -60405,9 +60408,6 @@ class SlubTinyDumpCommand(GenericCommand):
         self.meta = args.meta
         self.quiet = args.quiet
         self.skip_page2virt = args.skip_page2virt
-
-        if not self.quiet:
-            info("Wait for memory scan")
 
         allocator = KernelChecksecCommand.get_slab_type()
         if allocator != "SLUB_TINY":
