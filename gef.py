@@ -60437,6 +60437,14 @@ class SlabDumpCommand(GenericCommand):
     parser.add_argument("--skip-partial", action="store_true", help="skip displaying slabs_partial.")
     parser.add_argument("--skip-full", action="store_true", help="skip displaying slabs_full.")
     parser.add_argument("--skip-free", action="store_true", help="skip displaying slabs_free.")
+    parser.add_argument("--hexdump-used", type=lambda x: int(x, 16), default=0,
+                        help="hexdump `used chunks` if layout is resolved.")
+    parser.add_argument("--hexdump-freed", type=lambda x: int(x, 16), default=0,
+                        help="hexdump `unused (freed) chunks` if layout is resolved.")
+    parser.add_argument("--telescope-used", type=lambda x: int(x, 16), default=0,
+                        help="telescope `used chunks` if layout is resolved.")
+    parser.add_argument("--telescope-freed", type=lambda x: int(x, 16), default=0,
+                        help="telescope `unused (freed) chunks` if layout is resolved.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
@@ -61069,10 +61077,35 @@ class SlabDumpCommand(GenericCommand):
             else:
                 if kmem_cache["objperslab"] <= idx:
                     next_msg = "never-used"
+                elif chunk in kmem_cache["array_cache"]["freelist"]:
+                    next_msg = "in-use but array_cache"
                 else:
                     next_msg = "in-use"
                 chunk_s = Color.colorify("{:#x}".format(chunk), used_address_color)
             self.out.append("        {:7s}   {:#04x} {:s} ({:s})".format("layout:" if idx == 0 else "", idx, chunk_s, next_msg))
+
+            # dump chunks
+            if self.hexdump_used_size and next_msg == "in-use":
+                peeked_data = read_memory(chunk, self.hexdump_used_size)
+                h = hexdump(peeked_data, 0x10, base=chunk, unit=current_arch.ptrsize)
+                self.out.append(h)
+
+            if self.hexdump_freed_size and next_msg.startswith(("next: ", "in-use but")):
+                peeked_data = read_memory(chunk, self.hexdump_freed_size)
+                h = hexdump(peeked_data, 0x10, base=chunk, unit=current_arch.ptrsize)
+                self.out.append(h)
+
+            if self.telescope_used_size and next_msg == "in-use":
+                n = self.telescope_used_size // current_arch.ptrsize
+                for i in range(n):
+                    line = DereferenceCommand.pprint_dereferenced(chunk, i)
+                    self.out.append(line)
+
+            if self.telescope_freed_size and next_msg.startswith(("next: ", "in-use but")):
+                n = self.telescope_freed_size // current_arch.ptrsize
+                for i in range(n):
+                    line = DereferenceCommand.pprint_dereferenced(chunk, i)
+                    self.out.append(line)
 
         # print freelist
         if freelist == []:
@@ -61211,6 +61244,10 @@ class SlabDumpCommand(GenericCommand):
         self.skip_partial = args.skip_partial
         self.skip_full = args.skip_full
         self.skip_free = args.skip_free
+        self.hexdump_used_size = args.hexdump_used
+        self.hexdump_freed_size = args.hexdump_freed
+        self.telescope_used_size = args.telescope_used
+        self.telescope_freed_size = args.telescope_freed
         self.quiet = args.quiet
 
         if not self.quiet:
