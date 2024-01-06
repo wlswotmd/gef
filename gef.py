@@ -54097,7 +54097,8 @@ class KernelSysctlCommand(GenericCommand):
                 struct ctl_dir *parent;
                 struct ctl_node *node;
                 struct hlist_head inodes;                 // 4.12.2 <= kernel
-                struct list_head inodes;                  // 4.11-rc1 <= kernel < 4.12.2
+                struct list_head inodes;                  // 4.11 <= kernel < 4.12.2
+                struct hlist_head inodes;                 // 4.9.120 <= kernel < 4.10
             } header;
             struct rb_root {
                 struct rb_node *rb_node;
@@ -54130,7 +54131,9 @@ class KernelSysctlCommand(GenericCommand):
 
         if is_64bit():
             # struct ctl_dir
-            if kversion < "4.11":
+            if kversion >= "4.9.120" and kversion < "4.10":
+                self.OFFSET_rb_node = 0x50
+            elif kversion < "4.11":
                 self.OFFSET_rb_node = 0x48
             elif kversion < "4.12.2":
                 self.OFFSET_rb_node = 0x58
@@ -54144,7 +54147,9 @@ class KernelSysctlCommand(GenericCommand):
             self.SIZEOF_ctl_table = 0x40
         else:
             # struct ctl_dir
-            if kversion < "4.11":
+            if kversion >= "4.9.120" and kversion < "4.10":
+                self.OFFSET_rb_node = 0x2c
+            elif kversion < "4.11":
                 self.OFFSET_rb_node = 0x28
             elif kversion < "4.12.2":
                 self.OFFSET_rb_node = 0x30
