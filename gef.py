@@ -1750,7 +1750,6 @@ class Instruction:
         self.opcodes = opcodes
         return
 
-    RE_SPLIT_LOCATION = re.compile(r"<(.+)\+(\d+)>")
     RE_SPLIT_LAST_OPERAND_X86_64 = re.compile(r"(.*?)\s+(#.+)$")
     RE_SPLIT_LAST_OPERAND_ARM64 = re.compile(r"//.+$")
     RE_SPLIT_LAST_OPERAND_ARM32 = re.compile(r";.+$")
@@ -1798,12 +1797,6 @@ class Instruction:
 
         # format location
         location = self.smartify_text(self.location)
-        if not location:
-            location = "<NO_SYMBOL>"
-        else:
-            r = self.RE_SPLIT_LOCATION.search(location) # r"<(.+)\+(\d+)>"
-            if r:
-                location = "<{}+{:#x}>".format(r.group(1), int(r.group(2)))
 
         # format mnemonic
         if current_arch.is_syscall(self):
@@ -3764,8 +3757,8 @@ RE_GET_LOCATION_GDB13 = re.compile(r"^0x[0-9a-f]+ <(.*?)(\+[0-9]+)?>$")
 
 # `info symbol` called from __gdb_get_location is heavy processing.
 # Moreover, dereference_from causes each address to be resolved every time.
-# functools.lru_cache() is not effective as-is, as it is cleared by reset_gef_caches() each time you stepi runs.
-# Fortunately, symbol information is rarely changes.
+# functools.lru_cache() is not effective as-is, as it is cleared by reset_gef_caches() each time the `stepi` runs.
+# Fortunately, symbol information rarely changes.
 # I decided to make it a cache clear mechanism independent of reset_gef_caches().
 @functools.lru_cache(maxsize=None)
 def __gdb_get_location(address):
@@ -3939,8 +3932,7 @@ def gdb_disassemble(start_pc, **kwargs):
         else:
             mnemo, operands = asm[0], []
 
-        loc = gdb_get_location(address)
-        location = "<{}+{}>".format(*loc) if loc else ""
+        location = get_symbol_string(address, nosymbol_string="<NO_SYMBOL>")
 
         if is_arm32() and insn["addr"] & 1:
             opcodes = read_memory(insn["addr"] - 1, insn["length"])
@@ -4078,8 +4070,7 @@ def capstone_disassemble(location, nb_insn, **kwargs):
     `addr` using the Capstone-Engine disassembler, if available.
     Return an iterator of Instruction objects."""
     def cs_insn_to_gef_insn(cs_insn):
-        sym_info = gdb_get_location(cs_insn.address)
-        loc = "<{}+{}>".format(*sym_info) if sym_info else ""
+        loc = get_symbol_string(cs_insn.address, nosymbol_string="<NO_SYMBOL>")
         ops = [] + cs_insn.op_str.split(", ")
         return Instruction(cs_insn.address, loc, cs_insn.mnemonic, ops, cs_insn.bytes)
 
@@ -10963,7 +10954,7 @@ def get_process_maps_linux(pid, remote=False):
 
 # __get_explored_regions (used at qemu-user mode) is very slow,
 # Because it repeats read_memory many times to find the upper and lower bounds of the page.
-# functools.lru_cache() is not effective as-is, as it is cleared by reset_gef_caches() each time the stepi runs.
+# functools.lru_cache() is not effective as-is, as it is cleared by reset_gef_caches() each time the `stepi` runs.
 # Fortunately, memory maps rarely change.
 # I decided to make it a cache clear mechanism independent of reset_gef_caches() and
 # introduce a mechanism to forcibly clear it with calling vmmap command.
@@ -11353,8 +11344,8 @@ def get_process_maps(outer=False):
 
 # `info files` called from __get_info_files is heavy processing.
 # Moreover, dereference_from causes each address to be resolved every time.
-# functools.lru_cache() is not effective as-is, as it is cleared by reset_gef_caches() each time you stepi runs.
-# Fortunately, zone information is rarely changes.
+# functools.lru_cache() is not effective as-is, as it is cleared by reset_gef_caches() each time the `stepi` runs.
+# Fortunately, zone information rarely changes.
 # I decided to make it a cache clear mechanism independent of reset_gef_caches().
 @functools.lru_cache(maxsize=None)
 def __get_info_files():
@@ -12374,7 +12365,7 @@ def get_auxiliary_walk(offset=0):
 
 # __gef_get_auxiliary_values (under qemu-user mode) is very slow,
 # Because it may call __get_auxiliary_walk that repeats read_memory many times to find the auxv value.
-# functools.lru_cache() is not effective as-is, as it is cleared by reset_gef_caches() each time you stepi runs.
+# functools.lru_cache() is not effective as-is, as it is cleared by reset_gef_caches() each time the `stepi` runs.
 # Fortunately, auxv rarely changes.
 # I decided to make it a cache clear mechanism independent of reset_gef_caches().
 @functools.lru_cache(maxsize=512)
@@ -24225,6 +24216,7 @@ class ContextCommand(GenericCommand):
         nb_insn_prev = self.get_setting("nb_lines_code_prev")
         use_capstone = self.get_setting("use_capstone")
         show_opcodes_size = self.get_setting("show_opcodes_size")
+        padding = " " * len(RIGHT_ARROW[1:])
 
         if current_arch is None and is_remote_debug():
             self.context_title("code")
@@ -24254,14 +24246,18 @@ class ContextCommand(GenericCommand):
             is_taken = False
             target = None
             delay_slot = None
+
+            # bp prefix
             if self.addr_has_breakpoint(insn.address, bp_locations):
                 bp_prefix = Color.redify(BP_GLYPH)
             else:
                 bp_prefix = " "
 
+            # insn to string
             if show_opcodes_size == 0:
                 text = str(insn)
             else:
+                # coloring by address against pc
                 if insn.address < pc:
                     insn_fmt = "{{:{}p}}".format(show_opcodes_size)
                 elif insn.address == pc:
@@ -24270,23 +24266,24 @@ class ContextCommand(GenericCommand):
                     insn_fmt = "{{:{}o}}".format(show_opcodes_size)
                 text = insn_fmt.format(insn)
 
-            # coloring by address against pc
-            if insn.address < pc:
-                line += "{}{}{}".format(bp_prefix, " " * len(RIGHT_ARROW[1:]), text)
+            # bp prefix and branch info
+            if insn.address != pc:
+                line += "{}{}{}".format(bp_prefix, padding, text)
 
             elif insn.address == pc:
                 line += "{}{}{}".format(bp_prefix, RIGHT_ARROW[1:], text)
 
+                # branch info
                 if current_arch.is_conditional_branch(insn):
                     is_taken, reason = current_arch.is_branch_taken(insn)
                     if is_taken:
                         target = self.get_branch_addr(insn)
                         reason = "[Reason: {:s}]".format(reason) if reason else ""
-                        line += Color.colorify("\tTAKEN {:s}".format(reason), "bold green")
+                        line += "\t" + Color.colorify("TAKEN {:s}".format(reason), "bold green")
                         delay_slot = current_arch.has_delay_slot
                     else:
                         reason = "[Reason: !({:s})]".format(reason) if reason else ""
-                        line += Color.colorify("\tNOT taken {:s}".format(reason), "bold red")
+                        line += "\t" + Color.colorify("NOT taken {:s}".format(reason), "bold red")
                 elif current_arch.is_jump(insn):
                     target = self.get_branch_addr(insn)
                     delay_slot = current_arch.has_delay_slot
@@ -24299,9 +24296,6 @@ class ContextCommand(GenericCommand):
 
                 if is_arc32() or is_arc64():
                     delay_slot = insn.mnemonic.endswith(".d") or insn.mnemonic.endswith(".d.nt")
-
-            else:
-                line += "{}{}{}".format(bp_prefix, " " * len(RIGHT_ARROW[1:]), text)
 
             # comment
             if insn.address in __context_comments__:
@@ -24320,14 +24314,12 @@ class ContextCommand(GenericCommand):
                         else:
                             insn_fmt = "{{:{}o}}".format(show_opcodes_size)
                             text = insn_fmt.format(next_insn)
-                        text = "{}{}{}".format(bp_prefix, " " * len(RIGHT_ARROW[1:]), text)
-                        text += Color.colorify("\t Maybe delay-slot", "bold yellow")
+                        text = "{}{}{}\t{}".format(bp_prefix, padding, text, Color.colorify("Maybe delay-slot", "bold yellow"))
                         gef_print(text)
                 except Exception:
                     pass
 
                 # branch target address
-                once = 0
                 try:
                     for i, tinsn in enumerate(instruction_iterator(target, nb_insn)):
                         if show_opcodes_size == 0:
@@ -24335,13 +24327,13 @@ class ContextCommand(GenericCommand):
                         else:
                             insn_fmt = "{{:{}o}}".format(show_opcodes_size)
                             text = insn_fmt.format(tinsn)
-                        text = "   {} {}".format(RIGHT_ARROW[1:-1] if i == 0 else "  ", text)
-                        if once == 0:
-                            gef_print("")
-                            once = 1
+                        if i == 0:
+                            gef_print("") # need blank line
+                            text = "   {} {}".format(RIGHT_ARROW[1:-1], text)
+                        else:
+                            text = "   {} {}".format("  ", text)
                         gef_print(text)
-                    if once == 1:
-                        gef_print("")
+                    gef_print("") # need blank line
                 except Exception:
                     pass
 
@@ -27191,12 +27183,9 @@ class XInfoCommand(GenericCommand):
             zone_start = lookup_address(addr.info.zone_start)
             gef_print("Offset (from segment): {!s} ({:s}) + {:#x}".format(zone_start, addr.info.name, addr.value - addr.info.zone_start))
 
-        sym = gdb_get_location(address)
+        sym = get_symbol_string(address)
         if sym:
-            name, offset = sym
-            msg = "Symbol:                {:s}".format(name)
-            if offset:
-                msg += "+{:#x}".format(offset)
+            msg = "Symbol:                {:s}".format(sym.strip())
             gef_print(msg)
 
         if addr.section and addr.section.inode:
