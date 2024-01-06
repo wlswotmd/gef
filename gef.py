@@ -64496,7 +64496,8 @@ class KsymaddrRemoteCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("keyword", metavar="KEYWORD", nargs="*", help="filter by specific symbol name.")
-    parser.add_argument("--exact", action="store_true", help="use exact match.")
+    parser.add_argument("-t", "--type", action="append", default=[], help="filter by symbol type.")
+    parser.add_argument("-e", "--exact", action="store_true", help="use exact match.")
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
@@ -64589,22 +64590,30 @@ class KsymaddrRemoteCommand(GenericCommand):
             self.kallsyms.append([addr, name[1:], name[0]])
         return
 
-    def print_kallsyms(self, keywords):
+    def print_kallsyms(self, keywords, types):
         if is_32bit():
             fmt = "{:#010x} {:s} {:s}"
         else:
             fmt = "{:#018x} {:s} {:s}"
 
+        if types:
+            types = [t.lower() for t in types]
+            kallsyms = [entry for entry in self.kallsyms if entry[2].lower() in types]
+        else:
+            kallsyms = self.kallsyms
+
         self.out = []
         if not keywords:
-            for addr, symbol, typ in self.kallsyms:
+            for addr, symbol, typ in kallsyms:
                 self.out.append(fmt.format(addr, typ, symbol))
+
         elif self.exact:
-            for addr, symbol, typ in self.kallsyms:
+            for addr, symbol, typ in kallsyms:
                 if symbol in keywords:
                     self.out.append(fmt.format(addr, typ, symbol))
+
         else:
-            for addr, symbol, typ in self.kallsyms:
+            for addr, symbol, typ in kallsyms:
                 text = fmt.format(addr, typ, symbol)
                 for k in keywords:
                     if k in text: # not only symbol search, but also address search
@@ -65623,7 +65632,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             self.quiet_err("Failed to parse; try `ks -rv`.")
             return
 
-        self.print_kallsyms(args.keyword)
+        self.print_kallsyms(args.keyword, args.type)
 
         if self.out:
             if len(self.out) > get_terminal_size()[0]:
