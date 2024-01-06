@@ -20411,7 +20411,12 @@ class ElfInfoCommand(GenericCommand):
 
         # memory parse pattern
         if args.address is not None:
-            elf = Elf(args.address)
+            try:
+                elf = Elf(args.address)
+            except gdb.MemoryError:
+                err("Memory error.")
+                return
+
             if elf is None or not elf.is_valid():
                 err("Failed to parse elf.")
             else:
@@ -43747,7 +43752,7 @@ class KernelMagicCommand(GenericCommand):
             gef_print(titlify("Memory base"))
             self.resolve_and_print_kernel("page_offset_base (physmem direct map)", None, maps, KernelAddressHeuristicFinder.get_page_offset)
             self.resolve_and_print_kernel("vmalloc_base", None, maps, KernelAddressHeuristicFinder.get_vmalloc_start)
-            self.resolve_and_print_kernel("vmemmap_base (struct page)", None, maps, KernelAddressHeuristicFinder.get_vmemmap)
+            self.resolve_and_print_kernel("vmemmap_base (struct page[])", None, maps, KernelAddressHeuristicFinder.get_vmemmap)
             self.resolve_and_print_kernel("phys_base (for page<->phys)", text_base, maps, KernelAddressHeuristicFinder.get_phys_base)
         return
 
@@ -45879,8 +45884,12 @@ class KernelAddressHeuristicFinder:
                 return r
             # plan 2 (from stack top)
             current_thread_info = current_arch.sp & ~0x1fff
-            v = read_int_from_memory(current_thread_info + current_arch.ptrsize * 3)
-            return v
+            try:
+                v = read_int_from_memory(current_thread_info + current_arch.ptrsize * 3)
+                return v
+            except gdb.MemoryError:
+                # In some threads, $sp points to an invalid address.
+                return None
         elif is_arm64():
             # plan 1 (from special register)
             return get_register("$SP_EL0")
@@ -46210,7 +46219,7 @@ class KernelAddressHeuristicFinder:
         if kversion and kversion >= "4.6":
             addr = get_ksymaddr("do_syscall_64")
             if addr:
-                res = gdb.execute("x/30i {:#x}".format(addr), to_string=True)
+                res = gdb.execute("x/40i {:#x}".format(addr), to_string=True)
                 g = KernelAddressHeuristicFinderUtil.x64_qword_ptr_array_base(res)
                 for x in g:
                     return x
@@ -46290,7 +46299,7 @@ class KernelAddressHeuristicFinder:
         else:
             addr = None
         if addr:
-            res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
+            res = gdb.execute("x/30i {:#x}".format(addr), to_string=True)
             if is_x86_64():
                 g = KernelAddressHeuristicFinderUtil.x64_qword_ptr_array_base(res)
             elif is_x86_32():
@@ -46440,7 +46449,7 @@ class KernelAddressHeuristicFinder:
             if addr:
                 res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    g = KernelAddressHeuristicFinderUtil.x64_x86_any_const(res)
+                    g = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res)
                 elif is_x86_32():
                     g = KernelAddressHeuristicFinderUtil.x64_x86_any_const(res)
                 elif is_arm64():
@@ -46507,7 +46516,6 @@ class KernelAddressHeuristicFinder:
                     v2 = read_int_from_memory(x + current_arch.ptrsize)
                     if is_valid_addr(v1) and is_valid_addr(v2):
                         return x
-
         return None
 
     @staticmethod
@@ -46808,7 +46816,7 @@ class KernelAddressHeuristicFinder:
                 if is_x86_64():
                     g = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res)
                 elif is_x86_32():
-                    g = KernelAddressHeuristicFinderUtil.x86_dword_ptr_ds(res)
+                    g = KernelAddressHeuristicFinderUtil.x86_noptr_ds(res)
                 elif is_arm64():
                     g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
                 elif is_arm32():
@@ -46917,7 +46925,7 @@ class KernelAddressHeuristicFinder:
                 elif is_arm32():
                     g = itertools.chain(
                             KernelAddressHeuristicFinderUtil.arm32_movw_movt(res),
-                            KernelAddressHeuristicFinderUtil.arm32_ldr_reg_const(res, "r0"),
+                            KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative(res),
                         )
                 for x in g:
                     return x
@@ -47342,12 +47350,21 @@ class KernelAddressHeuristicFinder:
             elif is_x86_32():
                 addr = get_ksymaddr("arch_setup_additional_pages")
                 if addr:
+                    # pattren 1
                     res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                     g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "eax", read_valid=True)
                     for x in g:
                         v = read_int_from_memory(x)
                         if read_memory(v, 4) == b"\x7fELF":
                             return x
+                    # pattern 2
+                    res = gdb.execute("x/40i {:#x}".format(addr), to_string=True)
+                    g2 = KernelAddressHeuristicFinderUtil.x86_dword_ptr_ds(res)
+                    for x in g2:
+                        if read_int_from_memory(x) == 0x1000:
+                            v = read_int_from_memory(x - 4)
+                            if read_memory(v, 4) == b"\x7fELF":
+                                return x - 4
         return None
 
     @staticmethod
@@ -48065,8 +48082,7 @@ class KernelAddressHeuristicFinder:
                 if is_x86_64():
                     g = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res, read_valid=True)
                 elif is_x86_32():
-                    # TODO
-                    g = []
+                    g = KernelAddressHeuristicFinderUtil.x86_dword_ptr_ds(res, read_valid=True)
                 elif is_arm64():
                     # TODO
                     g = []
@@ -48153,14 +48169,15 @@ class KernelAddressHeuristicFinder:
                 # pattern1: per_cpu
                 #    0xffffffff8cf25b05 <run_timer_softirq+5>:    mov    rdi,0x24b40 <-- timer_bases
                 for x in g:
-                    if not is_valid_addr(x):
+                    if not is_valid_addr(x) and (x & 0x7) == 0:
                         return x
                 # pattern2: not per_cpu
                 #    0xffffffff8aa6e450 <run_timer_softirq>:      mov    rax,QWORD PTR [rip+0x7cfba9] # 0xffffffff8b23e000 <jiffies_64>
                 #    0xffffffff8aa6e457 <run_timer_softirq+7>:    cmp    rax,QWORD PTR [rip+0x7ce92a] # 0xffffffff8b23cd88 <timer_bases+8>
                 #    0xffffffff8aa6e474 <run_timer_softirq+36>:   mov    rdx,QWORD PTR [rip+0x7cfb85] # 0xffffffff8b23e000 <jiffies_64>
                 #    0xffffffff8aa6e47b <run_timer_softirq+43>:   mov    rax,QWORD PTR [rip+0x7ce906] # 0xffffffff8b23cd88 <timer_bases+8>
-                addrs = [x for x in g2 if is_valid_addr(x)]
+                jiffies = KernelAddressHeuristicFinder.get_jiffies()
+                addrs = [x for x in g2 if (is_valid_addr(x) and (not jiffies or jiffies != x))]
                 if addrs:
                     return min(addrs)
         return None
@@ -48196,7 +48213,7 @@ class KernelAddressHeuristicFinder:
                 # pattern1: per_cpu
                 #    0xffffffff9b127acb:  mov    rbx,0x27040 <-- hrtimer_bases
                 for x in g:
-                    if not is_valid_addr(x):
+                    if not is_valid_addr(x) and (x & 0x7) == 0:
                         return x
                 # pattern2: not per_cpu
                 #   0xffffffffbb8668bc <hrtimer_run_queues+12>:  mov    rdx,0xffffffffbc046138
@@ -48975,8 +48992,6 @@ class KernelCurrentCommand(GenericCommand):
         return comm or "???"
 
     def dump_current_arm(self):
-        _cpu_bases = self.get_cpu_offset()
-
         orig_thread = gdb.selected_thread()
         threads = gdb.selected_inferior().threads()
         threads = sorted(threads, key=lambda th: th.num)
