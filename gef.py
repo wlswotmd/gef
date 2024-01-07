@@ -43750,9 +43750,9 @@ class KernelMagicCommand(GenericCommand):
             self.resolve_and_print_kernel("TSS base (fixed address?)", None, maps, KernelAddressHeuristicFinder.get_tss_base)
         if is_x86_64():
             gef_print(titlify("Memory base"))
-            self.resolve_and_print_kernel("page_offset_base (physmem direct map)", None, maps, KernelAddressHeuristicFinder.get_page_offset)
-            self.resolve_and_print_kernel("vmalloc_base", None, maps, KernelAddressHeuristicFinder.get_vmalloc_start)
-            self.resolve_and_print_kernel("vmemmap_base (struct page[])", None, maps, KernelAddressHeuristicFinder.get_vmemmap)
+            self.resolve_and_print_kernel("PAGE_OFFSET (physmem direct map)", None, maps, KernelAddressHeuristicFinder.get_page_offset)
+            self.resolve_and_print_kernel("VMALLOC_START", None, maps, KernelAddressHeuristicFinder.get_vmalloc_start)
+            self.resolve_and_print_kernel("VMEMMAP_START (struct page[])", None, maps, KernelAddressHeuristicFinder.get_vmemmap)
             self.resolve_and_print_kernel("phys_base (for page<->phys)", text_base, maps, KernelAddressHeuristicFinder.get_phys_base)
         return
 
