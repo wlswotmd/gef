@@ -46772,6 +46772,63 @@ class KernelAddressHeuristicFinder:
 
     @staticmethod
     @switch_to_intel_syntax
+    def get_mem_section():
+        if not is_x86_32():
+            return None
+
+        # plan 1 (directly)
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            addr = get_ksymaddr("mem_section")
+            if addr:
+                return addr
+
+        kversion = KernelVersionCommand.kernel_version()
+
+        # plan 2 (available v4.8 ~ v5.15)
+        if kversion and kversion >= "4.8" and kversion < "5.15":
+            addr = get_ksymaddr("__section_nr")
+            if addr:
+                res = gdb.execute("x/10i {:#x}".format(addr), to_string=True)
+                g = KernelAddressHeuristicFinderUtil.x64_x86_any_const(res)
+                for x in g:
+                    return x
+        return None
+
+    @staticmethod
+    @switch_to_intel_syntax
+    def get_mem_map():
+        if not is_x86_32():
+            return None
+
+        # plan 1 (directly)
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            addr = get_ksymaddr("mem_map")
+            if addr:
+                return read_int_from_memory(addr)
+
+        kversion = KernelVersionCommand.kernel_version()
+
+        # plan 2 (available v4.6 or later)
+        if kversion and kversion >= "4.6":
+            addr = get_ksymaddr("vdso_fault")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
+                g = KernelAddressHeuristicFinderUtil.x86_dword_ptr_ds(res)
+                for x in g:
+                    return read_int_from_memory(x)
+
+        # plan 3 (available v3.5 ~ v4.1)
+        if kversion and kversion >= "3.5" and kversion < "4.2":
+            addr = get_ksymaddr("skb_free_head")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
+                g = KernelAddressHeuristicFinderUtil.x86_dword_ptr_ds(res)
+                for x in g:
+                    return read_int_from_memory(x)
+        return None
+
+    @staticmethod
+    @switch_to_intel_syntax
     def get_clocksource_tsc():
         if not is_x86():
             return None
@@ -59744,7 +59801,7 @@ class SlubDumpCommand(GenericCommand):
         if not args.quiet:
             info("Wait for memory scan")
 
-        if is_x86_64() and not self.initialized and not args.skip_page2virt:
+        if is_x86() and not self.initialized and not args.skip_page2virt:
             # The slub-dump command is also called by page2virt and kmagic to determine vmemmap and sizeof(struct page).
             # Therefore, slub-dump itself may be called recursively (up to once) from slub-dump.
             # If a recursive call is made, various parameters held by self will be destroyed.
@@ -60396,7 +60453,7 @@ class SlubTinyDumpCommand(GenericCommand):
         if not args.quiet:
             info("Wait for memory scan")
 
-        if is_x86_64() and not self.initialized and not args.skip_page2virt:
+        if is_x86() and not self.initialized and not args.skip_page2virt:
             # The slub-tiny-dump command is also called by page2virt and kmagic to determine vmemmap and sizeof(struct page).
             # Therefore, slub-tiny-dump itself may be called recursively (up to once) from slub-tiny-dump.
             # If a recursive call is made, various parameters held by self will be destroyed.
@@ -75327,24 +75384,23 @@ class PageCommand(GenericCommand):
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use map cache.")
     _syntax_ = parser.format_help()
 
-    _note_ = "Simplified x64 page structure (CONFIG_SPARSEMEM_VMEMMAP):\n"
+    _note_ = "Simplified page structure (CONFIG_SPARSEMEM_VMEMMAP; x64/ARM64):\n"
     _note_ += "\n"
-    _note_ += "+---------+\n"
-    _note_ += "| vmemmap |----------->+-struct page[]-+\n"
-    _note_ += "+---------+            | pfn#1 page    | --> manage 0x0000-0x1000 physmem\n"
+    _note_ += "VMEMMAP_START--------->+-struct page[]-+\n"
+    _note_ += "                       | pfn#1 page    | --> manage 0x0000-0x1000 physmem\n"
     _note_ += "                       +---------------+\n"
     _note_ += "                       | pfn#2 page    | --> manage 0x1000-0x2000 physmem\n"
     _note_ += "                       +---------------+\n"
     _note_ += "                       | ...           |\n"
     _note_ += "                    ^  +---------------+\n"
     _note_ += "sizeof(struct page) |  | pfn#N page    | --> manage 0xXXX000-0xXXY000 physmem (physmem end)\n"
-    _note_ += "                    v  +---------------+"
+    _note_ += "                    v  +---------------+\n"
+    _note_ += "\n"
+    _note_ += "i386: At least two patterns have been observed. CONFIG_FLATMEM and CONFIG_SPARSEMEM."
 
     def __init__(self, *args, **kwargs):
         super().__init__()
         self.initialized = False
-        self.vmemmap = None
-        self.maps = None
         return
 
     def v2p_fast(self, vaddr):
@@ -75360,81 +75416,191 @@ class PageCommand(GenericCommand):
         paddr = int(r.group(1), 16)
         return paddr
 
-    def initialize(self):
-        if is_x86_64():
-            self.SHIFT_SIZE = 12
+    def get_page_virt_pair(self):
+        allocator = KernelChecksecCommand.get_slab_type()
 
-            if self.vmemmap is None:
-                self.vmemmap = KernelAddressHeuristicFinder.get_vmemmap()
-            if self.vmemmap:
-                info("vmemmap: {:#x}".format(self.vmemmap))
-
-            if self.maps is None:
-                self.maps = Virt2PhysCommand.get_maps(None)
-            if not self.vmemmap or not self.maps:
+        if allocator in ["SLUB", "SLUB_TINY"]:
+            # get valid page and vaddr pair
+            command = {"SLUB": "slub-dump", "SLUB_TINY": "slub-tiny-dump"}[allocator]
+            for n in [8, 16, 32, 64, 96, 128, 192, 256, 512]:
+                # this page2virt command is called from slub-dump itself.
+                # * slub-dump (not --skip-page2virt)
+                #   -> page2virt
+                #     -> get_vmemmap
+                #       -> slub-dump --skip-page2virt
+                #     -> calculates sizeof_struct_page
+                #       -> slub-dump --skip-page2virt
+                # To avoid infinite recursion, must add the `--skip-page2virt` option when calling slub-dump from page2virt.
+                ret = gdb.execute("{:s} --no-pager --quiet --skip-page2virt kmalloc-{:d}".format(command, n), to_string=True)
+                r1 = re.findall(r"active page: (0x\S+)", Color.remove_color(ret))
+                r2 = re.findall(r"virtual address: (0x\S+|\?\?\?)", Color.remove_color(ret))
+                valid_pair = [ (p, v) for p, v in zip(r1, r2) if v != "???"]
+                if valid_pair:
+                    page = int(valid_pair[0][0], 16)
+                    vaddr = int(valid_pair[0][1], 16)
+                    break
+            else:
                 return False
 
-            allocator = KernelChecksecCommand.get_slab_type()
-            if allocator in ["SLUB", "SLUB_TINY"]:
-                # get valid page and vaddr pair
-                command = {"SLUB": "slub-dump", "SLUB_TINY": "slub-tiny-dump"}[allocator]
-                for n in [8, 16, 32, 64, 96, 128, 192, 256, 512]:
-                    # this page2virt command is called from slub-dump itself.
-                    # * slub-dump (not --skip-page2virt)
-                    #   -> page2virt
-                    #     -> get_vmemmap
-                    #       -> slub-dump --skip-page2virt
-                    #     -> calculates sizeof_struct_page
-                    #       -> slub-dump --skip-page2virt
-                    # To avoid infinite recursion, must add the `--skip-page2virt` option when calling slub-dump from page2virt.
-                    ret = gdb.execute("{:s} --no-pager --quiet --skip-page2virt kmalloc-{:d}".format(command, n), to_string=True)
-                    r1 = re.findall(r"active page: (0x\S+)", Color.remove_color(ret))
-                    r2 = re.findall(r"virtual address: (0x\S+|\?\?\?)", Color.remove_color(ret))
-                    valid_pair = [ (p, v) for p, v in zip(r1, r2) if v != "???"]
-                    if valid_pair:
-                        page = int(valid_pair[0][0], 16)
-                        vaddr = int(valid_pair[0][1], 16)
-                        break
-                else:
-                    return False
-            elif allocator == "SLAB":
-                # get valid page and vaddr pair
-                ret = gdb.execute("slab-dump --cpu 0 --no-pager --quiet kmalloc-256", to_string=True)
-                r1 = re.search(r"node\[\d+\]\.slabs_(?:partial|full): (0x\S+)", Color.remove_color(ret))
-                r2 = re.search(r"virtual address \(s_mem\): (0x\S+)", Color.remove_color(ret))
-                if not r1 or not r2:
-                    return False
-                page = int(r1.group(1), 16)
-                vaddr = int(r2.group(1), 16)
-            elif allocator == "SLOB":
-                # get valid page and vaddr pair
-                ret = gdb.execute("slob-dump --large --no-pager --quiet", to_string=True)
-                r1 = re.search(r"page: (0x\S+)", Color.remove_color(ret))
-                r2 = re.search(r"virtual address: (0x\S+)", Color.remove_color(ret))
-                if not r1 or not r2:
-                    return False
-                page = int(r1.group(1), 16)
-                vaddr = int(r2.group(1), 16)
-            else:
-                return None
+        elif allocator == "SLAB":
+            # get valid page and vaddr pair
+            ret = gdb.execute("slab-dump --cpu 0 --no-pager --quiet kmalloc-256", to_string=True)
+            r1 = re.search(r"node\[\d+\]\.slabs_(?:partial|full): (0x\S+)", Color.remove_color(ret))
+            r2 = re.search(r"virtual address \(s_mem\): (0x\S+)", Color.remove_color(ret))
+            if not r1 or not r2:
+                return False
+            page = int(r1.group(1), 16)
+            vaddr = int(r2.group(1), 16)
+
+        elif allocator == "SLOB":
+            # get valid page and vaddr pair
+            ret = gdb.execute("slob-dump --large --no-pager --quiet", to_string=True)
+            r1 = re.search(r"page: (0x\S+)", Color.remove_color(ret))
+            r2 = re.search(r"virtual address: (0x\S+)", Color.remove_color(ret))
+            if not r1 or not r2:
+                return False
+            page = int(r1.group(1), 16)
+            vaddr = int(r2.group(1), 16)
+
+        else:
+            return False
+
+        return page, vaddr
+
+    def initialize(self):
+        if is_x86_64():
+            # CONFIG_SPARSEMEM_VMEMMAP
+
+            self.vmemmap = KernelAddressHeuristicFinder.get_vmemmap()
+            if not self.vmemmap:
+                err("Not found VMEMMAP_START")
+                return False
+
+            self.page_offset = KernelAddressHeuristicFinder.get_page_offset()
+            if not self.page_offset:
+                err("Not found PAGE_OFFSET")
+                return False
+
+            self.phys_base = KernelAddressHeuristicFinder.get_phys_base()
+            if not self.phys_base:
+                err("Not found phys_base")
+                return False
+
+            ret = self.get_page_virt_pair()
+            if not ret:
+                err("Not found valid page/vaddr pair")
+                return False
+            page, vaddr = ret
 
             # virt -> phys
             paddr = self.v2p_fast(vaddr)
             if paddr is None:
+                err("vaddr is invalid")
                 return False
             # phys -> pfn
-            pfn = paddr >> self.SHIFT_SIZE
+            self.PAGE_SHIFT = 12
+            pfn = paddr >> self.PAGE_SHIFT
             # calc sizeof(struct page)
             self.sizeof_struct_page = (page - self.vmemmap) // pfn
-            info("sizeof(struct page): {:#x}".format(self.sizeof_struct_page))
-
-            self.initialized = True
-            return True
 
         elif is_x86_32():
-            pass
+            # calc PAGE_OFFSET
+            maps = KernelbaseCommand.get_maps()
+            if not maps:
+                err("Not found maps")
+                return False
+            kern_min = maps[0][0]
+            if kern_min < 0x78000000:
+                self.PAGE_OFFSET = 0x40000000 # VMSPLIT_1G
+            elif kern_min < 0x80000000:
+                self.PAGE_OFFSET = 0x78000000 # VMSPLIT_2G_OPT
+            elif kern_min < 0xB0000000:
+                self.PAGE_OFFSET = 0x80000000 # VMSPLIT_2G
+            elif kern_min < 0xC0000000:
+                self.PAGE_OFFSET = 0xB0000000 # VMSPLIT_3G_OPT
+            else:
+                self.PAGE_OFFSET = 0xC0000000 # VMSPLIT_3G
+
+            # Determine whether it is CONFIG_FLATMEM or CONFIG_SPARSEMEM.
+            self.mem_map = KernelAddressHeuristicFinder.get_mem_map()
+            self.mem_section = KernelAddressHeuristicFinder.get_mem_section()
+            if self.mem_map:
+                # CONFIG_FLATMEM
+                self.mode = "FLATMEM"
+
+                self.PAGE_SHIFT = 12
+
+                # calc sizeof(struct page)
+                ret = self.get_page_virt_pair()
+                if not ret:
+                    err("Not found valid page/vaddr pair")
+                    return False
+                page, vaddr = ret
+                pfn = (vaddr - self.PAGE_OFFSET) >> self.PAGE_SHIFT
+                self.sizeof_struct_page = (page - self.mem_map) // pfn
+
+            elif self.mem_section:
+                # CONFIG_SPARSEMEM
+                self.mode = "SPARSEMEM"
+
+                # PAE check
+                cr4 = get_register("cr4", use_monitor=True)
+                if (cr4 >> 5) & 1: # PAE
+                    MAX_PHYSMEM_BITS = 36
+                    SECTION_SIZE_BITS = 29
+                else:
+                    MAX_PHYSMEM_BITS = 32
+                    SECTION_SIZE_BITS = 26
+                SECTIONS_SHIFT = MAX_PHYSMEM_BITS - SECTION_SIZE_BITS
+                SECTIONS_WIDTH = SECTIONS_SHIFT
+                SECTIONS_PGOFF = 32 - SECTIONS_WIDTH
+                self.SECTIONS_PGSHIFT = SECTIONS_PGOFF
+                self.SECTIONS_MASK = (1 << SECTIONS_WIDTH) - 1
+
+                SECTIONS_PER_ROOT = 1
+                NR_MEM_SECTIONS = 1 << SECTIONS_SHIFT
+                self.NR_SECTION_ROOTS = NR_MEM_SECTIONS // SECTIONS_PER_ROOT
+
+                self.PAGE_SHIFT = 12
+                self.PFN_SECTION_SHIFT = SECTION_SIZE_BITS - self.PAGE_SHIFT
+
+                SECTION_MAP_LAST_BIT = 1 << 3
+                self.SECTION_MAP_MASK = ~(SECTION_MAP_LAST_BIT - 1) & 0xffffffff
+
+                # calc sizeof(mem_section)
+                v = read_int_from_memory(self.mem_section + current_arch.ptrsize * 3)
+                if v == 0: # pad check
+                    self.sizeof_mem_section = current_arch.ptrsize * 4 # CONFIG_PAGE_EXTENSION=y
+                else:
+                    self.sizeof_mem_section = current_arch.ptrsize * 2 # CONFIG_PAGE_EXTENSION=n
+
+                # calc sizeof(struct page)
+                ret = self.get_page_virt_pair()
+                if not ret:
+                    err("Not found valid page/vaddr pair")
+                    return False
+                page, vaddr = ret
+                flags = read_int_from_memory(page)
+                section_id = (flags >> self.SECTIONS_PGSHIFT) & self.SECTIONS_MASK
+                mem_section = self.mem_section + self.sizeof_mem_section * section_id
+                if not is_valid_addr(mem_section):
+                    err("mem_section is not valid")
+                    return False
+                section_mem_map = read_int_from_memory(mem_section)
+                if section_mem_map == 0:
+                    err("section_mem_map == 0")
+                    return False
+                mem_map = section_mem_map & self.SECTION_MAP_MASK
+                pfn = (vaddr - self.PAGE_OFFSET) >> self.PAGE_SHIFT
+                self.sizeof_struct_page = (page - mem_map) // pfn
+
+            else:
+                err("Not found mem_map and mem_section")
+                return False
 
         elif is_arm64():
+            # CONFIG_SPARSEMEM_VMEMMAP
+
             T1SZ = (get_register("$TCR_EL1") >> 16) & 0b111111
             region_end = 2 ** 64
             region_start = region_end - (2 ** (64 - T1SZ))
@@ -75476,91 +75642,146 @@ class PageCommand(GenericCommand):
                 VMEMMAP_SHIFT = PAGE_SHIFT - STRUCT_PAGE_MAX_SHIFT
                 self.VMEMMAP_START = -(1 << (VA_BITS - VMEMMAP_SHIFT)) & 0xffffffffffffffff
 
-            self.initialized = True
-            return True
-
         elif is_arm32():
-            pass
+            return False
 
-        return False
+        self.initialized = True
+        return True
 
-    def page2virts(self, page):
+    def page2virt(self, page):
+        if not is_valid_addr(page):
+            err("Memory error")
+            return None
+
         if is_x86_64():
+            # page -> pfn
             pfn = (page - self.vmemmap) // self.sizeof_struct_page
-            paddr = pfn << self.SHIFT_SIZE
-            vaddrs = []
-            for vstart, _vend, pstart, pend in self.maps:
-                if pstart <= paddr < pend:
-                    offset = paddr - pstart
-                    vaddr = vstart + offset
-                    vaddrs.append(vaddr)
-            return vaddrs
+            if pfn < 0:
+                return None
+            # pfn -> virt
+            virt = (pfn << self.PAGE_SHIFT) + self.page_offset
 
         elif is_x86_32():
-            pass
+            if self.mode == "FLATMEM":
+                # page -> pfn
+                pfn = (page - self.mem_map) // self.sizeof_struct_page
+                # pfn -> virt
+                virt = (pfn << self.PAGE_SHIFT) + self.PAGE_OFFSET
+
+            elif self.mode == "SPARSEMEM":
+                # page -> section_id
+                flags = read_int_from_memory(page)
+                section_id = (flags >> self.SECTIONS_PGSHIFT) & self.SECTIONS_MASK
+                # section_id -> mem_section
+                # SECTION_NR_TO_ROOT(nr) always returns nr
+                # (nr & SECTION_ROOT_MASK) always returns 0
+                mem_section = self.mem_section + self.sizeof_mem_section * section_id
+                if not is_valid_addr(mem_section):
+                    return None
+                # section -> mem_map
+                section_mem_map = read_int_from_memory(mem_section)
+                if section_mem_map == 0:
+                    return None
+                mem_map = section_mem_map & self.SECTION_MAP_MASK
+                # page -> pfn
+                pfn = (page - mem_map) // self.sizeof_struct_page
+                if pfn < 0:
+                    return None
+                # pfn -> virt
+                virt = (pfn << self.PAGE_SHIFT) + self.PAGE_OFFSET
 
         elif is_arm64():
             kversion = KernelVersionCommand.kernel_version()
             if kversion < "5.4":
-                off = ((page & ~self.VMEMMAP_START) & 0xffffffffffffffff) * self.PAGE_SIZE // self.sizeof_struct_page
-                addr = self.PAGE_OFFSET + off
+                off = align_address(page & ~self.VMEMMAP_START) * self.PAGE_SIZE // self.sizeof_struct_page
+                virt = self.PAGE_OFFSET + off
             else: # v5.4~
-                idx = ((page - self.VMEMMAP_START) & 0xffffffffffffffff) // self.sizeof_struct_page
-                addr = self.PAGE_OFFSET + idx * self.PAGE_SIZE
-            virt = addr & 0xffffffffffffffff
-            if is_valid_addr(virt):
-                return [virt]
-            else:
-                err("Address in invalid range")
-                return None
+                idx = align_address(page - self.VMEMMAP_START) // self.sizeof_struct_page
+                virt = self.PAGE_OFFSET + idx * self.PAGE_SIZE
 
         elif is_arm32():
-            pass
+            # TODO
+            return None
 
-        return None
+        virt = align_address(virt)
+        if not is_valid_addr(virt):
+            err("Address in invalid range")
+            return None
+        return virt
 
-    def virt2page(self, vaddr):
+    def virt2page(self, virt):
+        if not is_valid_addr(virt):
+            err("Memory error")
+            return None
+
         if is_x86_64():
-            paddr = self.v2p_fast(vaddr)
-            if paddr is None:
+            # virt -> pfn
+            if 0xffffffff80000000 <= virt:
+                pfn = align_address(virt - 0xffffffff80000000 + self.phys_base) >> self.PAGE_SHIFT
+            else:
+                pfn = (virt - self.page_offset) >> self.PAGE_SHIFT
+            if pfn < 0:
                 return None
-            pfn = paddr >> self.SHIFT_SIZE
-            return (pfn * self.sizeof_struct_page) + self.vmemmap
+            # pfn -> page
+            page = self.vmemmap + (pfn * self.sizeof_struct_page)
 
         elif is_x86_32():
-            pass
+            if self.mode == "FLATMEM":
+                # virt -> pfn
+                pfn = (virt - self.PAGE_OFFSET) >> self.PAGE_SHIFT
+                # pfn -> page
+                page = self.mem_map + (pfn * self.sizeof_struct_page)
+
+            elif self.mode == "SPARSEMEM":
+                # virt -> pfn
+                pfn = (virt - self.PAGE_OFFSET) >> self.PAGE_SHIFT
+                if pfn < 0:
+                    return None
+                # pfn -> section_id
+                section_id = pfn >> self.PFN_SECTION_SHIFT
+                # section_id -> mem_section
+                # SECTION_NR_TO_ROOT(nr) always returns nr
+                # (nr & SECTION_ROOT_MASK) always returns 0
+                mem_section = self.mem_section + self.sizeof_mem_section * section_id
+                if not is_valid_addr(mem_section):
+                    return None
+                # section -> mem_map
+                section_mem_map = read_int_from_memory(mem_section)
+                if section_mem_map == 0:
+                    return None
+                mem_map = section_mem_map & self.SECTION_MAP_MASK
+                # pfn -> page
+                page = mem_map + (pfn * self.sizeof_struct_page)
 
         elif is_arm64():
             kversion = KernelVersionCommand.kernel_version()
             if kversion < "5.4":
-                off = ((vaddr & ~self.PAGE_OFFSET) & 0xffffffffffffffff) // self.PAGE_SIZE * self.sizeof_struct_page
-                addr = self.VMEMMAP_START + off
+                off = align_address(virt & ~self.PAGE_OFFSET) // self.PAGE_SIZE * self.sizeof_struct_page
+                page = self.VMEMMAP_START + off
             else:
-                idx = ((vaddr - self.PAGE_OFFSET) & 0xffffffffffffffff) // self.PAGE_SIZE
-                addr = self.VMEMMAP_START + idx * self.sizeof_struct_page
-            page = addr & 0xffffffffffffffff
-            if is_valid_addr(page):
-                return page
-            else:
-                err("Address in invalid range")
-                return None
+                idx = align_address(virt - self.PAGE_OFFSET) // self.PAGE_SIZE
+                page = self.VMEMMAP_START + idx * self.sizeof_struct_page
 
         elif is_arm32():
-            pass
+            # TODO
+            return None
 
-        return None
+        page = align_address(page)
+        if not is_valid_addr(page):
+            err("Address in invalid range")
+            return None
+        return page
 
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_64", "ARM64"))
+    @only_if_specific_arch(arch=("x86_64", "x86_32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
 
         if args.reparse:
             self.initialized = False
-            self.maps = None
 
         if is_arm64():
             kversion = KernelVersionCommand.kernel_version()
@@ -75578,39 +75799,28 @@ class PageCommand(GenericCommand):
         out = []
         # doit
         if args.mode == "to-virt":
-            # page (-> phys) -> multiple virts
-
             # A page may be associated with multiple virtual addresses.
-            vaddrs = self.page2virts(args.address)
-            if vaddrs is None:
+            vaddr = self.page2virt(args.address)
+            if vaddr is None:
                 err("Failed to resolve")
                 return
-            for vaddr in vaddrs:
-                out.append("Page: {:#x} -> Virt: {:#x}".format(args.address, vaddr))
+            out.append("Page: {:#x} -> Virt: {:#x}".format(args.address, vaddr))
 
         elif args.mode == "to-phys":
-            # page (-> phys) -> multiple virts -> multiple phys -> uniq
-
             # A page may be associated with multiple virtual addresses.
-            vaddrs = self.page2virts(args.address)
-            if vaddrs is None:
+            vaddr = self.page2virt(args.address)
+            if vaddr is None:
                 err("Failed to resolve")
                 return
 
             # Get the physical addresses pointed to by those virtual addresses.
-            # The assumption is that there should be one, but just to be sure, all different values will be displayed.
-            for vaddr in vaddrs:
-                paddr = self.v2p_fast(vaddr)
-                if not paddr:
-                    err("Failed to resolve")
-                    return
-                msg = "Page: {:#x} -> Phys: {:#x}".format(args.address, paddr)
-                if msg not in out:
-                    out.append(msg)
+            paddr = self.v2p_fast(vaddr)
+            if not paddr:
+                err("Failed to resolve")
+                return
+            out.append("Page: {:#x} -> Phys: {:#x}".format(args.address, paddr))
 
         elif args.mode == "from-virt":
-            # virt (-> phys) -> page
-
             vaddr = args.address
             if args.address & 0xfff:
                 warn("The address must be 0x1000 aligned, round down and then calculate.")
@@ -75624,8 +75834,6 @@ class PageCommand(GenericCommand):
             out.append("Virt: {:#x} -> Page: {:#x}".format(vaddr, page))
 
         elif args.mode == "from-phys":
-            # phys -> multiple virts (-> each phys) -> each pages -> uniq
-
             paddr = args.address
             if args.address & 0xfff:
                 warn("The address must be 0x1000 aligned, round down and then calculate.")
@@ -75667,7 +75875,7 @@ class Page2VirtCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_64", "ARM64"))
+    @only_if_specific_arch(arch=("x86_64", "x86_32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
@@ -75690,7 +75898,7 @@ class Virt2PageCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_64", "ARM64"))
+    @only_if_specific_arch(arch=("x86_64", "x86_32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
@@ -75713,7 +75921,7 @@ class Page2PhysCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_64", "ARM64"))
+    @only_if_specific_arch(arch=("x86_64", "x86_32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
@@ -75736,7 +75944,7 @@ class Phys2PageCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_64", "ARM64"))
+    @only_if_specific_arch(arch=("x86_64", "x86_32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
         self.dont_repeat()
