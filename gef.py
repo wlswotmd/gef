@@ -49825,7 +49825,8 @@ class KernelTaskCommand(GenericCommand):
         """
         struct cred {
             ...
-            kernel_cap_t cap_ambient;
+            kernel_cap_t cap_bset;
+            kernel_cap_t cap_ambient; // v4.3~
         #ifdef CONFIG_KEYS
             unsigned char jit_keyring;
             struct key *session_keyring;
@@ -49854,7 +49855,7 @@ class KernelTaskCommand(GenericCommand):
         0xffffffffbb4545a8|+0x0028|+005: 0x0000000000000000
         0xffffffffbb4545b0|+0x0030|+006: 0x000001ffffffffff
         0xffffffffbb4545b8|+0x0038|+007: 0x000001ffffffffff
-        0xffffffffbb4545c0|+0x0040|+008: 0x000001ffffffffff
+        0xffffffffbb4545c0|+0x0040|+008: 0x000001ffffffffff  // cap_bset
         0xffffffffbb4545c8|+0x0048|+009: 0x0000000000000000  // cap_ambilent
         0xffffffffbb4545d0|+0x0050|+010: 0x0000000000000000  // jit_keyring
         0xffffffffbb4545d8|+0x0058|+011: 0x0000000000000000  // session_keyring
@@ -49874,7 +49875,7 @@ class KernelTaskCommand(GenericCommand):
         0xffff9ec6c88379e8|+0x0028|+005: 0x0000000000000000
         0xffff9ec6c88379f0|+0x0030|+006: 0x000001ffffffffff
         0xffff9ec6c88379f8|+0x0038|+007: 0x000001ffffffffff
-        0xffff9ec6c8837a00|+0x0040|+008: 0x000001ffffffffff
+        0xffff9ec6c8837a00|+0x0040|+008: 0x000001ffffffffff  // cap_bset
         0xffff9ec6c8837a08|+0x0048|+009: 0x0000000000000000  // cap_ambient
         0xffff9ec6c8837a10|+0x0050|+010: 0x0000000000000000  // jit_keyring
         0xffff9ec6c8837a18|+0x0058|+011: 0xffff9ec6c4643700  ->  0x182031ce00000006 // session_keyring
@@ -49894,7 +49895,7 @@ class KernelTaskCommand(GenericCommand):
         0xffffd9e53efef560|+0x0028|+005: 0x0000000000000000
         0xffffd9e53efef568|+0x0030|+006: 0x000001ffffffffff
         0xffffd9e53efef570|+0x0038|+007: 0x000001ffffffffff
-        0xffffd9e53efef578|+0x0040|+008: 0x000001ffffffffff
+        0xffffd9e53efef578|+0x0040|+008: 0x000001ffffffffff  // cap_bset
         0xffffd9e53efef580|+0x0048|+009: 0x0000000000000000  // cap_ambient
         0xffffd9e53efef588|+0x0050|+010: 0x0000000000000000  // security
         0xffffd9e53efef590|+0x0058|+011: 0xffffd9e53efeeb10  ->  0x000000000000002a // user
@@ -49917,9 +49918,9 @@ class KernelTaskCommand(GenericCommand):
         0xc1aabc14|+0x0034|+013: 0x000001ff
         0xc1aabc18|+0x0038|+014: 0xffffffff
         0xc1aabc1c|+0x003c|+015: 0x000001ff
-        0xc1aabc20|+0x0040|+016: 0xffffffff
+        0xc1aabc20|+0x0040|+016: 0xffffffff  // cap_bset
         0xc1aabc24|+0x0044|+017: 0x000001ff
-        0xc1aabc28|+0x0048|+018: 0x00000000  // camp_abmient
+        0xc1aabc28|+0x0048|+018: 0x00000000  // cap_abmient
         0xc1aabc2c|+0x004c|+019: 0x00000000
         0xc1aabc30|+0x0050|+020: 0x00000000  // jit_keyring
         0xc1aabc34|+0x0054|+021: 0x00000000  // session_keyring
@@ -49930,9 +49931,13 @@ class KernelTaskCommand(GenericCommand):
         0xc1aabc48|+0x0068|+026: 0xc1aa6b80  ->  0x00000068 // user
         0xc1aabc4c|+0x006c|+027: 0xc1aa6be0  ->  0x00000001 // user_ns
         """
+        kversion = KernelVersionCommand.kernel_version()
         uid_gid_size = 4 * 8 # uid_t:4byte. len([uid,gid,suid,sgid,euid,egid,fsuid,fsgid]) == 8
         sizeof_securebits = 4
-        cap_size = 8 * 5 # cap_t:8byte. len([cap_inheritable,cap_permitted,cap_effective,cap_bset,cap_ambient]) == 5
+        if kversion >= "4.3":
+            cap_size = 8 * 5 # cap_t:8byte. len([cap_inheritable,cap_permitted,cap_effective,cap_bset,cap_ambient]) == 5
+        else:
+            cap_size = 8 * 4 # cap_t:8byte. len([cap_inheritable,cap_permitted,cap_effective,cap_bset]) == 4
 
         for i in range(10):
             offset_user_ns = offset_uid + uid_gid_size + sizeof_securebits + cap_size + current_arch.ptrsize * i
