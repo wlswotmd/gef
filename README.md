@@ -99,18 +99,16 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * x86 (Supported: PAE/Non-PAE)
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-x86.png)
     * ARM64 (Supported: EL1&0-stage1/EL1&0-stage2/EL2&0-stage1/EL2-stage1/EL3-stage1)
-        * ARM v8.7 base.
-        * 32bit mode is NOT supported.
+        * ARM v8.7 base. 32bit mode is NOT supported.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64.png)
-        * Stage2 translation is supported. This is EL1/EL2/EL3 pagewalk sample (HITCON CTF 2018 `super_hexagon`).
+        * Each level pagewalk sample from HITCON CTF 2018 `super_hexagon`. Parsing of stage2 translation table (`VTTBR_EL2`) is also supported.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-el123.png)
         * Secure memory scanning is supported, but you have to break in the secure world.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-secure.png)
         * Pseudo page tables without detailed flags and permission can be output even in the normal world.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-secure-pseudo.png)
     * ARM (only Cortex-A, LPAE/Non-LPAE, PL0/PL1)
-        * ARM v7 base.
-        * PL2 is NOT supported.
+        * ARM v7 base. PL2 is NOT supported.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm.png)
         * Secure memory scanning is supported, you don't have to break in the secure world (use register with `_S` suffix).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm-secure.png)
