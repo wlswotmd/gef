@@ -46960,13 +46960,26 @@ class KernelAddressHeuristicFinder:
                 elif is_arm64():
                     g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
                 elif is_arm32():
-                    g = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                    g = itertools.chain(
+                        KernelAddressHeuristicFinderUtil.arm32_movw_movt(res),
+                        KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative(res),
+                    )
                 for x in g:
-                    if is_arm64():
-                        return x + 8
-                    if is_arm32():
-                        return x + 4
-                    return x
+                    for i in range(2):
+                        v = read_int_from_memory(x + current_arch.ptrsize * i)
+                        if not is_valid_addr(v):
+                            continue
+                        if kversion < "5.13":
+                            w = u32(read_memory(v, 4))
+                            if w == 0x00005403: # magic
+                                return x
+                        else:
+                            w = read_int_from_memory(v)
+                            if not is_valid_addr(w):
+                                continue
+                            s = read_cstring_from_memory(w, ascii_only=True) # name
+                            if s and len(s) > 2:
+                                return x
         return None
 
     @staticmethod
