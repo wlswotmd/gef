@@ -62872,6 +62872,11 @@ class KernelPipeCommand(GenericCommand):
         if not args.quiet:
             info("Wait for memory scan")
 
+        allocator = KernelChecksecCommand.get_slab_type()
+        if allocator != "SLUB":
+            err("Unsupported for SLAB, SLOB, SLUB_TINY")
+            return
+
         self.inode_filter = args.inode_filter
         self.file_filter = args.file_filter
 
