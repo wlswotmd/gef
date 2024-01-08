@@ -60530,20 +60530,22 @@ class SlabDumpCommand(GenericCommand):
     _note_ += "    | cpu2_offset      |  |                   v                  +-page------+    +-page------+\n"
     _note_ += "    | ...              |  |       +-kmem_cache_node-+      +---->| slab_list |--->| slab_list |-->...\n"
     _note_ += "    +------------------+  |       | slabs_partial   |------+     | freelist  |    | freelist  |\n"
-    _note_ += "      +-------------------+       | slabs_full      |----->...   | s_mem     |-+  | s_mem     |-+\n"
-    _note_ += "      v                           | slabs_free      |----->...   | active    | |  | active    | |\n"
-    _note_ += "    +-array_cache--------+        +-----------------+            +-----------+ |  +-----------+ |\n"
-    _note_ += "    | avail              |                                         +-----------+    +-----------+\n"
+    _note_ += "                          |       | slabs_full      |----->...   | s_mem     |-+  | s_mem     |-+\n"
+    _note_ += "      +-------------------+       | slabs_free      |----->...   | active    | |  | active    | |\n"
+    _note_ += "      |                           +-----------------+            +-----------+ |  +-----------+ |\n"
+    _note_ += "      v                                                                        |                |\n"
+    _note_ += "    +-array_cache--------+                                         +-----------+    +-----------+\n"
+    _note_ += "    | avail              |                                         |                |\n"
     _note_ += "    | limit              |                                         v                v\n"
     _note_ += "    | entry[]            |                                       +-chunk--+       +-chunk--+\n"
     _note_ += "    |   freed_chunk_ptr  |-------------------------------------->|        |       |        |\n"
     _note_ += "    |   freed_chunk_ptr  |----------------------------+          +-chunk--+       +-chunk--+\n"
     _note_ += "    |   freed_chunk_ptr  |                            |          |        |       |        |\n"
     _note_ += "    |   freed_chunk_ptr  |                            |          +-chunk--+       +-chunk--+\n"
-    _note_ += "    |   freed_chunk_ptr  |                            |          |        |       |        |\n"
-    _note_ += "    |   ...              |                            |          +-chunk--+       +-chunk--+\n"
-    _note_ += "    +--------------------+                            +--------->|        |       |        |\n"
-    _note_ += "                                                                 +-...----+       +-...----+"
+    _note_ += "    |   freed_chunk_ptr  |                            +--------->|        |       |        |\n"
+    _note_ += "    |   ...              |                                       +-...----+       +-...----+\n"
+    _note_ += "    +--------------------+\n"
+    _note_ += "* Chunks in array_cache are marked as in-use, even though they are actually reusable."
 
     def __init__(self, *args, **kwargs):
         super().__init__()
@@ -61131,11 +61133,12 @@ class SlabDumpCommand(GenericCommand):
                     next_idx = freelist[idxidx + 1]
                     next_msg = "next: {:#x}".format(next_idx)
                 chunk_s = Color.colorify("{:#x}".format(chunk), freed_address_color)
+            elif chunk in kmem_cache["array_cache"]["freelist"]:
+                next_msg = "in-use (array_cache)"
+                chunk_s = Color.colorify("{:#x}".format(chunk), freed_address_color)
             else:
                 if kmem_cache["objperslab"] <= idx:
                     next_msg = "never-used"
-                elif chunk in kmem_cache["array_cache"]["freelist"]:
-                    next_msg = "in-use but array_cache"
                 else:
                     next_msg = "in-use"
                 chunk_s = Color.colorify("{:#x}".format(chunk), used_address_color)
@@ -61147,7 +61150,7 @@ class SlabDumpCommand(GenericCommand):
                 h = hexdump(peeked_data, 0x10, base=chunk, unit=current_arch.ptrsize)
                 self.out.append(h)
 
-            if self.hexdump_freed_size and next_msg.startswith(("next: ", "in-use but")):
+            if self.hexdump_freed_size and next_msg.startswith(("next: ", "in-use (array_cache)")):
                 peeked_data = read_memory(chunk, self.hexdump_freed_size)
                 h = hexdump(peeked_data, 0x10, base=chunk, unit=current_arch.ptrsize)
                 self.out.append(h)
@@ -61158,7 +61161,7 @@ class SlabDumpCommand(GenericCommand):
                     line = DereferenceCommand.pprint_dereferenced(chunk, i)
                     self.out.append(line)
 
-            if self.telescope_freed_size and next_msg.startswith(("next: ", "in-use but")):
+            if self.telescope_freed_size and next_msg.startswith(("next: ", "in-use (array_cache)")):
                 n = self.telescope_freed_size // current_arch.ptrsize
                 for i in range(n):
                     line = DereferenceCommand.pprint_dereferenced(chunk, i)
