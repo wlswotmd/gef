@@ -46508,7 +46508,7 @@ class KernelAddressHeuristicFinder:
                 # TODO
                 g = []
             elif is_arm32():
-                g = KernelAddressHeuristicFinderUtil.arm32_ldr_reg_const(res, reg=r"r\d+", skip=1)
+                g = KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative(res, skip=1)
             for x in g:
                 return x
 
