@@ -45173,6 +45173,7 @@ class UnsignedCommand(GenericCommand):
     """Convert the negative number to unsigned."""
     _cmdline_ = "unsigned"
     _category_ = "09-a. Misc - Conversion"
+    _aliases_ = ["us", "signed"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("value", metavar="VALUE", type=parse_address, help="the value you want to convert.")
@@ -45184,10 +45185,15 @@ class UnsignedCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
+        if is_msb_on(args.value):
+            value = args.value
+        else:
+            value = args.value * -1
+
         for i in range(4):
             shift = (2 ** i) * 8
-            mask = (1 << shift) -1
-            masked_value = args.value & mask
+            mask = (1 << shift) - 1
+            masked_value = value & mask
             gef_print("{:d} byte unsigned: {:#x}".format(2 ** i, masked_value))
         return
 
