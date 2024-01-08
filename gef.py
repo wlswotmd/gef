@@ -48409,7 +48409,10 @@ class KernelAddressHeuristicFinder:
         kinfo = KernelbaseCommand.get_kernel_base()
         if kinfo.ro_base and kinfo.ro_size:
             ro_data = read_memory(kinfo.ro_base, kinfo.ro_size)
-            rw_data = read_memory(kinfo.rw_base, min(kinfo.rw_size, 0x1000000))
+            if kinfo.rw_base and kinfo.rw_size:
+                rw_data = read_memory(kinfo.rw_base, min(kinfo.rw_size, 0x1000000))
+            else:
+                rw_data = ro_data
             pos = -1
             while True:
                 # search aligned string from .rodata
@@ -48432,7 +48435,10 @@ class KernelAddressHeuristicFinder:
                     if pos2 % current_arch.ptrsize != 0:
                         continue
                     # TODO: How to find the exact value of sizeof(resource_size_t)
-                    maybe_ioport_resource = kinfo.rw_base + pos2 - current_arch.ptrsize * 2
+                    if kinfo.rw_base and kinfo.rw_size:
+                        maybe_ioport_resource = kinfo.rw_base + pos2 - current_arch.ptrsize * 2
+                    else:
+                        maybe_ioport_resource = kinfo.ro_base + pos2 - current_arch.ptrsize * 2
                     return maybe_ioport_resource
         return None
 
