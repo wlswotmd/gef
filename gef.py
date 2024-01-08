@@ -51384,7 +51384,35 @@ class KernelModuleCommand(GenericCommand):
 
     _example_ = "{:s} -q".format(_cmdline_)
 
-    _note_ = "This command needs CONFIG_RANDSTRUCT=n."
+    _note_ = "This command needs CONFIG_RANDSTRUCT=n.\n"
+    _note_ += "\n"
+    _note_ += "Simplified clocksource structure:\n"
+    _note_ += "\n"
+    _note_ += "                   +-module------------------+\n"
+    _note_ += "+-modules-----+    | ...                     |\n"
+    _note_ += "| list_head   |--->| list                    |--->...\n"
+    _note_ += "+-------------+    | name[]                  |\n"
+    _note_ += "                   | ...                     |\n"
+    _note_ += "                   | mem[] (v6.4~)           |\n"
+    _note_ += "                   |     base                |\n"
+    _note_ += "                   |     size                |\n"
+    _note_ += "                   |     ...                 |\n"
+    _note_ += "                   | init_layout (v4.5~v6.4) |\n"
+    _note_ += "                   |     base                |\n"
+    _note_ += "                   |     size                |\n"
+    _note_ += "                   |     text_size           |\n"
+    _note_ += "                   |     ro_size             |\n"
+    _note_ += "                   |     ro_after_init_size  |\n"
+    _note_ += "                   |     ...                 |\n"
+    _note_ += "                   | module_core    (~v4.5)  |\n"
+    _note_ += "                   | init_size      (~v4.5)  |\n"
+    _note_ += "                   | core_size      (~v4.5)  |\n"
+    _note_ += "                   | init_text_size (~v4.5)  |  +-->+-mod_kallsyms---+\n"
+    _note_ += "                   | core_text_size (~v4.5)  |  |   | symtab         |\n"
+    _note_ += "                   | ...                     |  |   | num_symtab     |\n"
+    _note_ += "                   | kallsyms                |--+   | strtab         |\n"
+    _note_ += "                   | ...                     |      | typetab (v5.2~)|\n"
+    _note_ += "                   +-------------------------+      +----------------+"
 
     def get_modules_list(self):
         modules = KernelAddressHeuristicFinder.get_modules()
