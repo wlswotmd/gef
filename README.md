@@ -94,7 +94,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * It is the result of `info registers` with filtering general registers.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/sysreg.png)
 * `pagewalk`: displays the page table from scanning physical memory.
-    * x64 (Supported: PML5T/PML4T)
+    * x64 (Supported: 4-Level/5-Level Paging)
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-x64.png)
     * x86 (Supported: PAE/Non-PAE)
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-x86.png)
@@ -102,7 +102,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
         * ARM v8.7 base.
         * 32bit mode is NOT supported.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64.png)
-        * Stage2 translation is supported. This is EL1/EL2/EL3 pagewalk sample (HITCON CTF 2018 super_hexagon).
+        * Stage2 translation is supported. This is EL1/EL2/EL3 pagewalk sample (HITCON CTF 2018 `super_hexagon`).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-el123.png)
         * Secure memory scanning is supported, but you have to break in the secure world.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-secure.png)
@@ -187,10 +187,9 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/buddy-dump.png)
 * `vmalloc-dump`: dumps vmalloc used list and freed list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmalloc-dump.png)
-* `virt2page`/`page2virt`: displays transformation virtual address <-> struct page.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/virt2page-page2virt.png)
-* `phys2page`/`page2phys`: displays transformation physical address <-> struct page.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/phys2page-page2phys.png)
+* `page`: displays transformation struct page <-> virtual/physical address.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/page.png)
+    * There are shortcuts: `virt2page`, `page2virt`, `phys2page` and `page2phys`.
 * `kmalloc-tracer`: collects and displays information when kmalloc/kfree.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-tracer.png)
 * `kmalloc-allocated-by`: calls a predefined set of system calls and prints structures allocated by kmalloc or freed by kfree.
