@@ -15244,7 +15244,7 @@ class HijackFdCommand(GenericCommand):
             err("Failed to read stack")
             return None, None
 
-        info("Original contents: {}".format(original_contents))
+        info("Original contents: {} @ {:#x}".format(original_contents, stack_addr))
         info("Overwrite data: {}".format(data))
 
         # overwrite it
