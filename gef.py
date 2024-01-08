@@ -46172,7 +46172,10 @@ class KernelAddressHeuristicFinder:
                 elif is_arm64():
                     g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
                 elif is_arm32():
-                    g = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                    g = itertools.chain(
+                        KernelAddressHeuristicFinderUtil.arm32_movw_movt_ldr(res),
+                        KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative(res),
+                    )
                 for x in g:
                     if not is_valid_addr(x):
                         continue
@@ -46208,7 +46211,10 @@ class KernelAddressHeuristicFinder:
                 elif is_arm64():
                     g = KernelAddressHeuristicFinderUtil.aarch64_adrp_ldr(res)
                 elif is_arm32():
-                    g = KernelAddressHeuristicFinderUtil.arm32_movw_movt_ldr(res)
+                    g = itertools.chain(
+                        KernelAddressHeuristicFinderUtil.arm32_movw_movt_ldr(res),
+                        KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative_ldr(res),
+                    )
                 for x in g:
                     return x
         return None
@@ -53285,7 +53291,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
         chrdevs = KernelAddressHeuristicFinder.get_chrdevs()
         if chrdevs is None:
             if not self.quiet:
-                err("Not found symbol")
+                err("Not found chrdevs")
             return None
         if not self.quiet:
             info("chrdevs: {:#x}".format(chrdevs))
@@ -53344,7 +53350,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
         cdev_map = KernelAddressHeuristicFinder.get_cdev_map()
         if cdev_map is None:
             if not self.quiet:
-                err("Not found symbol")
+                err("Not found cdev_map")
             return None
         if not self.quiet:
             info("cdev_map: {:#x}".format(cdev_map))
