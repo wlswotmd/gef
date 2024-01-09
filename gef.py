@@ -9932,10 +9932,12 @@ def read_memory(addr, length):
 def is_valid_addr(addr):
     if addr < 0:
         return False
-    if is_64bit() and (1 << 64) <= addr:
-        return False
-    elif is_32bit() and (1 << 32) <= addr:
-        return False
+    if is_64bit():
+        if (1 << 64) - 1 < addr:
+            return False
+    elif is_32bit():
+        if (1 << 32) - 1 < addr:
+            return False
     try:
         gdb.selected_inferior().read_memory(addr, 1)
         return True
