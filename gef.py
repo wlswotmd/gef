@@ -45893,11 +45893,32 @@ class KernelAddressHeuristicFinder:
             r = get_register("$TPIDRURO_S")
             if r and is_valid_addr(r):
                 return r
+
             # plan 2 (from stack top)
+            # We need to consider the case where Linux and RTOS are running on different CPUs at the same time.
+            # If the stack is not the address the kernel expects to use, it should not be interpreted as a task.
+            maps = KernelbaseCommand.get_maps()
+            if not maps:
+                return None
+            kern_min = maps[0][0]
+            if kern_min < 0x80000000:
+                PAGE_OFFSET = 0x40000000 # VMSPLIT_1G
+            elif kern_min < 0xB0000000:
+                PAGE_OFFSET = 0x80000000 # VMSPLIT_2G
+            elif kern_min < 0xBF000000: # 0xBF000000-0xC0000000 is kernel module area. Even if it is VMSPLIT_3G, this is used.
+                PAGE_OFFSET = 0xB0000000 # VMSPLIT_3G_OPT
+            else:
+                PAGE_OFFSET = 0xC0000000 # VMSPLIT_3G
+
+            # check if valid kernel address or not
             current_thread_info = current_arch.sp & ~0x1fff
+            if current_thread_info < PAGE_OFFSET:
+                return None
+
             try:
                 v = read_int_from_memory(current_thread_info + current_arch.ptrsize * 3)
-                return v
+                if v and is_valid_addr(v):
+                    return v
             except gdb.MemoryError:
                 # In some threads, $sp points to an invalid address.
                 return None
@@ -49320,7 +49341,10 @@ class KernelTaskCommand(GenericCommand):
         task_list = [pos]
         # validating candidate offset
         while True:
-            pos = read_int_from_memory(pos)
+            try:
+                pos = read_int_from_memory(pos)
+            except gdb.MemoryError:
+                return None
             if pos in task_list:
                 break
             task_list.append(pos)
@@ -50827,6 +50851,9 @@ class KernelTaskCommand(GenericCommand):
 
         # task addresses
         task_addrs = self.get_task_list(init_task, self.offset_tasks)
+        if task_addrs is None:
+            self.quiet_err("Failed to list up each tasks")
+            return False
         self.quiet_info("Number of tasks: {:d}".format(len(task_addrs)))
 
         # task_struct->mm
