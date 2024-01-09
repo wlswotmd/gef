@@ -75580,17 +75580,17 @@ class PageCommand(GenericCommand):
             # CONFIG_SPARSEMEM_VMEMMAP
 
             self.VMEMMAP_START = KernelAddressHeuristicFinder.get_vmemmap()
-            if not self.VMEMMAP_START:
+            if self.VMEMMAP_START is None:
                 err("Not found VMEMMAP_START")
                 return False
 
             self.PAGE_OFFSET = KernelAddressHeuristicFinder.get_page_offset()
-            if not self.PAGE_OFFSET:
+            if self.PAGE_OFFSET is None:
                 err("Not found PAGE_OFFSET")
                 return False
 
             self.phys_base = KernelAddressHeuristicFinder.get_phys_base()
-            if not self.phys_base:
+            if self.phys_base is None:
                 err("Not found phys_base")
                 return False
 
@@ -75753,7 +75753,7 @@ class PageCommand(GenericCommand):
                 self.PAGE_OFFSET = 0x40000000 # VMSPLIT_1G
             elif kern_min < 0xB0000000:
                 self.PAGE_OFFSET = 0x80000000 # VMSPLIT_2G
-            elif kern_min < 0xC0000000:
+            elif kern_min < 0xBF000000: # 0xBF000000-0xC0000000 is kernel module area. Even if it is VMSPLIT_3G, this is used.
                 self.PAGE_OFFSET = 0xB0000000 # VMSPLIT_3G_OPT
             else:
                 self.PAGE_OFFSET = 0xC0000000 # VMSPLIT_3G
@@ -75923,7 +75923,7 @@ class PageCommand(GenericCommand):
         if is_arm64():
             kversion = KernelVersionCommand.kernel_version()
             if kversion < "4.7":
-                err("Unsupported (kernel is too old)")
+                err("Unsupported v4.6 or before")
                 return
 
         if not self.initialized:
