@@ -169,13 +169,13 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * Since `page_to_virt` is difficult to implement, it will heuristically determine the virtual address from the freelist.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-dump.png)
 * `slab-dump`: dumps slab free-list.
-    * Supported on x64 + SLAB + no-symbol + kASLR.
+    * Supported on x64/x86/ARM64/ARM + SLAB + no-symbol + kASLR.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slab-dump.png)
 * `slob-dump`: dumps slob free-list.
-    * Supported on x64 + SLOB + no-symbol + kASLR.
+    * Supported on x64/x86/ARM64/ARM + SLOB + no-symbol + kASLR.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slob-dump.png)
 * `slub-tiny-dump`: dumps slub-tiny free-list.
-    * Supported on x64/x86 + SLUB-TINY + no-symbol + kASLR.
+    * Supported on x64/x86/ARM64/ARM + SLUB-TINY + no-symbol + kASLR.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-tiny-dump.png)
 * `slub-contains`: resolves which `kmem_cache` certain address (object) belongs to.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-contains.png)
@@ -308,7 +308,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 
 ### Improved features
 * `vmmap`: is improved.
-    * It displays the meomry map information even when connecting to gdb stub like qemu-user.
+    * It displays the memory map information even when connecting to gdb stub like qemu-user.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-qemu-user.png)
     * Intel Pin is supported.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmmap-pin.png)
