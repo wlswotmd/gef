@@ -21602,6 +21602,15 @@ class KernelChecksecCommand(GenericCommand):
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
 
         # CONFIG_STATIC_USERMODEHELPER
+        def get_permission(addr):
+            maps = KernelbaseCommand.get_maps()
+            if not maps:
+                return None
+            for vaddr, size, perm in maps:
+                if vaddr <= addr < vaddr + size:
+                    return perm
+            return None
+
         cfg = "CONFIG_STATIC_USERMODEHELPER"
         if kversion < "4.11":
             additional = "{:s}: implemented from linux 4.11".format(cfg)
@@ -21623,9 +21632,21 @@ class KernelChecksecCommand(GenericCommand):
                 elif is_arm32():
                     g = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
                 for x in g:
-                    if is_valid_addr(x) and read_memory(x, 5) == b"/sbin":
+                    if not is_valid_addr(x):
+                        continue
+                    # default value of CONFIG_STATIC_USERMODEHELPER_PATH is "/sbin/usermode-helper".
+                    if read_memory(x, 5) == b"/sbin":
                         use_static = True
                         break
+                    # sometimes CONFIG_STATIC_USERMODEHELPER_PATH is set to "".
+                    # If CONFIG_STATIC_USERMODEHELPER_PATH is "", one NUL should be stored.
+                    # In many cases, another string seems to start being stored at the next address of NUL.
+                    # It is rare for two consecutive NULs to occur, and we use this in the detection logic.
+                    if read_memory(x, 1) == b"\x00" and read_memory(x + 1, 1) != b"\x00":
+                        # check if the address is read-only or not
+                        if get_permission(x) == "R--":
+                            use_static = True
+                            break
                 if use_static:
                     additional = "call_usermodehelper_setup uses static path"
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
