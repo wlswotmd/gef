@@ -60759,6 +60759,7 @@ class SlabDumpCommand(GenericCommand):
         unsigned int active;
         atomic_t refcount;                       // if kernel < 4.16-rc1
         struct rcu_head rcu_head;
+        struct kmem_cache *slab_cache;
         ...
     };
 
@@ -60937,6 +60938,20 @@ class SlabDumpCommand(GenericCommand):
             self.page_offset_freelist = current_arch.ptrsize * 4
         if not self.quiet:
             info("offsetof(page, freelist): {:#x}".format(self.page_offset_freelist))
+
+        # offsetof(page, slab_cache)
+        if kversion < "4.16" and is_32bit():
+            self.page_offset_slab_cache = current_arch.ptrsize * 7
+        elif kversion < "4.18":
+            self.page_offset_slab_cache = current_arch.ptrsize * 6
+        elif kversion <= "5.17":
+            self.page_offset_slab_cache = current_arch.ptrsize * 3
+        elif kversion < "6.2":
+            self.page_offset_slab_cache = current_arch.ptrsize * 3
+        else:
+            self.page_offset_slab_cache = current_arch.ptrsize
+        if not self.quiet:
+            info("offsetof(page, slab_cache): {:#x}".format(self.page_offset_slab_cache))
 
         # offsetof(page, s_mem)
         if kversion < "4.18":
@@ -61904,7 +61919,7 @@ class SlobDumpCommand(GenericCommand):
 
 @register_command
 class SlubContainsCommand(GenericCommand):
-    """Resolve the slab cache (kmem_cache) which an object belongs (only x64/ARM64)."""
+    """Resolve the slub cache (kmem_cache) which an object belongs (only x64/ARM64)."""
     _cmdline_ = "slub-contains"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
     _aliases_ = ["xslub"]
@@ -62051,6 +62066,163 @@ class SlubContainsCommand(GenericCommand):
 
             msg = ("name: {:s}  size: {:#x}  num_pages: {:#x}".format(slub_cache_name_c, slub_cache_size, num_pages))
             if (args.address - current) % slub_cache_size != 0:
+                msg += " " + Color.redify("(unaligned?)")
+            gef_print(msg)
+
+        except (gdb.MemoryError, ZeroDivisionError):
+            if not args.quiet:
+                err("Memory error")
+        return
+
+
+@register_command
+class SlabContainsCommand(GenericCommand):
+    """Resolve the slab cache (kmem_cache) which an object belongs (only x64/ARM64)."""
+    _cmdline_ = "slab-contains"
+    _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
+    _aliases_ = ["xslab"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="target address.")
+    parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
+    _syntax_ = parser.format_help()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.initialized = False
+        self.allocator = None
+        return
+
+    def initialize(self):
+        if self.initialized:
+            return True
+
+        res = gdb.execute("slab-dump --meta", to_string=True)
+
+        r = re.search(r"offsetof\(page, slab_cache\): (0x\S+)", res)
+        if not r:
+            return False
+        self.page_offset_slab_cache = int(r.group(1), 16)
+        if self.verbose:
+            info("offsetof(page, slab_cache): {:#x}".format(self.page_offset_slab_cache))
+
+        r = re.search(r"offsetof\(kmem_cache, name\): (0x\S+)", res)
+        if not r:
+            return False
+        self.kmem_cache_offset_name = int(r.group(1), 16)
+        if self.verbose:
+            info("offsetof(kmem_cache, name): {:#x}".format(self.kmem_cache_offset_name))
+
+        r = re.search(r"offsetof\(kmem_cache, size\): (0x\S+)", res)
+        if not r:
+            return False
+        self.kmem_cache_offset_size = int(r.group(1), 16)
+        if self.verbose:
+            info("offsetof(kmem_cache, size): {:#x}".format(self.kmem_cache_offset_size))
+
+        r = re.search(r"offsetof\(kmem_cache, gfporder\): (0x\S+)", res)
+        if not r:
+            return False
+        self.kmem_cache_offset_gfporder = int(r.group(1), 16)
+        if self.verbose:
+            info("offsetof(kmem_cache, gfporder): {:#x}".format(self.kmem_cache_offset_gfporder))
+
+        self.initialized = True
+        return True
+
+    def virt2page_wrapper(self, vaddr):
+        ret = gdb.execute("virt2page {:#x}".format(vaddr), to_string=True)
+        r = re.search(r"Page: (\S+)", ret)
+        if r:
+            return int(r.group(1), 16)
+        return None
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_64", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        self.verbose = args.verbose
+        if args.reparse:
+            self.initialized = False
+
+        if self.allocator is None:
+            if not args.quiet:
+                info("Wait for memory scan")
+            self.allocator = KernelChecksecCommand.get_slab_type()
+        if self.allocator != "SLAB":
+            if not args.quiet:
+                err("Unsupported SLUB, SLOB, SLUB_TINY")
+            return
+
+        ret = self.initialize()
+        if not ret:
+            if not args.quiet:
+                err("Failed to initialize")
+            return
+
+        current = args.address & gef_getpagesize_mask_high()
+        chunk_label_color = get_gef_setting("theme.heap_chunk_label")
+
+        kversion = KernelVersionCommand.kernel_version()
+        try:
+            while True:
+                page = self.virt2page_wrapper(current)
+                if page is None:
+                    if not args.quiet:
+                        err("Invalid address")
+                    return
+
+                if not args.quiet:
+                    if kversion >= "5.17":
+                        gef_print("slab: {:#x}".format(page))
+                    else:
+                        gef_print("page: {:#x}".format(page))
+
+                kmem_cache = read_int_from_memory(page + self.page_offset_slab_cache)
+                if kmem_cache == 0:
+                    if not args.quiet:
+                        err("This address is not managed by slab")
+                    return
+
+                if not args.quiet:
+                    gef_print("kmem_cache: {:#x}".format(kmem_cache))
+
+                if (kmem_cache & gef_getpagesize_mask_high()) == 0xdead000000000000:
+                    current -= gef_getpagesize()
+                    if not args.quiet:
+                        warn("Detected invalid value, continue exploring...")
+                    continue
+
+                if kmem_cache & 1:
+                    current -= gef_getpagesize()
+                    if not args.quiet:
+                        warn("Detected invalid value, continue exploring...")
+                    continue
+
+                if not args.quiet:
+                    gef_print("base: {:#x}".format(current))
+                break
+
+            slab_cache_name_ptr = read_int_from_memory(kmem_cache + self.kmem_cache_offset_name)
+            slab_cache_name = read_cstring_from_memory(slab_cache_name_ptr)
+            if slab_cache_name is None:
+                if not args.quiet:
+                    err("This address is not managed by slab")
+                return
+            slab_cache_name_c = Color.colorify(slab_cache_name, chunk_label_color)
+            slab_cache_size = u32(read_memory(kmem_cache + self.kmem_cache_offset_size, 4))
+
+            gfporder = u32(read_memory(kmem_cache + self.kmem_cache_offset_gfporder, 4))
+            num_pages = 1 << gfporder
+
+            msg = ("name: {:s}  size: {:#x}  num_pages: {:#x}".format(slab_cache_name_c, slab_cache_size, num_pages))
+            if (args.address - current) % slab_cache_size != 0:
                 msg += " " + Color.redify("(unaligned?)")
             gef_print(msg)
 
