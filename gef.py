@@ -26460,7 +26460,7 @@ class DereferenceCommand(GenericCommand):
                         help="the memory address you want to dump. (default: current_arch.sp)")
     parser.add_argument("nb_lines", metavar="NB_LINES", nargs="?", type=lambda x: int(x, 0), default=0x40,
                         help="the count of lines. (default: %(default)s)")
-    parser.add_argument("--slub-contains", action="store_true", help="display slub_cache name if available (x64 kernel only).")
+    parser.add_argument("--slub-contains", action="store_true", help="display slab_cache name if available (x64 kernel only).")
     parser.add_argument("--phys", action="store_true", help="treat ADDRESS as a physical address.")
     parser.add_argument("--uniq", action="store_true", help="display with uniq.")
     parser.add_argument("--is-addr", action="store_true", help="display only valid address.")
@@ -61919,7 +61919,7 @@ class SlobDumpCommand(GenericCommand):
 
 @register_command
 class SlubContainsCommand(GenericCommand):
-    """Resolve the slub cache (kmem_cache) which an object belongs (only x64/ARM64)."""
+    """Resolve the slab cache (kmem_cache) which an object belongs to."""
     _cmdline_ = "slub-contains"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
     _aliases_ = ["xslub"]
@@ -61984,7 +61984,7 @@ class SlubContainsCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_64", "ARM64"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
@@ -62051,21 +62051,21 @@ class SlubContainsCommand(GenericCommand):
                     gef_print("base: {:#x}".format(current))
                 break
 
-            slub_cache_name_ptr = read_int_from_memory(kmem_cache + self.kmem_cache_offset_name)
-            slub_cache_name = read_cstring_from_memory(slub_cache_name_ptr)
-            if slub_cache_name is None:
+            slab_cache_name_ptr = read_int_from_memory(kmem_cache + self.kmem_cache_offset_name)
+            slab_cache_name = read_cstring_from_memory(slab_cache_name_ptr)
+            if slab_cache_name is None:
                 if not args.quiet:
                     err("This address is not managed by slub")
                 return
-            slub_cache_name_c = Color.colorify(slub_cache_name, chunk_label_color)
-            slub_cache_size = u32(read_memory(kmem_cache + self.kmem_cache_offset_size, 4))
+            slab_cache_name_c = Color.colorify(slab_cache_name, chunk_label_color)
+            slab_cache_size = u32(read_memory(kmem_cache + self.kmem_cache_offset_size, 4))
 
             x = read_int_from_memory(page + self.page_offset_inuse_objects_frozen)
             objects = (x >> 16) & 0x7fff
-            num_pages = (slub_cache_size * objects + gef_getpagesize_mask_low()) // gef_getpagesize()
+            num_pages = (slab_cache_size * objects + gef_getpagesize_mask_low()) // gef_getpagesize()
 
-            msg = ("name: {:s}  size: {:#x}  num_pages: {:#x}".format(slub_cache_name_c, slub_cache_size, num_pages))
-            if (args.address - current) % slub_cache_size != 0:
+            msg = ("name: {:s}  size: {:#x}  num_pages: {:#x}".format(slab_cache_name_c, slab_cache_size, num_pages))
+            if (args.address - current) % slab_cache_size != 0:
                 msg += " " + Color.redify("(unaligned?)")
             gef_print(msg)
 
@@ -62077,7 +62077,7 @@ class SlubContainsCommand(GenericCommand):
 
 @register_command
 class SlabContainsCommand(GenericCommand):
-    """Resolve the slab cache (kmem_cache) which an object belongs (only x64/ARM64)."""
+    """Resolve the slab cache (kmem_cache) which an object belongs to."""
     _cmdline_ = "slab-contains"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
     _aliases_ = ["xslab"]
@@ -62142,7 +62142,7 @@ class SlabContainsCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_64", "ARM64"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
@@ -77276,9 +77276,9 @@ class KmallocBreakpoint(gdb.Breakpoint):
             _, size = current_arch.get_ith_parameter(self.index_of_size_arg)
         else:
             _, kmem_cache = current_arch.get_ith_parameter(0)
-            slub_cache_name_ptr = read_int_from_memory(kmem_cache + self.extra.kmem_cache_offset_name)
-            slub_cache_name = read_cstring_from_memory(slub_cache_name_ptr)
-            if not slub_cache_name.startswith("kmalloc-"):
+            slab_cache_name_ptr = read_int_from_memory(kmem_cache + self.extra.kmem_cache_offset_name)
+            slab_cache_name = read_cstring_from_memory(slab_cache_name_ptr)
+            if not slab_cache_name.startswith("kmalloc-"):
                 return False
             size = u32(read_memory(kmem_cache + self.extra.kmem_cache_offset_size, 4))
 
@@ -77480,9 +77480,9 @@ class KmallocTracerCommand(GenericCommand):
         if not r:
             return None
 
-        slub_cache_name = r.group(1)
-        slub_cache_size = int(r.group(2), 16)
-        return slub_cache_name, slub_cache_size
+        slab_cache_name = r.group(1)
+        slab_cache_size = int(r.group(2), 16)
+        return slab_cache_name, slab_cache_size
 
     @staticmethod
     def print_backtrace(backtrace):
