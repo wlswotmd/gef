@@ -43777,6 +43777,11 @@ class KernelMagicCommand(GenericCommand):
             self.resolve_and_print_kernel("VMALLOC_START", None, maps, KernelAddressHeuristicFinder.get_vmalloc_start)
             self.resolve_and_print_kernel("VMEMMAP_START (struct page[])", None, maps, KernelAddressHeuristicFinder.get_vmemmap)
             self.resolve_and_print_kernel("phys_base (for page<->phys)", text_base, maps, KernelAddressHeuristicFinder.get_phys_base)
+        if is_x86_32() or is_arm32():
+            gef_print(titlify("Memory base"))
+            self.resolve_and_print_kernel("mem_map (struct page[])", None, maps, KernelAddressHeuristicFinder.get_mem_map)
+        if is_x86_32():
+            self.resolve_and_print_kernel("mem_section", None, maps, KernelAddressHeuristicFinder.get_mem_section)
         return
 
     @parse_args
