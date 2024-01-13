@@ -6473,8 +6473,7 @@ class MIPS(Architecture):
     return_register = "$v0"
     function_parameters = ["$a0", "$a1", "$a2", "$a3"]
     syscall_register = "$v0"
-    syscall_parameters_o32 = ["$a0", "$a1", "$a2", "$a3", "$sp+0x10", "$sp+0x14", "$sp+0x18", "$sp+0x1c"]
-    syscall_parameters_n32 = ["$a0", "$a1", "$a2", "$a3", "$a4", "$a5"]
+    syscall_parameters = ["$a0", "$a1", "$a2", "$a3", "$sp+0x10", "$sp+0x14", "$sp+0x18", "$sp+0x1c"]
 
     bit_length = 32
     endianness = "little / big"
@@ -6721,6 +6720,17 @@ class MIPS64(MIPS):
         code = "; ".join(insns)
         arch, mode = get_keystone_arch()
         return keystone_assemble(code, arch, mode, raw=True)
+
+
+class MIPSN32(MIPS64):
+    arch = "MIPS"
+    mode = "n32"
+
+    load_condition = [
+        "MIPSN32"
+    ]
+
+    bit_length = 32
 
 
 class S390X(Architecture):
@@ -10430,6 +10440,7 @@ def only_if_specific_arch(arch=()):
                 "ARM32": is_arm32,
                 "MIPS32": is_mips32,
                 "MIPS64": is_mips64,
+                "MIPSN32": is_mipsn32,
                 "PPC32": is_ppc32,
                 "PPC64": is_ppc64,
                 "SPARC32": is_sparc32,
@@ -10477,6 +10488,7 @@ def exclude_specific_arch(arch=()):
                 "ARM32": is_arm32,
                 "MIPS32": is_mips32,
                 "MIPS64": is_mips64,
+                "MIPSN32": is_mipsn32,
                 "PPC32": is_ppc32,
                 "PPC64": is_ppc64,
                 "SPARC32": is_sparc32,
@@ -11867,6 +11879,10 @@ def is_mips64():
     return current_arch and current_arch.arch == "MIPS" and current_arch.mode == "64"
 
 
+def is_mipsn32():
+    return current_arch and current_arch.arch == "MIPS" and current_arch.mode == "n32"
+
+
 def is_ppc32():
     return current_arch and current_arch.arch == "PPC" and current_arch.mode == "32"
 
@@ -12047,6 +12063,10 @@ def set_arch(arch_str=None):
             # On some architectures, it is not possible to determine whether it is 32-bit or 64-bit
             # from the ELF header e_machine. so we use the detection result of gdb.
             key = get_arch().upper()
+
+    # Even if it is determined to be MIPS64, if it is in 32-bit mode, it is n32.
+    if key in MIPS64.load_condition and is_32bit():
+        key = "MIPSN32"
 
     try:
         current_arch = arches[key]()
@@ -15168,7 +15188,7 @@ class HijackFdCommand(GenericCommand):
         self.O_CREAT = 0o100
         self.O_RDWR = 0o2
         # some architecture use different consts.
-        if is_mips32() or is_mips64():
+        if is_mips32() or is_mips64() or is_mipsn32():
             # /usr/mipsel-linux-gnu/include/bits/socket_type.h
             # /usr/mips64el-linux-gnuabi64/include/bits/socket_type.h
             self.SOCK_STREAM = 2
@@ -16476,8 +16496,6 @@ class CallSyscallCommand(GenericCommand):
         syscall_args = args.syscall_args
 
         for key, entry in syscall_table.table.items():
-            if is_mips32() and key > 6000: # force use o32
-                continue
             if syscall_name == entry.name:
                 syscall_params = entry.params
                 nr = key
@@ -16562,7 +16580,7 @@ class MmapMemoryCommand(GenericCommand):
         flags = 0x22 # MAP_ANONYMOUS | MAP_PRIVATE
         if args.location != 0:
             flags |= 0x10 # MAP_FIXED
-        if is_mips32() or is_mips64():
+        if is_mips32() or is_mips64() or is_mipsn32():
             flags |= 0x800 # MAP_DENYWRITE (why?)
 
         # doit
@@ -19893,14 +19911,8 @@ class ArchInfoCommand(GenericCommand):
         gef_print("{:30s} {:s} {!s}".format("return register", RIGHT_ARROW, current_arch.return_register))
         gef_print("{:30s} {:s} {!s}".format("function parameters", RIGHT_ARROW, fparams))
         gef_print("{:30s} {:s} {!s}".format("syscall register", RIGHT_ARROW, current_arch.syscall_register))
-        if is_mips32():
-            sparams = ", ".join(current_arch.syscall_parameters_n32)
-            gef_print("{:30s} {:s} {!s}".format("syscall parameters (n32)", RIGHT_ARROW, sparams))
-            sparams = ", ".join(current_arch.syscall_parameters_o32)
-            gef_print("{:30s} {:s} {!s}".format("syscall parameters (o32)", RIGHT_ARROW, sparams))
-        else:
-            sparams = ", ".join(current_arch.syscall_parameters)
-            gef_print("{:30s} {:s} {!s}".format("syscall parameters", RIGHT_ARROW, sparams))
+        sparams = ", ".join(current_arch.syscall_parameters)
+        gef_print("{:30s} {:s} {!s}".format("syscall parameters", RIGHT_ARROW, sparams))
         if is_x86() or is_arm32() or is_arm64():
             gef_print("{:30s} {:s} {!s}".format("32bit-emulated (compat mode)", RIGHT_ARROW, is_emulated32()))
         gef_print("{:30s} {:s} {!s}".format("Has a call/jump delay slot", RIGHT_ARROW, current_arch.has_delay_slot))
@@ -28050,7 +28062,7 @@ class LinkMapCommand(GenericCommand):
             elif is_alpha():
                 DT_THISPROCNUM = 1
                 ARCH_SPECIFIC_TABLE = DynamicCommand.DT_TABLE["alpha"]
-            elif is_mips32() or is_mips64():
+            elif is_mips32() or is_mips64() or is_mipsn32():
                 DT_THISPROCNUM = 0x37
                 ARCH_SPECIFIC_TABLE = DynamicCommand.DT_TABLE["mips"]
             elif is_ppc32():
@@ -41678,13 +41690,10 @@ def get_syscall_table(arch=None, mode=None):
         syscall_list = arm_OPTEE_syscall_list.copy()
 
     elif arch == "MIPS" and mode == "32":
-        o32_register_list = MIPS().syscall_parameters_o32
-        n32_register_list = MIPS().syscall_parameters_n32
+        register_list = MIPS().syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(mips_o32_syscall_tbl)
-        tbl += parse_syscall_table_defs(mips_n32_syscall_tbl)
         arch_specific_dic = {
-            # o32
             "sys_syscall": ["...", ], #
             "__sys_fork": [], #
             "sys_rt_sigreturn": [], # arch/mips/kernel/signal.c
@@ -41723,7 +41732,56 @@ def get_syscall_table(arch=None, mode=None):
             "sys_sigaction": [
                 "int sig2", "const struct sigaction __user *act", "struct sigaction __user *oact",
             ], # arch/mips/kernel/signal.c
-            # n32
+        }
+
+        syscall_list = []
+        for entry in tbl:
+            nr, abi, name, func = entry[:4] # dont use compat
+            if abi != "o32":
+                continue
+            nr += 4000 # arch/mips/include/asm/unistd.h
+            # special case
+            if func in arch_specific_dic:
+                syscall_list.append([nr, name, arch_specific_dic[func]])
+                continue
+            # common case
+            if func == "sys_ni_syscall":
+                continue
+            if func not in sc_def:
+                err("Not found: {:s}".format(func))
+                raise
+            syscall_list.append([nr, name, sc_def[func]])
+
+    elif arch == "MIPS" and mode == "n32":
+        register_list = MIPSN32().syscall_parameters
+        sc_def = parse_common_syscall_defs()
+        tbl = parse_syscall_table_defs(mips_n32_syscall_tbl)
+        arch_specific_dic = {
+            "__sys_fork": [], #
+            "sysm_pipe": [], # arch/mips/kernel/syscall.c
+            "sys_mips_mmap": [
+                "unsigned long addr", "unsigned long len", "unsigned long prot",
+                "unsigned long flags", "unsigned long fd", "off_t offset",
+            ], # arch/mips/kernel/syscall.c
+            "__sys_clone": [
+                "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
+                "unsigned long tls", "int __user *child_tidptr",
+            ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
+            "sys_cacheflush": [
+                "unsigned long addr", "unsigned long bytes", "unsigned int cache",
+            ], # arch/mips/mm/cache.c
+            "sys_cachectl": [
+                "char *addr", "int nbytes", "int op",
+            ], # arch/mips/kernel/syscall.c
+            "__sys_sysmips": [
+                "long cmd", "long arg1", "long arg2",
+            ], # arch/mips/kernel/syscall.c
+            "sys_set_thread_area": [
+                "unsigned long addr",
+            ], # arch/mips/kernel/syscall.c
+            "__sys_clone3": [
+                "struct clone_args __user *uargs", "size_t size",
+            ], #
             "compat_sys_old_shmctl": [
                 "int shmid", "int cmd", "void *uptr",
             ], # ipc/shm.c
@@ -41742,12 +41800,9 @@ def get_syscall_table(arch=None, mode=None):
         syscall_list = []
         for entry in tbl:
             nr, abi, name, func = entry[:4] # dont use compat
-            if abi not in ["o32", "n32"]:
+            if abi != "n32":
                 continue
-            if abi == "o32":
-                nr += 4000 # arch/mips/include/asm/unistd.h
-            elif abi == "n32":
-                nr += 6000 # arch/mips/include/asm/unistd.h
+            nr += 6000 # arch/mips/include/asm/unistd.h
             # special case
             if func in arch_specific_dic:
                 syscall_list.append([nr, name, arch_specific_dic[func]])
@@ -42952,13 +43007,7 @@ def get_syscall_table(arch=None, mode=None):
 
     syscall_list = sorted(syscall_list, key=lambda x: x[0])
     for nr, name, args in syscall_list:
-        if arch == "MIPS" and mode == "32":
-            if nr >= 6000:
-                args = list(zip(n32_register_list[:len(args)], args))
-            else:
-                args = list(zip(o32_register_list[:len(args)], args))
-        else:
-            args = list(zip(register_list[:len(args)], args))
+        args = list(zip(register_list[:len(args)], args))
         syscall_table.table[nr] = Entry(name, [Param(*p) for p in args])
 
     __cached_syscall_table__[arch, mode] = syscall_table
@@ -43214,7 +43263,7 @@ class HeapbaseCommand(GenericCommand):
             if main_arena_ptr:
                 # get first_chunk (=tcache_perthread_struct*)
                 first_chunk_p = None
-                if is_x86() or is_sparc64() or is_alpha() or is_mips32() or is_mips64() or \
+                if is_x86() or is_sparc64() or is_alpha() or is_mips32() or is_mips64() or is_mipsn32() or \
                    is_nios2() or is_microblaze() or is_arc32() or is_ppc32() or is_ppc64() or \
                    is_hppa32() or is_sh4():
                     first_chunk_p = main_arena_ptr - current_arch.ptrsize * 2

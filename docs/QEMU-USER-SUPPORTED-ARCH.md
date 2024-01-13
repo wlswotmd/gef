@@ -33,6 +33,10 @@ I also list the tools I used in my Ubuntu 23.10 environment.
     * toolchain: `gcc-mips64-linux-gnuabi64` and `gcc-mips64el-linux-gnuabi64` via apt.
     * qemu: `qemu-mips64` and `qemu-mips64el` via apt.
     * gdb: `gdb-multiarch` via apt.
+* mipsn32
+    * toolchain (Ubuntu 23.10): `gcc-multilib-mips-linux-gnu`, `gcc-multilib-mipsel-linux-gnu`, `gcc-multilib-mips64-linux-gnuabi64` and `gcc-multilib-mips64el-linux-gnuabi64` via apt with `-mabi=n32` option.
+    * qemu: `qemu-mipsn32` and `qemu-mipsn32el` via apt.
+    * gdb: `gdb-multiarch` via apt.
 * sparc32
     * toolchain: `sparcv8--uclibc--stable-2022.08-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-sparc` via apt.
