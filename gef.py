@@ -20240,7 +20240,10 @@ class ElfInfoCommand(GenericCommand):
         self.out.append(titlify("ELF Header - {:s}".format(filename)))
 
         magic_hex = hexdump(struct.pack(">I", elf.e_magic), show_raw=True)
-        magic_str = repr(p32(elf.e_magic).decode()[::-1])
+        if is_big_endian():
+            magic_str = repr(p32(elf.e_magic).decode())
+        else:
+            magic_str = repr(p32(elf.e_magic).decode()[::-1])
         data = [
             ("Magic", "{:s} ({:s})".format(magic_hex, magic_str)),
             ("Class", "{:#x} - {:s}".format(elf.e_class, classes[elf.e_class])),
