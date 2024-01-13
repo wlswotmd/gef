@@ -16519,7 +16519,7 @@ class CallSyscallCommand(GenericCommand):
 
 @register_command
 class MmapMemoryCommand(GenericCommand):
-    """Allocate a new memory (syntax sugar of `call mmap(...)`)."""
+    """Allocate a new memory."""
     _cmdline_ = "mmap"
     _category_ = "05-a. Syscall - Invoke"
 
@@ -16584,8 +16584,7 @@ class MmapMemoryCommand(GenericCommand):
             flags |= 0x800 # MAP_DENYWRITE (why?)
 
         # doit
-        cmd = "call mmap({:#x}, {:#x}, {:#x}, {:#x}, -1, 0)".format(args.location, args.size, perm, flags)
-        gef_print(titlify(cmd))
+        cmd = "call-syscall mmap {:#x} {:#x} {:#x} {:#x} -1 0".format(args.location, args.size, perm, flags)
         gdb.execute(cmd)
         reset_gef_caches()
         return

@@ -524,10 +524,9 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * `onegadget`: invokes `one_gadget`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/onegadget.png)
 * `rp`: invokes `rp++` with commonly used options.
-* `mmap`: allocates a new memory if `mmap` symbol exists.
-    * This is the syntax sugar of `call mmap(...)`.
 * `call-syscall`: calls system call with specified values.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/call-syscall.png)
+* `mmap`: allocates a new memory by `call-syscall`.
 * `killthreads`: kill specific or all pthread.
 * `constgrep`: invokes `grep` under `/usr/include`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/constgrep.png)
