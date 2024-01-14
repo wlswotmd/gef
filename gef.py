@@ -60270,6 +60270,11 @@ class SlubTinyDumpCommand(GenericCommand):
         if not self.quiet:
             info("offsetof(page, freelist): {:#x}".format(self.page_offset_freelist))
 
+        # offsetof(page, slab_cache)
+        self.page_offset_slab_cache = current_arch.ptrsize
+        if not self.quiet:
+            info("offsetof(page, slab_cache): {:#x}".format(self.page_offset_slab_cache))
+
         # offsetof(page, inuse_objects_frozen)
         self.page_offset_inuse_objects_frozen = self.page_offset_freelist + current_arch.ptrsize
         if not self.quiet:
@@ -61981,7 +61986,7 @@ class SlubContainsCommand(GenericCommand):
     """Resolve the slab cache (kmem_cache) which an object belongs to."""
     _cmdline_ = "slub-contains"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
-    _aliases_ = ["xslub"]
+    _aliases_ = ["xslub", "slub-tiny-contains", "xslub-tiny"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="target address.")
@@ -62000,7 +62005,10 @@ class SlubContainsCommand(GenericCommand):
         if self.initialized:
             return True
 
-        res = gdb.execute("slub-dump --meta", to_string=True)
+        if self.allocator == "SLUB":
+            res = gdb.execute("slub-dump --meta", to_string=True)
+        else:
+            res = gdb.execute("slub-tiny-dump --meta", to_string=True)
 
         r = re.search(r"offsetof\(page, slab_cache\): (0x\S+)", res)
         if not r:
@@ -62008,6 +62016,13 @@ class SlubContainsCommand(GenericCommand):
         self.page_offset_slab_cache = int(r.group(1), 16)
         if self.verbose:
             info("offsetof(page, slab_cache): {:#x}".format(self.page_offset_slab_cache))
+
+        r = re.search(r"offsetof\(page, inuse_objects_frozen\): (0x\S+)", res)
+        if not r:
+            return False
+        self.page_offset_inuse_objects_frozen = int(r.group(1), 16)
+        if self.verbose:
+            info("offsetof(page, inuse_objects_frozen): {:#x}".format(self.page_offset_inuse_objects_frozen))
 
         r = re.search(r"offsetof\(kmem_cache, name\): (0x\S+)", res)
         if not r:
@@ -62022,13 +62037,6 @@ class SlubContainsCommand(GenericCommand):
         self.kmem_cache_offset_size = int(r.group(1), 16)
         if self.verbose:
             info("offsetof(kmem_cache, size): {:#x}".format(self.kmem_cache_offset_size))
-
-        r = re.search(r"offsetof\(page, inuse_objects_frozen\): (0x\S+)", res)
-        if not r:
-            return False
-        self.page_offset_inuse_objects_frozen = int(r.group(1), 16)
-        if self.verbose:
-            info("offsetof(page, inuse_objects_frozen): {:#x}".format(self.page_offset_inuse_objects_frozen))
 
         self.initialized = True
         return True
@@ -62056,9 +62064,9 @@ class SlubContainsCommand(GenericCommand):
             if not args.quiet:
                 info("Wait for memory scan")
             self.allocator = KernelChecksecCommand.get_slab_type()
-        if self.allocator != "SLUB":
+        if self.allocator not in ["SLUB", "SLUB_TINY"]:
             if not args.quiet:
-                err("Unsupported SLAB, SLOB, SLUB_TINY")
+                err("Unsupported SLAB, SLOB")
             return
 
         ret = self.initialize()
