@@ -26474,7 +26474,7 @@ class DereferenceCommand(GenericCommand):
                         help="the memory address you want to dump. (default: current_arch.sp)")
     parser.add_argument("nb_lines", metavar="NB_LINES", nargs="?", type=lambda x: int(x, 0), default=0x40,
                         help="the count of lines. (default: %(default)s)")
-    parser.add_argument("--slub-contains", action="store_true", help="display slab_cache name if available (x64 kernel only).")
+    parser.add_argument("--slab-contains", action="store_true", help="display slab_cache name if available.")
     parser.add_argument("--phys", action="store_true", help="treat ADDRESS as a physical address.")
     parser.add_argument("--uniq", action="store_true", help="display with uniq.")
     parser.add_argument("--is-addr", action="store_true", help="display only valid address.")
@@ -26581,20 +26581,20 @@ class DereferenceCommand(GenericCommand):
             line += Color.colorify(extra_str, registers_color)
         return line
 
-    def get_slub_contains(self, addr):
-        if addr in self.slub_contains_cache:
-            return self.slub_contains_cache[addr]
+    def get_slab_contains(self, addr):
+        if addr in self.slab_contains_cache:
+            return self.slab_contains_cache[addr]
 
         val = read_int_from_memory(addr)
         if is_valid_addr(val):
-            ret = gdb.execute("slub-contains --quiet {:#x}".format(val), to_string=True).strip()
+            ret = gdb.execute("slab-contains --quiet {:#x}".format(val), to_string=True).strip()
             if not ret or "unaligned?" in ret:
                 ret = None
             else:
                 ret = "  {:#x}: {:s}".format(val, ret)
         else:
             ret = None
-        self.slub_contains_cache[addr] = ret
+        self.slab_contains_cache[addr] = ret
         return ret
 
     @parse_args
@@ -26605,7 +26605,7 @@ class DereferenceCommand(GenericCommand):
         else:
             start_address = args.location
 
-        if args.slub_contains or args.phys:
+        if args.slab_contains or args.phys:
             if not (is_qemu_system() or is_kgdb() or is_vmware()):
                 err("Unsupported gdb mode")
                 return
@@ -26629,7 +26629,7 @@ class DereferenceCommand(GenericCommand):
             step = -1
 
         out = []
-        self.slub_contains_cache = {}
+        self.slab_contains_cache = {}
         seen = set()
         for idx in range(from_idx, to_idx, step):
             try:
@@ -26660,9 +26660,9 @@ class DereferenceCommand(GenericCommand):
                 out.append("{} {}".format(Color.colorify("[!]", "bold red"), msg))
                 break
 
-            # dump slub-cache
-            if args.slub_contains:
-                line = self.get_slub_contains(start_address + idx * current_arch.ptrsize)
+            # dump slab cache
+            if args.slab_contains:
+                line = self.get_slab_contains(start_address + idx * current_arch.ptrsize)
                 if line:
                     out.append(line)
 
@@ -50500,14 +50500,14 @@ class KernelTaskCommand(GenericCommand):
                 cand_offset_mnt = current_arch.ptrsize * i
                 mnt = read_int_from_memory(file + cand_offset_mnt)
                 """
-                gef> slub-contains 0xffff9f49811d33e0
+                gef> slab-contains 0xffff9f49811d33e0
                 slab: 0xfffff93f800474c0
                 kmem_cache: 0xffff9f4981048c00
                 base: 0xffff9f49811d3000
                 name: mnt_cache  size: 0x140  num_pages: 0x1 (unaligned?)
                 """
                 # f_path.mnt points in the middle of mnt_cache, so the "unaligned?" warning is not a problem.
-                ret = gdb.execute("slub-contains --quiet {:#x}".format(mnt), to_string=True)
+                ret = gdb.execute("slab-contains --quiet {:#x}".format(mnt), to_string=True)
                 if "mnt_cache" in Color.remove_color(ret):
                     offset_mnt = cand_offset_mnt
                     break
@@ -59073,7 +59073,7 @@ class SlubDumpCommand(GenericCommand):
     _note_ += "                               ...\n"
     _note_ += "* If all chunks in certain page are in use, they will not be displayed this command.\n"
     _note_ += "  This because they cannot be reached by parsing from slab_caches.\n"
-    _note_ += "  So use `slub-contains` (if you know the address) or `pagewalk-with-hints` (if you'd to know the whole even if it takes time)."
+    _note_ += "  So use `slab-contains` (if you know the address) or `pagewalk-with-hints` (if you'd to know the whole even if it takes time)."
 
     def __init__(self, *args, **kwargs):
         super().__init__()
@@ -61982,172 +61982,11 @@ class SlobDumpCommand(GenericCommand):
 
 
 @register_command
-class SlubContainsCommand(GenericCommand):
-    """Resolve the slab cache (kmem_cache) which an object belongs to."""
-    _cmdline_ = "slub-contains"
-    _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
-    _aliases_ = ["xslub", "slub-tiny-contains", "xslub-tiny"]
-
-    parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="target address.")
-    parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
-    parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
-    parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
-    _syntax_ = parser.format_help()
-
-    def __init__(self, *args, **kwargs):
-        super().__init__()
-        self.initialized = False
-        self.allocator = None
-        return
-
-    def initialize(self):
-        if self.initialized:
-            return True
-
-        if self.allocator == "SLUB":
-            res = gdb.execute("slub-dump --meta", to_string=True)
-        else:
-            res = gdb.execute("slub-tiny-dump --meta", to_string=True)
-
-        r = re.search(r"offsetof\(page, slab_cache\): (0x\S+)", res)
-        if not r:
-            return False
-        self.page_offset_slab_cache = int(r.group(1), 16)
-        if self.verbose:
-            info("offsetof(page, slab_cache): {:#x}".format(self.page_offset_slab_cache))
-
-        r = re.search(r"offsetof\(page, inuse_objects_frozen\): (0x\S+)", res)
-        if not r:
-            return False
-        self.page_offset_inuse_objects_frozen = int(r.group(1), 16)
-        if self.verbose:
-            info("offsetof(page, inuse_objects_frozen): {:#x}".format(self.page_offset_inuse_objects_frozen))
-
-        r = re.search(r"offsetof\(kmem_cache, name\): (0x\S+)", res)
-        if not r:
-            return False
-        self.kmem_cache_offset_name = int(r.group(1), 16)
-        if self.verbose:
-            info("offsetof(kmem_cache, name): {:#x}".format(self.kmem_cache_offset_name))
-
-        r = re.search(r"offsetof\(kmem_cache, size\): (0x\S+)", res)
-        if not r:
-            return False
-        self.kmem_cache_offset_size = int(r.group(1), 16)
-        if self.verbose:
-            info("offsetof(kmem_cache, size): {:#x}".format(self.kmem_cache_offset_size))
-
-        self.initialized = True
-        return True
-
-    def virt2page_wrapper(self, vaddr):
-        ret = gdb.execute("virt2page {:#x}".format(vaddr), to_string=True)
-        r = re.search(r"Page: (\S+)", ret)
-        if r:
-            return int(r.group(1), 16)
-        return None
-
-    @parse_args
-    @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
-    @only_if_in_kernel_or_kpti_disabled
-    def do_invoke(self, args):
-        self.dont_repeat()
-
-        self.verbose = args.verbose
-        if args.reparse:
-            self.initialized = False
-
-        if self.allocator is None:
-            if not args.quiet:
-                info("Wait for memory scan")
-            self.allocator = KernelChecksecCommand.get_slab_type()
-        if self.allocator not in ["SLUB", "SLUB_TINY"]:
-            if not args.quiet:
-                err("Unsupported SLAB, SLOB")
-            return
-
-        ret = self.initialize()
-        if not ret:
-            if not args.quiet:
-                err("Failed to initialize")
-            return
-
-        current = args.address & gef_getpagesize_mask_high()
-        chunk_label_color = get_gef_setting("theme.heap_chunk_label")
-
-        kversion = KernelVersionCommand.kernel_version()
-        try:
-            while True:
-                page = self.virt2page_wrapper(current)
-                if page is None:
-                    if not args.quiet:
-                        err("Invalid address")
-                    return
-
-                if not args.quiet:
-                    if kversion >= "5.17":
-                        gef_print("slab: {:#x}".format(page))
-                    else:
-                        gef_print("page: {:#x}".format(page))
-
-                kmem_cache = read_int_from_memory(page + self.page_offset_slab_cache)
-                if kmem_cache == 0:
-                    if not args.quiet:
-                        err("This address is not managed by slub")
-                    return
-
-                if not args.quiet:
-                    gef_print("kmem_cache: {:#x}".format(kmem_cache))
-
-                if (kmem_cache & gef_getpagesize_mask_high()) == 0xdead000000000000:
-                    current -= gef_getpagesize()
-                    if not args.quiet:
-                        warn("Detected invalid value, continue exploring...")
-                    continue
-
-                if kmem_cache & 1:
-                    current -= gef_getpagesize()
-                    if not args.quiet:
-                        warn("Detected invalid value, continue exploring...")
-                    continue
-
-                if not args.quiet:
-                    gef_print("base: {:#x}".format(current))
-                break
-
-            slab_cache_name_ptr = read_int_from_memory(kmem_cache + self.kmem_cache_offset_name)
-            slab_cache_name = read_cstring_from_memory(slab_cache_name_ptr)
-            if slab_cache_name is None:
-                if not args.quiet:
-                    err("This address is not managed by slub")
-                return
-            slab_cache_name_c = Color.colorify(slab_cache_name, chunk_label_color)
-            slab_cache_size = u32(read_memory(kmem_cache + self.kmem_cache_offset_size, 4))
-
-            x = read_int_from_memory(page + self.page_offset_inuse_objects_frozen)
-            objects = (x >> 16) & 0x7fff
-            num_pages = (slab_cache_size * objects + gef_getpagesize_mask_low()) // gef_getpagesize()
-
-            msg = ("name: {:s}  size: {:#x}  num_pages: {:#x}".format(slab_cache_name_c, slab_cache_size, num_pages))
-            if (args.address - current) % slab_cache_size != 0:
-                msg += " " + Color.redify("(unaligned?)")
-            gef_print(msg)
-
-        except (gdb.MemoryError, ZeroDivisionError):
-            if not args.quiet:
-                err("Memory error")
-        return
-
-
-@register_command
 class SlabContainsCommand(GenericCommand):
-    """Resolve the slab cache (kmem_cache) which an object belongs to."""
+    """Resolve the slab cache (kmem_cache) an object belongs to."""
     _cmdline_ = "slab-contains"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
-    _aliases_ = ["xslab"]
+    _aliases_ = ["slub-contains", "slub-tiny-contains", "xslub", "xslab"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="target address.")
@@ -62166,7 +62005,8 @@ class SlabContainsCommand(GenericCommand):
         if self.initialized:
             return True
 
-        res = gdb.execute("slab-dump --meta", to_string=True)
+        cmd = {"SLUB": "slub-dump", "SLAB": "slab-dump", "SLUB_TINY": "slub-tiny-dump"}[self.allocator]
+        res = gdb.execute("{:s} --meta".format(cmd), to_string=True)
 
         r = re.search(r"offsetof\(page, slab_cache\): (0x\S+)", res)
         if not r:
@@ -62174,6 +62014,14 @@ class SlabContainsCommand(GenericCommand):
         self.page_offset_slab_cache = int(r.group(1), 16)
         if self.verbose:
             info("offsetof(page, slab_cache): {:#x}".format(self.page_offset_slab_cache))
+
+        if self.allocator in ["SLUB", "SLUB_TINY"]:
+            r = re.search(r"offsetof\(page, inuse_objects_frozen\): (0x\S+)", res)
+            if not r:
+                return False
+            self.page_offset_inuse_objects_frozen = int(r.group(1), 16)
+            if self.verbose:
+                info("offsetof(page, inuse_objects_frozen): {:#x}".format(self.page_offset_inuse_objects_frozen))
 
         r = re.search(r"offsetof\(kmem_cache, name\): (0x\S+)", res)
         if not r:
@@ -62189,12 +62037,13 @@ class SlabContainsCommand(GenericCommand):
         if self.verbose:
             info("offsetof(kmem_cache, size): {:#x}".format(self.kmem_cache_offset_size))
 
-        r = re.search(r"offsetof\(kmem_cache, gfporder\): (0x\S+)", res)
-        if not r:
-            return False
-        self.kmem_cache_offset_gfporder = int(r.group(1), 16)
-        if self.verbose:
-            info("offsetof(kmem_cache, gfporder): {:#x}".format(self.kmem_cache_offset_gfporder))
+        if self.allocator == "SLAB":
+            r = re.search(r"offsetof\(kmem_cache, gfporder\): (0x\S+)", res)
+            if not r:
+                return False
+            self.kmem_cache_offset_gfporder = int(r.group(1), 16)
+            if self.verbose:
+                info("offsetof(kmem_cache, gfporder): {:#x}".format(self.kmem_cache_offset_gfporder))
 
         self.initialized = True
         return True
@@ -62222,9 +62071,9 @@ class SlabContainsCommand(GenericCommand):
             if not args.quiet:
                 info("Wait for memory scan")
             self.allocator = KernelChecksecCommand.get_slab_type()
-        if self.allocator != "SLAB":
+        if self.allocator not in ["SLUB", "SLUB_TINY", "SLAB"]:
             if not args.quiet:
-                err("Unsupported SLUB, SLOB, SLUB_TINY")
+                err("Unsupported SLOB")
             return
 
         ret = self.initialize()
@@ -62285,8 +62134,13 @@ class SlabContainsCommand(GenericCommand):
             slab_cache_name_c = Color.colorify(slab_cache_name, chunk_label_color)
             slab_cache_size = u32(read_memory(kmem_cache + self.kmem_cache_offset_size, 4))
 
-            gfporder = u32(read_memory(kmem_cache + self.kmem_cache_offset_gfporder, 4))
-            num_pages = 1 << gfporder
+            if self.allocator in ["SLUB", "SLUB_TINY"]:
+                x = read_int_from_memory(page + self.page_offset_inuse_objects_frozen)
+                objects = (x >> 16) & 0x7fff
+                num_pages = (slab_cache_size * objects + gef_getpagesize_mask_low()) // gef_getpagesize()
+            else:
+                gfporder = u32(read_memory(kmem_cache + self.kmem_cache_offset_gfporder, 4))
+                num_pages = 1 << gfporder
 
             msg = ("name: {:s}  size: {:#x}  num_pages: {:#x}".format(slab_cache_name_c, slab_cache_size, num_pages))
             if (args.address - current) % slab_cache_size != 0:
@@ -62867,7 +62721,7 @@ class KernelPipeCommand(GenericCommand):
             if self.kinfo.rw_base <= v < self.kinfo.rw_end:
                 continue
             # skip invalid chunk
-            ret = gdb.execute("slub-contains --quiet {:#x}".format(v), to_string=True)
+            ret = gdb.execute("slab-contains --quiet {:#x}".format(v), to_string=True)
             if "unaligned?" in ret:
                 continue
             # pipe_inode_info is allocated from kmalloc-192 (x64) or kmalloc-256 (arm64).
@@ -62947,7 +62801,7 @@ class KernelPipeCommand(GenericCommand):
             if self.kinfo.rw_base <= v < self.kinfo.rw_end:
                 continue
             # skip invalid chunk
-            ret = gdb.execute("slub-contains {:#x}".format(v), to_string=True)
+            ret = gdb.execute("slab-contains {:#x}".format(v), to_string=True)
             if "unaligned?" in ret:
                 continue
             # pipe_inode_info is allocated from kmalloc-1k (x64)
@@ -75509,7 +75363,7 @@ class PagewalkWithHintsCommand(GenericCommand):
                 continue
             current = region.addr_start
             while current < region.addr_end:
-                res = gdb.execute("slub-contains --quiet {:#x}".format(current), to_string=True)
+                res = gdb.execute("slab-contains --quiet {:#x}".format(current), to_string=True)
                 res = Color.remove_color(res)
                 r = re.search(r"name: (\S+)  size: \S+  num_pages: (\S+)", res)
                 if not r:
@@ -77542,7 +77396,7 @@ class KmallocTracerCommand(GenericCommand):
 
     @staticmethod
     def virt2name_and_size(extra, vaddr):
-        ret = gdb.execute("slub-contains --quiet {:#x}".format(vaddr), to_string=True)
+        ret = gdb.execute("slab-contains --quiet {:#x}".format(vaddr), to_string=True)
         ret = Color.remove_color(ret)
         r = re.search(r"name: (\S+)  size: (\S+)", ret)
         if not r:

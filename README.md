@@ -177,11 +177,10 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * `slub-tiny-dump`: dumps slub-tiny free-list.
     * Supported on x64/x86/ARM64/ARM + SLUB-TINY + no-symbol + kASLR.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-tiny-dump.png)
-* `slub-contains`: resolves which `kmem_cache` certain address (object) belongs to (for SLUB).
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-contains.png)
-    * If the chunk of `slub` that the address (object) belongs to is all used, it cannot be displayed with `slub-dump`.
+* `slab-contains`: resolves which `kmem_cache` certain address (object) belongs to (for SLUB/SLUB-TINY/SLAB).
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slab-contains.png)
+    * For `SLUB/SLUB-TINY`, if all chunks belonging to a certain `page` are in use, they will not be displayed by `slub-dump/slub-tiny-dump` command.
     * Even with such an address (object), this command may be able to resolve `kmem_cache`.
-* `slab-contains`: resolves which `kmem_cache` certain address (object) belongs to (for SLAB).
 * `buddy-dump`: dumps zone of page allocator (buddy allocator) freelist.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/buddy-dump.png)
 * `vmalloc-dump`: dumps vmalloc used list and freed list.
