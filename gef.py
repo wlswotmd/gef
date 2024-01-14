@@ -48120,7 +48120,7 @@ class KernelAddressHeuristicFinder:
                     v = read_int_from_memory(x)
                     if v and not is_valid_addr(v):
                         continue
-                    if v == x:
+                    if x in [v, v + current_arch.ptrsize]:
                         continue
                     return x
         return None
@@ -48141,13 +48141,11 @@ class KernelAddressHeuristicFinder:
                 if is_x86_64():
                     g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "rax")
                 elif is_x86_32():
-                    # TODO
-                    g = []
+                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "eax")
                 elif is_arm64():
                     g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
                 elif is_arm32():
-                    # TODO
-                    g = []
+                    g = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
                 for x in g:
                     v = read_int_from_memory(x)
                     if v and is_valid_addr(v):
@@ -62155,7 +62153,7 @@ class SlabContainsCommand(GenericCommand):
 
 @register_command
 class BuddyDumpCommand(GenericCommand):
-    """Dump zone of page allocator (buddy allocator) freelist (only x64/ARM64)."""
+    """Dump zone of page allocator (buddy allocator) freelist."""
     _cmdline_ = "buddy-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
     _aliases_ = ["zone-dump"]
@@ -62328,7 +62326,7 @@ class BuddyDumpCommand(GenericCommand):
         for i in range(6):
             zone = self.nodes[0] + self.sizeof_zone * i
             name_ptr = read_int_from_memory(zone + self.offset_name)
-            name = read_cstring_from_memory(name_ptr)
+            name = read_cstring_from_memory(name_ptr, ascii_only=True)
             if not name:
                 break
             self.MAX_NR_ZONES += 1
@@ -62534,7 +62532,7 @@ class BuddyDumpCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_64", "ARM64"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
