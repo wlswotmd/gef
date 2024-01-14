@@ -46866,7 +46866,7 @@ class KernelAddressHeuristicFinder:
             command = {"SLUB": "slub-dump", "SLUB_TINY": "slub-tiny-dump"}[allocator]
             for n in [8, 16, 32, 64, 96, 128, 192, 256, 512]:
                 ret = gdb.execute("{:s} --no-pager --quiet --skip-page2virt kmalloc-{:d}".format(command, n), to_string=True)
-                r = re.findall(r"active page: (0x\S+)", Color.remove_color(ret))
+                r = re.findall(r"(?:active|node\[0\]) page: (0x\S+)", Color.remove_color(ret))
                 if r:
                     min_page = min(int(x, 16) for x in r)
                     return min_page & 0xffff_ffff_c000_0000 # ~((1 << PUD_SHIFT) - 1)
@@ -62713,21 +62713,15 @@ class KernelPipeCommand(GenericCommand):
             # i_pipe is valid addr
             if v < 0x10000 or not is_valid_addr(v):
                 continue
-            # i_pipe is not in text_base, ro_base, rw_base
-            if self.kinfo.text_base <= v < self.kinfo.text_end:
-                continue
-            if self.kinfo.ro_base <= v < self.kinfo.ro_end:
-                continue
-            if self.kinfo.rw_base <= v < self.kinfo.rw_end:
-                continue
             # skip invalid chunk
             ret = gdb.execute("slab-contains --quiet {:#x}".format(v), to_string=True)
             if "unaligned?" in ret:
                 continue
             # pipe_inode_info is allocated from kmalloc-192 (x64) or kmalloc-256 (arm64).
-            # sometimes it is allocated from kmalloc-512, kmalloc-128, kmalloc-96.
-            # Other candidates found are kmalloc-2k and inode_cache, so I think these should be excluded.
-            if re.search(r"kmalloc(-cg)?-(96|128|192|256|512)", ret):
+            # sometimes it is allocated from kmalloc-512, kmalloc-128, kmalloc-96 and kmalloc-64.
+            # Other candidates found are kmalloc-2k, kmalloc-1024 and inode_cache (these are false positives),
+            # so these should be excluded.
+            if re.search(r"kmalloc(-cg)?-(64|96|128|192|256|512)", ret):
                 self.offset_i_pipe = current_arch.ptrsize * i
                 if not self.quiet:
                     info("offsetof(inode, i_pipe): {:#x}".format(self.offset_i_pipe))
@@ -62793,19 +62787,12 @@ class KernelPipeCommand(GenericCommand):
             # bufs is valid addr
             if v < 0x10000 or not is_valid_addr(v):
                 continue
-            # bufs is not in text_base, ro_base, rw_base
-            if self.kinfo.text_base <= v < self.kinfo.text_end:
-                continue
-            if self.kinfo.ro_base <= v < self.kinfo.ro_end:
-                continue
-            if self.kinfo.rw_base <= v < self.kinfo.rw_end:
-                continue
             # skip invalid chunk
             ret = gdb.execute("slab-contains {:#x}".format(v), to_string=True)
             if "unaligned?" in ret:
                 continue
-            # pipe_inode_info is allocated from kmalloc-1k (x64)
-            if re.search(r"kmalloc(-cg)?-(1k|1024)", ret):
+            # pipe_inode_info is allocated from kmalloc-1k (x64) or kmalloc-512 (x86)
+            if re.search(r"kmalloc(-cg)?-(1k|1024|512)", ret):
                 self.offset_bufs = current_arch.ptrsize * i
                 if not self.quiet:
                     info("offsetof(pipe_inode_info, bufs): {:#x}".format(self.offset_bufs))
@@ -63021,7 +63008,7 @@ class KernelPipeCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_64", "ARM64"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         self.dont_repeat()
@@ -63031,8 +63018,8 @@ class KernelPipeCommand(GenericCommand):
             info("Wait for memory scan")
 
         allocator = KernelChecksecCommand.get_slab_type()
-        if allocator != "SLUB":
-            err("Unsupported for SLAB, SLOB, SLUB_TINY")
+        if allocator not in ["SLUB", "SLUB_TINY", "SLAB"]:
+            err("Unsupported SLOB")
             return
 
         self.inode_filter = args.inode_filter
