@@ -46932,7 +46932,10 @@ class KernelAddressHeuristicFinder:
             if addr:
                 res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_32():
-                    g = KernelAddressHeuristicFinderUtil.x86_dword_ptr_ds(res)
+                    g = itertools.chain(
+                        KernelAddressHeuristicFinderUtil.x86_dword_ptr_ds(res),
+                        KernelAddressHeuristicFinderUtil.x86_noptr_ds(res),
+                    )
                 elif is_arm32():
                     g = itertools.chain(
                         KernelAddressHeuristicFinderUtil.arm32_movw_movt(res),
@@ -75831,12 +75834,12 @@ class PageCommand(GenericCommand):
                 #       -> slub-dump --skip-page2virt
                 # To avoid infinite recursion, must add the `--skip-page2virt` option when calling slub-dump from page2virt.
                 ret = gdb.execute("{:s} --no-pager --quiet --skip-page2virt kmalloc-{:d}".format(command, n), to_string=True)
-                r1 = re.findall(r"active page: (0x\S+)", Color.remove_color(ret))
+                r1 = re.findall(r"(?:active|node\[0\]) page: (0x\S+)", Color.remove_color(ret))
                 r2 = re.findall(r"virtual address: (0x\S+|\?\?\?)", Color.remove_color(ret))
-                valid_pair = [ (p, v) for p, v in zip(r1, r2) if v != "???"]
-                if valid_pair:
-                    page = int(valid_pair[0][0], 16)
-                    vaddr = int(valid_pair[0][1], 16)
+                valid_pairs = [(p, v) for p, v in zip(r1, r2) if v != "???"]
+                if valid_pairs:
+                    page = int(valid_pairs[0][0], 16)
+                    vaddr = int(valid_pairs[0][1], 16)
                     break
             else:
                 return False
@@ -75920,6 +75923,11 @@ class PageCommand(GenericCommand):
             # Determine whether it is CONFIG_FLATMEM or CONFIG_SPARSEMEM.
             self.mem_map = KernelAddressHeuristicFinder.get_mem_map()
             self.mem_section = KernelAddressHeuristicFinder.get_mem_section()
+
+            if self.mem_map is None and self.mem_section is None:
+                err("Not found mem_map and mem_section")
+                return False
+
             if self.mem_map:
                 # CONFIG_FLATMEM (when CONFIG_NUMA=n)
                 self.mode = "FLATMEM"
@@ -75986,10 +75994,6 @@ class PageCommand(GenericCommand):
                 mem_map = section_mem_map & self.SECTION_MAP_MASK
                 pfn = (vaddr - self.PAGE_OFFSET) >> self.PAGE_SHIFT
                 self.sizeof_struct_page = (page - mem_map) // pfn
-
-            else:
-                err("Not found mem_map and mem_section")
-                return False
 
         elif is_arm64():
             # CONFIG_SPARSEMEM_VMEMMAP
