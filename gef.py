@@ -56614,15 +56614,23 @@ class SyscallTableViewCommand(GenericCommand):
             if insn is None or insn2 is None:
                 break
 
+            # check if the target system call is disabled
             is_valid = True
-            if is_x86_64():
-                if len(insn.operands) == 2 and insn.operands[-1] == "0xffffffffffffffda" and \
-                   insn2.mnemonic == "ret":
-                    is_valid = False
-            elif is_x86_32():
-                if len(insn.operands) == 2 and insn.operands[-1] == "0xffffffda" and \
-                   insn2.mnemonic == "ret":
-                    is_valid = False
+            if is_x86():
+                if is_x86_64():
+                    err = "0xffffffffffffffda"
+                else:
+                    err = "0xffffffda"
+                if len(insn.operands) == 2 and insn.operands[-1] == err:
+                    if insn2.mnemonic == "ret":
+                        is_valid = False
+                    elif insn2.mnemonic == "jmp":
+                        try:
+                            insn3 = get_insn(parse_address(insn2.operands[-1]))
+                            if insn3 and insn3.mnemonic == "ret":
+                                is_valid = False
+                        except (gdb.error, ValueError):
+                            pass
             elif is_arm64():
                 if len(insn.operands) == 2 and insn.operands[-1].split("\t")[0].strip() == "#0xffffffffffffffda":
                     is_valid = False
