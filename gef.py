@@ -65080,7 +65080,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             unique_bytes_offset.append(r.span())
 
         if len(unique_bytes_offset) == 0:
-            self.quiet_err("Could not find kallsyms_token_table (0 candidate)")
+            self.verbose_err("Could not find kallsyms_token_table (0 candidate)")
             return False
 
         if len(unique_bytes_offset) > 1:
@@ -65089,7 +65089,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 if not (follow.isalnum() or follow == b"_"):
                     unique_bytes_offset.remove(offsets)
             if len(unique_bytes_offset) != 1:
-                self.quiet_err("Could not find kallsyms_token_table (multiple candidates)")
+                self.verbose_err("Could not find kallsyms_token_table (multiple candidates)")
                 return False
 
         position = unique_bytes_offset[0][0]
@@ -65100,7 +65100,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         while True:
             position -= 1
             if position < 0:
-                self.quiet_err("Could not find kallsyms_token_table (failed to get top)")
+                self.verbose_err("Could not find kallsyms_token_table (failed to get top)")
                 return False
             x = self.kernel_img[position:position + 1]
             if x not in b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.$@\0":
@@ -65172,7 +65172,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         # search from memory
         position = self.kernel_img.find(seq_to_find, self.offset_kallsyms_token_table)
         if position == -1:
-            self.quiet_err("Could not find kallsyms_token_index (0 candidate)")
+            self.verbose_err("Could not find kallsyms_token_index (0 candidate)")
             return False
 
         self.offset_kallsyms_token_index = position
@@ -65273,7 +65273,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         while position > 0:
             needle = self.kernel_img.rfind(seq_to_find, 0, position)
             if needle == -1:
-                self.quiet_err("Could not find kallsyms_markers")
+                self.verbose_err("Could not find kallsyms_markers")
                 return False
             # check alignment
             align_diff = needle % self.kallsyms_markers_table_element_size
@@ -65290,7 +65290,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 while position > 0:
                     needle = self.kernel_img.rfind(seq_to_find, 0, position)
                     if needle == -1:
-                        self.quiet_err("Could not find kallsyms_markers")
+                        self.verbose_err("Could not find kallsyms_markers")
                         return False
                     # check alignment
                     align_diff = needle % self.kallsyms_markers_table_element_size
@@ -65375,7 +65375,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         position += -position % self.kallsyms_markers_table_element_size
 
         if position <= 0:
-            self.quiet_err("Could not find kallsyms_names")
+            self.verbose_err("Could not find kallsyms_names")
             return False
 
         # This value is provisional. Corrected in the process of find_kallsyms_num_syms().
@@ -65427,7 +65427,7 @@ class KsymaddrRemoteCommand(GenericCommand):
 
         while True:
             if position < 0:
-                self.quiet_err("Could not find kallsyms_names")
+                self.verbose_err("Could not find kallsyms_names")
                 return False
 
             # Do some types of checks.
@@ -65906,8 +65906,6 @@ class KsymaddrRemoteCommand(GenericCommand):
         if self.kallsyms:
             return True # use cache
 
-        self.quiet_info("Wait for memory scan")
-
         # Fast path when reattaching GDB after executing this command once (only ARM64).
         if is_arm64():
             ret = self.arm64_fast_path()
@@ -65939,7 +65937,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             for candidate_size in range(base_size, kinfo.ro_size, step):
                 self.ro_size = candidate_size
                 self.kernel_img = read_memory(self.ro_base, self.ro_size)
-                self.quiet_info("ro_base: {:#x}-{:#x}".format(self.ro_base, self.ro_base + self.ro_size))
+                self.verbose_info("ro_base: {:#x}-{:#x}".format(self.ro_base, self.ro_base + self.ro_size))
                 ret = self.initialize()
                 if ret:
                     # found
@@ -65964,9 +65962,16 @@ class KsymaddrRemoteCommand(GenericCommand):
         self.quiet = args.quiet
         self.exact = args.exact
 
+        self.quiet_info("Wait for memory scan")
+
+        # fast path
         ret = self.parse_kallsyms()
         if not ret:
-            self.quiet_err("Failed to parse; try `ks -rv`.")
+            # slow path (ignore config)
+            self.reparse = True
+            ret = self.parse_kallsyms()
+        if not ret:
+            self.quiet_err("Failed to parse.")
             return
 
         self.print_kallsyms(args.keyword, args.type)
