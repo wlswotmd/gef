@@ -45650,6 +45650,11 @@ class KernelAddressHeuristicFinderUtil:
         return KernelAddressHeuristicFinderUtil.common_addr_gen(res, regexp, skip, skip_msb_check, read_valid)
 
     @staticmethod
+    def x86_mov_noptr_ds(res, skip=0, skip_msb_check=False, read_valid=False):
+        regexp = r"mov.*ds:\s*(0x\w+)"
+        return KernelAddressHeuristicFinderUtil.common_addr_gen(res, regexp, skip, skip_msb_check, read_valid)
+
+    @staticmethod
     def x86_dword_ptr(res, skip=0, skip_msb_check=False, read_valid=False):
         regexp = r",\s*DWORD PTR \[.*([+-]0x\w+)\]"
         return KernelAddressHeuristicFinderUtil.common_addr_gen(res, regexp, skip, skip_msb_check, read_valid)
@@ -45907,6 +45912,15 @@ class KernelAddressHeuristicFinderUtil:
                 ofs = align_address(int(m.group(2), 0))
                 if reg in bases:
                     w = align_address(bases[reg] + ofs)
+                    if skip <= 0:
+                        yield w
+                    skip -= 1
+                    continue
+            m = re.search(r"ldr\s+\w+,\s*\[(\w+)\]", line)
+            if m:
+                reg = m.group(1)
+                if reg in bases:
+                    w = align_address(bases[reg])
                     if skip <= 0:
                         yield w
                     skip -= 1
@@ -46567,14 +46581,14 @@ class KernelAddressHeuristicFinder:
                 res = gdb.execute("x/10i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
                     g = itertools.chain(
-                            KernelAddressHeuristicFinderUtil.x64_qword_ptr_array_base(res),
-                            KernelAddressHeuristicFinderUtil.x64_dword_ptr(res),
-                        )
+                        KernelAddressHeuristicFinderUtil.x64_qword_ptr_array_base(res),
+                        KernelAddressHeuristicFinderUtil.x64_dword_ptr(res),
+                    )
                 elif is_x86_32():
                     g = itertools.chain(
-                            KernelAddressHeuristicFinderUtil.x86_dword_ptr_array_base(res),
-                            KernelAddressHeuristicFinderUtil.x86_dword_ptr(res)
-                        )
+                        KernelAddressHeuristicFinderUtil.x86_dword_ptr_array_base(res),
+                        KernelAddressHeuristicFinderUtil.x86_dword_ptr(res)
+                    )
                 elif is_arm64():
                     g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
                 elif is_arm32():
@@ -47150,9 +47164,9 @@ class KernelAddressHeuristicFinder:
                     g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
                 elif is_x86_32():
                     g = itertools.chain(
-                            KernelAddressHeuristicFinderUtil.x86_dword_ptr(res),
-                            KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res),
-                        )
+                        KernelAddressHeuristicFinderUtil.x86_dword_ptr(res),
+                        KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res),
+                    )
                 elif is_arm64():
                     g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
                 elif is_arm32():
@@ -47230,9 +47244,9 @@ class KernelAddressHeuristicFinder:
                     g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
                 elif is_arm32():
                     g = itertools.chain(
-                            KernelAddressHeuristicFinderUtil.arm32_movw_movt(res),
-                            KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative(res),
-                        )
+                        KernelAddressHeuristicFinderUtil.arm32_movw_movt(res),
+                        KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative(res),
+                    )
                 for x in g:
                     return x
         return None
@@ -47909,9 +47923,9 @@ class KernelAddressHeuristicFinder:
                     )
                 elif is_arm32():
                     g = itertools.chain(
-                            KernelAddressHeuristicFinderUtil.arm32_movw_movt(res, read_valid=True),
-                            KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative(res, read_valid=True),
-                        )
+                        KernelAddressHeuristicFinderUtil.arm32_movw_movt(res, read_valid=True),
+                        KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative(res, read_valid=True),
+                    )
                 for x in g:
                     return x
         return None
@@ -47977,29 +47991,25 @@ class KernelAddressHeuristicFinder:
 
         # plan 2 (available v3.5 or later)
         if kversion and kversion >= "3.5":
-            log_next_idx = KernelAddressHeuristicFinder.get_log_next_idx()
-            if log_next_idx:
-                # static u64 log_first_seq;
-                # static u32 log_first_idx;
-                # static u64 log_next_seq;
-                # static u32 log_next_idx;
-                if is_x86_64() or is_x86_32():
-                    # no reordering, but reverse order:
-                    # - log_next_idx (u32) + padding
-                    # - log_next_seq (u64)
-                    # - log_first_idx (u32) + padding
-                    # - log_first_seq (u64)
-                    return log_next_idx + 0x10
+            addr = get_ksymaddr("devkmsg_open")
+            if addr:
+                res = gdb.execute("x/50i {:#x}".format(addr), to_string=True)
+                if is_x86_64():
+                    g = KernelAddressHeuristicFinderUtil.x64_dword_ptr(res)
+                elif is_x86_32():
+                    g = KernelAddressHeuristicFinderUtil.x86_mov_noptr_ds(res)
                 elif is_arm64():
-                    # maybe reordering:
-                    # - log_first_seq (u64)
-                    # - log_next_seq (u64)
-                    # - log_next_idx (u32)
-                    # - log_first_idx (u32)
-                    return log_next_idx + 4
+                    g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add_ldr(res)
                 elif is_arm32():
-                    # It is difficult to implement because there are several unexplainable reordering.
-                    pass
+                    g = itertools.chain(
+                        KernelAddressHeuristicFinderUtil.arm32_movw_movt_ldr(res),
+                        KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative_ldr(res),
+                    )
+                for x in g:
+                    v = u32(read_memory(x, 4))
+                    if is_valid_addr(v):
+                        continue
+                    return x
         return None
 
     @staticmethod
@@ -48023,23 +48033,22 @@ class KernelAddressHeuristicFinder:
             if addr:
                 res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    g = KernelAddressHeuristicFinderUtil.x64_dword_ptr(res)
+                    g = KernelAddressHeuristicFinderUtil.x64_dword_ptr(res, skip=1)
                 elif is_x86_32():
-                    g = KernelAddressHeuristicFinderUtil.x86_noptr_ds(res)
+                    g = KernelAddressHeuristicFinderUtil.x86_dword_ptr_ds(res)
+                    g = list(g)[::-1]
                 elif is_arm64():
-                    g = itertools.chain(
-                            KernelAddressHeuristicFinderUtil.aarch64_adrp_ldr(res),
-                            KernelAddressHeuristicFinderUtil.aarch64_adrp_add_ldr(res),
-                        )
+                    g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add_ldr(res, skip=1)
                 elif is_arm32():
                     g = itertools.chain(
-                            KernelAddressHeuristicFinderUtil.arm32_movw_movt_ldr(res),
-                            KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative_ldr(res),
-                        )
+                        KernelAddressHeuristicFinderUtil.arm32_movw_movt_ldr(res, skip=1),
+                        KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative_ldr(res, skip=1),
+                    )
                 for x in g:
                     v = u32(read_memory(x, 4))
-                    if v and v >= 0x1000:
-                        return x
+                    if v == 0:
+                        continue
+                    return x
         return None
 
     @staticmethod
@@ -56473,8 +56482,11 @@ class KernelDmesgCommand(GenericCommand):
             sec = ts_nsec // 1000 // 1000 // 1000
             nsec = ts_nsec % (1000 * 1000 * 1000)
             nsec_str = "{:09d}".format(nsec)[:6]
-            formatted_entry = "[{:5d}.{:s}] {:s}".format(sec, nsec_str, bytes2str(text))
-            self.out.append(formatted_entry)
+
+            # split from multi-line message
+            for t in bytes2str(text).splitlines():
+                formatted_entry = "[{:5d}.{:s}] {:s}".format(sec, nsec_str, t)
+                self.out.append(formatted_entry)
 
             pos += rec_len
             if pos >= buf_end:
