@@ -45993,10 +45993,26 @@ class KernelAddressHeuristicFinder:
             if current_thread_info < PAGE_OFFSET:
                 return None
 
+            kversion = KernelVersionCommand.kernel_version()
+
             try:
-                v = read_int_from_memory(current_thread_info + current_arch.ptrsize * 3)
-                if v and is_valid_addr(v):
-                    return v
+                """
+                struct thread_info {
+                    unsigned long flags;
+                    int preempt_count;
+                    mm_segment_t addr_limit; // ~v5.14
+                    struct task_struct *task; // ~v5.17
+                    ...
+                }
+                """
+                if kversion < "5.15":
+                    v = read_int_from_memory(current_thread_info + current_arch.ptrsize * 3)
+                    if v and is_valid_addr(v):
+                        return v
+                elif kversion < "5.18":
+                    v = read_int_from_memory(current_thread_info + current_arch.ptrsize * 2)
+                    if v and is_valid_addr(v):
+                        return v
             except gdb.MemoryError:
                 # In some threads, $sp points to an invalid address.
                 return None
@@ -47832,15 +47848,18 @@ class KernelAddressHeuristicFinder:
             if addr:
                 res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    g = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res)
+                    g = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res, read_valid=True)
                 elif is_x86_32():
-                    g = KernelAddressHeuristicFinderUtil.x86_noptr_ds(res)
+                    g = KernelAddressHeuristicFinderUtil.x86_noptr_ds(res, read_valid=True)
                 elif is_arm64():
-                    g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
+                    g = itertools.chain(
+                        KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res, read_valid=True),
+                        KernelAddressHeuristicFinderUtil.aarch64_adrp_add_ldr(res, read_valid=True),
+                    )
                 elif is_arm32():
                     g = itertools.chain(
-                            KernelAddressHeuristicFinderUtil.arm32_movw_movt(res),
-                            KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative(res),
+                            KernelAddressHeuristicFinderUtil.arm32_movw_movt(res, read_valid=True),
+                            KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative(res, read_valid=True),
                         )
                 for x in g:
                     return x
@@ -50708,10 +50727,16 @@ class KernelTaskCommand(GenericCommand):
                     continue
 
                 name = read_cstring_from_memory(dentry + self.offset_d_iname)
+                if name is None:
+                    name_ptr = read_int_from_memory(dentry + self.offset_d_iname - current_arch.ptrsize * 2)
+                    name = read_cstring_from_memory(name_ptr)
                 filepath.append(name)
                 break
 
             name = read_cstring_from_memory(dentry + self.offset_d_iname)
+            if name is None:
+                name_ptr = read_int_from_memory(dentry + self.offset_d_iname - current_arch.ptrsize * 2)
+                name = read_cstring_from_memory(name_ptr)
             filepath.append(name)
 
             parent = read_int_from_memory(dentry + self.offset_d_parent)
@@ -50963,7 +50988,7 @@ class KernelTaskCommand(GenericCommand):
         # init_task
         init_task = KernelAddressHeuristicFinder.get_init_task()
         if init_task is None:
-            self.quiet_err("Not found symbol")
+            self.quiet_err("Not found init_task")
             return False
         self.quiet_info("init_task: {:#x}".format(init_task))
 
