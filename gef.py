@@ -46292,6 +46292,7 @@ class KernelAddressHeuristicFinder:
                     g = itertools.chain(
                         KernelAddressHeuristicFinderUtil.arm32_movw_movt_ldr(res),
                         KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative(res),
+                        KernelAddressHeuristicFinderUtil.arm32_movw_movt(res),
                     )
                 for x in g:
                     if not is_valid_addr(x):
