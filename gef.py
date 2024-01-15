@@ -45829,6 +45829,39 @@ class KernelAddressHeuristicFinderUtil:
                     yield w
 
     @staticmethod
+    def arm32_movw_movt_add(res, skip=0, skip_msb_check=False, read_valid=False):
+        bases = {}
+        add1time = {}
+        for line in res.splitlines():
+            m = re.search(r"movw\s+(\w+),.+[;@]\s*(0x\w+)", line)
+            if m:
+                reg = m.group(1)
+                v = int(m.group(2), 16)
+                bases[reg] = v
+                continue
+            m = re.search(r"movt\s+(\w+),.+[;@]\s*(0x\w+)", line)
+            if m:
+                reg = m.group(1)
+                v = int(m.group(2), 16) << 16
+                if reg in bases:
+                    add1time[reg] = bases[reg] + v
+                    continue
+            m = re.search(r"add\s+\w+,\s*(\w+),\s*#(\d+)", line)
+            if m:
+                reg = m.group(1)
+                v = int(m.group(2), 0)
+                if reg in add1time:
+                    w = align_address(add1time[reg] + v)
+                    if not skip_msb_check and not is_msb_on(w):
+                        continue
+                    if read_valid and not is_valid_addr_addr(w):
+                        continue
+                    if skip > 0:
+                        skip -= 1
+                        continue
+                    yield w
+
+    @staticmethod
     def arm32_ldr_reg_const(res, reg=r"\w+", skip=0, skip_msb_check=False, read_valid=False):
         regexp = r"ldr\s+" + reg + r",.*[;@]\s*(0x\w+)"
         return KernelAddressHeuristicFinderUtil.common_addr_gen(res, regexp, skip, skip_msb_check, read_valid)
@@ -46579,7 +46612,24 @@ class KernelAddressHeuristicFinder:
                 for x in g:
                     return x
 
-        # plan 3 (available v4.10 or before and CONFIG_MEMCG=y)
+        # plan 3 (available v5.9 or later)
+        if kversion and kversion >= "5.9":
+            addr = get_ksymaddr("find_mergeable")
+            if addr:
+                res = gdb.execute("x/50i {:#x}".format(addr), to_string=True)
+                if is_x86_64():
+                    g = KernelAddressHeuristicFinderUtil.x64_x86_cmp_const(res)
+                elif is_x86_32():
+                    g = KernelAddressHeuristicFinderUtil.x64_x86_cmp_const(res)
+                elif is_arm64():
+                    # TODO
+                    g = []
+                elif is_arm32():
+                    g = KernelAddressHeuristicFinderUtil.arm32_movw_movt_add(res)
+                for x in g:
+                    return x
+
+        # plan 4 (available v4.10 or before and CONFIG_MEMCG=y)
         if kversion and kversion < "4.11":
             addr = get_ksymaddr("memcg_update_all_caches")
             if addr:
@@ -46595,7 +46645,7 @@ class KernelAddressHeuristicFinder:
                 for x in g:
                     return x
 
-        # plan 4 (available v3.11 ~ v4.10 and CONFIG_SLABINFO=y)
+        # plan 5 (available v3.11 ~ v4.10 and CONFIG_SLABINFO=y)
         if kversion and kversion >= "3.11" and kversion < "4.11":
             addr = get_ksymaddr("slab_next")
             if addr:
@@ -46613,7 +46663,7 @@ class KernelAddressHeuristicFinder:
                 for x in g:
                     return x
 
-        # plan 5 (available if CONFIG_SLAB=y)
+        # plan 6 (available if CONFIG_SLAB=y)
         addr = get_ksymaddr("cache_reap")
         if addr:
             res = gdb.execute("x/30i {:#x}".format(addr), to_string=True)
@@ -46630,7 +46680,7 @@ class KernelAddressHeuristicFinder:
             for x in g:
                 return x
 
-        # plan 6 (available v2.6.24 ~ v3.10 and CONFIG_SLABINFO=y)
+        # plan 7 (available v2.6.24 ~ v3.10 and CONFIG_SLABINFO=y)
         if kversion and kversion >= "2.6.24" and kversion < "3.11":
             ret = gdb.execute("ksymaddr-remote --quiet --no-pager --exact s_next", to_string=True)
             # returns multiple results
