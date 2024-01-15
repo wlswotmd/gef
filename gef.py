@@ -24278,6 +24278,7 @@ class ContextCommand(GenericCommand):
             arch_name = "{}:{}".format(current_arch.arch.lower(), current_arch.mode)
         except gdb.error:
             # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
+            frame = None
             arch_name = "{}:{}".format(current_arch.arch.lower(), "???")
 
         self.context_title("code:{}".format(arch_name))
