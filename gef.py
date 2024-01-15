@@ -45872,7 +45872,7 @@ class KernelAddressHeuristicFinderUtil:
         return KernelAddressHeuristicFinderUtil.common_addr_gen(res, regexp, skip, skip_msb_check, read_valid)
 
     @staticmethod
-    def arm32_ldr_pc_relative(res, skip=0):
+    def arm32_ldr_pc_relative(res, skip=0, read_valid=False):
         for line in res.splitlines():
             m = re.search(r"ldr\s+\w+,\s*\[pc,\s*#(\d+)\]", line)
             if m:
@@ -45889,13 +45889,15 @@ class KernelAddressHeuristicFinderUtil:
                 pos = align_address(int(line.split()[0].replace(":", ""), 16))
                 v = read_int_from_memory(pos + 4 * 2)
                 if is_valid_addr(v):
+                    if read_valid and not is_valid_addr_addr(v):
+                        continue
                     if skip <= 0:
                         yield v
                     skip -= 1
                     continue
 
     @staticmethod
-    def arm32_ldr_pc_relative_ldr(res, skip=0):
+    def arm32_ldr_pc_relative_ldr(res, skip=0, read_valid=False):
         bases = {}
         for line in res.splitlines():
             m = re.search(r"ldr\s+(\w+),\s*\[pc,\s*#(\d+)\]", line)
@@ -45921,6 +45923,8 @@ class KernelAddressHeuristicFinderUtil:
                 reg = m.group(1)
                 if reg in bases:
                     w = align_address(bases[reg])
+                    if read_valid and not is_valid_addr_addr(w):
+                        continue
                     if skip <= 0:
                         yield w
                     skip -= 1
@@ -54840,7 +54844,7 @@ class KernelFileSystemsCommand(GenericCommand):
         while True:
             if current == 0:
                 if not self.quiet:
-                    err("Not found file_systems who has valid fs_supres")
+                    err("Not found file_systems who has valid fs_supers")
                 return False
             fs_supers = read_int_from_memory(current + self.offset_fs_supers)
             if is_valid_addr(fs_supers):
