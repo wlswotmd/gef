@@ -51621,7 +51621,7 @@ class KernelModuleCommand(GenericCommand):
         modules = KernelAddressHeuristicFinder.get_modules()
         if modules is None:
             if not self.quiet:
-                err("Not found symbol (maybe, CONFIG_MODULES is not set)")
+                err("Not found modules (maybe, CONFIG_MODULES is not set)")
             return None
 
         if not self.quiet:
@@ -51877,22 +51877,22 @@ class KernelModuleCommand(GenericCommand):
                     break
                 # size check
                 cand_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4 * 0, 4))
-                if cand_size == 0 or cand_size > 0x100000:
+                if cand_size == 0 or cand_size > 0x200000:
                     valid = False
                     break
                 # text_size check
                 cand_text_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4 * 1, 4))
-                if cand_text_size == 0 or cand_text_size > 0x100000:
+                if cand_text_size == 0 or cand_text_size > 0x200000:
                     valid = False
                     break
                 # ro_size check
                 cand_ro_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4 * 2, 4))
-                if cand_ro_size == 0 or cand_ro_size > 0x100000:
+                if cand_ro_size == 0 or cand_ro_size > 0x200000:
                     valid = False
                     break
                 # ro_after_init_size check
                 cand_ro_after_init_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4 * 3, 4))
-                if cand_ro_after_init_size == 0 or cand_ro_after_init_size > 0x100000:
+                if cand_ro_after_init_size == 0 or cand_ro_after_init_size > 0x200000:
                     valid = False
                     break
             if valid:
@@ -52075,11 +52075,12 @@ class KernelModuleCommand(GenericCommand):
         if kversion >= "5.2":
             typetab = read_int_from_memory(kallsyms + current_arch.ptrsize * 3)
 
-        gef_print("symtab: {:#x}".format(symtab))
-        gef_print("sizeof_symtab_entry: {:#x}".format(sizeof_symtab_entry))
-        gef_print("num_symab: {:#x}".format(num_symtab))
-        gef_print("strtab: {:#x}".format(strtab))
-        gef_print("typetab: {:#x}".format(typetab))
+        #gef_print("symtab: {:#x}".format(symtab))
+        #gef_print("sizeof_symtab_entry: {:#x}".format(sizeof_symtab_entry))
+        #gef_print("num_symab: {:#x}".format(num_symtab))
+        #gef_print("strtab: {:#x}".format(strtab))
+        #if kversion >= "5.2":
+        #    gef_print("typetab: {:#x}".format(typetab))
 
         entries = []
         for i in range(num_symtab):
@@ -52146,11 +52147,19 @@ class KernelModuleCommand(GenericCommand):
 
         self.out = []
         if not self.quiet:
-            fmt = "{:<18s} {:<18s} {:<18s} {:<18s}"
+            fmt = "{:<18s} {:<24s} {:<18s} {:<18s}"
             legend = ["module", "module->name", "base", "size"]
             self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
-        for module in module_addrs:
+        if args.quiet:
+            tqdm = lambda x, leave: x # noqa: F841
+        else:
+            try:
+                from tqdm import tqdm
+            except ImportError:
+                tqdm = lambda x, leave: x # noqa: F841
+
+        for module in tqdm(module_addrs, leave=False):
             name_string = read_cstring_from_memory(module + offset_name)
             if args.filter:
                 if not any(re_pattern.search(name_string) for re_pattern in args.filter):
@@ -52165,7 +52174,7 @@ class KernelModuleCommand(GenericCommand):
             else: # ~ 4.5
                 base = read_int_from_memory(module + offset_module_core)
                 size = u32(read_memory(module + offset_module_core + current_arch.ptrsize + 4, 4))
-            self.out.append("{:#018x} {:<18s} {:#018x} {:#018x}".format(module, name_string, base, size))
+            self.out.append("{:#018x} {:<24s} {:#018x} {:#018x}".format(module, name_string, base, size))
 
             if args.resolve_symbol:
                 self.out.append(titlify("module symbols"))
