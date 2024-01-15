@@ -64024,9 +64024,9 @@ class KernelIpcsCommand(GenericCommand):
         self.out = []
         for i, ipc_ns in enumerate(ipc_ns_list):
             if i == 0:
-                self.out.append(titlify("init_ipc_ns: {:#x}".format(ipc_ns), color="bold", msg_color="bold"))
+                self.out.append(titlify("init_ipc_ns: {:#x}".format(ipc_ns)))
             else:
-                self.out.append(titlify("ipc_ns: {:#x}".format(ipc_ns), color="bold", msg_color="bold"))
+                self.out.append(titlify("ipc_ns: {:#x}".format(ipc_ns)))
             self.dump_ipc_sem_ids(ipc_ns + self.offset_ids + self.sizeof_ipc_ids * 0)
             self.dump_ipc_msg_ids(ipc_ns + self.offset_ids + self.sizeof_ipc_ids * 1)
             self.dump_ipc_shm_ids(ipc_ns + self.offset_ids + self.sizeof_ipc_ids * 2)
