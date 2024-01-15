@@ -46890,6 +46890,53 @@ class KernelAddressHeuristicFinder:
 
     @staticmethod
     @switch_to_intel_syntax
+    def get_VMEMMAP_START():
+        if not is_arm64():
+            return None
+
+        PAGE_SHIFT = 12
+        T1SZ = (get_register("$TCR_EL1") >> 16) & 0b111111
+        region_end = 2 ** 64
+        region_start = region_end - (2 ** (64 - T1SZ))
+        region_bits = log2(region_end - region_start)
+
+        ID_AA64MMFR2_EL1 = get_register("$ID_AA64MMFR2_EL1")
+        if ID_AA64MMFR2_EL1 is not None:
+            FEAT_LVA = ((ID_AA64MMFR2_EL1 >> 16) & 0b1111) == 0b0001
+        else:
+            FEAT_LVA = False
+        if FEAT_LVA:
+            CONFIG_ARM64_VA_BITS = min(52, region_bits)
+        else:
+            CONFIG_ARM64_VA_BITS = region_bits
+
+        VA_BITS = CONFIG_ARM64_VA_BITS
+        if VA_BITS > 48:
+            VA_BITS_MIN = 48
+        else:
+            VA_BITS_MIN = VA_BITS
+
+        STRUCT_PAGE_MAX_SHIFT = 6
+
+        # calc VMEMMAP_START
+        kversion = KernelVersionCommand.kernel_version()
+        if kversion < "5.4":
+            PAGE_OFFSET = align_address(0xffffffffffffffff - (1 << (VA_BITS - 1)) + 1)
+            VMEMMAP_SIZE = 1 << (VA_BITS - PAGE_SHIFT - 1 + STRUCT_PAGE_MAX_SHIFT)
+            VMEMMAP_START = PAGE_OFFSET - VMEMMAP_SIZE
+        elif kversion < "5.12":
+            PAGE_OFFSET = align_address(-(1 << VA_BITS))
+            PAGE_END = lambda va: -(1 << ((va) - 1))
+            VMEMMAP_SIZE = ((PAGE_END(VA_BITS_MIN) - PAGE_OFFSET) >> (PAGE_SHIFT - STRUCT_PAGE_MAX_SHIFT))
+            VMEMMAP_START = (-VMEMMAP_SIZE - 0x00200000) & 0xffffffffffffffff
+        else: # v5.12~
+            PAGE_OFFSET = align_address(-(1 << VA_BITS))
+            VMEMMAP_SHIFT = PAGE_SHIFT - STRUCT_PAGE_MAX_SHIFT
+            VMEMMAP_START = -(1 << (VA_BITS - VMEMMAP_SHIFT)) & 0xffffffffffffffff
+        return VMEMMAP_START, PAGE_OFFSET
+
+    @staticmethod
+    @switch_to_intel_syntax
     def get_mem_section():
         if not is_x86_32():
             return None
@@ -75018,7 +75065,7 @@ class SwitchELCommand(GenericCommand):
 
 @register_command
 class PagewalkWithHintsCommand(GenericCommand):
-    """Add hint to the result of pagewalk (only x64/ARM64)."""
+    """Add hint to the result of pagewalk."""
     _cmdline_ = "pagewalk-with-hints"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -75200,13 +75247,12 @@ class PagewalkWithHintsCommand(GenericCommand):
             line = line.split()
             addr_start, addr_end = [int(x, 16) for x in line[0].split("-")]
             # TODO: more suitable check for kernel address
-            # Currently only 64bit architecture is targeted, so this will work
             if (addr_start >> ((current_arch.ptrsize * 8) - 1)) != 1:
                 continue
-            if is_x86_64():
-                perm = Permission.from_process_maps(line[5][1:].lower())
-            elif is_arm64():
-                perm = Permission.from_process_maps(line[6][-3:].lower())
+            if is_x86():
+                perm = Permission.from_process_maps(line[5][1:4].lower())
+            elif is_arm64() or is_arm32():
+                perm = Permission.from_process_maps(line[6][4:7].lower())
             regions[addr_start] = self.Region(addr_start, addr_end, str(perm))
         return regions
 
@@ -75234,8 +75280,10 @@ class PagewalkWithHintsCommand(GenericCommand):
             __end_rodata = self.page_end_align(__end_rodata)
             self.insert_region(__start_rodata, __end_rodata - __start_rodata, "kernel .rodata")
         else:
-            if kinfo.ro_base in self.regions:
-                self.regions[kinfo.ro_base].add_description("maybe kernel .rodata")
+            # In a 32-bit environment, the range of rodata may not be measured correctly, so it is not used.
+            if is_64bit():
+                if kinfo.kinfo.ro_base in self.regions:
+                    self.regions[kinfo.ro_base].add_description("maybe kernel .rodata")
 
         # .data
         _sdata = get_ksymaddr("_sdata")
@@ -75245,8 +75293,10 @@ class PagewalkWithHintsCommand(GenericCommand):
             _edata = self.page_end_align(_edata)
             self.insert_region(_sdata, _edata - _sdata, "kernel .data")
         else:
-            if kinfo.rw_base in self.regions:
-                self.regions[kinfo.rw_base].add_description("maybe kernel .data")
+            # In a 32-bit environment, the range of rodata may not be measured correctly, so it is not used.
+            if is_64bit():
+                if kinfo.rw_base in self.regions:
+                    self.regions[kinfo.rw_base].add_description("maybe kernel .data")
         return
 
     def resolve_direct_map(self):
@@ -75285,11 +75335,28 @@ class PagewalkWithHintsCommand(GenericCommand):
     def resolve_page(self):
         if not self.quiet:
             info("resolve page")
-        vmemmap = KernelAddressHeuristicFinder.get_vmemmap()
-        if vmemmap is None:
-            return
 
-        self.regions[vmemmap].add_description("struct page area")
+        if is_x86_64():
+            vmemmap = KernelAddressHeuristicFinder.get_vmemmap()
+            if vmemmap is None:
+                return
+            if vmemmap in self.regions:
+                self.regions[vmemmap].add_description("struct page area")
+
+        elif is_x86_32() or is_arm32():
+            # TODO support x86_32 mem_section
+            mem_map = KernelAddressHeuristicFinder.get_mem_map()
+            if mem_map is None:
+                return
+            if mem_map in self.regions:
+                self.regions[mem_map].add_description("struct page area")
+
+        elif is_arm64():
+            VMEMMAP_START, _ = KernelAddressHeuristicFinder.get_VMEMMAP_START()
+            # It will shift due to KASLR, so we will correct it.
+            for key in sorted(self.regions.keys()):
+                if key >= VMEMMAP_START:
+                    self.regions[key].add_description("struct page area")
         return
 
     def resolve_buddy(self):
@@ -75364,7 +75431,16 @@ class PagewalkWithHintsCommand(GenericCommand):
                     continue
 
                 name = r.group(1)
+                # something is wrong
+                if name and not all(x in string.printable for x in name):
+                    current += gef_getpagesize()
+                    continue
+
                 num_pages = int(r.group(2), 16)
+                # something is wrong
+                if num_pages == 0:
+                    current += gef_getpagesize()
+                    continue
 
                 description = "slab cache ({:s}; full)".format(name)
                 total_page_size = gef_getpagesize() * num_pages
@@ -75504,21 +75580,39 @@ class PagewalkWithHintsCommand(GenericCommand):
     def resolve_vdso(self):
         if not self.quiet:
             info("resolve vdso")
-        vdso_image_64 = KernelAddressHeuristicFinder.get_vdso_image_64()
-        if vdso_image_64:
-            vdso_start = read_int_from_memory(vdso_image_64)
-            vdso_size = read_int_from_memory(vdso_image_64 + current_arch.ptrsize)
-            self.insert_region(vdso_start, vdso_size, "vdso_image_64")
-        vdso_image_32 = KernelAddressHeuristicFinder.get_vdso_image_32()
-        if vdso_image_32:
-            vdso_start = read_int_from_memory(vdso_image_32)
-            vdso_size = read_int_from_memory(vdso_image_32 + current_arch.ptrsize)
-            self.insert_region(vdso_start, vdso_size, "vdso_image_32")
-        vdso_image_x32 = KernelAddressHeuristicFinder.get_vdso_image_x32()
-        if vdso_image_x32:
-            vdso_start = read_int_from_memory(vdso_image_x32)
-            vdso_size = read_int_from_memory(vdso_image_x32 + current_arch.ptrsize)
-            self.insert_region(vdso_start, vdso_size, "vdso_image_x32")
+
+        if is_x86_64():
+            vdso_image_64 = KernelAddressHeuristicFinder.get_vdso_image_64()
+            if vdso_image_64:
+                vdso_start = read_int_from_memory(vdso_image_64)
+                vdso_size = read_int_from_memory(vdso_image_64 + current_arch.ptrsize)
+                self.insert_region(vdso_start, vdso_size, "vdso_image_64")
+
+        if is_x86_64() or is_x86_32():
+            vdso_image_32 = KernelAddressHeuristicFinder.get_vdso_image_32()
+            if vdso_image_32:
+                vdso_start = read_int_from_memory(vdso_image_32)
+                vdso_size = read_int_from_memory(vdso_image_32 + current_arch.ptrsize)
+                self.insert_region(vdso_start, vdso_size, "vdso_image_32")
+
+        if is_x86_64():
+            vdso_image_x32 = KernelAddressHeuristicFinder.get_vdso_image_x32()
+            if vdso_image_x32:
+                vdso_start = read_int_from_memory(vdso_image_x32)
+                vdso_size = read_int_from_memory(vdso_image_x32 + current_arch.ptrsize)
+                self.insert_region(vdso_start, vdso_size, "vdso_image_x32")
+
+        if is_arm64() or is_arm32():
+            vdso_start = KernelAddressHeuristicFinder.get_vdso_start()
+            if vdso_start:
+                vdso_size = gef_getpagesize()
+                self.insert_region(vdso_start, vdso_size, "vdso_start")
+
+        if is_arm64():
+            vdso32_start = KernelAddressHeuristicFinder.get_vdso32_start()
+            if vdso32_start:
+                vdso_size = gef_getpagesize()
+                self.insert_region(vdso32_start, vdso_size, "vdso32_start")
         return
 
     def detect_zero_page(self):
@@ -75568,7 +75662,7 @@ class PagewalkWithHintsCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_64", "ARM64"))
+    @only_if_specific_arch(arch=("x86_64", "x86_32", "ARM64", "ARM32"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -75586,7 +75680,7 @@ class PagewalkWithHintsCommand(GenericCommand):
         if is_x86_64():
             self.resolve_direct_map()
             self.resolve_vmalloc()
-            self.resolve_page()
+        self.resolve_page()
         self.resolve_buddy()
         self.resolve_kstack()
         self.resolve_each_slab()
@@ -75852,47 +75946,11 @@ class PageCommand(GenericCommand):
 
         elif is_arm64():
             # CONFIG_SPARSEMEM_VMEMMAP
-
-            T1SZ = (get_register("$TCR_EL1") >> 16) & 0b111111
-            region_end = 2 ** 64
-            region_start = region_end - (2 ** (64 - T1SZ))
-            region_bits = log2(region_end - region_start)
-
-            ID_AA64MMFR2_EL1 = get_register("$ID_AA64MMFR2_EL1")
-            if ID_AA64MMFR2_EL1 is not None:
-                FEAT_LVA = ((ID_AA64MMFR2_EL1 >> 16) & 0b1111) == 0b0001
-            else:
-                FEAT_LVA = False
-            if FEAT_LVA:
-                CONFIG_ARM64_VA_BITS = min(52, region_bits)
-            else:
-                CONFIG_ARM64_VA_BITS = region_bits
-
-            VA_BITS = CONFIG_ARM64_VA_BITS
-            if VA_BITS > 48:
-                VA_BITS_MIN = 48
-            else:
-                VA_BITS_MIN = VA_BITS
+            self.VMEMMAP_START, self.PAGE_OFFSET = KernelAddressHeuristicFinder.get_VMEMMAP_START()
 
             # calc sizeof(struct page)
             STRUCT_PAGE_MAX_SHIFT = 6
             self.sizeof_struct_page = 2 ** STRUCT_PAGE_MAX_SHIFT
-
-            # calc VMEMMAP_START, PAGE_OFFSET
-            kversion = KernelVersionCommand.kernel_version()
-            if kversion < "5.4":
-                self.PAGE_OFFSET = 0xffffffffffffffff - (1 << (VA_BITS - 1)) + 1
-                VMEMMAP_SIZE = 1 << (VA_BITS - self.PAGE_SHIFT - 1 + STRUCT_PAGE_MAX_SHIFT)
-                self.VMEMMAP_START = self.PAGE_OFFSET - VMEMMAP_SIZE
-            elif kversion < "5.12":
-                self.PAGE_OFFSET = -(1 << (VA_BITS))
-                _PAGE_END = lambda va: -(1 << ((va) - 1))
-                VMEMMAP_SIZE = ((_PAGE_END(VA_BITS_MIN) - self.PAGE_OFFSET) >> (self.PAGE_SHIFT - STRUCT_PAGE_MAX_SHIFT))
-                self.VMEMMAP_START = (-VMEMMAP_SIZE - 0x00200000) & 0xffffffffffffffff
-            else: # v5.12~
-                self.PAGE_OFFSET = -(1 << (VA_BITS))
-                VMEMMAP_SHIFT = self.PAGE_SHIFT - STRUCT_PAGE_MAX_SHIFT
-                self.VMEMMAP_START = -(1 << (VA_BITS - VMEMMAP_SHIFT)) & 0xffffffffffffffff
 
         elif is_arm32():
             # calc PAGE_OFFSET
