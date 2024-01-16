@@ -63351,8 +63351,11 @@ class KernelBpfCommand(GenericCommand):
         """
         # idr->idr_rt->xa_head
         base = prog_idr + 4 * 2
+        max_sizeof_idr = abs(prog_idr - map_idr)
         for i in range(20):
             pos = base + current_arch.ptrsize * i
+            if (pos - prog_idr) >= max_sizeof_idr:
+                continue
             x = read_int_from_memory(pos)
             if not is_valid_addr(x):
                 continue
