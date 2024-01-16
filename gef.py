@@ -46803,6 +46803,15 @@ class KernelAddressHeuristicFinder:
                     s = read_cstring_from_memory(x, ascii_only=True)
                     if not s:
                         return read_int_from_memory(x)
+
+        # plan 4 (available v3.9 or later)
+        if kversion and kversion >= "3.9":
+            addr = get_ksymaddr("__virt_addr_valid")
+            if addr:
+                res = gdb.execute("x/50i {:#x}".format(addr), to_string=True)
+                g = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res)
+                for x in g:
+                    return read_int_from_memory(x)
         return None
 
     @staticmethod
@@ -62676,10 +62685,10 @@ class BuddyDumpCommand(GenericCommand):
 
             virt_str = "???"
             phys_str = "???"
-            if virt:
+            if virt is not None:
                 virt_str = "{:#0{:d}x}-{:#0{:d}x}".format(virt, align, virt + size, align)
                 virt_str = Color.colorify(virt_str, heap_page_color)
-            if phys:
+            if phys is not None:
                 phys_str = "{:#0{:d}x}-{:#0{:d}x}".format(phys, align, phys + size, align)
 
             # create msg
@@ -62782,7 +62791,7 @@ class BuddyDumpCommand(GenericCommand):
 
         # sort
         if self.sort:
-            prev_page = None
+            prev_virt = None
             prev_size = None
             align = get_format_address_width()
 
@@ -62793,23 +62802,24 @@ class BuddyDumpCommand(GenericCommand):
                     continue
 
                 # sort_verbose
-                if prev_page is None:
+                if prev_virt is None:
+                    # first entry
                     virt = self.page2virt_wrapper(page)
-                    if virt:
+                    if virt is not None:
                         phys = Virt2PhysCommand.v2p(virt, self.maps)
-                        if phys:
+                        if phys is not None:
                             out.append("    used:{:{:d}s}  size:{:#08x}".format("", align, phys))
                     out.append(msg)
-                    prev_page = page
+                    prev_virt = virt
                     prev_size = size
                     continue
-                curr = page << 6
-                prev = prev_page << 6
-                if prev + prev_size != curr:
-                    diff = curr - (prev + prev_size)
+                # second or after entries
+                virt = self.page2virt_wrapper(page)
+                if prev_virt + prev_size != virt:
+                    diff = virt - (prev_virt + prev_size)
                     out.append("    used:{:{:d}s}  size:{:#08x}".format("", align, diff))
                 out.append(msg)
-                prev_page = page
+                prev_virt = virt
                 prev_size = size
             self.out = out
 
@@ -71403,7 +71413,7 @@ class Virt2PhysCommand(GenericCommand):
         if maps is None:
             return
         paddr = self.v2p(args.address, maps)
-        if paddr:
+        if paddr is not None:
             gef_print("Virt: {:#x} -> Phys: {:#x}".format(args.address, paddr))
         return
 
