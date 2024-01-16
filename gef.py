@@ -64409,7 +64409,7 @@ class KernelDmaBufCommand(GenericCommand):
     def initialize(self):
         self.db_list = KernelAddressHeuristicFinder.get_db_list()
         if self.db_list is None:
-            err("Not found db_list")
+            err("Not found db_list (maybe DMA_SHARED_BUFFER=n)")
             return False
         if not self.quiet:
             info("db_list: {:#x}".format(self.db_list))
