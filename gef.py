@@ -53778,11 +53778,14 @@ class KernelCharacterDevicesCommand(GenericCommand):
                 parent = read_int_from_memory(merged[k]["cdev"] + current_arch.ptrsize * 3)
                 merged[k]["parent"] = parent
                 if parent:
-                    name = read_int_from_memory(parent)
-                    if name:
-                        merged[k]["parent_name"] = read_cstring_from_memory(name) or "<None>"
+                    if not is_valid_addr(parent):
+                        merged[k]["parent_name"] = "???"
                     else:
-                        merged[k]["parent_name"] = "<None>"
+                        name = read_int_from_memory(parent)
+                        if name:
+                            merged[k]["parent_name"] = read_cstring_from_memory(name) or "<None>"
+                        else:
+                            merged[k]["parent_name"] = "<None>"
                 else:
                     merged[k]["parent_name"] = "<None>"
             else:
