@@ -48361,6 +48361,18 @@ class KernelAddressHeuristicFinder:
 
         kversion = KernelVersionCommand.kernel_version()
 
+        def is_looped_link_list(x):
+            seen = []
+            while True:
+                if not is_valid_addr(x):
+                    return False
+                if len(seen) > 1 and x in seen[1:]:
+                    return False
+                if len(seen) > 0 and x == seen[0]:
+                    return True
+                seen.append(x)
+                x = read_int_from_memory(x)
+
         # plan 2 (available v3.10 ~ v6.3: vread, v6.4~: vread_iter)
         if kversion and kversion >= "3.17":
             addr = get_ksymaddr("vread") or get_ksymaddr("vread_iter")
@@ -48371,13 +48383,15 @@ class KernelAddressHeuristicFinder:
                 elif is_x86_32():
                     g = KernelAddressHeuristicFinderUtil.x64_x86_cmp_const(res, read_valid=True)
                 elif is_arm64():
-                    # too difficult to implement
-                    g = []
+                    g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add_ldr(res)
                 elif is_arm32():
-                    # too difficult to implement
-                    g = []
+                    g = itertools.chain(
+                        KernelAddressHeuristicFinderUtil.arm32_movw_movt(res),
+                        KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative(res),
+                    )
                 for x in g:
-                    return x
+                    if is_looped_link_list(x):
+                        return x
 
         # plan 3 (available v4.10~)
         if kversion and kversion >= "4.10":
@@ -48395,7 +48409,8 @@ class KernelAddressHeuristicFinder:
                 elif is_arm32():
                     g = KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative(res)
                 for x in g:
-                    return x
+                    if is_looped_link_list(x):
+                        return x
 
         # plan 4 (available v2.6.28 ~ v5.1)
         if kversion and kversion >= "2.6.28" and kversion < "5.2":
@@ -48407,13 +48422,15 @@ class KernelAddressHeuristicFinder:
                 elif is_x86_32():
                     g = KernelAddressHeuristicFinderUtil.x86_dword_ptr_ds(res, read_valid=True)
                 elif is_arm64():
-                    # TODO
-                    g = []
+                    g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add_ldr(res)
                 elif is_arm32():
-                    # TODO
-                    g = []
+                    g = itertools.chain(
+                        KernelAddressHeuristicFinderUtil.arm32_movw_movt(res),
+                        KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative(res),
+                    )
                 for x in g:
-                    return x
+                    if is_looped_link_list(x):
+                        return x
         return None
 
     @staticmethod
