@@ -59352,8 +59352,8 @@ class SlubDumpCommand(GenericCommand):
     struct slab {                                // if kernel >= 5.17-rc1
         unsigned long __page_flags;
         struct kmem_cache *slab_cache;           // if kernel >= 6.2-rc1
-        struct slab *next;                       // if CONFIG_SLUB_CPU_PARTIAL=y
-        int slabs;                               // if CONFIG_SLUB_CPU_PARTIAL=y
+        struct slab *next;
+        int slabs;
         struct kmem_cache *slab_cache;           // if kernel < 6.2-rc1
         void *freelist;
         unsigned inuse:16, objects:15, frozen:1;
@@ -60329,7 +60329,8 @@ class SlubTinyDumpCommand(GenericCommand):
     struct slab {
         unsigned long __page_flags;
         struct kmem_cache *slab_cache;
-        struct list_head slab_list;
+        struct slab *next;
+        int slabs;
         void *freelist;
         unsigned inuse:16, objects:15, frozen:1;
         ...
@@ -61178,7 +61179,7 @@ class SlabDumpCommand(GenericCommand):
         elif kversion < "6.2":
             self.page_offset_next = current_arch.ptrsize
         else:
-            self.page_offset_next = current_arch.ptrsize * 3
+            self.page_offset_next = current_arch.ptrsize * 2
         if not self.quiet:
             info("offsetof(page, next): {:#x}".format(self.page_offset_next))
 
@@ -62206,13 +62207,12 @@ class SlabContainsCommand(GenericCommand):
         if self.verbose:
             info("offsetof(page, slab_cache): {:#x}".format(self.page_offset_slab_cache))
 
-        if self.allocator in ["SLUB", "SLUB_TINY"]:
-            r = re.search(r"offsetof\(page, inuse_objects_frozen\): (0x\S+)", res)
-            if not r:
-                return False
-            self.page_offset_inuse_objects_frozen = int(r.group(1), 16)
-            if self.verbose:
-                info("offsetof(page, inuse_objects_frozen): {:#x}".format(self.page_offset_inuse_objects_frozen))
+        r = re.search(r"offsetof\(page, next\): (0x\S+)", res)
+        if not r:
+            return False
+        self.page_offset_next = int(r.group(1), 16)
+        if self.verbose:
+            info("offsetof(page, next): {:#x}".format(self.page_offset_next))
 
         r = re.search(r"offsetof\(kmem_cache, name\): (0x\S+)", res)
         if not r:
@@ -62228,7 +62228,16 @@ class SlabContainsCommand(GenericCommand):
         if self.verbose:
             info("offsetof(kmem_cache, size): {:#x}".format(self.kmem_cache_offset_size))
 
-        if self.allocator == "SLAB":
+        # for num of pages
+        if self.allocator in ["SLUB", "SLUB_TINY"]:
+            r = re.search(r"offsetof\(page, inuse_objects_frozen\): (0x\S+)", res)
+            if not r:
+                return False
+            self.page_offset_inuse_objects_frozen = int(r.group(1), 16)
+            if self.verbose:
+                info("offsetof(page, inuse_objects_frozen): {:#x}".format(self.page_offset_inuse_objects_frozen))
+
+        elif self.allocator == "SLAB":
             r = re.search(r"offsetof\(kmem_cache, gfporder\): (0x\S+)", res)
             if not r:
                 return False
@@ -62290,6 +62299,13 @@ class SlabContainsCommand(GenericCommand):
                         gef_print("slab: {:#x}".format(page))
                     else:
                         gef_print("page: {:#x}".format(page))
+
+                page_next = read_int_from_memory(page + self.page_offset_next)
+                if page_next & 1:
+                    current -= gef_getpagesize()
+                    if not args.quiet:
+                        warn("Detected invalid value, continue exploring...")
+                    continue
 
                 kmem_cache = read_int_from_memory(page + self.page_offset_slab_cache)
                 if kmem_cache == 0:
