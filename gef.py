@@ -49286,7 +49286,7 @@ class KernelCurrentCommand(GenericCommand):
             0xc6a27440|+0x0000|+000: 0x2d849000 -> inaccessible
             0xc6a27444|+0x0004|+001: 0x00000000
             """
-            if off == 0:
+            if off <= 0x10:
                 break
             if len(cpu_offset) >= 1 and off == cpu_offset[-1]:
                 cpu_offset.pop() # remove last one
@@ -49300,7 +49300,7 @@ class KernelCurrentCommand(GenericCommand):
         if self.cpu_offset:
             if not self.quiet:
                 info("__per_cpu_offset: {:#x}".format(self.__per_cpu_offset))
-                info("num of cpu: {:d}".format(len(self.cpu_offset)))
+                info("num of cpu: {:d} (guessed)".format(len(self.cpu_offset)))
             return self.cpu_offset
 
         # resolve __per_cpu_offset
@@ -49316,9 +49316,10 @@ class KernelCurrentCommand(GenericCommand):
         if not self.quiet:
             info("__per_cpu_offset: {:#x}".format(__per_cpu_offset))
         self.__per_cpu_offset = __per_cpu_offset
+
         self.cpu_offset = KernelCurrentCommand.get_each_cpu_offset(__per_cpu_offset)
         if not self.quiet:
-            info("num of cpu: {:d}".format(len(self.cpu_offset)))
+            info("num of cpu: {:d} (guessed)".format(len(self.cpu_offset)))
         return self.cpu_offset
 
     def get_comm_str(self, task_addr):
@@ -49344,7 +49345,7 @@ class KernelCurrentCommand(GenericCommand):
         for thread in threads:
             thread.switch() # change thread
             task = KernelAddressHeuristicFinder.get_current_task_for_current_thread()
-            if task:
+            if is_valid_addr(task):
                 cpu_num = thread.num - 1 # ?
                 gef_print("current (cpu{:d}): {:#x} {:s}".format(cpu_num, task, self.get_comm_str(task)))
         orig_thread.switch() # revert thread
@@ -49366,13 +49367,16 @@ class KernelCurrentCommand(GenericCommand):
             task_offset = current_task
             for i, cpu_base in enumerate(cpu_bases):
                 task = read_int_from_memory(cpu_base + task_offset)
+                if not is_valid_addr(task):
+                    break
                 gef_print("current (cpu{:d}): {:#x} {:s}".format(i, task, self.get_comm_str(task)))
         else:
             # pattern 2: current_task is the address that stores a pointer to the current task (not per_cpu).
             if not self.quiet:
                 info("__per_cpu_offset is unused")
             task = read_int_from_memory(current_task)
-            gef_print("current: {:#x} {:s}".format(task, self.get_comm_str(task)))
+            if is_valid_addr(task):
+                gef_print("current: {:#x} {:s}".format(task, self.get_comm_str(task)))
         return
 
     @parse_args
