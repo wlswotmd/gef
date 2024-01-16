@@ -46946,6 +46946,18 @@ class KernelAddressHeuristicFinder:
             if vmemmap_base:
                 return read_int_from_memory(vmemmap_base)
 
+        def get_min_page(r):
+            if r is None:
+                return None
+            min_page = None
+            for x in r:
+                x = int(x, 16)
+                if not is_valid_addr(x):
+                    continue
+                if min_page is None or x < min_page:
+                    min_page = x
+            return min_page
+
         # plan 3 (from slub-dump / slub-tiny-dump)
         allocator = KernelChecksecCommand.get_slab_type()
         if allocator in ["SLUB", "SLUB_TINY"]:
@@ -46953,24 +46965,24 @@ class KernelAddressHeuristicFinder:
             for n in [8, 16, 32, 64, 96, 128, 192, 256, 512]:
                 ret = gdb.execute("{:s} --no-pager --quiet --skip-page2virt kmalloc-{:d}".format(command, n), to_string=True)
                 r = re.findall(r"(?:active|node\[0\]) page: (0x\S+)", Color.remove_color(ret))
-                if r:
-                    min_page = min(int(x, 16) for x in r)
+                min_page = get_min_page(r)
+                if min_page is not None:
                     return min_page & 0xffff_ffff_c000_0000 # ~((1 << PUD_SHIFT) - 1)
 
         # plan 4 (from slab-dump)
         if allocator == "SLAB":
             ret = gdb.execute("slab-dump --no-pager --quiet kmalloc-256", to_string=True)
             r = re.findall(r"node\[\d+\]\.slabs_(?:partial|full): (0x\S+)", Color.remove_color(ret))
-            if r:
-                min_page = min(int(x, 16) for x in r)
+            min_page = get_min_page(r)
+            if min_page is not None:
                 return min_page & 0xffff_ffff_c000_0000 # ~((1 << PUD_SHIFT) - 1)
 
         # plan 5 (from slob-dump)
         if allocator == "SLOB":
             ret = gdb.execute("slob-dump --large --no-pager --quiet", to_string=True)
             r = re.findall(r"page: (0x\S+)", Color.remove_color(ret))
-            if r:
-                min_page = min(int(x, 16) for x in r)
+            min_page = get_min_page(r)
+            if min_page is not None:
                 return min_page & 0xffff_ffff_c000_0000 # ~((1 << PUD_SHIFT) - 1)
         return None
 
