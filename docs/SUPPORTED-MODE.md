@@ -84,3 +84,10 @@
 * Note
     * It runs faster than KGDB mode and Ctrl+C interrupt works, but it is still slow.
     * Access to physical memory and control registers is possible thanks to the `monitor` command.
+
+### rr cooperation
+* Usage
+    * It can be used just like normal GDB.
+* Note
+    * This is an experimental support.
+    * Some commands may not work.

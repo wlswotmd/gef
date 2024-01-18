@@ -5298,7 +5298,7 @@ class ARM(Architecture):
         return ra
 
     def get_tls(self):
-        if is_in_kernel():
+        if is_in_kernel() or is_rr():
             return None
         if self.is_thumb():
             codes = [b"\x1d\xee", b"\x70\x2f"] # mrc p15, #0, r2, c13, c0, #3
@@ -5641,7 +5641,7 @@ class X86(Architecture):
         if fs is not None:
             return fs
         # fast path
-        if not is_remote_debug() and not is_in_kernel() and not is_qiling():
+        if not is_remote_debug() and not is_in_kernel() and not is_qiling() and not is_rr():
             PTRACE_ARCH_PRCTL = 30
             ARCH_GET_FS = 0x1003
             pid, lwpid, tid = gdb.selected_thread().ptid
@@ -5653,7 +5653,7 @@ class X86(Architecture):
             if ret == 0: # success
                 return value.contents.value or 0
         # slow path
-        if not is_kvm_enabled() and not is_qiling():
+        if not is_kvm_enabled() and not is_qiling() and not is_rr():
             codes = [b"\x64\xa1\x00\x00\x00\x00"] # mov eax, dword ptr fs:[0x0]
             ret = ExecAsm(codes).exec_code()
             return ret["reg"]["$eax"]
@@ -5665,7 +5665,7 @@ class X86(Architecture):
         if gs is not None:
             return gs
         # fast path
-        if not is_remote_debug() and not is_in_kernel() and not is_qiling():
+        if not is_remote_debug() and not is_in_kernel() and not is_qiling() and not is_rr():
             PTRACE_ARCH_PRCTL = 30
             ARCH_GET_GS = 0x1004
             pid, lwpid, tid = gdb.selected_thread().ptid
@@ -5677,7 +5677,7 @@ class X86(Architecture):
             if ret == 0: # success
                 return value.contents.value or 0
         # slow path
-        if not is_kvm_enabled() and not is_qiling():
+        if not is_kvm_enabled() and not is_qiling() and not is_rr():
             codes = [b"\x65\xa1\x00\x00\x00\x00"] # mov eax, dword ptr gs:[0x0]
             ret = ExecAsm(codes).exec_code()
             return ret["reg"]["$eax"]
@@ -5765,7 +5765,7 @@ class X86_64(X86):
         if fs is not None:
             return fs
         # fast path
-        if not is_remote_debug() and not is_in_kernel() and not is_qiling():
+        if not is_remote_debug() and not is_in_kernel() and not is_qiling() and not is_rr():
             PTRACE_ARCH_PRCTL = 30
             ARCH_GET_FS = 0x1003
             pid, lwpid, tid = gdb.selected_thread().ptid
@@ -5777,7 +5777,7 @@ class X86_64(X86):
             if ret == 0: # success
                 return value.contents.value or 0
         # slow path
-        if not is_kvm_enabled() and not is_qiling():
+        if not is_kvm_enabled() and not is_qiling() and not is_rr():
             codes = [b"\x64\x48\xa1\x00\x00\x00\x00\x00\x00\x00\x00"] # movabs rax, qword ptr fs:[0x0]
             ret = ExecAsm(codes).exec_code()
             return ret["reg"]["$rax"]
@@ -5789,7 +5789,7 @@ class X86_64(X86):
         if gs is not None:
             return gs
         # fast path
-        if not is_remote_debug() and not is_in_kernel() and not is_qiling():
+        if not is_remote_debug() and not is_in_kernel() and not is_qiling() and not is_rr():
             PTRACE_ARCH_PRCTL = 30
             ARCH_GET_GS = 0x1004
             pid, lwpid, tid = gdb.selected_thread().ptid
@@ -5801,7 +5801,7 @@ class X86_64(X86):
             if ret == 0: # success
                 return value.contents.value or 0
         # slow path
-        if not is_kvm_enabled() and not is_qiling():
+        if not is_kvm_enabled() and not is_qiling() and not is_rr():
             codes = [b"\x65\x48\xa1\x00\x00\x00\x00\x00\x00\x00\x00"] # movabs rax, qword ptr gs:[0x0]
             ret = ExecAsm(codes).exec_code()
             return ret["reg"]["$rax"]
@@ -10390,6 +10390,8 @@ def only_if_specific_gdb_mode(mode=()):
                 "qemu-user": is_qemu_user,
                 "vmware": is_vmware,
                 "kgdb": is_kgdb,
+                "qiling": is_qiling,
+                "rr": is_rr,
             }
             for m in mode:
                 if dic.get(m, lambda: False)():
@@ -10415,6 +10417,7 @@ def exclude_specific_gdb_mode(mode=()):
                 "vmware": is_vmware,
                 "kgdb": is_kgdb,
                 "qiling": is_qiling,
+                "rr": is_rr,
             }
             for m in mode:
                 if dic.get(m, lambda: False)():
@@ -10761,6 +10764,11 @@ def is_qiling():
     return False
 
 
+@functools.lru_cache(maxsize=None)
+def is_rr():
+    return get_pid_from_tcp_session(filepath="rr") is not None
+
+
 def get_tcp_sess(pid):
     # get inode information from opened file descriptor
     inodes = []
@@ -10810,7 +10818,6 @@ def get_all_process():
 def get_pid_from_tcp_session(filepath=None):
     gdb_tcp_sess = [x["raddr"] for x in get_tcp_sess(os.getpid())]
     if not gdb_tcp_sess:
-        err("gdb has no tcp session")
         return None
     for process in get_all_process():
         if filepath and not process["filepath"].startswith(filepath):
@@ -11269,7 +11276,7 @@ def __get_explored_regions():
     return regions
 
 
-def get_process_maps_qemu_user81():
+def get_process_maps_from_info_proc():
     res = gdb.execute("info proc mappings", to_string=True)
 
     """
@@ -11317,7 +11324,7 @@ def get_explored_regions():
 
     # fast path
     if __use_info_proc_mappings__ is True:
-        res = get_process_maps_qemu_user81() # don't use cache
+        res = get_process_maps_from_info_proc() # don't use cache
         if res:
             return res
         # something is wrong
@@ -11351,6 +11358,9 @@ def get_process_maps(outer=False):
         remote_pid = get_pid(remote=True)
         if remote_pid:
             return get_process_maps_linux(remote_pid, remote=True)
+
+    elif is_rr():
+        return get_process_maps_from_info_proc()
 
     else: # normal pattern
         pid = get_pid()
@@ -14145,7 +14155,7 @@ class VvarCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr"))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -14319,7 +14329,7 @@ class ProcInfoCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_gdb_target_local
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr"))
     def do_invoke(self, args):
         self.dont_repeat()
         self.show_info_proc()
@@ -15172,7 +15182,7 @@ class HijackFdCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr"))
     @exclude_specific_arch(arch=("CRIS",))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -16326,7 +16336,7 @@ class MprotectCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr"))
     @exclude_specific_arch(arch=("CRIS",))
     @load_keystone
     def do_invoke(self, args):
@@ -16477,7 +16487,7 @@ class CallSyscallCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr"))
     @exclude_specific_arch(arch=("CRIS",))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -16541,7 +16551,7 @@ class MmapMemoryCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr"))
     @exclude_specific_arch(arch=("CRIS",))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -19894,6 +19904,7 @@ class ArchInfoCommand(GenericCommand):
         gef_print("{:30s} {:s} {!s}".format("is_qiling()", RIGHT_ARROW, is_qiling()))
         gef_print("{:30s} {:s} {!s}".format("is_vmware()", RIGHT_ARROW, is_vmware()))
         gef_print("{:30s} {:s} {!s}".format("is_in_kernel()", RIGHT_ARROW, is_in_kernel()))
+        gef_print("{:30s} {:s} {!s}".format("is_rr()", RIGHT_ARROW, is_rr()))
 
         gef_print(titlify("GEF settings"))
         gef_print("{:30s} {:s} {!s}".format("current_arch.arch", RIGHT_ARROW, current_arch.arch))
@@ -20667,7 +20678,7 @@ class ChecksecCommand(GenericCommand):
                 gef_print("{:<40s}: {:s}".format("CET SHSTK feature flag (via Ehdr)", Color.colorify("Not found", "bold red")))
 
             # SHSTK status via arch_prctl
-            if is_alive():
+            if is_alive() and not is_rr():
                 if is_pin():
                     # Intel SDE implements userspace CET SHSTK but old interface
                     r = get_cet_status_old_interface()
@@ -20696,7 +20707,7 @@ class ChecksecCommand(GenericCommand):
                             gef_print("{:<40s}: {:s}".format("CET SHSTK status (via new arch_prctl IF)", msg))
 
             # SHSTK status via procfs
-            if is_alive():
+            if is_alive() and not is_rr():
                 r = get_cet_status_via_procfs()
                 if r is None:
                     msg = Color.grayify("Unknown") + " (failed to open /proc/PID/status)"
@@ -20731,7 +20742,7 @@ class ChecksecCommand(GenericCommand):
                 gef_print("{:<40s}: {:s}".format("CET IBT opcodes (endbr64/endbr32)", Color.colorify("Not found", "bold red")))
 
             # IBT status via arch_prctl
-            if is_alive():
+            if is_alive() and not is_rr():
                 if is_pin():
                     # Intel SDE implements userspace CET IBT but old interface
                     r = get_cet_status_old_interface()
@@ -25563,6 +25574,7 @@ class PatchCommand(GenericCommand):
     # for qword, dword, word, byte sub-commands
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -25725,6 +25737,7 @@ class PatchStringCommand(PatchCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -25774,6 +25787,7 @@ class PatchHexCommand(PatchCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -25822,6 +25836,7 @@ class PatchPatternCommand(PatchCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -25906,6 +25921,7 @@ class PatchNopCommand(PatchCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -25990,6 +26006,7 @@ class PatchInfloopCommand(PatchCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -26058,6 +26075,7 @@ class PatchTrapCommand(PatchCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -26126,6 +26144,7 @@ class PatchRetCommand(PatchCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -26194,6 +26213,7 @@ class PatchSyscallCommand(PatchCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -26242,6 +26262,7 @@ class PatchHistoryCommand(PatchCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -26285,6 +26306,7 @@ class PatchRevertCommand(PatchCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -44010,6 +44032,7 @@ class MmxSetCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
+    @exclude_specific_gdb_mode(mode=("rr",))
     @only_if_kvm_disabled
     def do_invoke(self, args):
         self.dont_repeat()
@@ -44094,6 +44117,7 @@ class XmmSetCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
+    @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -70569,6 +70593,7 @@ class CpuidCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
+    @exclude_specific_gdb_mode(mode=("rr",))
     @only_if_kvm_disabled
     def do_invoke(self, args):
         self.dont_repeat()
@@ -70756,6 +70781,7 @@ class MteTagsCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=("ARM64",))
+    @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
         self.dont_repeat()
 
