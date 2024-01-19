@@ -200,6 +200,9 @@ You can access it using `KF`.
 
 For example, `pi KF.get_slab_caches()` instead of `pi KernelAddressHeuristicFinder.get_slab_caches()`.
 
+## Can I revert the output of `python-interactive` back to decimal from hex?
+Yes, you can get it back by executing `pi hexoff()`.
+
 ## How can I get the instruction object?
 You can get instruction object by `pi get_insn(addr=None)`.
 

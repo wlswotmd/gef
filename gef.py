@@ -253,13 +253,31 @@ def cperf(f):
 
 
 def _displayhook(o):
-    if type(o).__name__ in ('int', 'long'):
-        print(hex(o))
-        __builtins__._ = o
+    def dec2hex(o):
+        name = type(o).__name__
+        if name in ("int", "long"):
+            return hex(o)
+        elif name == "list":
+            return "[" + ", ".join([dec2hex(x) for x in o]) + "]"
+        elif name == "tuple":
+            return "(" + ", ".join([dec2hex(x) for x in o]) + ")"
+        elif name == "set":
+            return "{" + ", ".join([dec2hex(x) for x in o]) + "}"
+        elif name == "dict":
+            return "{" + ", ".join([dec2hex(k) + ": " + dec2hex(v) for k, v in o.items()]) + "}"
+        return repr(o)
+
+    __builtins__._ = o
+
+    if o is None:
         return
-    else:
-        sys.__displayhook__(o)
+
+    out = dec2hex(o)
+    if out:
+        print(out)
         return
+
+    # unreachable
     __builtins__._ # # avoid to be detected as unused # noqa: B018
     hexon # avoid to be detected as unused # noqa: B018
     hexoff # avoid to be detected as unused # noqa: B018
