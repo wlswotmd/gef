@@ -45442,22 +45442,46 @@ class ConvertCommand(GenericCommand):
             pass
         return
 
-    def unhex_xor_add(self, value):
+    def unhex_xor(self, value):
         try:
             if value.startswith("0x"):
                 value = binascii.unhexlify(value[2:])
             else:
                 value = binascii.unhexlify(value)
-            self.out.append(titlify("unhex - XOR/ADD"))
-            ln = len(value) * 4 + 3
+            self.out.append(titlify("unhex - XOR"))
             for i in range(0x100):
                 xored = b"".join(bytes([x ^ i]) for x in value)
+                if 0x20 <= i < 0x7f:
+                    self.out.append("xor-{:02X}({:s}):      {!s}".format(i, chr(i), xored))
+                else:
+                    self.out.append("xor-{:02X}:         {!s}".format(i, xored))
+        except binascii.Error:
+            pass
+        return
+
+    def unhex_add(self, value):
+        try:
+            if value.startswith("0x"):
+                value = binascii.unhexlify(value[2:])
+            else:
+                value = binascii.unhexlify(value)
+            self.out.append(titlify("unhex - ADD"))
+            for i in range(0x100):
                 added = b"".join(bytes([(x + i) & 0xff]) for x in value)
                 if 0x20 <= i < 0x7f:
-                    self.out.append("xor/add-{:02X}({:s}):  {!s:{:d}} {!s:{:d}}".format(i, chr(i), xored, ln, added, ln))
+                    self.out.append("add-{:02X}({:s}):      {!s}".format(i, chr(i), added))
                 else:
-                    self.out.append("xor/add-{:02X}:     {!s:{:d}} {!s:{:d}}".format(i, xored, ln, added, ln))
+                    self.out.append("add-{:02X}:         {!s}".format(i, added))
+        except binascii.Error:
+            pass
+        return
 
+    def unhex_caesar(self, value):
+        try:
+            if value.startswith("0x"):
+                value = binascii.unhexlify(value[2:])
+            else:
+                value = binascii.unhexlify(value)
             self.out.append(titlify("unhex - caesar"))
             for i in range(26):
                 slided = []
@@ -45466,33 +45490,47 @@ class ConvertCommand(GenericCommand):
                         x += i
                         if x > ord("Z"):
                             x -= ord("Z")
+                            x += ord("A") - 1
                     elif ord("a") <= x <= ord("z"):
                         x += i
                         if x > ord("z"):
                             x -= ord("z")
+                            x += ord("a") - 1
                     slided.append(x)
                 self.out.append("caesar-{:02d}:      {}".format(i, bytes(slided)))
         except binascii.Error:
             pass
         return
 
-    def string_xor_add(self, value):
+    def string_xor(self, value):
         try:
             value = codecs.escape_decode(value)[0]
-            self.out.append(titlify("str - XOR/ADD"))
-            ln = len(value) * 4 + 3
+            self.out.append(titlify("str - XOR"))
             for i in range(0x100):
                 xored = b"".join(bytes([x ^ i]) for x in value)
-                added = b"".join(bytes([(x + i) & 0xff]) for x in value)
                 if 0x20 <= i < 0x7f:
-                    self.out.append("xor/add-{:02X}({:s}):  {:{:d}s} {:{:d}s}".format(i, chr(i), str(xored), ln, str(added), ln))
+                    self.out.append("xor-{:02X}({:s}):      {!s}".format(i, chr(i), xored))
                 else:
-                    self.out.append("xor/add-{:02X}:     {:{:d}s} {:{:d}s}".format(i, str(xored), ln, str(added), ln))
+                    self.out.append("xor-{:02X}:         {!s}".format(i, xored))
         except ValueError:
             pass
         return
 
-    def caesar(self, value):
+    def string_add(self, value):
+        try:
+            value = codecs.escape_decode(value)[0]
+            self.out.append(titlify("str - ADD"))
+            for i in range(0x100):
+                added = b"".join(bytes([(x + i) & 0xff]) for x in value)
+                if 0x20 <= i < 0x7f:
+                    self.out.append("add-{:02X}({:s}):      {!s}".format(i, chr(i), added))
+                else:
+                    self.out.append("add-{:02X}:         {!s}".format(i, added))
+        except ValueError:
+            pass
+        return
+
+    def string_caesar(self, value):
         try:
             value = codecs.escape_decode(value)[0]
             self.out.append(titlify("str - caesar"))
@@ -45503,10 +45541,12 @@ class ConvertCommand(GenericCommand):
                         x += i
                         if x > ord("Z"):
                             x -= ord("Z")
+                            x += ord("A") - 1
                     elif ord("a") <= x <= ord("z"):
                         x += i
                         if x > ord("z"):
                             x -= ord("z")
+                            x += ord("a") - 1
                     slided.append(x)
                 self.out.append("caesar-{:02d}:      {}".format(i, bytes(slided)))
         except ValueError:
@@ -45590,9 +45630,12 @@ class ConvertCommand(GenericCommand):
         self.string(args.value)
 
         if args.verbose:
-            self.unhex_xor_add(args.value)
-            self.string_xor_add(args.value)
-            self.caesar(args.value)
+            self.unhex_xor(args.value)
+            self.unhex_add(args.value)
+            self.unhex_caesar(args.value)
+            self.string_xor(args.value)
+            self.string_add(args.value)
+            self.string_caesar(args.value)
             self.morse(args.value)
 
         gef_print("\n".join(self.out), less=not args.no_pager)
