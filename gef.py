@@ -45310,16 +45310,28 @@ class UnsignedCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        if is_msb_on(args.value):
-            value = args.value
-        else:
-            value = args.value * -1
+        gef_print("input: {:#x}".format(args.value))
 
         for i in range(4):
             shift = (2 ** i) * 8
+
+            msb_mask = 1 << (shift - 1)
+            if (1 << shift) > args.value and args.value & msb_mask == 0:
+                value = args.value * -1
+            else:
+                value = args.value
+
             mask = (1 << shift) - 1
-            masked_value = value & mask
-            gef_print("{:d} byte unsigned: {:#x}".format(2 ** i, masked_value))
+            unsigned = value & mask
+            if i == 0:
+                signed = struct.unpack("<b", struct.pack("<B", unsigned))[0]
+            elif i == 1:
+                signed = struct.unpack("<h", struct.pack("<H", unsigned))[0]
+            elif i == 2:
+                signed = struct.unpack("<i", struct.pack("<I", unsigned))[0]
+            elif i == 3:
+                signed = struct.unpack("<q", struct.pack("<Q", unsigned))[0]
+            gef_print("{:d} byte unsigned: {:#x} ({:#x})".format(2 ** i, unsigned, signed))
         return
 
 
