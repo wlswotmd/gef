@@ -26450,24 +26450,27 @@ def to_string_dereference_from(value, skip_idx=0, phys=False):
         if len(s) < 2:
             pass
         elif 2 <= len(s) < current_arch.ptrsize:
-            last_elem = "{:s} ({:s}?)".format(format_address(addrs[-1], long_fmt=True), Color.colorify(repr(s), string_color))
+            fa = format_address(addrs[-1], long_fmt=True)
+            last_elem = "{:s} ({:s}?)".format(fa, Color.colorify(repr(s), string_color))
             addrs = addrs[:-1]
         else: # len(s) == current_arch.ptrsize
             if len(addrs) >= 2 and is_valid_addr(addrs[-2]):
                 # read more string
                 s = read_cstring_from_memory(addrs[-2])
                 if s:
+                    fa = format_address(addrs[-1], long_fmt=True)
                     if len(s) > nb_max_string_length:
-                        last_elem = Color.colorify("{:s}[...]".format(repr(s[:nb_max_string_length])), string_color)
+                        last_elem = "{:s} {:s}".format(fa, Color.colorify(repr(s[:nb_max_string_length]), string_color))
                     else:
-                        last_elem = Color.colorify("{:s}".format(repr(s)), string_color)
+                        last_elem = "{:s} {:s}".format(fa, Color.colorify(repr(s), string_color))
                     addrs = addrs[:-1]
                 else:
                     # Ignore when the string that do not end with a null character
                     pass
             else:
                 # fallback
-                last_elem = "{:s} ({:s}?)".format(format_address(addrs[-1], long_fmt=True), Color.colorify(repr(s), string_color))
+                fa = format_address(addrs[-1], long_fmt=True)
+                last_elem = "{:s} ({:s}?)".format(fa, Color.colorify(repr(s), string_color))
                 addrs = addrs[:-1]
 
     # others
