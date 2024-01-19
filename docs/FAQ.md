@@ -71,7 +71,11 @@ If there is publicly available test image, I consider developing to support that
 Partially yes.
 
 I think it can be used when you want to track before and after a system call.
-However, if KPTI is enabled, many kernel-related commands cannot be used.
+However, of course, I do not recommend continually debugging userland with qemu-system.
+This is because many commands are restricted for various reasons.
+Consider setting up `gdbserver` in the guest and connecting from the outside.
+
+Note: If KPTI is enabled, many kernel-related commands cannot be used.
 The reason is that most memory access to kernel space is unavailable if KPTI is enabled.
 
 ## How do I break in userland when using qemu-system?
@@ -186,6 +190,16 @@ Yes. It is possible if you are using qemu-system. You can switch with `pi enable
 
 GEF uses this function internally to switch.
 If the mode remains switched due to an interruption during command execution, etc., you will need to fix it manually.
+
+## `magic` command has few valid results.
+This is because libc symbols are not loaded.
+
+Unlike kernel symbols, userland symbols do not undergo heuristic detection (with some special exceptions).
+Therefore, missing symbols may not be detected by the `magic` command.
+
+If you're referring to system-wide glibc, you can resolve it with these steps:
+1. Install the symbols with `apt install libc6-dbg`.
+2. Add `set debug-file-directory /usr/lib/debug` in `~/.gdbinit`.
 
 
 # About python
