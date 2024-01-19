@@ -30217,6 +30217,7 @@ class SyscallSearchCommand(GenericCommand):
     _example_ += '{:s} -a ARM -m 32        "^writev?" # arm32 on arm64\n'.format(_cmdline_)
     _example_ += '{:s} -a ARM -m N32       "^writev?" # arm32 native\n'.format(_cmdline_)
     _example_ += '{:s} -a MIPS -m 32       "^writev?" # mips32\n'.format(_cmdline_)
+    _example_ += '{:s} -a MIPS -m n32      "^writev?" # mipsn32\n'.format(_cmdline_)
     _example_ += '{:s} -a MIPS -m 64       "^writev?" # mips64\n'.format(_cmdline_)
     _example_ += '{:s} -a PPC -m 32        "^writev?" # ppc32\n'.format(_cmdline_)
     _example_ += '{:s} -a PPC -m 64        "^writev?" # ppc64\n'.format(_cmdline_)
