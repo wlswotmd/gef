@@ -178,6 +178,7 @@ __gef_context_hidden__          = False
 __gef_delayed_breakpoints__     = set()
 __gef_delayed_bp_set__          = False
 __gef_use_info_proc_mappings__  = None
+__gef_global_cache__            = {}
 __context_comments__            = {}
 __context_messages__            = []
 __context_extra_commands__      = []
@@ -295,37 +296,82 @@ def hexoff():
     return
 
 
-def reset_gef_caches(all=False):
-    """Free all caches. If an object is cached, it will have a callable attribute `cache_clear`
-    which will be invoked to purge the function cache. Exceptionally, functions with names
-    starting with `__` do not call `clear_cache`."""
-    for mod in dir(sys.modules["__main__"]): # for global object
-        if not all and mod.startswith("__"): # filter
-            continue
-        obj = getattr(sys.modules["__main__"], mod) # get itself
-        if isinstance(obj, type(sys)): # skip if module
-            continue
+def cache_until_next(f):
+    LIFE_TIME = "until_next"
 
-        if hasattr(obj, "cache_clear"):
-            obj.cache_clear()
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        global __gef_global_cache__
 
-        for attr in dir(obj): # for class method
-            if attr.startswith("__"): # filter
-                continue
+        kw = tuple(kwargs.items()) if kwargs else None
+        _id = id(f)
+
+        try:
+            return __gef_global_cache__[LIFE_TIME][f.__name__, _id][args, kw]
+        except KeyError:
+            ret = f(*args, **kwargs)
+            if LIFE_TIME not in __gef_global_cache__:
+                __gef_global_cache__[LIFE_TIME] = {}
+            if (f.__name__, _id) not in __gef_global_cache__[LIFE_TIME]:
+                __gef_global_cache__[LIFE_TIME][f.__name__, _id] = {}
+            __gef_global_cache__[LIFE_TIME][f.__name__, _id][args, kw] = ret
+            return ret
+
+    return wrapper
+
+
+def cache_this_session(f):
+    LIFE_TIME = "this_session"
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        global __gef_global_cache__
+
+        kw = tuple(kwargs.items()) if kwargs else None
+        _id = id(f)
+
+        try:
+            return __gef_global_cache__[LIFE_TIME][f.__name__, _id][args, kw]
+        except KeyError:
+            ret = f(*args, **kwargs)
+            if LIFE_TIME not in __gef_global_cache__:
+                __gef_global_cache__[LIFE_TIME] = {}
+            if (f.__name__, _id) not in __gef_global_cache__[LIFE_TIME]:
+                __gef_global_cache__[LIFE_TIME][f.__name__, _id] = {}
+            __gef_global_cache__[LIFE_TIME][f.__name__, _id][args, kw] = ret
+            return ret
+
+    return wrapper
+
+
+def reset_gef_caches(function=None, all=False):
+    if function:
+        for v in __gef_global_cache__.values():
             try:
-                child_obj = getattr(obj, attr)
-            except TypeError: # for ARM class
-                continue
-            if hasattr(child_obj, "cache_clear"):
-                child_obj.cache_clear()
+                v[function.__name__, id(function)] = {}
+            except KeyError:
+                pass
+        return
+
+    __gef_global_cache__["until_next"] = {}
 
     if all:
+        __gef_global_cache__["this_session"] = {}
+
+        global __cached_syscall_table__
+        __cached_syscall_table__ = {}
+        global __cached_kernel_info__
+        __cached_kernel_info__ = None
+        global __cached_kernel_version__
+        __cached_kernel_version__ = None
+        global __cached_kernel_cmdline__
+        __cached_kernel_cmdline__ = None
         global __cached_context_legend__
         __cached_context_legend__ = None
-        global __cached_main_arena__
-        __cached_main_arena__ = None
         global __cached_heap_base__
         __cached_heap_base__ = None
+        global __cached_main_arena__
+        __cached_main_arena__ = None
     return
 
 
@@ -2390,7 +2436,7 @@ class MallocPar:
         return getattr(self, item)
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def search_for_mp_():
     """saerch mp_ from main_arena, then return addr."""
     main_arena_ptr = search_for_main_arena_from_tls()
@@ -2600,7 +2646,7 @@ class MallocStateStruct:
         return getattr(self, item)
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def search_for_main_arena_from_tls():
     """saerch main arena from TLS, then return &addr."""
 
@@ -3624,7 +3670,7 @@ def byteswap(x, byte_size=None):
     return s
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def which(program):
     """Locate a command on the filesystem."""
     def is_exe(fpath):
@@ -3740,7 +3786,7 @@ def unhide_context():
     return
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def get_gef_setting(name):
     """Read global gef settings.
     Return None if not found. A valid config setting can never return None, but False, 0 or ""."""
@@ -3773,13 +3819,13 @@ def set_gef_setting(name, value, _type=None, _desc=None):
 RE_GET_LOCATION_GDB13 = re.compile(r"^0x[0-9a-f]+ <(.*?)(\+[0-9]+)?>$")
 
 
-# `info symbol` called from __gdb_get_location is heavy processing.
+# `info symbol` called from gdb_get_location is heavy processing.
 # Moreover, dereference_from causes each address to be resolved every time.
-# functools.lru_cache() is not effective as-is, as it is cleared by reset_gef_caches() each time the `stepi` runs.
+# cache_until_next is not effective as-is, as it is cleared by reset_gef_caches() each time the `stepi` runs.
 # Fortunately, symbol information rarely changes.
-# I decided to make it a cache clear mechanism independent of reset_gef_caches().
-@functools.lru_cache(maxsize=None)
-def __gdb_get_location(address):
+# I decided to keep the cache until it is explicitly cleared.
+@cache_this_session
+def gdb_get_location(address):
     """Retrieve the location of the `address` argument from the symbol table.
     Return a tuple with the name and offset if found, None otherwise."""
 
@@ -3814,11 +3860,7 @@ def __gdb_get_location(address):
     return name, offset
 
 
-def gdb_get_location(address):
-    return __gdb_get_location(address)
-
-
-@functools.lru_cache(maxsize=512)
+@cache_until_next
 def get_symbol_string(addr, nosymbol_string=""):
     try:
         if isinstance(addr, str):
@@ -4192,7 +4234,7 @@ def gef_execute_gdb_script(commands):
     return
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def get_cet_status_old_interface():
     # https://lore.kernel.org/lkml/1531342544.15351.37.camel@intel.com/
     sp = current_arch.sp
@@ -4222,7 +4264,7 @@ def get_cet_status_old_interface():
     return sp_value
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def get_cet_status_new_interface():
     # https://www.kernel.org/doc/html/next/arch/x86/shstk.html
     sp = current_arch.sp
@@ -4249,7 +4291,7 @@ def get_cet_status_new_interface():
     return sp_value
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def get_cet_status_via_procfs():
     # https://www.kernel.org/doc/html/next/arch/x86/shstk.html
     dic = {}
@@ -4305,7 +4347,7 @@ def get_pac_status():
     return u2i(ret)
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def checksec(filename):
     """Check the security property of the ELF binary. The following properties are:
     Canary, NX, PIE, RELRO, Fortify, Static, Stripped, CET, RPATH/RUNPATH, and Clang CFI/SafeStack.
@@ -4459,7 +4501,7 @@ def checksec(filename):
     return results
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def get_endian():
     """Return the binary endianness."""
     endian = gdb.execute("show endian", to_string=True).strip().lower()
@@ -4470,7 +4512,7 @@ def get_endian():
     raise EnvironmentError("Invalid endianness")
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def get_entry_point():
     """Return the binary entry point."""
     if current_elf:
@@ -9956,7 +9998,7 @@ def read_memory(addr, length):
     return gdb.selected_inferior().read_memory(addr, length).tobytes()
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def is_valid_addr(addr):
     if addr < 0:
         return False
@@ -10174,7 +10216,7 @@ def is_kvm_enabled():
         return False
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def p8(x, s=False):
     """Pack one byte respecting the current architecture endianness."""
     if not s:
@@ -10183,7 +10225,7 @@ def p8(x, s=False):
         return struct.pack("{}b".format(endian_str()), x)
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def p16(x, s=False):
     """Pack one word respecting the current architecture endianness."""
     if not s:
@@ -10192,7 +10234,7 @@ def p16(x, s=False):
         return struct.pack("{}h".format(endian_str()), x)
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def p32(x, s=False):
     """Pack one dword respecting the current architecture endianness."""
     if not s:
@@ -10201,7 +10243,7 @@ def p32(x, s=False):
         return struct.pack("{}i".format(endian_str()), x)
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def p64(x, s=False):
     """Pack one qword respecting the current architecture endianness."""
     if not s:
@@ -10210,7 +10252,7 @@ def p64(x, s=False):
         return struct.pack("{}q".format(endian_str()), x)
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def u8(x, s=False):
     """Unpack one byte respecting the current architecture endianness."""
     if not s:
@@ -10219,7 +10261,7 @@ def u8(x, s=False):
         return struct.unpack("{}b".format(endian_str()), x)[0]
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def u16(x, s=False):
     """Unpack one word respecting the current architecture endianness."""
     if not s:
@@ -10228,7 +10270,7 @@ def u16(x, s=False):
         return struct.unpack("{}h".format(endian_str()), x)[0]
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def u32(x, s=False):
     """Unpack one dword respecting the current architecture endianness."""
     if not s:
@@ -10237,7 +10279,7 @@ def u32(x, s=False):
         return struct.unpack("{}i".format(endian_str()), x)[0]
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def u64(x, s=False):
     """Unpack one qword respecting the current architecture endianness."""
     if not s:
@@ -10246,7 +10288,7 @@ def u64(x, s=False):
         return struct.unpack("{}q".format(endian_str()), x)[0]
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def u128(x):
     """Unpack one oword respecting the current architecture endianness."""
     upper = struct.unpack("{}Q".format(endian_str()), x[8:])[0]
@@ -10587,7 +10629,7 @@ def to_unsigned_long(v):
     return int(v.cast(gdb.Value(mask).type)) & mask
 
 
-# Don't use lru_cache.
+# Don't use cache.
 # This is because there is a command that performs step execution internally.
 def get_register(regname, use_mbed_exec=False, use_monitor=False):
     """Return a register's value."""
@@ -10639,8 +10681,8 @@ def get_register(regname, use_mbed_exec=False, use_monitor=False):
     return None
 
 
-# If you want to use lru_cache, use this. An use_mbed_exec must not be supported.
-@functools.lru_cache(maxsize=None)
+# If you want to use cache, use this. An use_mbed_exec must not be supported.
+@cache_until_next
 def get_register_use_cache(regname):
     return get_register(regname)
 
@@ -10656,7 +10698,7 @@ def get_path_from_info_proc():
     return None
 
 
-@functools.lru_cache(maxsize=None)
+@cache_this_session
 def is_remote_debug():
     """"Return True is the current debugging session is running through GDB remote session."""
     try:
@@ -10673,13 +10715,13 @@ def is_remote_debug():
 # However, it cannot detect that traffic is being redirected to another host.
 
 
-@functools.lru_cache(maxsize=None)
+@cache_this_session
 def is_normal_run():
     ret = gdb.execute("info files", to_string=True)
     return "Using the running image of child" in ret
 
 
-@functools.lru_cache(maxsize=None)
+@cache_this_session
 def is_attach():
     try:
         return gdb.selected_inferior().was_attached
@@ -10688,12 +10730,12 @@ def is_attach():
         return "Using the running image of attached" in ret
 
 
-@functools.lru_cache(maxsize=None)
+@cache_this_session
 def is_container_attach():
     return not is_remote_debug() and is_attach() and gdb.current_progspace().filename.startswith("target:")
 
 
-@functools.lru_cache(maxsize=None)
+@cache_this_session
 def is_pin():
     if not is_remote_debug():
         return False
@@ -10705,7 +10747,7 @@ def is_pin():
     return "intel.name=" in response
 
 
-@functools.lru_cache(maxsize=None)
+@cache_this_session
 def is_qemu():
     if not is_remote_debug():
         return False
@@ -10717,7 +10759,7 @@ def is_qemu():
     return "ENABLE=" in response
 
 
-@functools.lru_cache(maxsize=None)
+@cache_this_session
 def is_qemu_user():
     if is_qemu() is False:
         return False
@@ -10729,7 +10771,7 @@ def is_qemu_user():
     return "Text=" in response
 
 
-@functools.lru_cache(maxsize=None)
+@cache_this_session
 def is_qemu_system():
     if is_qemu() is False:
         return False
@@ -10741,7 +10783,7 @@ def is_qemu_system():
     return 'received: ""' in response
 
 
-@functools.lru_cache(maxsize=None)
+@cache_this_session
 def is_over_serial():
     if not is_remote_debug():
         return False
@@ -10757,7 +10799,7 @@ def is_kgdb():
     return is_x86_64() and is_over_serial()
 
 
-@functools.lru_cache(maxsize=None)
+@cache_this_session
 def is_vmware():
     if not is_remote_debug():
         return False
@@ -10769,7 +10811,7 @@ def is_vmware():
         return False
 
 
-@functools.lru_cache(maxsize=None)
+@cache_this_session
 def is_qiling():
     if not is_remote_debug():
         return False
@@ -10782,7 +10824,7 @@ def is_qiling():
     return False
 
 
-@functools.lru_cache(maxsize=None)
+@cache_this_session
 def is_rr():
     return get_pid_from_tcp_session(filepath="rr") is not None
 
@@ -10846,12 +10888,11 @@ def get_pid_from_tcp_session(filepath=None):
     return None
 
 
-# Under pin and qemu, it is necessary to parse the TCP information
-# of the connection destination and obtain the pid.
+# Under pin and qemu, it is necessary to parse the TCP information for obtaining the pid.
 # This operation is expensive, but once known, it never changes.
-# I decided to make it a cache clear mechanism independent of reset_gef_caches().
-@functools.lru_cache(maxsize=None)
-def __get_pid(remote):
+# I decided to keep the cache until it is explicitly cleared.
+@cache_this_session
+def get_pid(remote=False):
     """Return the PID of the debuggee process."""
 
     if is_pin():
@@ -10864,10 +10905,6 @@ def __get_pid(remote):
         return None # gdbserver etc.
 
     return gdb.selected_inferior().pid
-
-
-def get_pid(remote=False):
-    return __get_pid(remote)
 
 
 def append_proc_root(filepath):
@@ -10883,7 +10920,7 @@ def append_proc_root(filepath):
     return os.path.join(prefix, relative_path)
 
 
-@functools.lru_cache(maxsize=None)
+@cache_this_session
 def get_filepath(append_proc_root_prefix=True):
     """Return the local absolute path of the file currently debugged."""
     filepath = gdb.current_progspace().filename
@@ -10915,7 +10952,7 @@ def get_filepath(append_proc_root_prefix=True):
         return filepath
 
 
-@functools.lru_cache(maxsize=None)
+@cache_this_session
 def get_filename():
     """Return the full filename of the file currently debugged."""
     filename = get_filepath()
@@ -10995,14 +11032,13 @@ def get_process_maps_linux(pid, remote=False):
     return maps
 
 
-# __get_explored_regions (used at qemu-user mode) is very slow,
+# get_explored_regions (used at qemu-user mode) is very slow,
 # Because it repeats read_memory many times to find the upper and lower bounds of the page.
-# functools.lru_cache() is not effective as-is, as it is cleared by reset_gef_caches() each time the `stepi` runs.
+# cache_until_next is not effective as-is, as it is cleared by reset_gef_caches() each time the `stepi` runs.
 # Fortunately, memory maps rarely change.
-# I decided to make it a cache clear mechanism independent of reset_gef_caches() and
-# introduce a mechanism to forcibly clear it with calling vmmap command.
-@functools.lru_cache(maxsize=512)
-def __get_explored_regions():
+# I decided to clear and recheck the cache when the `vmmap` command is called explicitly.
+@cache_this_session
+def get_explored_regions():
     """Return sections from auxv exploring"""
 
     if current_arch is None:
@@ -11328,7 +11364,7 @@ def get_process_maps_from_info_proc():
     return maps
 
 
-def get_explored_regions():
+def get_process_maps_heuristic():
     global __gef_use_info_proc_mappings__
     if __gef_use_info_proc_mappings__ is None:
         try:
@@ -11349,10 +11385,10 @@ def get_explored_regions():
         __gef_use_info_proc_mappings__ = False
 
     # slow path
-    return __get_explored_regions() # use cache
+    return get_explored_regions() # use cache
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def get_process_maps(outer=False):
     """Return the mapped memory sections"""
     if is_qemu_user():
@@ -11362,7 +11398,7 @@ def get_process_maps(outer=False):
                 return get_process_maps_linux(pid)
             return []
         else: # scan heuristic
-            return get_explored_regions()
+            return get_process_maps_heuristic()
 
     elif is_pin():
         pid = get_pid()
@@ -11385,16 +11421,16 @@ def get_process_maps(outer=False):
         if pid:
             return get_process_maps_linux(pid)
 
-    return get_explored_regions() # scan heuristic
+    return get_process_maps_heuristic()
 
 
-# `info files` called from __get_info_files is heavy processing.
+# `info files` called from get_info_files is heavy processing.
 # Moreover, dereference_from causes each address to be resolved every time.
-# functools.lru_cache() is not effective as-is, as it is cleared by reset_gef_caches() each time the `stepi` runs.
+# cache_until_next is not effective as-is, as it is cleared by reset_gef_caches() each time the `stepi` runs.
 # Fortunately, zone information rarely changes.
-# I decided to make it a cache clear mechanism independent of reset_gef_caches().
-@functools.lru_cache(maxsize=None)
-def __get_info_files():
+# I decided to keep the cache until it is explicitly cleared.
+@cache_this_session
+def get_info_files():
     """Retrieve all the files loaded by debuggee."""
     lines = gdb.execute("info files", to_string=True).splitlines()
     info_files = []
@@ -11420,11 +11456,7 @@ def __get_info_files():
     return info_files
 
 
-def get_info_files():
-    return __get_info_files()
-
-
-@functools.lru_cache(maxsize=512)
+@cache_until_next
 def process_lookup_address(addr):
     """Look up for an address in memory. Return an Address object if found, None otherwise."""
     if not is_alive():
@@ -11436,7 +11468,7 @@ def process_lookup_address(addr):
     return None
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def process_lookup_path(names, perm_mask=Permission.ALL):
     """Look up for paths in the process memory mapping.
     Return a Section object of load base if found, None otherwise."""
@@ -11454,7 +11486,7 @@ def process_lookup_path(names, perm_mask=Permission.ALL):
     return None
 
 
-@functools.lru_cache(maxsize=512)
+@cache_until_next
 def file_lookup_address(addr):
     """Look up for a file by its address. Return a Zone object if found, None otherwise."""
     if is_qemu_system():
@@ -11466,7 +11498,7 @@ def file_lookup_address(addr):
     return None
 
 
-@functools.lru_cache(maxsize=512)
+@cache_until_next
 def lookup_address(addr):
     """Try to find the address in the process address space.
     Return an Address object, with validity flag set based on success."""
@@ -11822,7 +11854,7 @@ def keystone_assemble(code, arch, mode, *args, **kwargs):
     return enc
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def get_elf_headers(filepath=None):
     """Return an Elf object with info from `filename`. If not provided, will return
     the currently debugged file."""
@@ -11833,7 +11865,7 @@ def get_elf_headers(filepath=None):
     return Elf(filepath)
 
 
-@functools.lru_cache(maxsize=None)
+@cache_this_session
 def ptr_width():
     void = cached_lookup_type("void")
     if void is None:
@@ -11999,7 +12031,7 @@ def is_csky():
     return current_arch and current_arch.arch == "CSKY"
 
 
-@functools.lru_cache(maxsize=None)
+@cache_this_session
 def is_static(filename=None):
     if filename is None:
         filename = get_filepath()
@@ -12009,7 +12041,7 @@ def is_static(filename=None):
     return "statically linked" in out
 
 
-@functools.lru_cache(maxsize=None)
+@cache_this_session
 def is_stripped(filename=None):
     if filename is None:
         filename = get_filepath()
@@ -12019,7 +12051,7 @@ def is_stripped(filename=None):
     return "not stripped" not in out
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def get_arch():
     """Return the binary's architecture."""
     if is_alive():
@@ -12103,7 +12135,7 @@ def set_arch(arch_str=None):
     return
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def cached_lookup_type(_type):
     try:
         return gdb.lookup_type(_type).strip_typedefs()
@@ -12111,7 +12143,7 @@ def cached_lookup_type(_type):
         return None
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def get_memory_alignment(in_bits=False):
     """Try to determine the size of a pointer on this system.
     First, try to parse it out of the ELF header.
@@ -12141,7 +12173,7 @@ def clear_screen():
     return
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def is_in_kernel():
     if not is_alive():
         return False
@@ -12236,7 +12268,7 @@ def get_ksysctl(sym):
         return None
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def endian_str():
     return "<" if is_little_endian() else ">"
 
@@ -12275,7 +12307,7 @@ def generate_cyclic_pattern(length, charset=None):
     return bytearray(itertools.islice(de_bruijn(charset, cycle), length))
 
 
-@functools.lru_cache(maxsize=512)
+@cache_until_next
 def dereference(addr):
     """GEF wrapper for gdb dereference function."""
 
@@ -12417,13 +12449,19 @@ def get_auxiliary_walk(offset=0):
     return res
 
 
-# __gef_get_auxiliary_values (under qemu-user mode) is very slow,
-# Because it may call __get_auxiliary_walk that repeats read_memory many times to find the auxv value.
-# functools.lru_cache() is not effective as-is, as it is cleared by reset_gef_caches() each time the `stepi` runs.
+# gef_get_auxiliary_values (under qemu-user mode) is very slow,
+# Because it may call get_auxiliary_walk that repeats read_memory many times to find the auxv value.
+# cache_until_next is not effective as-is, as it is cleared by reset_gef_caches() each time the `stepi` runs.
 # Fortunately, auxv rarely changes.
-# I decided to make it a cache clear mechanism independent of reset_gef_caches().
-@functools.lru_cache(maxsize=512)
-def __gef_get_auxiliary_values():
+# I decided to keep the cache until it is explicitly cleared.
+@cache_this_session
+def gef_get_auxiliary_values():
+    """Retrieves the auxiliary values of the current execution.
+    Returns None if not running, or a dict() of values."""
+    if not is_alive():
+        return None
+    if is_qemu_system() or is_kgdb() or is_vmware():
+        return None
 
     def fast_path():
         try:
@@ -12453,17 +12491,7 @@ def __gef_get_auxiliary_values():
     return fast_path() or slow_path()
 
 
-def gef_get_auxiliary_values():
-    """Retrieves the auxiliary values of the current execution.
-    Returns None if not running, or a dict() of values."""
-    if not is_alive():
-        return None
-    if is_qemu_system() or is_kgdb() or is_vmware():
-        return None
-    return __gef_get_auxiliary_values()
-
-
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def gef_read_canary():
     """Read the canary of a running process using Auxiliary Vector.
     Return a tuple of (canary, location) if found, None otherwise."""
@@ -12480,7 +12508,7 @@ def gef_read_canary():
         return None
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def gef_getpagesize():
     """Get the page size from auxiliary values."""
     auxval = gef_get_auxiliary_values()
@@ -12489,7 +12517,7 @@ def gef_getpagesize():
     return auxval["AT_PAGESZ"]
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def gef_getpagesize_mask_low():
     """Get the page size mask from auxiliary values."""
     auxval = gef_get_auxiliary_values()
@@ -12498,7 +12526,7 @@ def gef_getpagesize_mask_low():
     return auxval["AT_PAGESZ"] - 1
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def gef_getpagesize_mask_high():
     """Get the page size mask from auxiliary values."""
     auxval = gef_get_auxiliary_values()
@@ -12731,7 +12759,7 @@ class GenericCommand(gdb.Command):
             return
         key = self.__get_setting_name(name)
         __gef_config__[key] = [value, type(value), description]
-        get_gef_setting.cache_clear()
+        reset_gef_caches(function=get_gef_setting)
         return
 
     def __set_repeat_count(self, argv, from_tty):
@@ -18855,7 +18883,7 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
         return
 
 
-@functools.lru_cache(maxsize=512)
+@cache_until_next
 def __get_binsize_table():
     table = {
         "tcache": {},
@@ -26374,12 +26402,12 @@ class PatchRevertCommand(PatchCommand):
         return
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def get_dereference_from_blacklist():
     return eval(get_gef_setting("dereference.blacklist")) or []
 
 
-@functools.lru_cache(maxsize=512)
+@cache_until_next
 def dereference_from(addr, phys=False):
     """Create dereference array."""
 
@@ -26429,7 +26457,7 @@ def dereference_from(addr, phys=False):
     return addr_list, error
 
 
-@functools.lru_cache(maxsize=512)
+@cache_until_next
 def to_string_dereference_from(value, skip_idx=0, phys=False):
     """Create string from dereference array"""
     string_color = get_gef_setting("theme.dereference_string")
@@ -43216,7 +43244,7 @@ class SyscallSampleCommand(GenericCommand):
         return
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def get_section_base_address(name):
     if name is None:
         return None
@@ -48918,7 +48946,7 @@ class KernelbaseCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     @staticmethod
-    @functools.lru_cache(maxsize=None)
+    @cache_until_next
     def get_maps():
         maps = []
         res = get_maps_by_pagewalk("pagewalk --quiet --no-pager --simple")
@@ -71336,7 +71364,7 @@ class QemuRegistersCommand(GenericCommand):
         return
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def get_maps_arm64_optee_secure_memory(verbose=False):
     # heuristic search of qemu-system memory
     sm_base, sm_size = XSecureMemAddrCommand.get_secure_memory_base_and_size(verbose)
@@ -71419,7 +71447,7 @@ def get_maps_arm64_optee_secure_memory(verbose=False):
     return maps
 
 
-@functools.lru_cache(maxsize=None)
+@cache_until_next
 def get_maps_by_pagewalk(command):
     # for lru cache
     return gdb.execute(command, to_string=True)
@@ -75244,7 +75272,7 @@ class PagewalkArm64Command(PagewalkCommand):
         self.dont_repeat()
 
         if args.optee:
-            get_maps_arm64_optee_secure_memory.cache_clear()
+            reset_gef_caches(function=get_maps_arm64_optee_secure_memory)
             get_maps_arm64_optee_secure_memory(True)
             return
 
@@ -81209,7 +81237,6 @@ class GefPyObjListCommand(GenericCommand):
 
         function_type = type(lambda x:x)
         class_type = type(GefCommand)
-        lru_cache_type = type(functools.lru_cache(lambda x:x))
 
         arch_list = []
         queue = Architecture.__subclasses__()
@@ -81237,11 +81264,7 @@ class GefPyObjListCommand(GenericCommand):
             if type(obj) in skip_type_list:
                 continue
 
-            # <class 'functools._lru_cache_wrapper'> -> <class 'function'>
-            if type(obj) == lru_cache_type:
-                t = function_type
-            else:
-                t = type(obj)
+            t = type(obj)
 
             # classify
             if mod.startswith("__") and t != function_type:
