@@ -79849,6 +79849,9 @@ class AddSymbolTemporaryCommand(GenericCommand):
         fd, fname = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".c")
         blank_elf = fname + ".elf"
         os.fdopen(fd, "w").write("int main() {}")
+        # When adding symbols, it is not necessary to match the architecture of the ELF to be created
+        # and the architecture of the debugged kernel. Regardless of the architecture of the kernel
+        # you are debugging, create an ELF using gcc in the host environment.
         os.system(f"{gcc} '{fname}' -no-pie -o '{blank_elf}'")
         os.unlink(f"{fname}")
         # delete unneeded section for faster (`ksymaddr-remote-apply` will embed many symbols)
@@ -79879,7 +79882,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
         # fix .text section size (objcopy doesn't support it, so fix it manually)
         data = open(blank_elf, "rb").read()
         new_size = text_end - text_base
-        if elf.e_class == Elf.ELF_64_BITS:
+        if elf.e_class == Elf.ELF_64_BITS: # host is 64bit
             seq_to_find = p64(text_base)
             target_offset = data.rfind(seq_to_find) + 0x10
             seq_to_write = p64(new_size)
@@ -79963,6 +79966,7 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
         text_end = int(res.splitlines()[-1].split()[0], 16)
 
         # make blank elf
+        text_base &= gef_getpagesize_mask_high()
         blank_elf = AddSymbolTemporaryCommand.create_blank_elf(text_base, text_end)
         if blank_elf is None:
             err("Failed to create blank elf")
@@ -79989,25 +79993,25 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
 
             # higher address needs relative
             relative_addr = addr - text_base
-            cmd_string_arr.append("--add-symbol '{:s}'=.text:{:#x},{:s},{:s}".format(func_name, relative_addr, global_flag, type_flag))
+            cmd_string_arr.append("--add-symbol")
+            cmd_string_arr.append("{:s}=.text:{:#x},{:s},{:s}".format(func_name, relative_addr, global_flag, type_flag))
 
         if not self.quiet:
-            info("{:d} entries will be added".format(len(cmd_string_arr)))
+            info("{:d} entries will be added".format(len(cmd_string_arr) // 2))
 
         # embedding symbols
         objcopy = which("objcopy")
         processed_count = 0
-        for cmd_string_arr_sliced in slicer(cmd_string_arr, 1000):
-            cmd_string = " ".join(cmd_string_arr_sliced)
-            os.system("{:s} {:s} '{:s}'".format(objcopy, cmd_string, blank_elf))
-            processed_count += len(cmd_string_arr_sliced)
+        for cmd_string_arr_sliced in slicer(cmd_string_arr, 10000 * 2):
+            subprocess.check_output([objcopy] + cmd_string_arr_sliced + [blank_elf])
+            processed_count += len(cmd_string_arr_sliced) // 2
 
             # debug print
             if not self.quiet and processed_count and processed_count % 10000 == 0:
                 info("{:d} entries were processed".format(processed_count))
 
         if not self.quiet:
-            info("{:d} entries were processed".format(len(cmd_string_arr)))
+            info("{:d} entries were processed".format(processed_count))
         os.rename(blank_elf, sym_elf_path)
         return True
 
@@ -80038,7 +80042,7 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
                 return
 
         # add symbol to gdb
-        text_base = get_ksymaddr("_stext")
+        text_base = get_ksymaddr("_stext") & gef_getpagesize_mask_high()
         cmd = "add-symbol-file {:s} {:#x}".format(sym_elf_path, text_base)
         if not args.quiet:
             warn("Execute `{:s}`".format(cmd))
