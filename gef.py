@@ -81135,14 +81135,8 @@ class GefArchListCommand(GenericCommand):
         self.out.append("{:30s} {:s} {!s}".format("return register", RIGHT_ARROW, arch.return_register))
         self.out.append("{:30s} {:s} {!s}".format("function parameters", RIGHT_ARROW, fparams))
         self.out.append("{:30s} {:s} {!s}".format("syscall register", RIGHT_ARROW, arch.syscall_register))
-        if arch.arch == "MIPS" and arch.mode == "32":
-            sparams = ", ".join(arch.syscall_parameters_n32)
-            self.out.append("{:30s} {:s} {!s}".format("syscall parameters (n32)", RIGHT_ARROW, sparams))
-            sparams = ", ".join(arch.syscall_parameters_o32)
-            self.out.append("{:30s} {:s} {!s}".format("syscall parameters (o32)", RIGHT_ARROW, sparams))
-        else:
-            sparams = ", ".join(arch.syscall_parameters)
-            self.out.append("{:30s} {:s} {!s}".format("syscall parameters", RIGHT_ARROW, sparams))
+        sparams = ", ".join(arch.syscall_parameters)
+        self.out.append("{:30s} {:s} {!s}".format("syscall parameters", RIGHT_ARROW, sparams))
         self.out.append("{:30s} {:s} {!s}".format("Has a call/jump delay slot", RIGHT_ARROW, arch.has_delay_slot))
         self.out.append("{:30s} {:s} {!s}".format("Has a syscall delay slot", RIGHT_ARROW, arch.has_syscall_delay_slot))
         self.out.append("{:30s} {:s} {!s}".format("Has a ret delay slot", RIGHT_ARROW, arch.has_ret_delay_slot))
