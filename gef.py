@@ -165,12 +165,19 @@ except ImportError:
 
 __gef__                         = None
 __gef_fpath__                   = __file__
-__commands__                    = []
+__gef_commands__                = []
 __LCO__                         = {} # for debug access each objects. (It means `loaded command objs`)
-__aliases__                     = []
-__config__                      = {}
-__watches__                     = {}
+__gef_aliases__                 = []
+__gef_config__                  = {}
+__gef_watches__                 = {}
 __gef_convenience_vars_index__  = 0
+__gef_libc_args_definitions__   = {}
+__gef_prev_arch__               = None
+__gef_check_once__              = True
+__gef_context_hidden__          = False
+__gef_delayed_breakpoints__     = set()
+__gef_delayed_bp_set__          = False
+__gef_use_info_proc_mappings__  = None
 __context_comments__            = {}
 __context_messages__            = []
 __context_extra_commands__      = []
@@ -179,12 +186,6 @@ __heap_allocated_list__         = []
 __heap_freed_list__             = []
 __heap_uaf_watchpoints__        = []
 __patch_history__               = []
-__gef_prev_arch__               = None
-__gef_check_once__              = True
-__gef_context_hidden__          = False
-__gef_delayed_breakpoints__     = set()
-__gef_delayed_bp_set__          = False
-__libc_args_definitions__       = {}
 __cached_syscall_table__        = {}
 __cached_kernel_info__          = None
 __cached_kernel_version__       = None
@@ -192,7 +193,6 @@ __cached_kernel_cmdline__       = None
 __cached_context_legend__       = None
 __cached_heap_base__            = None
 __cached_main_arena__           = None
-__use_info_proc_mappings__      = None
 current_elf                     = None
 current_arch                    = None
 
@@ -3484,9 +3484,9 @@ def titlify(text, color=None, msg_color=None):
     """Print a centered title."""
     cols = get_terminal_size()[1]
     if color is None:
-        color = __config__.get("theme.default_title_line")[0]
+        color = __gef_config__.get("theme.default_title_line")[0]
     if msg_color is None:
-        msg_color = __config__.get("theme.default_title_message")[0]
+        msg_color = __gef_config__.get("theme.default_title_message")[0]
 
     msg = []
     if text:
@@ -3744,8 +3744,8 @@ def unhide_context():
 def get_gef_setting(name):
     """Read global gef settings.
     Return None if not found. A valid config setting can never return None, but False, 0 or ""."""
-    global __config__
-    setting = __config__.get(name, None)
+    global __gef_config__
+    setting = __gef_config__.get(name, None)
     if not setting:
         return None
     return setting[0]
@@ -3756,17 +3756,17 @@ def set_gef_setting(name, value, _type=None, _desc=None):
     Raise ValueError if `name` doesn't exist and `type` and `desc` are not provided."""
     reset_gef_caches()
 
-    global __config__
-    if name not in __config__:
+    global __gef_config__
+    if name not in __gef_config__:
         # create new setting
         if _type is None or _desc is None:
             raise ValueError("Setting '{}' is undefined, need to provide type and description".format(name))
-        __config__[name] = [_type(value), _type, _desc]
+        __gef_config__[name] = [_type(value), _type, _desc]
         return
 
     # set existing setting
-    func = __config__[name][1]
-    __config__[name][0] = func(value)
+    func = __gef_config__[name][1]
+    __gef_config__[name][0] = func(value)
     return
 
 
@@ -11329,24 +11329,24 @@ def get_process_maps_from_info_proc():
 
 
 def get_explored_regions():
-    global __use_info_proc_mappings__
-    if __use_info_proc_mappings__ is None:
+    global __gef_use_info_proc_mappings__
+    if __gef_use_info_proc_mappings__ is None:
         try:
             res = gdb.execute("info proc mappings", to_string=True)
             if "warning" in res:
-                __use_info_proc_mappings__ = False
+                __gef_use_info_proc_mappings__ = False
             else:
-                __use_info_proc_mappings__ = True
+                __gef_use_info_proc_mappings__ = True
         except gdb.error:
-            __use_info_proc_mappings__ = False
+            __gef_use_info_proc_mappings__ = False
 
     # fast path
-    if __use_info_proc_mappings__ is True:
+    if __gef_use_info_proc_mappings__ is True:
         res = get_process_maps_from_info_proc() # don't use cache
         if res:
             return res
         # something is wrong
-        __use_info_proc_mappings__ = False
+        __gef_use_info_proc_mappings__ = False
 
     # slow path
     return __get_explored_regions() # use cache
@@ -11601,22 +11601,22 @@ def load_libc_args():
     _arch_mode = "{}_{}".format(current_arch.arch.lower(), current_arch.mode)
     _libc_args_file = "{}/{}.json".format(path, _arch_mode)
 
-    global __libc_args_definitions__
+    global __gef_libc_args_definitions__
 
     # current arch and mode already loaded
-    if _arch_mode in __libc_args_definitions__:
+    if _arch_mode in __gef_libc_args_definitions__:
         return
 
-    __libc_args_definitions__[_arch_mode] = {}
+    __gef_libc_args_definitions__[_arch_mode] = {}
     import json
     try:
         with open(_libc_args_file) as _libc_args:
-            __libc_args_definitions__[_arch_mode] = json.load(_libc_args)
+            __gef_libc_args_definitions__[_arch_mode] = json.load(_libc_args)
     except FileNotFoundError:
-        del __libc_args_definitions__[_arch_mode]
+        del __gef_libc_args_definitions__[_arch_mode]
         warn("Config context.libc_args is set but definition cannot be loaded: file {} not found".format(_libc_args_file))
     except json.decoder.JSONDecodeError as e:
-        del __libc_args_definitions__[_arch_mode]
+        del __gef_libc_args_definitions__[_arch_mode]
         warn("Config context.libc_args is set but definition cannot be loaded from file {}: {}".format(_libc_args_file, e))
     return
 
@@ -12591,16 +12591,16 @@ def gef_on_regchanged_unhook(func):
 
 def register_command(cls):
     """Decorator for registering new GEF (sub-)command to GDB."""
-    global __commands__
-    __commands__.append(cls)
+    global __gef_commands__
+    __gef_commands__.append(cls)
     return cls
 
 
 def register_priority_command(cls):
     """Decorator for registering new command with priority, meaning that it must
     loaded before the other generic commands."""
-    global __commands__
-    __commands__.insert(0, cls)
+    global __gef_commands__
+    __gef_commands__.insert(0, cls)
     return cls
 
 
@@ -12714,23 +12714,23 @@ class GenericCommand(gdb.Command):
     @property
     def settings(self):
         """Return the list of settings for this command."""
-        return [x.split(".", 1)[1] for x in __config__ if x.startswith("{:s}.".format(self._cmdline_))]
+        return [x.split(".", 1)[1] for x in __gef_config__ if x.startswith("{:s}.".format(self._cmdline_))]
 
     def get_setting(self, name):
         key = self.__get_setting_name(name)
-        setting = __config__[key]
+        setting = __gef_config__[key]
         return setting[1](setting[0])
 
     def has_setting(self, name):
         key = self.__get_setting_name(name)
-        return key in __config__
+        return key in __gef_config__
 
     def add_setting(self, name, value, description=""):
         # make sure settings are always associated to the root command (which derives from GenericCommand)
         if "GenericCommand" not in [x.__name__ for x in self.__class__.__bases__]:
             return
         key = self.__get_setting_name(name)
-        __config__[key] = [value, type(value), description]
+        __gef_config__[key] = [value, type(value), description]
         get_gef_setting.cache_clear()
         return
 
@@ -24832,7 +24832,7 @@ class ContextCommand(GenericCommand):
         if function_name.endswith("@plt"):
             _function_name = function_name.split("@")[0]
             try:
-                nb_argument = len(__libc_args_definitions__[_arch_mode][_function_name])
+                nb_argument = len(__gef_libc_args_definitions__[_arch_mode][_function_name])
             except KeyError:
                 pass
 
@@ -24844,7 +24844,7 @@ class ContextCommand(GenericCommand):
             except Exception:
                 break
             try:
-                libc_args_def = __libc_args_definitions__[_arch_mode][_function_name][_key]
+                libc_args_def = __gef_libc_args_definitions__[_arch_mode][_function_name][_key]
                 args.append("{} = {} (def: {})".format(Color.colorify(_key, arg_key_color), _value, libc_args_def))
             except KeyError:
                 args.append("{} = {}".format(Color.colorify(_key, arg_key_color), _value))
@@ -25152,8 +25152,8 @@ class ContextCommand(GenericCommand):
         return
 
     def context_memory(self):
-        global __watches__
-        for address, opt in sorted(__watches__.items()):
+        global __gef_watches__
+        for address, opt in sorted(__gef_watches__.items()):
             count, fmt = opt[0:2]
             self.context_title("memory:{:#x}".format(address))
             if fmt == "pointers":
@@ -25236,9 +25236,9 @@ class MemoryWatchCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        global __watches__
+        global __gef_watches__
 
-        __watches__[args.address] = (args.count, args.unit)
+        __gef_watches__[args.address] = (args.count, args.unit)
         ok("Adding memwatch to {:#x}".format(args.address))
         return
 
@@ -25266,9 +25266,9 @@ class MemoryUnwatchCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        global __watches__
+        global __gef_watches__
 
-        res = __watches__.pop(args.address, None)
+        res = __gef_watches__.pop(args.address, None)
         if not res:
             warn("You weren't watching {:#x}".format(args.address))
         else:
@@ -25290,9 +25290,9 @@ class MemoryWatchResetCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        global __watches__
+        global __gef_watches__
 
-        __watches__.clear()
+        __gef_watches__.clear()
         ok("Memory watches cleared")
         return
 
@@ -25311,14 +25311,14 @@ class MemoryWatchListCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        global __watches__
+        global __gef_watches__
 
-        if not __watches__:
+        if not __gef_watches__:
             info("No memory watches")
             return
 
         info("Memory watches:")
-        for address, opt in sorted(__watches__.items()):
+        for address, opt in sorted(__gef_watches__.items()):
             gef_print("- {:#x} ({}, {})".format(address, opt[0], opt[1]))
         return
 
@@ -27121,7 +27121,7 @@ class VMMapCommand(GenericCommand):
                     self.dump_entry(entry, args.outer)
 
         if is_qemu_user() and not args.outer:
-            if __use_info_proc_mappings__ is False:
+            if __gef_use_info_proc_mappings__ is False:
                 self.info("Searched from auxv, registers and stack values. There may be areas that cannot be detected.")
                 self.info("Permission is based on ELF header or default value `rw-`. Dynamic permission changes cannot be detected.")
 
@@ -80631,7 +80631,7 @@ class GefCommand(GenericCommand):
         """Load all the commands and functions defined by GEF into GDB."""
         nb_missing = 0
         time_elapsed = []
-        for cmd_class in __commands__:
+        for cmd_class in __gef_commands__:
             cmdline = cmd_class._cmdline_
             try:
                 start_time_real = time.perf_counter()
@@ -80692,7 +80692,7 @@ class GefCommand(GenericCommand):
         return
 
     def reload_auto_breakpoints(self):
-        bkp_fname = __config__.get("gef.autosave_breakpoints_file", None)
+        bkp_fname = __gef_config__.get("gef.autosave_breakpoints_file", None)
         if not bkp_fname or not bkp_fname[0]:
             return
         bkp_fname = bkp_fname[0] # get filename
@@ -80826,7 +80826,7 @@ class GefConfigCommand(GenericCommand):
         return
 
     def print_setting(self, config_name, verbose=False):
-        res = __config__.get(config_name)
+        res = __gef_config__.get(config_name)
         string_color = get_gef_setting("theme.dereference_string")
         misc_color = get_gef_setting("theme.dereference_base_address")
 
@@ -80859,7 +80859,7 @@ class GefConfigCommand(GenericCommand):
             err("Unknown command '{:s}'".format(command_name))
             return
 
-        _type = __config__.get(config_name, [None, None, None])[1]
+        _type = __gef_config__.get(config_name, [None, None, None])[1]
         if _type is None:
             err("Failed to get '{:s}' config setting".format(config_name))
             return
@@ -80876,12 +80876,12 @@ class GefConfigCommand(GenericCommand):
             err("{} expects type '{}'".format(config_name, _type.__name__))
             return
 
-        __config__[config_name][0] = _newval
+        __gef_config__[config_name][0] = _newval
         reset_gef_caches(all=True)
         return
 
     def complete(self, text, word):
-        settings = sorted(__config__)
+        settings = sorted(__gef_config__)
 
         if text == "":
             # no prefix: example: `gef config TAB`
@@ -80901,13 +80901,13 @@ class GefConfigCommand(GenericCommand):
         # list up all configs
         if (args.setting_name, args.setting_value) == (None, None):
             gef_print(titlify("GEF configuration settings"))
-            for name in sorted(__config__):
+            for name in sorted(__gef_config__):
                 self.print_setting(name)
             return
 
         # show name-matched config(s)
         if args.setting_name and args.setting_value is None:
-            names = [x for x in __config__.keys() if x.startswith(args.setting_name)]
+            names = [x for x in __gef_config__.keys() if x.startswith(args.setting_name)]
             if not names:
                 return
             if len(names) == 1:
@@ -80942,9 +80942,9 @@ class GefSaveCommand(GenericCommand):
         old_sect = None
 
         # save the configuration
-        for key in sorted(__config__):
+        for key in sorted(__gef_config__):
             sect, optname = key.split(".", 1)
-            value = __config__.get(key, None)
+            value = __gef_config__.get(key, None)
             value = value[0] if value else None
 
             if old_sect != sect:
@@ -80955,7 +80955,7 @@ class GefSaveCommand(GenericCommand):
 
         # save the aliases
         cfg.add_section("aliases")
-        for alias in __aliases__:
+        for alias in __gef_aliases__:
             cfg.set("aliases", alias._alias, alias._command)
 
         with open(GEF_RC, "w") as fd:
@@ -81002,18 +81002,18 @@ class GefRestoreCommand(GenericCommand):
             for optname in cfg.options(section):
                 try:
                     key = "{:s}.{:s}".format(section, optname)
-                    _type = __config__.get(key)[1]
+                    _type = __gef_config__.get(key)[1]
                     new_value = cfg.get(section, optname)
                     if _type == bool:
                         new_value = True if new_value == "True" else False
                     else:
                         new_value = _type(new_value)
-                    __config__[key][0] = new_value
+                    __gef_config__[key][0] = new_value
                 except Exception:
                     pass
 
         # ensure that the temporary directory always exists
-        abspath = os.path.expanduser(__config__["gef.tempdir"][0])
+        abspath = os.path.expanduser(__gef_config__["gef.tempdir"][0])
         abspath = os.path.realpath(abspath)
         if not os.path.isdir(abspath):
             os.makedirs(abspath, mode=0o755, exist_ok=True)
@@ -81297,12 +81297,12 @@ class GefAlias(gdb.Command):
         if not p:
             return
 
-        global __aliases__
+        global __gef_aliases__
 
         # already defined, so remove old entry
         try:
-            alias_to_remove = next(filter(lambda x: x._alias == alias, __aliases__))
-            __aliases__.remove(alias_to_remove)
+            alias_to_remove = next(filter(lambda x: x._alias == alias, __gef_aliases__))
+            __gef_aliases__.remove(alias_to_remove)
         except (ValueError, StopIteration):
             pass
 
@@ -81320,7 +81320,7 @@ class GefAlias(gdb.Command):
                 self.complete = _instance.complete
 
         super().__init__(alias, command_class, completer_class=completer_class)
-        __aliases__.append(self)
+        __gef_aliases__.append(self)
         return
 
     def invoke(self, args, from_tty):
@@ -81402,10 +81402,10 @@ class AliasesRmCommand(AliasesCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        global __aliases__
+        global __gef_aliases__
         try:
-            alias_to_remove = next(filter(lambda x: x._alias == args.alias, __aliases__))
-            __aliases__.remove(alias_to_remove)
+            alias_to_remove = next(filter(lambda x: x._alias == args.alias, __gef_aliases__))
+            __gef_aliases__.remove(alias_to_remove)
         except (ValueError, StopIteration):
             err("{:s} is not found in aliases.".format(args.alias))
             return
@@ -81430,7 +81430,7 @@ class AliasesListCommand(AliasesCommand):
         self.dont_repeat()
 
         ok("Aliases defined:")
-        for a in sorted(__aliases__, key=lambda a: a._alias):
+        for a in sorted(__gef_aliases__, key=lambda a: a._alias):
             gef_print("{:30s} {} {}".format(a._alias, RIGHT_ARROW, a._command))
         return
 
