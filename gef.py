@@ -2729,6 +2729,8 @@ def search_for_main_arena_from_tls():
         direction = 1
 
     tls = current_arch.get_tls()
+    if tls is None:
+        return None
     for i in range(1, 500):
         addr = tls + (current_arch.ptrsize * i) * direction
 
