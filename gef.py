@@ -80919,7 +80919,7 @@ class GefConfigCommand(GenericCommand):
 
         if text == "":
             # no prefix: example: `gef config TAB`
-            return [s for s in settings if word in s]
+            return [s for s in settings if word is None or word in s]
 
         if "." not in text:
             # if looking for possible prefix
