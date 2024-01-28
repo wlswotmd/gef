@@ -2028,8 +2028,9 @@ class Instruction:
             old_text = text[::]
         text = re.sub("__MARKER_GEF__", "(...)", text)
 
-        if text[0] == "<" and text[-1] == ">":
-            text_0, text, text_end = text[0], text[1:-1], text[-1]
+        m = re.match(r"^(\s*\<)(.*)(\>\s*)$", text)
+        if m:
+            text_0, text, text_end = m.group(1), m.group(2), m.group(3)
         else:
             text_0, text, text_end = "", text, ""
 
