@@ -481,6 +481,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
         * specified-condition (expressions using register or memory values)
         * user-code
         * libc-code
+        * secure-world
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/exec-until.png)
 * `xuntil`: executes until specified address.
     * It is slightly easier to use than the original until command.

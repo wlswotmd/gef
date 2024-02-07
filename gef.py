@@ -76748,6 +76748,7 @@ class ExecUntilCommand(GenericCommand):
     subparsers.add_parser("cond")
     subparsers.add_parser("user-code")
     subparsers.add_parser("libc-code")
+    subparsers.add_parser("secure-world")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} call                                # execute until call instruction\n".format(_cmdline_)
@@ -76760,7 +76761,8 @@ class ExecUntilCommand(GenericCommand):
     _example_ += '{:s} keyword "call +r[ab]x"              # execute until specified keyword (regex)\n'.format(_cmdline_)
     _example_ += '{:s} cond "$rax==0xdead && $rbx==0xcafe" # execute until specified condition is filled\n'.format(_cmdline_)
     _example_ += "{:s} user-code                           # execute until user code\n".format(_cmdline_)
-    _example_ += "{:s} libc-code                           # execute until libc code".format(_cmdline_)
+    _example_ += "{:s} libc-code                           # execute until libc code\n".format(_cmdline_)
+    _example_ += "{:s} secure-world                        # execute until secure world (only ARM/ARM64)".format(_cmdline_)
 
     def __init__(self, *args, **kwargs):
         prefix = kwargs.get("prefix", True)
@@ -76870,6 +76872,11 @@ class ExecUntilCommand(GenericCommand):
                     return True
             else:
                 return False
+        elif self.mode == "secure-world":
+            scr = get_register("$SCR" if is_arm32() else "$SCR_EL3")
+            if scr is None:
+                return False
+            return (scr & 0b1) == 0
         return False
 
     def get_breakpoint_list(self):
@@ -77377,6 +77384,48 @@ class ExecUntilLibcCodeCommand(ExecUntilCommand):
         if not self.libc_addrs:
             err("Not found libc address")
             return
+        self.exec_next()
+        return
+
+
+@register_command
+class ExecUntilSecureWorldCommand(ExecUntilCommand):
+    """Execute until next secure-world instruction."""
+    _cmdline_ = "exec-until secure-world"
+    _category_ = "01-d. Debugging Support - Execution"
+    _aliases_ = ["next-secure-world"]
+    _repeat_ = True
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
+    parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
+    parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
+    _syntax_ = parser.format_help()
+    _example_ = None
+
+    def __init__(self):
+        super().__init__(prefix=False)
+        self.mode = "secure-world"
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system",))
+    @only_if_specific_arch(arch=("ARM32", "ARM64"))
+    def do_invoke(self, args):
+        if self.mode is None:
+            self.usage()
+            return
+        self.print_insn = args.print_insn
+        self.use_ni = args.use_ni
+        self.skip_lib = False
+        self.exclude = args.exclude
+
+        scr = get_register("$SCR" if is_arm32() else "$SCR_EL3")
+        if scr is None:
+            err("Not found {:s}".format("$SCR" if is_arm32() else "$SCR_EL3"))
+            return
+
         self.exec_next()
         return
 
