@@ -15773,7 +15773,7 @@ class PtrDemangleCommand(GenericCommand):
                 cookie_ptr = parse_address("&__pointer_chk_guard_local")
                 cookie = read_int_from_memory(cookie_ptr)
                 return cookie
-        except gdb.error:
+        except (gdb.error, OverflowError):
             pass
 
         # generic
