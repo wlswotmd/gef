@@ -11000,9 +11000,14 @@ def get_process_maps_linux(pid, remote=False):
             thread.switch() # change thread
             # note: for speed up, do not use current_arch.get_tls()
             tls = get_register("$fs_base" if is_x86_64() else "$gs_base") # get tls address
-            tls_list.append((thread.num, tls, current_arch.sp))
+            tls_list.append([thread.num, tls, current_arch.sp])
         orig_thread.switch() # revert thread
         extra_info = sorted(tls_list)
+
+        # When using gdbserver, thread.num may start from 2 even though there is no thread.
+        # This is confusing, so if there is only the main thread, force it to 1.
+        if len(extra_info) == 1:
+            extra_info = [ [1] + extra_info[0][1:] ]
 
     # parse
     maps = []
