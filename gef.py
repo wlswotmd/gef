@@ -13935,11 +13935,17 @@ class AuxvCommand(GenericCommand):
                 additional_message = " (End of vector)"
             elif k in ["AT_EXECFN", "AT_PLATFORM"]:
                 s = read_cstring_from_memory(v)
+                if s is None:
+                    s = "Cannot access memory"
                 s = Color.yellowify(repr(s))
                 additional_message = "{:s}{:s}".format(RIGHT_ARROW, s)
             elif k in ["AT_RANDOM"]:
-                s = read_int_from_memory(v)
-                additional_message = "{:s}{:#x}".format(RIGHT_ARROW, s)
+                try:
+                    s = read_int_from_memory(v)
+                    additional_message = "{:s}{:#x}".format(RIGHT_ARROW, s)
+                except gdb.MemoryError:
+                    s = Color.yellowify(repr("Cannot access memory"))
+                    additional_message = "{:s}{:s}".format(RIGHT_ARROW, s)
 
             if is_valid_addr(v):
                 v = str(lookup_address(v))
