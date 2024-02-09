@@ -76845,14 +76845,19 @@ class ExecUntilCommand(GenericCommand):
             return False
         elif self.mode == "syscall":
             if current_arch.is_syscall(insn):
-                if not self.filter:
+                if not self.filter and not self.ignore:
                     return True
                 _reg, nr = SyscallArgsCommand.get_nr()
                 try:
                     name = get_syscall_table().table[nr].name
                 except KeyError:
                     return True # for debug
-                return name in self.filter
+                if self.ignore and name in self.ignore:
+                    return False
+                if self.filter:
+                    return name in self.filter
+                else:
+                    return True
             return False
         elif self.mode == "ret":
             return current_arch.is_ret(insn)
@@ -77151,6 +77156,7 @@ class ExecUntilSyscallCommand(ExecUntilCommand):
     parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
     parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
     parser.add_argument("-f", "--filter", action="append", default=[], help="filter by specified syscall.")
+    parser.add_argument("-i", "--ignore", action="append", default=[], help="ignore specified syscall.")
     parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
     _syntax_ = parser.format_help()
     _example_ = None
@@ -77167,6 +77173,7 @@ class ExecUntilSyscallCommand(ExecUntilCommand):
         self.use_ni = args.use_ni
         self.skip_lib = args.skip_lib
         self.filter = args.filter
+        self.ignore = args.ignore
         self.exclude = args.exclude
         self.exec_next()
         return
