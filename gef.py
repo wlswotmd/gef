@@ -12463,7 +12463,7 @@ def get_auxiliary_walk(offset=0):
 # Fortunately, auxv rarely changes.
 # I decided to keep the cache until it is explicitly cleared.
 @cache_this_session
-def gef_get_auxiliary_values():
+def gef_get_auxiliary_values(force_heuristic=False):
     """Retrieves the auxiliary values of the current execution.
     Returns None if not running, or a dict() of values."""
     if not is_alive():
@@ -12495,6 +12495,9 @@ def gef_get_auxiliary_values():
             if res:
                 return res
         return None
+
+    if force_heuristic:
+        return slow_path()
 
     return fast_path() or slow_path()
 
@@ -13865,6 +13868,7 @@ class AuxvCommand(GenericCommand):
     _category_ = "02-d. Process Information - Trivial Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-f", "--force-heuristic", action="store_true", help="use heuristic detection.")
     _syntax_ = parser.format_help()
 
     AT_CONSTANTS = {
@@ -13921,7 +13925,7 @@ class AuxvCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        auxval = gef_get_auxiliary_values()
+        auxval = gef_get_auxiliary_values(args.force_heuristic)
         if not auxval:
             return None
 
