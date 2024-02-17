@@ -48997,8 +48997,42 @@ class KernelAddressHeuristicFinder:
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v2.6.37 or later)
-        if kversion and kversion >= "2.6.37":
+        if kversion and kversion >= "6.5":
+            return False
+
+        # plan 2 (available v2.6.37 ~ 6.4 or later)
+        if kversion and kversion >= "2.6.37" and kversion < "6.5":
+            addr = get_ksymaddr("irq_to_desc")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
+                if is_x86_64():
+                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
+                elif is_x86_32():
+                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
+                elif is_arm64():
+                    g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
+                elif is_arm32():
+                    g = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                for x in g:
+                    return x
+        return None
+
+    @staticmethod
+    @switch_to_intel_syntax
+    def get_sparse_irqs():
+        # plan 1 (directly)
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("sparse_irqs")
+            if x:
+                return x
+
+        kversion = KernelVersionCommand.kernel_version()
+
+        if kversion and kversion < "6.5":
+            return False
+
+        # plan 2 (available v6.5 or later)
+        if kversion and kversion >= "6.5":
             addr = get_ksymaddr("irq_to_desc")
             if addr:
                 res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
@@ -65002,58 +65036,184 @@ class KernelIrqCommand(GenericCommand):
                 break
         return elems
 
+    class MapleTree:
+        """Linux v6.5 introduces maple_tree to irq. This is a simple parser."""
+        MT_FLAGS_HEIGHT_MASK = 0x7c
+        MT_FLAGS_HEIGHT_OFFSET = 0x02
+        MAPLE_NODE_TYPE_SHIFT = 0x03
+        MAPLE_NODE_TYPE_MASK = 0x0f
+        MAPLE_NODE_POINTER_MASK = 0xff
+        MAPLE_DENSE = 0
+        MAPLE_LEAF_64 = 1
+        MAPLE_RANGE_64 = 2
+        MAPLE_ARANGE_64 = 3
+
+        def __init__(self, ptr):
+            kversion = KernelVersionCommand.kernel_version()
+
+            # ____cacheline_aligned_in_smp attribute, spinlock_t and lockdep_map_p can be different size
+            # in each environment or situation, so search heuristically.
+            for i in range(0x10):
+                x = read_int_from_memory(ptr + current_arch.ptrsize * i)
+                """
+                [x64 v6.4.2]
+                0xffff8bedc104db00|+0x0000|+000: 0x0000000000000000   // union
+                0xffff8bedc104db08|+0x0008|+001: 0xffff8bedc1a6601e   // ma_root
+                0xffff8bedc104db10|+0x0010|+002: 0x000000000000030b   // ma_flags
+
+                [x64 v6.6.1]
+                0xffff972801b78a38|+0x0040|+008: 0x0000000000000000   // (the end of cacheline?)
+                0xffff972801b78a40|+0x0040|+008: 0x0000030b00000000   // ma_flags || union
+                0xffff972801b78a48|+0x0048|+009: 0xffff972801b0cc1e   // ma_root
+                """
+                if is_valid_addr(x) and (x & 0xff) in [0x1e, 0x0e]:
+                    offset_ma_root = current_arch.ptrsize * i
+                    if kversion < "6.6":
+                        offset_ma_flags = offset_ma_root + current_arch.ptrsize
+                    else:
+                        offset_ma_flags = offset_ma_root - 4
+                        if is_64bit() and u32(read_memory(ptr + offset_ma_flags, 4)) == 0:
+                            offset_ma_flags = offset_ma_root - 8
+                    break
+            else:
+                raise
+
+            self.ma_root_raw = read_int_from_memory(ptr + offset_ma_root)
+            self.ma_flags = read_int_from_memory(ptr + offset_ma_flags)
+            self.max_depth = (self.ma_flags & self.MT_FLAGS_HEIGHT_MASK) >> self.MT_FLAGS_HEIGHT_OFFSET
+
+            if is_64bit():
+                self.MAPLE_NODE_SLOTS = 31
+                self.MAPLE_RANGE64_SLOTS = 16
+                self.MAPLE_ARANGE64_SLOTS = 10
+                self.MAPLE_ALLOC_SLOTS = self.MAPLE_NODE_SLOTS - 1
+                self.maple_range_64_offset_slot = current_arch.ptrsize * self.MAPLE_RANGE64_SLOTS
+                self.maple_arange_64_offset_slot = current_arch.ptrsize * self.MAPLE_ARANGE64_SLOTS
+                self.maple_alloc_offset_slot = current_arch.ptrsize * 2
+            else:
+                self.MAPLE_NODE_SLOTS = 63
+                self.MAPLE_RANGE64_SLOTS = 32
+                self.MAPLE_ARANGE64_SLOTS = 21
+                self.MAPLE_ALLOC_SLOTS = self.MAPLE_NODE_SLOTS - 2
+                self.maple_range_64_offset_slot = current_arch.ptrsize * self.MAPLE_RANGE64_SLOTS
+                self.maple_arange_64_offset_slot = current_arch.ptrsize * self.MAPLE_ARANGE64_SLOTS
+                self.maple_alloc_offset_slot = current_arch.ptrsize * 3
+
+            self.seen = set()
+            self.iters = self.parse_node(self.ma_root_raw, 1)
+            return
+
+        def parse_node(self, entry, depth):
+            if entry in self.seen:
+                return
+            self.seen.add(entry)
+
+            if self.max_depth < depth:
+                return
+
+            pointer = entry & ~(self.MAPLE_NODE_POINTER_MASK)
+            node_type = (entry >> self.MAPLE_NODE_TYPE_SHIFT) & self.MAPLE_NODE_TYPE_MASK
+
+            if node_type == self.MAPLE_DENSE:
+                slot_top = pointer + self.maple_alloc_offset_slot
+                for i in range(self.MAPLE_ALLOC_SLOTS):
+                    slot = read_int_from_memory(slot_top + current_arch.ptrsize * i)
+                    if (slot & ~(self.MAPLE_NODE_TYPE_MASK)) != 0:
+                        if is_valid_addr(slot):
+                            yield slot
+            elif node_type == self.MAPLE_LEAF_64:
+                slot_top = pointer + self.maple_range_64_offset_slot
+                for i in range(self.MAPLE_RANGE64_SLOTS):
+                    slot = read_int_from_memory(slot_top + current_arch.ptrsize * i)
+                    if (slot & ~(self.MAPLE_NODE_TYPE_MASK)) != 0:
+                        if is_valid_addr(slot):
+                            yield slot
+            elif node_type == self.MAPLE_RANGE_64:
+                slot_top = pointer + self.maple_range_64_offset_slot
+                for i in range(self.MAPLE_RANGE64_SLOTS):
+                    slot = read_int_from_memory(slot_top + current_arch.ptrsize * i)
+                    if (slot & ~(self.MAPLE_NODE_TYPE_MASK)) != 0:
+                        yield from self.parse_node(slot, depth + 1)
+            elif node_type == self.MAPLE_ARANGE_64:
+                slot_top = pointer + self.maple_arange_64_offset_slot
+                for i in range(self.MAPLE_ARANGE64_SLOTS):
+                    slot = read_int_from_memory(slot_top + current_arch.ptrsize * i)
+                    if (slot & ~(self.MAPLE_NODE_TYPE_MASK)) != 0:
+                        yield from self.parse_node(slot, depth + 1)
+            return
+
     def initialize(self):
         if self.initialized:
             return True
 
-        self.irq_desc_tree = KernelAddressHeuristicFinder.get_irq_desc_tree()
-        if self.irq_desc_tree is None:
-            if not self.quiet:
-                err("Not found irq_desc_tree")
-            return False
+        kversion = KernelVersionCommand.kernel_version()
 
-        for i in range(0, 10):
-            # xa_head
-            x = read_int_from_memory(self.irq_desc_tree + current_arch.ptrsize * i)
-            if not x:
-                continue
-            if not is_valid_addr(x):
-                continue
-            if x & 0x2 != 0x2: # xa_head is NULL or tagged address
-                continue
-            self.offset_xa_head = current_arch.ptrsize * i
-            if not self.quiet:
-                info("offsetof(xarray, xa_head): {:#x}".format(self.offset_xa_head))
-            break
+        if kversion < "6.5":
+            self.irq_desc_tree = KernelAddressHeuristicFinder.get_irq_desc_tree()
+            if self.irq_desc_tree is None:
+                if not self.quiet:
+                    err("Not found irq_desc_tree")
+                return False
+
+            for i in range(0, 10):
+                # xa_head
+                x = read_int_from_memory(self.irq_desc_tree + current_arch.ptrsize * i)
+                if not x:
+                    continue
+                if not is_valid_addr(x):
+                    continue
+                if x & 0x2 != 0x2: # xa_head is NULL or tagged address
+                    continue
+                self.offset_xa_head = current_arch.ptrsize * i
+                if not self.quiet:
+                    info("offsetof(xarray, xa_head): {:#x}".format(self.offset_xa_head))
+                break
+            else:
+                if not self.quiet:
+                    err("Not found xa_head. (maybe uninitialized?)")
+                return False
+
+            # xa_node
+            """
+            struct xa_node {
+                unsigned char shift;
+                unsigned char offset;
+                unsigned char count;
+                unsigned char nr_values;
+                struct xa_node __rcu *parent;
+                struct xarray *array;
+                union {
+                    struct list_head private_list;
+                    struct rcu_head rcu_head;
+                };
+                void __rcu *slots[XA_CHUNK_SIZE];
+                union {
+                    unsigned long tags[XA_MAX_MARKS][XA_MARK_LONGS];
+                    unsigned long marks[XA_MAX_MARKS][XA_MARK_LONGS];
+                };
+            };
+            """
+            # xa_node->{shift,count,slots}
+            self.offset_shift = 0
+            self.offset_count = 2
+            self.offset_slots = current_arch.ptrsize * 5
+
+            descs = self.parse_xarray(self.irq_desc_tree, root=True)
+
         else:
-            if not self.quiet:
-                err("Not found xa_head. (maybe uninitialized?)")
-            return False
+            # kversion >= 6.5
+            self.sparse_irqs = KernelAddressHeuristicFinder.get_sparse_irqs()
+            if self.sparse_irqs is None:
+                if not self.quiet:
+                    err("Not found sparse_irqs")
+                return False
 
-        # xa_node
-        """
-        struct xa_node {
-            unsigned char shift;
-            unsigned char offset;
-            unsigned char count;
-            unsigned char nr_values;
-            struct xa_node __rcu *parent;
-            struct xarray *array;
-            union {
-                struct list_head private_list;
-                struct rcu_head rcu_head;
-            };
-            void __rcu *slots[XA_CHUNK_SIZE];
-            union {
-                unsigned long tags[XA_MAX_MARKS][XA_MARK_LONGS];
-                unsigned long marks[XA_MAX_MARKS][XA_MARK_LONGS];
-            };
-        };
-        """
-        # xa_node->{shift,count,slots}
-        self.offset_shift = 0
-        self.offset_count = 2
-        self.offset_slots = current_arch.ptrsize * 5
+            descs = list(self.MapleTree(self.sparse_irqs).iters)
+
+        if not descs:
+            if not self.quiet:
+                err("Not found any valid irq_desc")
+            return False
 
         # irq_desc->{irq,action}
         """
@@ -65096,13 +65256,13 @@ class KernelIrqCommand(GenericCommand):
         }
         """
 
-        descs = self.parse_xarray(self.irq_desc_tree, root=True)
-        if not descs:
-            if not self.quiet:
-                err("Not found any valid irq_desc")
-            return False
-
-        desc = descs[-1]
+        if is_x86():
+            desc = descs[0]
+        else:
+            # ARM may have invalid descs[irq=0]
+            desc = descs[-1]
+        if not self.quiet:
+            info("desc: {:#x}".format(desc))
 
         for i in range(100):
             x = read_int_from_memory(desc + current_arch.ptrsize * i)
@@ -65177,7 +65337,12 @@ class KernelIrqCommand(GenericCommand):
         return True
 
     def dump_irq(self):
-        descs = self.parse_xarray(self.irq_desc_tree, root=True)
+        kversion = KernelVersionCommand.kernel_version()
+
+        if kversion < "6.5":
+            descs = self.parse_xarray(self.irq_desc_tree, root=True)
+        else:
+            descs = list(self.MapleTree(self.sparse_irqs).iters)
 
         entries = {}
         for desc in descs:
