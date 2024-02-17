@@ -48995,7 +48995,23 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        # TODO
+        kversion = KernelVersionCommand.kernel_version()
+
+        # plan 2 (available v2.6.37 or later)
+        if kversion and kversion >= "2.6.37":
+            addr = get_ksymaddr("irq_to_desc")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
+                if is_x86_64():
+                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
+                elif is_x86_32():
+                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
+                elif is_arm64():
+                    g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
+                elif is_arm32():
+                    g = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                for x in g:
+                    return x
         return None
 
 
@@ -65049,7 +65065,9 @@ class KernelIrqCommand(GenericCommand):
             #endif
                 void *handler_data;
                 struct msi_desc *msi_desc;
+            #ifdef CONFIG_SMP
                 cpumask_var_t affinity;
+            #endif
             #ifdef CONFIG_GENERIC_IRQ_EFFECTIVE_AFF_MASK
                 cpumask_var_t effective_affinity;
             #endif
@@ -65062,9 +65080,9 @@ class KernelIrqCommand(GenericCommand):
                 unsigned int irq;
                 unsigned long hwirq;
                 struct irq_common_data *common;
-                struct irq_chip	 *chip;
+                struct irq_chip *chip;
                 struct irq_domain *domain;
-            #ifdef	CONFIG_IRQ_DOMAIN_HIERARCHY
+            #ifdef CONFIG_IRQ_DOMAIN_HIERARCHY
                 struct irq_data *parent_data;
             #endif
                 void *chip_data;
@@ -65083,7 +65101,8 @@ class KernelIrqCommand(GenericCommand):
             if not self.quiet:
                 err("Not found any valid irq_desc")
             return False
-        desc = descs[0]
+
+        desc = descs[-1]
 
         for i in range(100):
             x = read_int_from_memory(desc + current_arch.ptrsize * i)
@@ -65100,15 +65119,18 @@ class KernelIrqCommand(GenericCommand):
                 err("Not found irq_desc->irq")
             return False
 
-        ofs_irq = align_address_to_size(self.offset_irq, current_arch.ptrsize)
+        ofs_irq = align_address_to_size(self.offset_irq + 4 * 2, current_arch.ptrsize)
         for i in range(100):
             x = read_int_from_memory(desc + ofs_irq + current_arch.ptrsize * i)
             y = read_int_from_memory(desc + ofs_irq + current_arch.ptrsize * (i + 1))
             if not is_valid_addr(x) and not is_valid_addr(y):
-                self.offset_action = ofs_irq + current_arch.ptrsize * i - current_arch.ptrsize
-                if not self.quiet:
-                    info("offsetof(irq_desc, action): {:#x}".format(self.offset_action))
-                break
+                ofs_action_candidate = ofs_irq + current_arch.ptrsize * i - current_arch.ptrsize
+                action_candidate = read_int_from_memory(desc + ofs_action_candidate)
+                if is_valid_addr_addr(action_candidate):
+                    self.offset_action = ofs_action_candidate
+                    if not self.quiet:
+                        info("offsetof(irq_desc, action): {:#x}".format(self.offset_action))
+                    break
         else:
             if not self.quiet:
                 err("Not found irq_desc->action")
