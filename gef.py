@@ -13,7 +13,7 @@
 #   * x86-32 & x86-64
 #   * arm v5,v6,v7
 #   * aarch64 (armv8)
-#   * mips & mips64
+#   * mips & mipsn32 & mips64
 #   * powerpc & powerpc64
 #   * sparc & sparc32plus & sparc64
 #   * riscv32 & riscv64
@@ -21,7 +21,7 @@
 #   * sh4
 #   * m68k
 #   * alpha
-#   * hppa32 (parisc)
+#   * hppa32 (pa-risc)
 #   * or1k (openrisc)
 #   * nios2
 #   * microblaze
@@ -297,6 +297,8 @@ def hexoff():
 
 
 def cache_until_next(f):
+    """Decorator for short-term caching until si or ni is executed."""
+
     LIFE_TIME = "until_next"
 
     @functools.wraps(f)
@@ -321,6 +323,8 @@ def cache_until_next(f):
 
 
 def cache_this_session(f):
+    """Decorator for long-term caching for the duration of the session."""
+
     LIFE_TIME = "this_session"
 
     @functools.wraps(f)
@@ -3549,21 +3553,25 @@ def titlify(text, color=None, msg_color=None):
 
 
 def err(msg):
+    """The wrapper of gef_print for error level message."""
     gef_print("{} {}".format(Color.colorify("[!]", "bold red"), msg))
     return
 
 
 def warn(msg):
+    """The wrapper of gef_print for warning level message."""
     gef_print("{} {}".format(Color.colorify("[*]", "bold yellow"), msg))
     return
 
 
 def ok(msg):
+    """The wrapper of gef_print for ok level message."""
     gef_print("{} {}".format(Color.colorify("[+]", "bold green"), msg))
     return
 
 
 def info(msg):
+    """The wrapper of gef_print for information level message."""
     gef_print("{} {}".format(Color.colorify("[+]", "bold blue"), msg))
     return
 
@@ -10590,6 +10598,7 @@ def exclude_specific_arch(arch=()):
 
 
 def timeout(duration):
+    """Decorator to handle timeout."""
 
     def wrapper(function):
         import multiprocessing
@@ -11920,122 +11929,152 @@ def is_emulated32():
 
 
 def is_x86_64():
+    """Architecture determination function for x86-64."""
     return current_arch and current_arch.arch == "X86" and current_arch.mode == "64"
 
 
 def is_x86_32():
+    """Architecture determination function for x86-32."""
     return current_arch and current_arch.arch == "X86" and current_arch.mode == "32"
 
 
 def is_x86():
+    """Architecture determination function for x86-32 or x86-64."""
     return is_x86_32() or is_x86_64()
 
 
 def is_arm32():
+    """Architecture determination function for ARM 32 bit."""
     return current_arch and current_arch.arch == "ARM"
 
 
 def is_arm64():
+    """Architecture determination function for ARM 64 bit."""
     return current_arch and current_arch.arch == "ARM64"
 
 
 def is_mips32():
+    """Architecture determination function for mips 32 bit (o32 ABI)."""
     return current_arch and current_arch.arch == "MIPS" and current_arch.mode == "32"
 
 
 def is_mips64():
+    """Architecture determination function for mips 64 bit."""
     return current_arch and current_arch.arch == "MIPS" and current_arch.mode == "64"
 
 
 def is_mipsn32():
+    """Architecture determination function for mips 32 bit (n32 ABI)."""
     return current_arch and current_arch.arch == "MIPS" and current_arch.mode == "n32"
 
 
 def is_ppc32():
+    """Architecture determination function for powerpc 32 bit."""
     return current_arch and current_arch.arch == "PPC" and current_arch.mode == "32"
 
 
 def is_ppc64():
+    """Architecture determination function for powerpc 64 bit."""
     return current_arch and current_arch.arch == "PPC" and current_arch.mode == "64"
 
 
 def is_sparc32():
+    """Architecture determination function for sparc 32 bit."""
     return current_arch and current_arch.arch == "SPARC" and current_arch.mode == "32"
 
 
 def is_sparc32plus():
+    """Architecture determination function for sparc 32 bit (v8+)."""
     return current_arch and current_arch.arch == "SPARC" and current_arch.mode == "32PLUS"
 
 
 def is_sparc64():
+    """Architecture determination function for sparc 64 bit."""
     return current_arch and current_arch.arch == "SPARC" and current_arch.mode == "64"
 
 
 def is_riscv32():
+    """Architecture determination function for RISC-V 32 bit."""
     return current_arch and current_arch.arch == "RISCV" and current_arch.mode == "32"
 
 
 def is_riscv64():
+    """Architecture determination function for RISC-V 64 bit."""
     return current_arch and current_arch.arch == "RISCV" and current_arch.mode == "64"
 
 
 def is_s390x():
+    """Architecture determination function for s390x."""
     return current_arch and current_arch.arch == "S390X"
 
 
 def is_sh4():
+    """Architecture determination function for sh4."""
     return current_arch and current_arch.arch == "SH4"
 
 
 def is_m68k():
+    """Architecture determination function for m68k."""
     return current_arch and current_arch.arch == "M68K"
 
 
 def is_alpha():
+    """Architecture determination function for alpha."""
     return current_arch and current_arch.arch == "ALPHA"
 
 
 def is_hppa32():
+    """Architecture determination function for HP-PA 32 bit."""
     return current_arch and current_arch.arch == "HPPA" and current_arch.mode == "32"
 
 
 def is_hppa64():
+    """Architecture determination function for HP-PA 64 bit."""
     return current_arch and current_arch.arch == "HPPA" and current_arch.mode == "64"
 
 
 def is_or1k():
+    """Architecture determination function for OpenRISC 1000."""
     return current_arch and current_arch.arch == "OR1K"
 
 
 def is_nios2():
+    """Architecture determination function for Nios II."""
     return current_arch and current_arch.arch == "NIOS2"
 
 
 def is_microblaze():
+    """Architecture determination function for Microblaze."""
     return current_arch and current_arch.arch == "MICROBLAZE"
 
 
 def is_xtensa():
+    """Architecture determination function for Xtensa."""
     return current_arch and current_arch.arch == "XTENSA"
 
 
 def is_cris():
+    """Architecture determination function for CRIS."""
     return current_arch and current_arch.arch == "CRIS"
 
 
 def is_loongarch64():
+    """Architecture determination function for Loongarch 64 bit."""
     return current_arch and current_arch.arch == "LOONGARCH" and current_arch.mode == "64"
 
 
 def is_arc32():
+    """Architecture determination function for ARC 32 bit."""
     return current_arch and current_arch.arch == "ARC" and current_arch.mode in ["32v2", "32v3"]
 
 
 def is_arc64():
+    """Architecture determination function for ARC 64 bit."""
     return current_arch and current_arch.arch == "ARC" and current_arch.mode == "64v3"
 
 
 def is_csky():
+    """Architecture determination function for csky."""
     return current_arch and current_arch.arch == "CSKY"
 
 
@@ -12547,7 +12586,7 @@ def gef_getpagesize_mask_high():
 
 
 def only_if_events_supported(event_type):
-    """Checks if GDB supports events without crashing."""
+    """Decorator for checking if GDB supports events without crashing."""
 
     def wrap(f):
         def wrapped_f(*args, **kwargs):
@@ -81328,8 +81367,13 @@ class GefPyObjListCommand(GenericCommand):
         command_classes = []
         bp_classes = []
         arch_classes = []
+        arch_determinations = []
         decorators = []
         syscall_defines = []
+        hooks = []
+        hook_handlers = []
+        gef_print_wrappers = []
+        read_write_mems = []
         others = []
 
         for mod in dir(sys.modules["__main__"]): # for global object
@@ -81360,10 +81404,20 @@ class GefPyObjListCommand(GenericCommand):
                     arch_classes.append("{!s} {!s}".format(t, mod))
                 else:
                     classes.append("{!s} {!s}".format(t, mod))
+            elif obj.__doc__ and obj.__doc__.startswith("Architecture determination function"):
+                arch_determinations.append("{!s} {!s}".format(t, mod))
             elif obj.__doc__ and obj.__doc__.startswith("Decorator"):
                 decorators.append("{!s} {!s}".format(t, mod))
             elif mod.endswith(("syscall_tbl", "syscall_list")) or mod.startswith("syscall_defs"):
                 syscall_defines.append("{!s} {!s}".format(t, mod))
+            elif mod.endswith(("_hook", "_unhook")):
+                hooks.append("{!s} {!s}".format(t, mod))
+            elif mod.endswith("_handler"):
+                hook_handlers.append("{!s} {!s}".format(t, mod))
+            elif obj.__doc__ and obj.__doc__.startswith("The wrapper of gef_print"):
+                gef_print_wrappers.append("{!s} {!s}".format(t, mod))
+            elif re.match(r"(read|write)_.*(memory|physmem).*", mod):
+                read_write_mems.append("{!s} {!s}".format(t, mod))
             else:
                 others.append("{!s} {!s}".format(t, mod))
 
@@ -81377,12 +81431,22 @@ class GefPyObjListCommand(GenericCommand):
         output.extend(sorted(bp_classes))
         output.append(titlify("Architecture classes"))
         output.extend(sorted(arch_classes))
+        output.append(titlify("Architecture determination function"))
+        output.extend(sorted(arch_determinations))
         output.append(titlify("Classes"))
         output.extend(sorted(classes))
         output.append(titlify("Syscall defines"))
         output.extend(sorted(syscall_defines))
         output.append(titlify("Decorators"))
         output.extend(sorted(decorators))
+        output.append(titlify("Hooks"))
+        output.extend(sorted(hooks))
+        output.append(titlify("Hook handlers"))
+        output.extend(sorted(hook_handlers))
+        output.append(titlify("gef_print wrapper"))
+        output.extend(sorted(gef_print_wrappers))
+        output.append(titlify("read/write memory functions"))
+        output.extend(sorted(read_write_mems))
         output.append(titlify("Othres"))
         output.extend(sorted(others))
         gef_print("\n".join(output), less=not args.no_pager)
