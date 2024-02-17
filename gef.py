@@ -48986,6 +48986,18 @@ class KernelAddressHeuristicFinder:
                     return x - current_arch.ptrsize * 2
         return None
 
+    @staticmethod
+    @switch_to_intel_syntax
+    def get_irq_desc_tree():
+        # plan 1 (directly)
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = get_ksymaddr("irq_desc_tree")
+            if x:
+                return x
+
+        # TODO
+        return None
+
 
 KF = KernelAddressHeuristicFinder # for convenience using from python-interactive # noqa: F841
 KFU = KernelAddressHeuristicFinderUtil # for convenience using from python-interactive # noqa: F841
@@ -64918,6 +64930,286 @@ class KernelDmaBufCommand(GenericCommand):
 
         self.out = []
         self.dump_db_list()
+        gef_print("\n".join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
+class KernelIrqCommand(GenericCommand):
+    """Dump IRQ (interrupt request) informations."""
+    _cmdline_ = "kirq"
+    _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
+    _syntax_ = parser.format_help()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.initialized = False
+        self.irq_desc_tree = None
+        self.offset_xa_head = None
+        self.offset_shift = None
+        self.offset_count = None
+        self.offset_slots = None
+        self.offset_irq = None
+        self.offset_action = None
+        self.offset_handler = None
+        self.offset_name = None
+        return
+
+    def parse_xarray(self, ptr, root=False):
+        if ptr == 0:
+            return []
+
+        ptr &= ~3 # untagged
+
+        if root:
+            node = read_int_from_memory(ptr + self.offset_xa_head)
+            return self.parse_xarray(node)
+
+        shift = u8(read_memory(ptr + self.offset_shift, 1))
+        count = u8(read_memory(ptr + self.offset_count, 1))
+        slots = ptr + self.offset_slots
+        elems = []
+        for i in range(64): # 16 or 64
+            x = read_int_from_memory(slots + current_arch.ptrsize * i)
+            if x == 0:
+                continue
+            if shift:
+                elems += self.parse_xarray(x)
+            else:
+                elems.append(x)
+            count -= 1
+            if count == 0:
+                break
+        return elems
+
+    def initialize(self):
+        if self.initialized:
+            return True
+
+        self.irq_desc_tree = KernelAddressHeuristicFinder.get_irq_desc_tree()
+        if self.irq_desc_tree is None:
+            if not self.quiet:
+                err("Not found irq_desc_tree")
+            return False
+
+        for i in range(0, 10):
+            # xa_head
+            x = read_int_from_memory(self.irq_desc_tree + current_arch.ptrsize * i)
+            if not x:
+                continue
+            if not is_valid_addr(x):
+                continue
+            if x & 0x2 != 0x2: # xa_head is NULL or tagged address
+                continue
+            self.offset_xa_head = current_arch.ptrsize * i
+            if not self.quiet:
+                info("offsetof(xarray, xa_head): {:#x}".format(self.offset_xa_head))
+            break
+        else:
+            if not self.quiet:
+                err("Not found xa_head. (maybe uninitialized?)")
+            return False
+
+        # xa_node
+        """
+        struct xa_node {
+            unsigned char shift;
+            unsigned char offset;
+            unsigned char count;
+            unsigned char nr_values;
+            struct xa_node __rcu *parent;
+            struct xarray *array;
+            union {
+                struct list_head private_list;
+                struct rcu_head rcu_head;
+            };
+            void __rcu *slots[XA_CHUNK_SIZE];
+            union {
+                unsigned long tags[XA_MAX_MARKS][XA_MARK_LONGS];
+                unsigned long marks[XA_MAX_MARKS][XA_MARK_LONGS];
+            };
+        };
+        """
+        # xa_node->{shift,count,slots}
+        self.offset_shift = 0
+        self.offset_count = 2
+        self.offset_slots = current_arch.ptrsize * 5
+
+        # irq_desc->{irq,action}
+        """
+        struct irq_desc {
+            struct irq_common_data {
+                unsigned int __private state_use_accessors;
+            #ifdef CONFIG_NUMA
+                unsigned int node;
+            #endif
+                void *handler_data;
+                struct msi_desc *msi_desc;
+                cpumask_var_t affinity;
+            #ifdef CONFIG_GENERIC_IRQ_EFFECTIVE_AFF_MASK
+                cpumask_var_t effective_affinity;
+            #endif
+            #ifdef CONFIG_GENERIC_IRQ_IPI
+                unsigned int ipi_offset;
+            #endif
+            } irq_common_data;
+            struct irq_data {
+                u32 mask;
+                unsigned int irq;
+                unsigned long hwirq;
+                struct irq_common_data *common;
+                struct irq_chip	 *chip;
+                struct irq_domain *domain;
+            #ifdef	CONFIG_IRQ_DOMAIN_HIERARCHY
+                struct irq_data *parent_data;
+            #endif
+                void *chip_data;
+            } irq_data;
+            unsigned int __percpu *kstat_irqs;
+            irq_flow_handler_t handle_irq;
+            struct irqaction *action;
+            unsigned int status_use_accessors;
+            unsigned int core_internal_state__do_not_mess_with_it;
+            ...
+        }
+        """
+
+        descs = self.parse_xarray(self.irq_desc_tree, root=True)
+        if not descs:
+            if not self.quiet:
+                err("Not found any valid irq_desc")
+            return False
+        desc = descs[0]
+
+        for i in range(100):
+            x = read_int_from_memory(desc + current_arch.ptrsize * i)
+            if x == desc:
+                if is_32bit():
+                    self.offset_irq = current_arch.ptrsize * i - 8
+                else:
+                    self.offset_irq = current_arch.ptrsize * i - 12 # for padding
+                if not self.quiet:
+                    info("offsetof(irq_desc, irq): {:#x}".format(self.offset_irq))
+                break
+        else:
+            if not self.quiet:
+                err("Not found irq_desc->irq")
+            return False
+
+        ofs_irq = align_address_to_size(self.offset_irq, current_arch.ptrsize)
+        for i in range(100):
+            x = read_int_from_memory(desc + ofs_irq + current_arch.ptrsize * i)
+            y = read_int_from_memory(desc + ofs_irq + current_arch.ptrsize * (i + 1))
+            if not is_valid_addr(x) and not is_valid_addr(y):
+                self.offset_action = ofs_irq + current_arch.ptrsize * i - current_arch.ptrsize
+                if not self.quiet:
+                    info("offsetof(irq_desc, action): {:#x}".format(self.offset_action))
+                break
+        else:
+            if not self.quiet:
+                err("Not found irq_desc->action")
+            return False
+
+        # irqaction->{handler,name}
+        """
+        struct irqaction {
+            irq_handler_t handler;
+            void *dev_id;
+            void __percpu *percpu_dev_id;
+            struct irqaction *next;
+            irq_handler_t thread_fn;
+            struct task_struct *thread;
+            struct irqaction *secondary;
+            unsigned int irq;
+            unsigned int flags;
+            unsigned long thread_flags;
+            unsigned long thread_mask;
+            const char *name;
+            struct proc_dir_entry *dir;
+        } ____cacheline_internodealigned_in_smp;
+        """
+        self.offset_handler = 0
+        if not self.quiet:
+            info("offsetof(irqaction, handler): {:#x}".format(self.offset_handler))
+
+        action = read_int_from_memory(desc + self.offset_action)
+        for i in range(100):
+            x = read_int_from_memory(action + current_arch.ptrsize * i)
+            if not is_valid_addr(x):
+                continue
+            s = read_cstring_from_memory(x, ascii_only=True)
+            if s and len(s) >= 4:
+                self.offset_name = current_arch.ptrsize * i
+                if not self.quiet:
+                    info("offsetof(irqaction, name): {:#x}".format(self.offset_name))
+                break
+        else:
+            if not self.quiet:
+                err("Not found irqaction->name")
+            return False
+
+        return True
+
+    def dump_irq(self):
+        descs = self.parse_xarray(self.irq_desc_tree, root=True)
+
+        entries = {}
+        for desc in descs:
+            irq = u32(read_memory(desc + self.offset_irq, 4))
+            action = read_int_from_memory(desc + self.offset_action)
+            if action == 0:
+                entries[irq] = [desc, action, None, None]
+            else:
+                handler = read_int_from_memory(action + self.offset_handler)
+                name_ptr = read_int_from_memory(action + self.offset_name)
+                name = read_cstring_from_memory(name_ptr, ascii_only=True)
+                entries[irq] = [desc, action, handler, name]
+
+        fmt = "{:3s} {:18s} {:18s} {:20s} {:18s}"
+        legend = ["irq", "irq_desc", "action", "name", "handler"]
+        self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
+        for i in range(256):
+            if i in entries:
+                desc, action, handler, name = entries[i]
+                if action:
+                    symbol = get_symbol_string(handler, nosymbol_string=" <NO_SYMBOL>")
+                    self.out.append("{:3d} {:#018x} {:#018x} {:20s} {:#018x}{:s}".format(i, desc, action, name, handler, symbol))
+                else:
+                    self.out.append("{:3d} {:#018x} {:18s} {:20s} {:18s}".format(i, desc, "unused", "-", "-"))
+            else:
+                self.out.append("{:3d} {:18s} {:18s} {:20s} {:18s}".format(i, "unused", "unused", "-", "-"))
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        self.quiet = args.quiet
+        if not self.quiet:
+            info("Wait for memory scan")
+
+        kversion = KernelVersionCommand.kernel_version()
+        if kversion < "4.20":
+            # xarray is introduced from 4.20
+            if not self.quiet:
+                err("Unsupported v4.19 or before")
+            return
+
+        ret = self.initialize()
+        if ret is False:
+            return
+
+        self.out = []
+        self.dump_irq()
         gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
