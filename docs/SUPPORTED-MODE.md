@@ -12,6 +12,7 @@
     * It works with any version qemu-system, but latest version is recommended.
     * It is preferable to run qemu-system on `localhost`.
         * If you run qemu-system on remotely (another host), you can not handle SecureWorld's memory.
+    * See [docs/FAQ.md](https://github.com/bata24/gef/blob/dev/docs/FAQ.md) for more informations.
 
 ## Qemu-user cooperation
 * Usage
