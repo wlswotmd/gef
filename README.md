@@ -69,18 +69,18 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 - It may work under ubuntu 20.04, 22.04, 23.04, debian 10.x or after.
 
 ## Supported mode
-* Normal debugging (start under gdb)
+* Normal debugging (start under `gdb`)
 * Attach to the process
 * Attach to the process in another pid namespace
-* Connect to gdbserver
-* Connect to the gdb stub of qemu-system (via localhost:1234)
-* Connect to the gdb stub of qemu-user (via localhost:1234)
-* Connect to the gdb stub of Intel Pin (via localhost:1234)
-* Connect to the gdb stub of Intel SDE (via localhost:1234)
-* Connect to the gdb stub of qiling framework (via localhost:1234)
-* Connect to the gdb stub of KGDB (over serial. currently, only gdb 12.x~ is supported)
-* Connect to the gdb stub of VMWare (via ipaddr:port)
-* rr debugging (start under rr replay)
+* Connect to `gdbserver`
+* Connect to the gdb stub of `qemu-system` (via localhost:1234)
+* Connect to the gdb stub of `qemu-user` (via localhost:1234)
+* Connect to the gdb stub of `Intel Pin` (via localhost:1234)
+* Connect to the gdb stub of `Intel SDE` (via localhost:1234)
+* Connect to the gdb stub of `qiling framework` (via localhost:1234)
+* Connect to the gdb stub of `KGDB` (over serial. currently, only gdb 12.x~ is supported)
+* Connect to the gdb stub of `VMWare` (via ipaddr:port)
+* `rr` debugging (start under `rr replay`)
 
 See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORTED-MODE.md) for detail.
 
@@ -106,7 +106,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-el123.png)
         * Secure memory scanning is supported, but you have to break in the secure world.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-secure.png)
-        * Pseudo page tables without detailed flags and permission can be output even in the normal world.
+        * Pseudo page tables without detailed flags and permission can be output even in the normal world (when uses OP-TEE).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-secure-pseudo.png)
     * ARM (only Cortex-A, LPAE/Non-LPAE, PL0/PL1)
         * ARM v7 base. PL2 is NOT supported.
@@ -379,9 +379,10 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/checksec.png)
 * `got`: is improved.
     * It displays not only GOT address but also PLT address.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/got.png)
     * It scans `.plt.sec` section if Intel CET is enabled.
     * It can also display the GOT of the library.
-        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/got.png)
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/got-libc.png)
     * It can also display `type`, `offset`, `reloc_arg`, `section` and `permission`.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/got-v.png)
 * `canary`: is improved.
