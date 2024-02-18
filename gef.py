@@ -249,7 +249,7 @@ def cperf(f):
         print(s.getvalue())
         return ret
 
-    cperf # avoid to be detected as unsued # noqa: B018
+    cperf # avoid to be detected as unused # noqa: B018
     return wrapper
 
 
@@ -1847,7 +1847,7 @@ class Instruction:
         address = Color.colorify(hex(self.address), color_address)
 
         # format opcode
-        if format_spec in ["o", "O"]: # no specifed length
+        if format_spec in ["o", "O"]: # no specified length
             opcodes_len = len(self.opcodes)
         else:
             opcodes_len = int(format_spec[:-1])
@@ -2443,7 +2443,7 @@ class MallocPar:
 
 @cache_until_next
 def search_for_mp_():
-    """saerch mp_ from main_arena, then return addr."""
+    """search mp_ from main_arena, then return addr."""
     main_arena_ptr = search_for_main_arena_from_tls()
     if main_arena_ptr is None:
         return None
@@ -2653,7 +2653,7 @@ class MallocStateStruct:
 
 @cache_until_next
 def search_for_main_arena_from_tls():
-    """saerch main arena from TLS, then return &addr."""
+    """search main arena from TLS, then return &addr."""
 
     """
     [x64]
@@ -4164,7 +4164,7 @@ def capstone_disassemble(location, nb_insn, **kwargs):
         location = gdb_get_nth_previous_instruction_address(location, nb_prev)
         nb_insn += nb_prev
 
-    # split raeding by page_size
+    # split reading by page_size
     read_addr = location
     read_size = gef_getpagesize() - (location & gef_getpagesize_mask_low())
 
@@ -4763,10 +4763,10 @@ class Architecture:
     # max(len("$zero/$x0"), ...)
     def get_aliased_registers_name_max(self):
         if self.__aliased_registers_max_len is not None:
-            return self.__aliased_regsiters_max_len
+            return self.__aliased_registers_max_len
         maxlen = max([len(v) for k, v in self.get_aliased_registers().items()])
-        self.__aliased_regsiters_max_len = maxlen
-        return self.__aliased_regsiters_max_len
+        self.__aliased_registers_max_len = maxlen
+        return self.__aliased_registers_max_len
 
 
 class RISCV(Architecture):
@@ -10437,7 +10437,7 @@ def only_if_in_kernel_or_kpti_disabled(f):
 
 
 def only_if_kvm_disabled(f):
-    """Decorator wrapper to check if there is not -enavle-kvm option."""
+    """Decorator wrapper to check if there is not -enable-kvm option."""
 
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
@@ -10502,7 +10502,7 @@ def exclude_specific_gdb_mode(mode=()):
 
 
 def only_if_specific_arch(arch=()):
-    """Decorator wrapper to check if the archtecture is specific."""
+    """Decorator wrapper to check if the architecture is specific."""
 
     def wrapper(f):
         @functools.wraps(f)
@@ -10550,7 +10550,7 @@ def only_if_specific_arch(arch=()):
 
 
 def exclude_specific_arch(arch=()):
-    """Decorator wrapper to check if the archtecture is specific."""
+    """Decorator wrapper to check if the architecture is specific."""
 
     def wrapper(f):
         @functools.wraps(f)
@@ -11117,7 +11117,7 @@ def get_explored_regions():
             if addr < 0 or addr > upper_bound:
                 return None
             try:
-                if read_memory(addr, 4) == b"\x7FELF":
+                if read_memory(addr, 4) == b"\x7fELF":
                     return Elf(addr)
             except gdb.MemoryError:
                 return None
@@ -12939,7 +12939,7 @@ class GefThemeCommand(GenericCommand):
         self.add_setting("heap_chunk_size", "bold magenta", "Color of the size used heap")
         self.add_setting("heap_chunk_flag_prev_inuse", "bold red", "Color of the prev_in_use flag used heap")
         self.add_setting("heap_chunk_flag_non_main_arena", "bold yellow", "Color of the non_main_arena flag used heap")
-        self.add_setting("heap_chunk_flag_is_mmapped", "bold blue", "Color of the is_mmaped flag used heap")
+        self.add_setting("heap_chunk_flag_is_mmapped", "bold blue", "Color of the is_mmapped flag used heap")
         self.add_setting("heap_freelist_hint", "bold blue", "Color of the freelist hint used heap")
         self.add_setting("heap_page_address", "bold", "Color of the page address used heap")
         self.add_setting("heap_management_address", "bright_blue", "Color of the management address used heap")
@@ -13497,7 +13497,7 @@ class SiCommand(GenericCommand):
 
 @register_command
 class ContCommand(GenericCommand):
-    """`c` wraper to solve the problem that Ctrl+C cannot interrupt when using gdb stub of qemu-user or Intel Pin."""
+    """`c` wrapper to solve the problem that Ctrl+C cannot interrupt when using gdb stub of qemu-user or Intel Pin."""
     _cmdline_ = "c"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
@@ -13563,7 +13563,7 @@ class ContCommand(GenericCommand):
 
 @register_command
 class UpCommand(GenericCommand):
-    """`up` wraper."""
+    """`up` wrapper."""
     _cmdline_ = "up"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
@@ -13578,7 +13578,7 @@ class UpCommand(GenericCommand):
             current_frame = gdb.selected_frame()
         except gdb.error:
             # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
-            err("Faild to get frame information.")
+            err("Failed to get frame information.")
             return
 
         # check if target frame is available
@@ -13612,7 +13612,7 @@ class UpCommand(GenericCommand):
 
 @register_command
 class DownCommand(GenericCommand):
-    """`down` wraper."""
+    """`down` wrapper."""
     _cmdline_ = "down"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
@@ -13627,7 +13627,7 @@ class DownCommand(GenericCommand):
             current_frame = gdb.selected_frame()
         except gdb.error:
             # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
-            err("Faild to get frame information.")
+            err("Failed to get frame information.")
             return
 
         # check if target frame is available
@@ -13780,7 +13780,7 @@ class PrintFormatCommand(GenericCommand):
         """Default value for print-format command."""
         self.dont_repeat()
 
-        bitformat = {8: "<B", 16: "<H", 32: "<I", 64: "<Q"}
+        bit_format = {8: "<B", 16: "<H", 32: "<I", 64: "<Q"}
         c_type = {8: "char", 16: "short", 32: "int", 64: "long long"}
         asm_type = {8: "db", 16: "dw", 32: "dd", 64: "dq"}
 
@@ -13791,7 +13791,7 @@ class PrintFormatCommand(GenericCommand):
         unit_size = args.bitlen // 8
         start_addr = args.location
         end_addr = start_addr + args.length * unit_size
-        bf = bitformat[args.bitlen]
+        bf = bit_format[args.bitlen]
 
         # extract memory
         data = []
@@ -15749,7 +15749,7 @@ class SearchPatternCommand(GenericCommand):
                 info("Searching '{:s}' in whole memory".format(Color.yellowify(pattern_utf16)))
                 self.search_pattern(pattern_utf16)
 
-        # saerch from range
+        # search from range
         elif args.size or re.match(r"(0x)?[0-9a-fA-F]+-(0x)?[0-9a-fA-F]+", args.section):
             if args.size:
                 try:
@@ -25041,7 +25041,7 @@ class ContextCommand(GenericCommand):
             current_frame = gdb.newest_frame()
         except gdb.error:
             # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
-            err("Faild to get frame information.")
+            err("Failed to get frame information.")
             return
 
         frames = [current_frame]
@@ -80851,7 +80851,7 @@ class StackFrameCommand(GenericCommand):
             frame = gdb.selected_frame()
         except gdb.error:
             # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
-            err("Faild to get frame information")
+            err("Failed to get frame information")
             return
 
         if not frame.older():
