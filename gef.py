@@ -64995,18 +64995,30 @@ class KernelIrqCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     _syntax_ = parser.format_help()
 
+    _note_ = "Simplified irq structure:\n"
+    _note_ += "\n"
+    _note_ += "+-irq_desc_tree(~6.5)-+   +--->+-xa_node---------+   +--->+-irq_desc----+\n"
+    _note_ += "| xa_lock             |   |    | shift           |   |    | ...         |\n"
+    _note_ += "| xa_flags            |   |    | ...             |   |    | irq_data    |\n"
+    _note_ += "| xa_head             |---+    | count           |   |    |   ...       |\n"
+    _note_ += "+---------------------+        | ...             |   |    |   irq       |\n"
+    _note_ += "                               | slots[0]        |---+    |   ...       |\n"
+    _note_ += "                               | slots[1]        |   ^    | ...         |\n"
+    _note_ += "                               | ...             |   |    | action      |\n"
+    _note_ += "                               | slots[15 or 63] |   |    |   handler   |\n"
+    _note_ += "                               | ...             |   |    |   ...       |\n"
+    _note_ += "                               +-----------------+   |    |   name      |\n"
+    _note_ += "                                                     |    |   ...       |\n"
+    _note_ += "+-sparce_irq(6.5~)-+   +-->+-maple_node------+       |    | ...         |\n"
+    _note_ += "| ...              |   |   | ...             |       |    +-------------+\n"
+    _note_ += "| ma_root          |---+   | mr64|ma64|alloc |       |\n"
+    _note_ += "| ...              |       |   ...           |       |\n"
+    _note_ += "+------------------+       |   slot[]        |-------+\n"
+    _note_ += "                           +-----------------+"
+
     def __init__(self, *args, **kwargs):
         super().__init__()
         self.initialized = False
-        self.irq_desc_tree = None
-        self.offset_xa_head = None
-        self.offset_shift = None
-        self.offset_count = None
-        self.offset_slots = None
-        self.offset_irq = None
-        self.offset_action = None
-        self.offset_handler = None
-        self.offset_name = None
         return
 
     def parse_xarray(self, ptr, root=False):
@@ -65253,7 +65265,7 @@ class KernelIrqCommand(GenericCommand):
             unsigned int status_use_accessors;
             unsigned int core_internal_state__do_not_mess_with_it;
             ...
-        }
+        };
         """
 
         if is_x86():
@@ -65272,11 +65284,11 @@ class KernelIrqCommand(GenericCommand):
                 else:
                     self.offset_irq = current_arch.ptrsize * i - 12 # for padding
                 if not self.quiet:
-                    info("offsetof(irq_desc, irq): {:#x}".format(self.offset_irq))
+                    info("offsetof(irq_desc, irq_data.irq): {:#x}".format(self.offset_irq))
                 break
         else:
             if not self.quiet:
-                err("Not found irq_desc->irq")
+                err("Not found irq_desc->irq_data.irq")
             return False
 
         ofs_irq = align_address_to_size(self.offset_irq + 4 * 2, current_arch.ptrsize)
@@ -65397,7 +65409,8 @@ class KernelIrqCommand(GenericCommand):
 
         self.out = []
         self.dump_irq()
-        gef_print("\n".join(self.out), less=not args.no_pager)
+        if self.out:
+            gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
