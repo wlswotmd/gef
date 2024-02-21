@@ -155,6 +155,7 @@ Currently, at least following commands do not work.
 * `kpcidev`
 * `knamespaces`
 * `kipcs`
+* `kfilesystems`
 
 ## `vmmap` command does not recognize option.
 Try `pagewalk` command.

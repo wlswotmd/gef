@@ -54985,7 +54985,9 @@ class KernelFileSystemsCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
-    _note_ = "Simplified file_systems structure:\n"
+    _note_ = "This command needs CONFIG_RANDSTRUCT=n.\n"
+    _note_ += "\n"
+    _note_ += "Simplified file_systems structure:\n"
     _note_ += "\n"
     _note_ += "                  +-->+-file_system_type-+  +-->+-file_system_type-+  +-->...\n"
     _note_ += "                  |   | name             |  |   | name             |  |\n"
@@ -54997,12 +54999,15 @@ class KernelFileSystemsCommand(GenericCommand):
     _note_ += "                                            |\n"
     _note_ += "   +----------------------------------------+\n"
     _note_ += "   |\n"
-    _note_ += "   |   +-super_block-+   +-super_block-+\n"
-    _note_ += "   |   | s_list      |   | s_list      |\n"
-    _note_ += "   |   | ...         |   | ...         |\n"
-    _note_ += "   +-->| s_instances |-->| s_instances |-->...\n"
-    _note_ += "       | ...         |   | ...         |\n"
-    _note_ += "       +-------------+   +-------------+"
+    _note_ += "   |   +-super_block-+   +-super_block-+             +-mount--------+\n"
+    _note_ += "   |   | s_list      |   | s_list      |             | ...          |\n"
+    _note_ += "   |   | ...         |   | ...         |             | mnt          |\n"
+    _note_ += "   |   | s_mounts    |   | s_mounts    |---------+   |   mnt_root   |\n"
+    _note_ += "   |   | ...         |   | ...         |         |   |   ...        |\n"
+    _note_ += "   +-->| s_instances |-->| s_instances |-->...   |   | ...          |\n"
+    _note_ += "       | ...         |   | ...         |         +-->| mnt_instance |\n"
+    _note_ += "       +-------------+   +-------------+             | ...          |\n"
+    _note_ += "                                                     +--------------+"
 
     def __init__(self):
         super().__init__()
@@ -55132,7 +55137,7 @@ class KernelFileSystemsCommand(GenericCommand):
             ...
         } __randomize_layout;
         """
-        # super_block->s_instances
+        # super_block->{s_instances,s_mounts}
         current = read_int_from_memory(self.file_systems)
         while True:
             if current == 0:
@@ -55166,14 +55171,16 @@ class KernelFileSystemsCommand(GenericCommand):
             # check s_blocksize
             c = read_int_from_memory(fs_supers - offset_base + current_arch.ptrsize * 2 + 4 * 2)
             if c == 0x1000:
-                self.offset_s_instance = offset_base
+                self.offset_s_instances = offset_base
+                self.offset_s_mounts = self.offset_s_instances - current_arch.ptrsize * 5
                 break
         else:
             if not self.quiet:
                 err("Not found super_block->s_instances")
             return False
         if not self.quiet:
-            info("offsetof(super_block, s_instance): {:#x}".format(self.offset_s_instance))
+            info("offsetof(super_block, s_instances): {:#x}".format(self.offset_s_instances))
+            info("offsetof(super_block, s_mounts): {:#x}".format(self.offset_s_mounts))
 
         # super_block->s_dev
         self.offset_s_dev = current_arch.ptrsize * 2
@@ -55189,10 +55196,154 @@ class KernelFileSystemsCommand(GenericCommand):
         name = KernelBlockDevicesCommand.get_bdev_name(major, minor)
         return major, minor, name
 
+    def get_offset_d_iname(self, dentry):
+        """
+        struct dentry {
+            unsigned int d_flags;
+            seqcount_spinlock_t d_seq;
+            struct hlist_bl_node d_hash;
+            struct dentry *d_parent;
+            struct qstr {
+                union {
+                    struct {
+                        HASH_LEN_DECLARE;
+                    };
+                    u64 hash_len;
+                };
+                const unsigned char *name; // this points d_iname
+            } d_name;
+            struct inode *d_inode;
+            unsigned char d_iname[DNAME_INLINE_LEN];
+            ...
+        };
+        """
+        current = dentry
+        while True:
+            name = read_int_from_memory(current)
+            if 0 < name - current <= 0x20:
+                offset_d_iname = name - dentry
+                break
+            current += current_arch.ptrsize
+        return offset_d_iname
+
+    def get_offset_d_parent(self, dentry, offset_d_iname):
+        offset_dname_name = offset_d_iname - current_arch.ptrsize * 2
+        if read_int_from_memory(dentry + offset_dname_name) == 0: # skip if padding
+            offset_dname_name -= current_arch.ptrsize
+        offset_d_parent = offset_dname_name - 0x8 - current_arch.ptrsize
+        if read_int_from_memory(dentry + offset_d_parent) == 0: # skip if padding
+            offset_d_parent -= current_arch.ptrsize
+        return offset_d_parent
+
+    def get_mount_point(self, mnt_instance):
+        """
+        struct mount {
+            struct hlist_node mnt_hash;
+            struct mount *mnt_parent;
+            struct dentry *mnt_mountpoint;
+            struct vfsmount {
+                struct dentry *mnt_root;
+                struct super_block *mnt_sb;
+                int mnt_flags;
+            } mnt;
+        union {
+            struct rcu_head mnt_rcu;
+            struct llist_node mnt_llist;
+        };
+        #ifdef CONFIG_SMP
+            struct mnt_pcp __percpu *mnt_pcp;
+        #else
+            int mnt_count;
+            int mnt_writers;
+        #endif
+            struct list_head mnt_mounts;
+            struct list_head mnt_child;
+            struct list_head mnt_instance;
+            const char *mnt_devname;
+            ...
+        } __randomize_layout;
+        """
+
+        def IS_ROOT(dentry):
+            return dentry == read_int_from_memory(dentry + offset_d_parent)
+
+        offset_mount_mnt_parent = current_arch.ptrsize * 2
+        offset_mount_mnt_mountpoint = current_arch.ptrsize * 3
+        offset_mount_mnt = current_arch.ptrsize * 4
+        offset_mount_mnt_instance = current_arch.ptrsize * 14
+        offset_vfsmount_mnt_root = 0
+
+        mnt = mnt_instance - offset_mount_mnt_instance
+        vfsmnt = mnt + offset_mount_mnt
+        dentry = read_int_from_memory(vfsmnt + offset_vfsmount_mnt_root)
+
+        if not is_valid_addr(dentry):
+            return None
+        offset_d_iname = self.get_offset_d_iname(dentry)
+        offset_d_parent = self.get_offset_d_parent(dentry, offset_d_iname)
+
+        filepath = []
+        switched = False
+        while True:
+            if not is_valid_addr(vfsmnt):
+                return None
+            if not is_valid_addr(dentry):
+                return None
+
+            mnt_root = read_int_from_memory(vfsmnt + offset_vfsmount_mnt_root)
+            if dentry == mnt_root or IS_ROOT(dentry):
+                parent = read_int_from_memory(mnt + offset_mount_mnt_parent)
+
+                # Global root?
+                if mnt != parent:
+                    dentry = read_int_from_memory(mnt + offset_mount_mnt_mountpoint)
+                    mnt = parent
+                    vfsmnt = mnt + offset_mount_mnt
+                    switched = True
+                    continue
+
+                name = read_cstring_from_memory(dentry + offset_d_iname)
+                if name is None:
+                    name_ptr = read_int_from_memory(dentry + offset_d_iname - current_arch.ptrsize * 2)
+                    name = read_cstring_from_memory(name_ptr)
+                filepath.append(name)
+                break
+
+            name = read_cstring_from_memory(dentry + offset_d_iname)
+            if name is None:
+                name_ptr = read_int_from_memory(dentry + offset_d_iname - current_arch.ptrsize * 2)
+                name = read_cstring_from_memory(name_ptr)
+            filepath.append(name)
+
+            parent = read_int_from_memory(dentry + offset_d_parent)
+            dentry = parent
+
+        filepath = os.path.join(*filepath[::-1])
+
+        # I don't know why but it works
+        if switched is False and filepath == "/":
+            next_mnt_instance = read_int_from_memory(mnt_instance)
+            if next_mnt_instance:
+                f = self.get_mount_point(next_mnt_instance)
+                if f:
+                    return f
+            return "-"
+
+        return filepath
+
+    def get_dev_name(self, mnt_instance):
+        offset_mount_mnt_instance = current_arch.ptrsize * 14
+        offset_mount_mnt_devname = current_arch.ptrsize * 16
+
+        mnt = mnt_instance - offset_mount_mnt_instance
+        devname_p = read_int_from_memory(mnt + offset_mount_mnt_devname)
+        devname = read_cstring_from_memory(devname_p)
+        return devname
+
     def parse_file_systems(self):
         if not self.quiet:
-            fmt = "{:18s} {:12s} {:18s} {:18s} {:6s} {:6s}"
-            legend = ["file_system_type", "fsname", "super_block", "devname (guessed)", "major", "minor"]
+            fmt = "{:18s} {:12s} {:18s} {:20s} {:6s} {:6s} {:s}"
+            legend = ["file_system_type", "fsname", "super_block", "devname", "major", "minor", "mount point"]
             self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
         fst = read_int_from_memory(self.file_systems)
@@ -55204,16 +55355,33 @@ class KernelFileSystemsCommand(GenericCommand):
             # parse suber_block
             fs_supers = read_int_from_memory(fst + self.offset_fs_supers)
             if fs_supers == 0:
-                self.out.append("{:#018x} {:12s} -".format(fst, name))
+                self.out.append("{:#018x} {:12s} {:18s} {:20s} {:6s} {:6s} {:s}".format(
+                    fst, name, "-", "-", "-", "-", "-",
+                ))
+
             else:
                 s_instances = fs_supers
                 while s_instances:
-                    sb = s_instances - self.offset_s_instance
+                    super_block = s_instances - self.offset_s_instances
+
                     # dev
-                    dev = u32(read_memory(sb + self.offset_s_dev, 4))
+                    dev = u32(read_memory(super_block + self.offset_s_dev, 4))
                     major, minor, devname = self.get_dev_num(dev)
+
+                    # mount points
+                    s_mounts = read_int_from_memory(super_block + self.offset_s_mounts)
+                    mount_point = self.get_mount_point(s_mounts)
+
+                    # devname
+                    if devname == "???":
+                        devname = self.get_dev_name(s_mounts)
+                    else:
+                        devname += " (guessed)"
+
                     # dump
-                    self.out.append("{:#018x} {:12s} {:#018x} {:18s} {:<6d} {:<6d}".format(fst, name, sb, devname, major, minor))
+                    self.out.append("{:#018x} {:12s} {:#018x} {:20s} {:<6d} {:<6d} {:s}".format(
+                        fst, name, super_block, devname, major, minor, mount_point,
+                    ))
                     # go to next
                     s_instances = read_int_from_memory(s_instances)
 
