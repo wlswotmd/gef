@@ -72387,6 +72387,7 @@ class PagewalkCommand(GenericCommand):
     """The base command to get physical memory info via qemu-monitor."""
     _cmdline_ = "pagewalk"
     _category_ = "08-a. Qemu-system Cooperation - General"
+    _aliases_ = ["pw", "ptdump", "pt"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     subparsers = parser.add_subparsers(title="command")
@@ -73309,6 +73310,7 @@ class PagewalkArmCommand(PagewalkCommand):
     """Dump pagetable for ARM (only Cortex-A) using qemu-monitor. PL2 pagewalk is unsupported."""
     _cmdline_ = "pagewalk arm"
     _category_ = "08-a. Qemu-system Cooperation - General"
+    _aliases_ = ["pagewalk arm32"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group()
@@ -74331,6 +74333,7 @@ class PagewalkArm64Command(PagewalkCommand):
     """Dump pagetable for ARM64 using qemu-monitor (for ARMv8.7)."""
     _cmdline_ = "pagewalk arm64"
     _category_ = "08-a. Qemu-system Cooperation - General"
+    _aliases_ = []
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("target_el", metavar="TARGET_EL", nargs="?", type=int, help="target Exception Level. (default: current EL)")
