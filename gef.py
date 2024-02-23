@@ -10009,16 +10009,76 @@ def read_memory(addr, length):
     return gdb.selected_inferior().read_memory(addr, length).tobytes()
 
 
+@cache_this_session
+def get_gic_addrs():
+    """Return physical addresses of ARM GIC(General Interrupt Controller)."""
+    if not is_qemu_system():
+        return []
+
+    if not is_arm32() and not is_arm64():
+        return []
+
+    try:
+        res = gdb.execute("monitor info mtree -f", to_string=True)
+    except gdb.error:
+        return []
+
+    gic_list = []
+    for line in res.splitlines():
+        # gef> monitor info mtree -f # these are physical addresses
+        #   0000000008000000-0000000008000fff (prio 0, i/o): gic_dist
+        #   0000000008010000-0000000008011fff (prio 0, i/o): gic_cpu
+        if not line.startswith("  "):
+            continue
+        m = re.search(r"  ([0-9a-f]+)-([0-9a-f]+).*i/o\): gic_(dist|cpu)", line)
+        if not m:
+            continue
+        paddr = int(m.group(1), 16)
+        pend = int(m.group(2), 16)
+        # fix size
+        size = pend - paddr
+        if (size & 0xfff) == 0xfff:
+            size += 1
+        gic_list.append([paddr, paddr + size])
+    return gic_list
+
+
+@cache_until_next
+def check_gic_address(vaddr):
+    gic_addrs = get_gic_addrs()
+    if not gic_addrs:
+        return False
+
+    try:
+        ret = gdb.execute("monitor gva2gpa {:#x}".format(vaddr), to_string=True)
+    except gdb.error:
+        return False
+    r = re.search(r"gpa: (0x\S+)", ret)
+    if not r:
+        return False
+    paddr = int(r.group(1), 16)
+
+    for s, e in gic_addrs:
+        if s <= paddr < e:
+            return True
+    return False
+
+
 @cache_until_next
 def is_valid_addr(addr):
     if addr < 0:
         return False
+
     if is_64bit():
         if (1 << 64) - 1 < addr:
             return False
     elif is_32bit():
         if (1 << 32) - 1 < addr:
             return False
+
+    if check_gic_address(addr):
+        return False
+
     try:
         gdb.selected_inferior().read_memory(addr, 1)
         return True
@@ -15651,16 +15711,15 @@ class SearchPatternCommand(GenericCommand):
                 continue
             lines = line.split()
             addr_start, addr_end = [int(x, 16) for x in lines[0].split("-")]
+            # non valid addr
+            if not is_valid_addr(addr_start):
+                continue
             if is_x86():
                 perm = Permission.from_process_maps(lines[5][1:].lower())
             elif is_arm32():
                 perm = line.split("/")[-1][:3]
                 perm = Permission.from_process_maps(perm.lower())
             elif is_arm64():
-                if 0xffff000008010000 <= addr_start < 0xffff000008020000 : # qemu process will be die if touch
-                    continue
-                if 0xffff000008030000 <= addr_start < 0xffff000008040000 : # qemu process will be die if touch
-                    continue
                 perm = line.split("/")[-1][:3]
                 perm = Permission.from_process_maps(perm.lower())
             yield Section(page_start=addr_start, page_end=addr_end, permission=perm)
