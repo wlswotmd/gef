@@ -63136,7 +63136,7 @@ class BuddyDumpCommand(GenericCommand):
             return int(r.group(1), 16)
         return None
 
-    def dump_free_list(self, free_list, mtype, size):
+    def dump_free_list(self, free_list, mtype, size, is_highmem):
         heap_page_color = get_gef_setting("theme.heap_page_address")
         chunk_size_color = get_gef_setting("theme.heap_chunk_size")
         freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
@@ -63157,18 +63157,19 @@ class BuddyDumpCommand(GenericCommand):
             page_str = Color.colorify("{:#0{:d}x}".format(page, align), freed_address_color)
 
             # address info
-            virt = self.page2virt_wrapper(page)
-            phys = None
-            if virt:
-                phys = Virt2PhysCommand.v2p(virt, self.maps)
-
             virt_str = "???"
             phys_str = "???"
-            if virt is not None:
-                virt_str = "{:#0{:d}x}-{:#0{:d}x}".format(virt, align, virt + size, align)
-                virt_str = Color.colorify(virt_str, heap_page_color)
-            if phys is not None:
-                phys_str = "{:#0{:d}x}-{:#0{:d}x}".format(phys, align, phys + size, align)
+
+            if not is_highmem:
+                virt = self.page2virt_wrapper(page)
+                phys = None
+                if virt:
+                    phys = Virt2PhysCommand.v2p(virt, self.maps)
+                if virt is not None:
+                    virt_str = "{:#0{:d}x}-{:#0{:d}x}".format(virt, align, virt + size, align)
+                    virt_str = Color.colorify(virt_str, heap_page_color)
+                if phys is not None:
+                    phys_str = "{:#0{:d}x}-{:#0{:d}x}".format(phys, align, phys + size, align)
 
             # create msg
             msg = "    page:{:s}  size:{:s}  virt:{:s}  phys:{:s}".format(page_str, size_str, virt_str, phys_str)
@@ -63183,7 +63184,7 @@ class BuddyDumpCommand(GenericCommand):
             current = read_int_from_memory(current)
         return
 
-    def dump_free_area(self, free_area, order):
+    def dump_free_area(self, free_area, order, is_highmem):
         chunk_size_color = get_gef_setting("theme.heap_chunk_size")
 
         size = 0x1000 * (2 ** order)
@@ -63195,10 +63196,10 @@ class BuddyDumpCommand(GenericCommand):
             if self.mtype_filter and mtype not in self.mtype_filter:
                 continue
             free_list = free_area + sizeof_list_head * mtype
-            self.dump_free_list(free_list, mtype, size)
+            self.dump_free_list(free_list, mtype, size, is_highmem)
         return
 
-    def dump_zone(self, zone):
+    def dump_zone(self, zone, is_highmem=False):
         if self.quiet:
             tqdm = lambda x, leave: x # noqa: F841
         else:
@@ -63212,7 +63213,7 @@ class BuddyDumpCommand(GenericCommand):
             if self.order_filter and order not in self.order_filter:
                 continue
             free_area_i = free_area_array + self.sizeof_free_area * order
-            self.dump_free_area(free_area_i, order)
+            self.dump_free_area(free_area_i, order, is_highmem)
         return
 
     def dump_node(self, node):
@@ -63223,7 +63224,8 @@ class BuddyDumpCommand(GenericCommand):
             if self.zone_filter and name not in self.zone_filter:
                 continue
             self.add_msg(titlify("zone[{:d}] @ {:#x} ({:s})".format(i, zone, name)))
-            self.dump_zone(zone)
+            is_highmem = name == "HighMem"
+            self.dump_zone(zone, is_highmem=is_highmem)
         return
 
     @parse_args
