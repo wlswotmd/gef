@@ -15611,6 +15611,8 @@ class SearchPatternCommand(GenericCommand):
     parser.add_argument("-i", "--interval", type=lambda x: int(x, 0),
                         help="the interval to skip searching from the last found position within the same section.")
     parser.add_argument("-l", "--limit", type=lambda x: int(x, 0), help="the limit of the search result.")
+    parser.add_argument("-s", "--max-region-size", type=lambda x: int(x, 0), default=0x10000000,
+                        help="maximum size of search region. (default: %(default)s)")
     parser.add_argument("-d", "--disable-utf16", action="store_true", help="disable utf16 search if PATTERN is ascii string.")
     parser.add_argument("-v", "--verbose", action="store_true", help="shows the section you are currently searching.")
     parser.add_argument("pattern", metavar="PATTERN", help='search target value. "double-espaced string" or 0xXXXXXXXX style.')
@@ -15699,8 +15701,7 @@ class SearchPatternCommand(GenericCommand):
                     return locations
         return locations
 
-    @staticmethod
-    def get_process_maps_qemu_system():
+    def get_process_maps_qemu_system(self):
         res = get_maps_by_pagewalk("pagewalk --quiet --no-pager")
         res = sorted(set(res.splitlines()))
         res = list(filter(lambda line: line.endswith("]"), res))
@@ -15709,11 +15710,16 @@ class SearchPatternCommand(GenericCommand):
         for line in res:
             if is_x86() and "ACCESSED" not in line:
                 continue
+            # extract
             lines = line.split()
             addr_start, addr_end = [int(x, 16) for x in lines[0].split("-")]
             # non valid addr
             if not is_valid_addr(addr_start):
                 continue
+            # too big
+            if addr_end - addr_start >= self.max_region_size:
+                continue
+            # parse
             if is_x86():
                 perm = Permission.from_process_maps(lines[5][1:].lower())
             elif is_arm32():
@@ -15773,6 +15779,7 @@ class SearchPatternCommand(GenericCommand):
         self.verbose = args.verbose
         self.aligned = args.aligned
         self.interval = args.interval
+        self.max_region_size = args.max_region_size
         self.limit = args.limit
         self.found_count = 0
 
