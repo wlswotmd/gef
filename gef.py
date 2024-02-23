@@ -15995,10 +15995,7 @@ class SearchMangledPtrCommand(GenericCommand):
             return
 
         # search
-        if is_qemu_system():
-            maps_generator = self.get_process_maps_qemu_system()
-        else:
-            maps_generator = get_process_maps()
+        maps_generator = get_process_maps()
         for section in maps_generator:
             if not section.permission & Permission.READ:
                 continue
