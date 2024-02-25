@@ -78,7 +78,7 @@ I also list the tools I used in my Ubuntu 23.10 environment.
     * toolchain: `gcc-alpha-linux-gnu` via apt.
     * qemu: `qemu-alpha` via apt.
     * gdb: `gdb-multiarch` via apt.
-* parisc (PA-RISC; HP-PA)
+* hppa32 (PA-RISC)
     * toolchain: `gcc-hppa-linux-gnu` via apt.
     * qemu: `qemu-hppa` via apt.
     * gdb: `gdb-multiarch` via apt.
@@ -187,6 +187,11 @@ If you find it, please let me know in the issue page.
         * the breakpoint is broken.
     * [x] gdb: build from [latest](https://ftp.gnu.org/gnu/gdb/).
         * `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`
+* s390
+    * [x] toolchain: (Ubuntu 23.10): `gcc-multilib-s390x-linux-gnu` via apt with `-m31` option.
+    * [ ] qemu: not found.
+    * [x] gdb: build from [latest](https://ftp.gnu.org/gnu/gdb/).
+        * `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`
 * hppa64
     * [x] toolchain: `gcc-hppa64-linux` via apt.
     * [ ] lib: not found.
@@ -198,9 +203,7 @@ If you find it, please let me know in the issue page.
     * [x] gdb: build from [latest](https://ftp.gnu.org/gnu/gdb/).
         * `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`
 * e2k
-    * [x] toolchain: [lcc-e2k-cross_1.1_i386.deb](https://drive.google.com/file/d/1rdlSKGkOXC9ejXaWC2mUKZd6GYxdtHLt/view?usp=sharing) from https://ctf.harrisongreen.me/2021/midnightsunfinals/elbrus/
-        * `mkdir /tmp/e2k && dpkg -x lcc-e2k-cross_1.1_i386.deb /tmp/e2k && mv /tmp/e2k/opt/mcst /opt`
-        * `export PATH=$PATH:/opt/mcst/bin.toolchain`
+    * [ ] toolchain: not found.
     * [x] qemu: https://github.com/OpenE2K/qemu-e2k
         * `./configure --target-list=e2k-linux-user && make`
     * [ ] gdb: not found.
