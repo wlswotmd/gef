@@ -23862,7 +23862,15 @@ class EntryPointBreakCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_FILENAME)
         self.add_setting(
             "entrypoint_symbols",
-            "main _main __libc_start_main __uClibc_main start _start __start", # __start is used by MIPS
+            " ".join([
+                "main", # glibc
+                "__libc_start_main", # glibc
+                "__uClibc_main", # uClibc
+                "_start", # glibc
+                "__start", # used by MIPS
+                "'main.main'", # golang
+                "'start._start'", # zig
+            ]),
             "Possible symbols for entry points",
         )
         return
