@@ -3,6 +3,7 @@
 ## Qemu-system cooperation
 * Usage
     * Start qemu-system with the `-s` option and listen on `localhost:1234`.
+        * If you want to change the listening port, use like `-gdb tcp::9876` option.
     * Attach with `gdb-multiarch -ex 'target remote localhost:1234'`.
     * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'` (for old qemu).
 * Supported architectures
@@ -30,10 +31,10 @@
 
 ## Intel Pin/SDE cooperation
 * Usage for Intel Pin
-    * Listen with `pin -appdebug -appdebug_server_port 1234 -t obj-intel64/inscount0.so -- /bin/ls`.
+    * Listen with `pin -appdebug -appdebug_server_port 1234 -t obj-intel64/inscount0.so -- /PATH/TO/BINARY`.
     * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
 * Usage for Intel SDE
-    * Listen with `sde64 -debug -debug-port 1234 -- /bin/ls`.
+    * Listen with `sde64 -debug -debug-port 1234 -- /PATH/TO/BINARY`.
     * Attach with `gdb-multiarch /PATH/TO/BINARY -ex 'target remote localhost:1234'`.
 * Supported architectures
     * x64 only.
@@ -68,15 +69,15 @@
     * It runs very slowly and is not recommended. Ctrl+C interrupt does not work.
     * Many commands are UNSUPPORTED in KGDB mode, because there is no way to access physical memory and control registers.
 
-
 ### VMware cooperation
 * Usage
     * Host OS
-        * Add following configurations to vmx file. See [here](https://communities.vmware.com/t5/VMware-Fusion-Discussions/Using-debugStub-to-debug-a-guest-linux-kernel/td-p/394906).
+        * Add following configurations to vmx file.
             * `debugStub.listen.guest64 = "TRUE"`
             * `debugStub.listen.guest64.remote = "TRUE"`
             * `debugStub.hideBreakpoints = "TRUE"`
             * `debugStub.port.guest64 = "1234"`
+            * See [here](https://communities.vmware.com/t5/VMware-Fusion-Discussions/Using-debugStub-to-debug-a-guest-linux-kernel/td-p/394906).
         * Start the guest OS normally.
     * Debugger
         * Attach with `gdb-multiarch -ex 'target remote <ipaddr>:1234'`.

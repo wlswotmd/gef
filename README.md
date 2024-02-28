@@ -71,16 +71,16 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 ## Supported mode
 * Normal debugging (start under `gdb`)
 * Attach to the process
-* Attach to the process in another pid namespace
+* Attach to the process in another pid namespace (e.g., attaching from outside `docker`)
 * Connect to `gdbserver`
-* Connect to the gdb stub of `qemu-system` (via localhost:1234)
-* Connect to the gdb stub of `qemu-user` (via localhost:1234)
-* Connect to the gdb stub of `Intel Pin` (via localhost:1234)
-* Connect to the gdb stub of `Intel SDE` (via localhost:1234)
-* Connect to the gdb stub of `qiling framework` (via localhost:1234)
-* Connect to the gdb stub of `KGDB` (over serial. currently, only gdb 12.x~ is supported)
+* Connect to the gdb stub of `qemu-system` (via localhost:1234 etc.)
+* Connect to the gdb stub of `qemu-user` (via localhost:1234 etc.)
+* Connect to the gdb stub of `Intel Pin` (via localhost:1234 etc.)
+* Connect to the gdb stub of `Intel SDE` (via localhost:1234 etc.)
+* Connect to the gdb stub of `qiling framework` (via localhost:1234 etc.)
+* Connect to the gdb stub of `KGDB` (over the serial; currently, only gdb 12.x~ is supported)
 * Connect to the gdb stub of `VMWare` (via ipaddr:port)
-* `rr` debugging (start under `rr replay`)
+* Record and replay debugging (start under `rr replay`)
 
 See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORTED-MODE.md) for detail.
 
