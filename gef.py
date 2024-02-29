@@ -49826,6 +49826,7 @@ class KernelTaskCommand(GenericCommand):
         self.offset_files = None
         self.offset_sighand = None
         self.offset_nsproxy = None
+        self.offset_signal = None
         # files_struct
         self.offset_fdt = None
         # kstack
@@ -49846,6 +49847,8 @@ class KernelTaskCommand(GenericCommand):
         self.offset_d_inode = None
         # inode
         self.offset_i_ino = None
+        # signal
+        self.offset_thread_head = None
         # sighand_struct
         self.offset_action = None
         self.sizeof_action = None
@@ -50301,6 +50304,37 @@ class KernelTaskCommand(GenericCommand):
         else:
             offset_thread_group = offset_group_leader + current_arch.ptrsize * (1 + 2 + 2 + (3 * 3))
         return offset_thread_group
+
+    def get_offset_signal(self, offset_nsproxy):
+        """
+        struct task_struct {
+            ...
+            struct nsproxy *nsproxy;
+            struct signal_struct *signal;
+            ...
+        };
+        """
+        return offset_nsproxy + current_arch.ptrsize
+
+    def get_offset_thread_head(self, task_addr, offset_signal):
+        """
+        struct signal_struct {
+            refcount_t sigcnt;
+            atomic_t live;
+            int nr_threads;
+            int quick_threads;
+            struct list_head thread_head;
+            ...
+        };
+        """
+        signal = read_int_from_memory(task_addr + offset_signal)
+        for i in range(10):
+            x = read_int_from_memory(signal + current_arch.ptrsize * i)
+            y = read_int_from_memory(signal + current_arch.ptrsize * (i + 1))
+            if is_valid_addr(x) and is_valid_addr(y):
+                offset_thread_head = current_arch.ptrsize * i
+                return offset_thread_head
+        return None
 
     def get_offset_files(self, task_addrs, offset_comm):
         """
@@ -51167,16 +51201,29 @@ class KernelTaskCommand(GenericCommand):
         self.filepath_cache[file] = filepath
         return filepath
 
-    def add_lwp_task(self, task_addrs, offset_thread_group):
+    def add_lwp_task(self, task_addrs):
         lwp_task_addrs = []
+        kversion = KernelVersionCommand.kernel_version()
 
         for task in task_addrs:
             seen = []
-            lwp = task
-            while lwp not in seen:
-                seen.append(lwp)
-                lwp = read_int_from_memory(lwp + offset_thread_group) - offset_thread_group
-            lwp_task_addrs.extend(seen)
+            if kversion < "6.7":
+                lwp = task
+                while lwp not in seen:
+                    seen.append(lwp)
+                    lwp = read_int_from_memory(lwp + self.offset_thread_group) - self.offset_thread_group
+                lwp_task_addrs.extend(seen)
+
+            else:
+                signal = read_int_from_memory(task + self.offset_signal)
+                head = signal + self.offset_thread_head
+                seen = [head]
+                curr = read_int_from_memory(head)
+                while curr not in seen:
+                    seen.append(curr)
+                    lwp = curr - self.offset_thread_group
+                    lwp_task_addrs.append(lwp)
+                    curr = read_int_from_memory(curr)
         return lwp_task_addrs
 
     def get_offset_nsproxy(self, task_addr, offset_files):
@@ -51399,6 +51446,8 @@ class KernelTaskCommand(GenericCommand):
         return None
 
     def initialize(self, args):
+        kversion = KernelVersionCommand.kernel_version()
+
         # init_task
         init_task = KernelAddressHeuristicFinder.get_init_task()
         if init_task is None:
@@ -51470,17 +51519,6 @@ class KernelTaskCommand(GenericCommand):
         if self.offset_uid is None:
             self.offset_uid = self.get_offset_uid(task_addrs[0] + self.offset_cred)
         self.quiet_info("offsetof(cred, uid): {:#x}".format(self.offset_uid))
-
-        # task_struct->group_leader
-        # task_struct->thread_group
-        if args.print_thread:
-            if self.offset_group_leader is None:
-                self.offset_group_leader = self.get_offset_group_leader(self.offset_pid, self.offset_kcanary)
-            self.quiet_info("offsetof(task_struct, group_leader): {:#x}".format(self.offset_group_leader))
-
-            if self.offset_thread_group is None:
-                self.offset_thread_group = self.get_offset_thread_group(self.offset_group_leader)
-            self.quiet_info("offsetof(task_struct, thread_group): {:#x}".format(self.offset_thread_group))
 
         # kstack_top->saved_ptregs
         if args.print_regs:
@@ -51558,7 +51596,7 @@ class KernelTaskCommand(GenericCommand):
             self.quiet_info("offsetof(inode, i_ino): {:#x}".format(self.offset_i_ino))
 
         # task_struct->files
-        if args.print_fd or args.print_sighand or args.print_namespace:
+        if args.print_fd or args.print_sighand or args.print_namespace or (kversion >= "6.7" and args.print_thread):
             if self.offset_files is None:
                 self.offset_files = self.get_offset_files(task_addrs, self.offset_comm)
             if self.offset_files is None:
@@ -51577,7 +51615,7 @@ class KernelTaskCommand(GenericCommand):
 
         # cred->user_ns
         # task_struct->nsproxy
-        if args.print_namespace:
+        if args.print_namespace or (kversion >= "6.7" and args.print_thread):
             if self.offset_user_ns is None:
                 init_cred = read_int_from_memory(task_addrs[0] + self.offset_cred)
                 self.offset_user_ns = self.get_offset_user_ns(init_cred, self.offset_uid)
@@ -51592,6 +51630,30 @@ class KernelTaskCommand(GenericCommand):
                 self.quiet_err("Not found task_struct->nsproxy")
                 return False
             self.quiet_info("offsetof(task_struct, nsproxy): {:#x}".format(self.offset_nsproxy))
+
+        # task_struct->group_leader
+        # task_struct->thread_group
+        # task_struct->signal (6.7~)
+        # signal->thread_head (6.7~)
+        if args.print_thread:
+            if self.offset_group_leader is None:
+                self.offset_group_leader = self.get_offset_group_leader(self.offset_pid, self.offset_kcanary)
+            self.quiet_info("offsetof(task_struct, group_leader): {:#x}".format(self.offset_group_leader))
+
+            if self.offset_thread_group is None:
+                self.offset_thread_group = self.get_offset_thread_group(self.offset_group_leader)
+            if kversion >= "6.7":
+                self.quiet_info("offsetof(task_struct, thread_node): {:#x}".format(self.offset_thread_group))
+            else:
+                self.quiet_info("offsetof(task_struct, thread_group): {:#x}".format(self.offset_thread_group))
+
+            if kversion >= "6.7":
+                if self.offset_signal is None:
+                    self.offset_signal = self.get_offset_signal(self.offset_nsproxy)
+                self.quiet_info("offsetof(task_struct, signal): {:#x}".format(self.offset_signal))
+                if self.offset_thread_head is None:
+                    self.offset_thread_head = self.get_offset_thread_head(task_addrs[0], self.offset_signal)
+                self.quiet_info("offsetof(signal, thread_head): {:#x}".format(self.offset_thread_head))
 
         # task_struct->sighand
         if args.print_sighand:
@@ -51666,7 +51728,7 @@ class KernelTaskCommand(GenericCommand):
     def dump(self, args, task_addrs):
         # LWP
         if args.print_thread:
-            task_addrs = self.add_lwp_task(task_addrs, self.offset_thread_group)
+            task_addrs = self.add_lwp_task(task_addrs)
 
         # print legend
         out = []
