@@ -4003,7 +4003,7 @@ def gdb_disassemble(start_pc, **kwargs):
         else:
             mnemo, operands = asm[0], []
 
-        location = get_symbol_string(address, nosymbol_string="<NO_SYMBOL>")
+        location = get_symbol_string(address, nosymbol_string=" <NO_SYMBOL>")
 
         if is_arm32() and insn["addr"] & 1:
             opcodes = read_memory(insn["addr"] - 1, insn["length"])
@@ -4141,7 +4141,7 @@ def capstone_disassemble(location, nb_insn, **kwargs):
     `addr` using the Capstone-Engine disassembler, if available.
     Return an iterator of Instruction objects."""
     def cs_insn_to_gef_insn(cs_insn):
-        loc = get_symbol_string(cs_insn.address, nosymbol_string="<NO_SYMBOL>")
+        loc = get_symbol_string(cs_insn.address, nosymbol_string=" <NO_SYMBOL>")
         ops = [] + cs_insn.op_str.split(", ")
         return Instruction(cs_insn.address, loc, cs_insn.mnemonic, ops, cs_insn.bytes)
 
