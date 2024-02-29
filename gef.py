@@ -11539,6 +11539,8 @@ def process_lookup_address(addr):
     if not is_alive():
         err("Process is not running")
         return None
+    if is_qemu_system() or is_vmware() or is_kgdb():
+        return None
     for sect in get_process_maps():
         if sect.page_start <= addr < sect.page_end:
             return sect
@@ -11552,10 +11554,8 @@ def process_lookup_path(names, perm_mask=Permission.ALL):
     if not is_alive():
         err("Process is not running")
         return None
-
     if isinstance(names, str):
         names = tuple([names]) # make tuple to iterate
-
     for sect in get_process_maps():
         for name in names:
             if name in sect.path and sect.permission.value & perm_mask:
@@ -11566,7 +11566,7 @@ def process_lookup_path(names, perm_mask=Permission.ALL):
 @cache_until_next
 def file_lookup_address(addr):
     """Look up for a file by its address. Return a Zone object if found, None otherwise."""
-    if is_qemu_system():
+    if is_qemu_system() or is_vmware() or is_kgdb():
         # If FGKASLR is enabled, there are too many sections and it will take a long time, so skip them.
         return None
     for info in get_info_files():
