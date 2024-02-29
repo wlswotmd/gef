@@ -3827,9 +3827,6 @@ def set_gef_setting(name, value, _type=None, _desc=None):
     return
 
 
-RE_GET_LOCATION_GDB13 = re.compile(r"^0x[0-9a-f]+ <(.*?)(\+[0-9]+)?>$")
-
-
 # `info symbol` called from gdb_get_location is heavy processing.
 # Moreover, dereference_from causes each address to be resolved every time.
 # cache_until_next is not effective as-is, as it is cleared by reset_gef_caches() each time the `stepi` runs.
@@ -3843,16 +3840,8 @@ def gdb_get_location(address):
     if address is None:
         return None
 
-    # fast path available gdb 13.x.
-    # Don't use cris because it gives a warning.
-    if GDB_VERSION >= (13, 1) and not is_cris():
-        sym = gdb.format_address(address)
-        r = RE_GET_LOCATION_GDB13.match(sym)
-        if not r:
-            return None
-        if r.group(2) is None:
-            return r.group(1), 0
-        return r.group(1), int(r.group(2))
+    # Do not use gdb.format_adderss available from gdb 13.x,
+    # because symbols added with add-symbol-temporary may not be recognized.
 
     # slow path uses `info symbol` command
     name = None
