@@ -51031,10 +51031,27 @@ class KernelTaskCommand(GenericCommand):
                 base: 0xffff9f49811d3000
                 name: mnt_cache  size: 0x140  num_pages: 0x1 (unaligned?)
                 """
-                # f_path.mnt points in the middle of mnt_cache, so the "unaligned?" warning is not a problem.
+                # f_path.mnt points in the middle of the chunk, so the "unaligned?" warning is not a problem.
                 ret = gdb.execute("slab-contains --quiet {:#x}".format(mnt), to_string=True)
-                if "mnt_cache" in Color.remove_color(ret):
+                ret = Color.remove_color(ret)
+                if "mnt_cache" in ret:
                     offset_mnt = cand_offset_mnt
+                    break
+
+                """
+                It has also been observed when mnt_cache is not used.
+                In this case, the 2 previous elements from ext4_inode_cache or shmem_inode_cache seem to be the relevant pointer.
+
+                0xffff8b864013a298|+0x0098|+019: 0xffff8b86436e4da0 (task_group) <-- here
+                0xffff8b864013a2a0|+0x00a0|+020: 0xffff8b86404079c0 (kmalloc-rcl-192)
+                0xffff8b864013a2a8|+0x00a8|+021: 0xffff8b864041e0a8 (ext4_inode_cache)
+
+                0xffff8b864013a698|+0x0098|+019: 0xffff8b8640171020 (task_group) <-- here
+                0xffff8b864013a6a0|+0x00a0|+020: 0xffff8b86436159c0 (kmalloc-rcl-192)
+                0xffff8b864013a6a8|+0x00a8|+021: 0xffff8b8643730640 (shmem_inode_cache)
+                """
+                if "inode_cache" in ret:
+                    offset_mnt = cand_offset_mnt - current_arch.ptrsize * 2
                     break
             else:
                 raise
