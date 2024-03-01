@@ -266,6 +266,10 @@ def _displayhook(o):
             return "{" + ", ".join([dec2hex(x) for x in o]) + "}"
         elif name == "dict":
             return "{" + ", ".join([dec2hex(k) + ": " + dec2hex(v) for k, v in o.items()]) + "}"
+        elif name == "dict_keys":
+            return "dict_keys([" + ", ".join([dec2hex(x) for x in o]) + "])"
+        elif name == "dict_values":
+            return "dict_values([" + ", ".join([dec2hex(x) for x in o]) + "])"
         return repr(o)
 
     __builtins__._ = o
