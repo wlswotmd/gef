@@ -26668,6 +26668,8 @@ class DereferenceCommand(GenericCommand):
     parser.add_argument("nb_lines", metavar="NB_LINES", nargs="?", type=lambda x: int(x, 0), default=0x40,
                         help="the count of lines. (default: %(default)s)")
     parser.add_argument("--slab-contains", action="store_true", help="display slab_cache name if available.")
+    parser.add_argument("--slab-contains-unaligned", action="store_true",
+                        help="display slab_cache name (allow unaligned) if available.")
     parser.add_argument("--phys", action="store_true", help="treat ADDRESS as a physical address.")
     parser.add_argument("--uniq", action="store_true", help="display with uniq.")
     parser.add_argument("--is-addr", action="store_true", help="display only valid address.")
@@ -26774,17 +26776,23 @@ class DereferenceCommand(GenericCommand):
             line += Color.colorify(extra_str, registers_color)
         return line
 
-    def get_slab_contains(self, addr):
+    def get_slab_contains(self, addr, allow_unaligned):
         if addr in self.slab_contains_cache:
             return self.slab_contains_cache[addr]
 
         val = read_int_from_memory(addr)
         if is_valid_addr(val):
             ret = gdb.execute("slab-contains --quiet {:#x}".format(val), to_string=True).strip()
-            if not ret or "unaligned?" in ret:
-                ret = None
+            if allow_unaligned:
+                if not ret:
+                    ret = None
+                else:
+                    ret = "  {:#x}: {:s}".format(val, ret)
             else:
-                ret = "  {:#x}: {:s}".format(val, ret)
+                if not ret or "unaligned?" in ret:
+                    ret = None
+                else:
+                    ret = "  {:#x}: {:s}".format(val, ret)
         else:
             ret = None
         self.slab_contains_cache[addr] = ret
@@ -26798,7 +26806,7 @@ class DereferenceCommand(GenericCommand):
         else:
             start_address = args.location
 
-        if args.slab_contains or args.phys:
+        if args.slab_contains or args.slab_contains_unaligned or args.phys:
             if not (is_qemu_system() or is_kgdb() or is_vmware()):
                 err("Unsupported gdb mode")
                 return
@@ -26854,8 +26862,8 @@ class DereferenceCommand(GenericCommand):
                 break
 
             # dump slab cache
-            if args.slab_contains:
-                line = self.get_slab_contains(start_address + idx * current_arch.ptrsize)
+            if args.slab_contains or args.slab_contains_unaligned:
+                line = self.get_slab_contains(start_address + idx * current_arch.ptrsize, args.slab_contains_unaligned)
                 if line:
                     out.append(line)
 
