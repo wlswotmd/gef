@@ -254,22 +254,47 @@ def cperf(f):
 
 
 def _displayhook(o):
-    def dec2hex(o):
+    def dec2hex(o, idt):
+        def I1():
+            return "  " * idt
+        def I2():
+            return "  " * (idt + 1)
         name = type(o).__name__
+        width = get_terminal_size()[0] + len(I1())
         if name in ("int", "long"):
             return hex(o)
         elif name == "list":
-            return "[" + ", ".join([dec2hex(x) for x in o]) + "]"
+            f = "[" + ", ".join([dec2hex(x, idt + 1) for x in o]) + "]"
+            if len(f) < width:
+                return f
+            return "\n".join(["["] + [I2() + dec2hex(x, idt + 1) + "," for x in o] + [I1() + "]"])
         elif name == "tuple":
-            return "(" + ", ".join([dec2hex(x) for x in o]) + ")"
+            f = "(" + ", ".join([dec2hex(x, idt + 1) for x in o]) + ")"
+            if len(f) < width:
+                return f
+            return "\n".join(["("] + [I2() + dec2hex(x, idt + 1) + "," for x in o] + [I1() + ")"])
         elif name == "set":
-            return "{" + ", ".join([dec2hex(x) for x in o]) + "}"
+            f = "{" + ", ".join([dec2hex(x, idt + 1) for x in o]) + "}"
+            if len(f) < width:
+                return f
+            return "\n".join(["{"] + [I2() + dec2hex(x, idt + 1) + "," for x in o] + [I1() + "}"])
         elif name == "dict":
-            return "{" + ", ".join([dec2hex(k) + ": " + dec2hex(v) for k, v in o.items()]) + "}"
+            f = "{" + ", ".join([dec2hex(k, idt + 1) + ": " + dec2hex(v, idt + 1) for k, v in o.items()]) + "}"
+            if len(f) < width:
+                return f
+            return "\n".join(["{"] + [I2() + dec2hex(k, idt + 1) + ": " + dec2hex(v, idt + 1) + "," for k, v in o.items()] + [I1() + "}"])
         elif name == "dict_keys":
-            return "dict_keys([" + ", ".join([dec2hex(x) for x in o]) + "])"
+            f = "dict_keys([" + ", ".join([dec2hex(x, idt + 1) for x in o]) + "])"
+            if len(f) < width:
+                return f
+            return "\n".join(["dict_keys(["] + [I2() + dec2hex(x, idt + 1) + "," for x in o] + [I1() + "])"])
         elif name == "dict_values":
-            return "dict_values([" + ", ".join([dec2hex(x) for x in o]) + "])"
+            f = "dict_values([" + ", ".join([dec2hex(x, idt + 1) for x in o]) + "])"
+            if len(f) < width:
+                return f
+            return "\n".join(["dict_values(["] + [I2() + dec2hex(x, idt + 1) + "," for x in o] + [I1() + "])"])
+        elif name == "Zone":
+            return re.sub(r"(zone_start=|zone_end=)(\d+)", lambda x:x.group(1) + hex(int(x.group(2))), str(o))
         return repr(o)
 
     __builtins__._ = o
@@ -277,7 +302,7 @@ def _displayhook(o):
     if o is None:
         return
 
-    out = dec2hex(o)
+    out = dec2hex(o, 0)
     if out:
         print(out)
         return
