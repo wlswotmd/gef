@@ -27,7 +27,7 @@
 This is a fork of [GEF](https://github.com/hugsy/gef).
 However, there are two major improvements.
 
-1. Added many heuristic commands for kernel debugging __WITHOUT symboled vmlinux__ (for qemu-system; linux kernel 3.x ~ 6.6.1).
+1. Added many heuristic commands for kernel debugging __WITHOUT symboled vmlinux__ (for qemu-system; linux kernel 3.x ~ 6.7.x).
 2. Added support for [many architectures](https://github.com/bata24/gef/blob/dev/docs/QEMU-USER-SUPPORTED-ARCH.md) (for qemu-user).
 
 Many other commands have been added and improved. Enjoy!
