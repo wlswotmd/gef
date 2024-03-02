@@ -164,7 +164,7 @@ except ImportError:
 
 
 __gef__                         = None
-__gef_fpath__                   = __file__
+__gef_fpath__                   = http_get.__code__.co_filename # __file__ will no longer be available from gdb 15
 __gef_commands__                = []
 __LCO__                         = {} # for debug access each objects. (It means `loaded command objs`)
 __gef_aliases__                 = []
