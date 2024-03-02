@@ -55522,6 +55522,8 @@ class KernelFileSystemsCommand(GenericCommand):
                     # mount points
                     s_mounts = read_int_from_memory(super_block + self.offset_s_mounts)
                     mount_point = self.get_mount_point(s_mounts)
+                    if mount_point is None:
+                        mount_point = "???"
 
                     # devname
                     if devname == "???":
