@@ -334,7 +334,7 @@ def cache_until_next(f):
     def wrapper(*args, **kwargs):
         global __gef_global_cache__
 
-        kw = tuple(kwargs.items()) if kwargs else None
+        kw = tuple(kwargs.items())
         _id = id(f)
 
         try:
@@ -360,7 +360,7 @@ def cache_this_session(f):
     def wrapper(*args, **kwargs):
         global __gef_global_cache__
 
-        kw = tuple(kwargs.items()) if kwargs else None
+        kw = tuple(kwargs.items())
         _id = id(f)
 
         try:
@@ -4530,7 +4530,7 @@ def checksec(filename):
     return results
 
 
-@cache_until_next
+@cache_this_session
 def get_endian():
     """Return the binary endianness."""
     endian = gdb.execute("show endian", to_string=True).strip().lower()
@@ -4541,7 +4541,7 @@ def get_endian():
     raise EnvironmentError("Invalid endianness")
 
 
-@cache_until_next
+@cache_this_session
 def get_entry_point():
     """Return the binary entry point."""
     if current_elf:
@@ -10094,8 +10094,9 @@ def is_valid_addr(addr):
         if (1 << 32) - 1 < addr:
             return False
 
-    if check_gic_address(addr):
-        return False
+    if is_qemu_system():
+        if check_gic_address(addr):
+            return False
 
     try:
         gdb.selected_inferior().read_memory(addr, 1)
@@ -12268,7 +12269,7 @@ def cached_lookup_type(_type):
         return None
 
 
-@cache_until_next
+@cache_this_session
 def get_memory_alignment(in_bits=False):
     """Try to determine the size of a pointer on this system.
     First, try to parse it out of the ELF header.
@@ -12393,7 +12394,7 @@ def get_ksysctl(sym):
         return None
 
 
-@cache_until_next
+@cache_this_session
 def endian_str():
     return "<" if is_little_endian() else ">"
 
@@ -12619,7 +12620,7 @@ def gef_get_auxiliary_values(force_heuristic=False):
     return fast_path() or slow_path()
 
 
-@cache_until_next
+@cache_this_session
 def gef_read_canary():
     """Read the canary of a running process using Auxiliary Vector.
     Return a tuple of (canary, location) if found, None otherwise."""
@@ -12636,7 +12637,7 @@ def gef_read_canary():
         return None
 
 
-@cache_until_next
+@cache_this_session
 def gef_getpagesize():
     """Get the page size from auxiliary values."""
     auxval = gef_get_auxiliary_values()
@@ -12645,7 +12646,7 @@ def gef_getpagesize():
     return auxval["AT_PAGESZ"]
 
 
-@cache_until_next
+@cache_this_session
 def gef_getpagesize_mask_low():
     """Get the page size mask from auxiliary values."""
     auxval = gef_get_auxiliary_values()
@@ -12654,7 +12655,7 @@ def gef_getpagesize_mask_low():
     return auxval["AT_PAGESZ"] - 1
 
 
-@cache_until_next
+@cache_this_session
 def gef_getpagesize_mask_high():
     """Get the page size mask from auxiliary values."""
     auxval = gef_get_auxiliary_values()
@@ -26548,7 +26549,7 @@ class PatchRevertCommand(PatchCommand):
         return
 
 
-@cache_until_next
+@cache_this_session
 def get_dereference_from_blacklist():
     return eval(get_gef_setting("dereference.blacklist")) or []
 
