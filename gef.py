@@ -26674,12 +26674,20 @@ class DereferenceCommand(GenericCommand):
     parser.add_argument("--uniq", action="store_true", help="display with uniq.")
     parser.add_argument("--is-addr", action="store_true", help="display only valid address.")
     parser.add_argument("--is-not-addr", action="store_true", help="display only invalid address.")
+    parser.add_argument("--tag", nargs=2, action="append", metavar=("IDX", "TAG"), help="display with tag.")
     parser.add_argument("-d", "--depth", default=1, type=int, help="depth of reference. (default: %(default)s)")
     parser.add_argument("-r", "--reverse", action="store_true", help="display in reverse order line by line.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} $sp 20".format(_cmdline_)
+    _example_ = "{:s}                             # dereference $sp 64\n".format(_cmdline_)
+    _example_ += "{:s} $sp 20                      # specifiy location and number of elements to display\n".format(_cmdline_)
+    _example_ += "{:s} $sp -20                     # display memory backwards\n".format(_cmdline_)
+    _example_ += "{:s} -r $sp 20                   # display reverse order\n".format(_cmdline_)
+    _example_ += "{:s} -d 2 $sp 20                 # display recursively if valid aligned address\n".format(_cmdline_)
+    _example_ += "{:s} --is-addr $sp 20            # display elements which is valid address\n".format(_cmdline_)
+    _example_ += "{:s} --slab-contains $sp 20      # display with slab-contains result (available under qemu-system)\n".format(_cmdline_)
+    _example_ += "{:s} --tag 0 A --tag 1 B $sp 20  # display with tags".format(_cmdline_)
 
     _note_ = "Use blacklist feature if reading the address causes process crash.\n"
     _note_ += "e.g.: `gef config dereference.blacklist \"[ [0xffffffffc9000000, 0xffffffffc9001000], ]\"`, then `gef save`"
@@ -26811,6 +26819,17 @@ class DereferenceCommand(GenericCommand):
                 err("Unsupported gdb mode")
                 return
 
+        if args.tag:
+            tags_dict = {}
+            max_tag_width = 0
+            for tag_idx, tag in args.tag:
+                try:
+                    tags_dict[int(tag_idx, 0)] = tag
+                except ValueError:
+                    err("Invalid tag idx")
+                    return
+                max_tag_width = max(max_tag_width, len(tag))
+
         if args.phys:
             unpack = u32 if is_32bit() else u64
             _read_int_from_memory = lambda x: unpack(read_physmem(x, current_arch.ptrsize))
@@ -26820,15 +26839,15 @@ class DereferenceCommand(GenericCommand):
         from_idx = args.nb_lines * self.repeat_count
         to_idx = args.nb_lines * (self.repeat_count + 1)
 
-        if args.reverse:
-            from_idx *= -1
-            to_idx *= -1
-
         if from_idx <= to_idx:
             step = 1
         else:
             step = -1
+            if args.depth > 1:
+                err("Unsupported using together -NB_LINES and -d DEPTH")
+                return
 
+        # dereference line by line
         out = []
         self.slab_contains_cache = {}
         seen = set()
@@ -26852,8 +26871,12 @@ class DereferenceCommand(GenericCommand):
                     v = _read_int_from_memory(start_address + idx * current_arch.ptrsize)
                     if is_valid_addr(v):
                         continue
-                # dereference
-                line = DereferenceCommand.pprint_dereferenced(start_address, idx, phys=args.phys)
+                # tags
+                if args.tag:
+                    tag = tags_dict.get(idx, "").ljust(max_tag_width)
+                    line = DereferenceCommand.pprint_dereferenced(start_address, idx, tag=tag, phys=args.phys)
+                else:
+                    line = DereferenceCommand.pprint_dereferenced(start_address, idx, phys=args.phys)
                 out.append(line)
             except (RuntimeError, gdb.MemoryError):
                 # e.g.: nop DWORD PTR [rax+rax*1+0x0]
