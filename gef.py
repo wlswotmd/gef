@@ -100,7 +100,6 @@ import hashlib
 import itertools
 import os
 import re
-import string
 import struct
 import subprocess
 import sys
@@ -206,6 +205,17 @@ GEF_TEMP_DIR                    = os.path.join(tempfile.gettempdir(), "gef")
 
 GDB_MIN_VERSION                 = (9, 2) # ubuntu 20.04
 GDB_VERSION                     = tuple(map(int, re.search(r"(\d+)[^\d]+(\d+)", gdb.VERSION).groups()))
+
+
+STRING_ASCII_LOWERCASE = "abcdefghijklmnopqrstuvwxyz"
+STRING_ASCII_UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+STRING_ASCII_LETTERS = STRING_ASCII_LOWERCASE + STRING_ASCII_UPPERCASE
+STRING_DIGITS = "0123456789"
+STRING_HEXDIGITS = "0123456789abcdefABCDEF"
+STRING_PUNCTUATION = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+STRING_WHITESPACE = " \t\n\r\x0b\x0c"
+STRING_PRINTABLE = STRING_DIGITS + STRING_ASCII_LETTERS + STRING_PUNCTUATION + STRING_WHITESPACE
+STRING_CHARSET = STRING_DIGITS + STRING_ASCII_LETTERS + STRING_PUNCTUATION + " "
 
 
 def perf(f):
@@ -3748,7 +3758,7 @@ def style_byte(b, color=True):
 
     if sbyte in style:
         st = style[sbyte]
-    elif chr(b) in (string.ascii_letters + string.digits + string.punctuation + " "):
+    elif chr(b) in STRING_CHARSET:
         st = style.get("printable")
     else:
         st = style.get("nonprintable")
@@ -10162,7 +10172,7 @@ def read_cstring_from_memory(addr, max_length=None, ascii_only=False):
         ustr = "{}[...]".format(ustr[:max_length])
 
     if ascii_only:
-        if ustr and all(x in string.printable for x in ustr):
+        if ustr and all(x in STRING_PRINTABLE for x in ustr):
             return ustr
         else:
             return None
@@ -11610,7 +11620,7 @@ def is_hex(pattern):
     """Return whether provided string is a hexadecimal value."""
     if not pattern.startswith("0x") and not pattern.startswith("0X"):
         return False
-    return len(pattern) % 2 == 0 and all(c in string.hexdigits for c in pattern[2:])
+    return len(pattern) % 2 == 0 and all(c in STRING_HEXDIGITS for c in pattern[2:])
 
 
 def is_msb_on(addr):
@@ -26627,10 +26637,9 @@ def to_string_dereference_from(value, skip_idx=0, phys=False):
 
     # replace to string if valid
     def to_ascii(v):
-        ascii = string.ascii_letters + string.digits + string.punctuation + " "
         s = ""
         while v & 0xff: # \0
-            if chr(v & 0xff) in ascii:
+            if chr(v & 0xff) in STRING_CHARSET:
                 s += chr(v & 0xff)
             else:
                 return ""
@@ -76659,7 +76668,7 @@ class PagewalkWithHintsCommand(GenericCommand):
 
                 name = r.group(1)
                 # something is wrong
-                if name and not all(x in string.printable for x in name):
+                if name and not all(x in STRING_PRINTABLE for x in name):
                     current += gef_getpagesize()
                     continue
 
@@ -80723,11 +80732,11 @@ class UefiOvmfInfoCommand(GenericCommand):
         }
 
         def att2str(att):
-            string = []
+            s = []
             for k, v in att_list.items():
                 if k & att:
-                    string.append(v)
-            return ",".join(string)
+                    s.append(v)
+            return ",".join(s)
 
         fmt = "{:21s} {:10s} {:10s} {:30s} {:s}"
         legend = ["Paddr Start-End", "Vaddr", "Size", "Type:TypeName", "Attribute"]
