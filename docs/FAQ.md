@@ -23,11 +23,14 @@ If you have any trouble, please report it on the issue page.
 This is probably because gdb does not support cooperation with python3.
 Consider building gdb from source with `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`.
 
+## Where is `gef.py`?
+GEF (`gef.py`) is placed in `/root/.gdbinit-gef.py` by default. GEF is one file.
+
 ## What is `~/.gef.rc`?
 This is the GEF config file. Not present by default.
 
 Executing the `gef save` command saves the current settings to disk (`~/.gef.rc`).
-The next time GEF is started, it will be automatically loaded and the settings will be reflected.
+The next time GEF starts, it will be automatically loaded and the settings will be reflected.
 This includes the current values of items configurable with `gef config` and alias settings for commands.
 
 ## What is `/tmp/gef`?
@@ -87,26 +90,37 @@ the virtual address of the process you wanted isn't mapped.
 For this reason, software breakpoints that embed `0xcc` in virtual memory cannot be used in some situations.
 However, hardware breakpoints can be used without any problems.
 
+## Does GEF work with the latest version of gdb?
+Yes, it probably works.
+
+The example of build commands are shown below.
+```
+git clone --depth 1 https://github.com/bminor/binutils-gdb && cd binutils-gdb
+./configure --disable-binutils --disable-ld --disable-gold --disable-gas --disable-sim --disable-gprof --disable-gprofng \
+--enable-targets=all --with-python=/usr/bin/python3 --with-system-zlib --with-system-readline
+make && make install
+```
+
 
 # About commands
 
 ## How does GEF implement kernel analysis related commands without symbols?
 Internally, it consists of several steps.
 
-1. Identify the memory map from the page table structure.
-2. Identify `.rodata` area of kernel from memory map.
+1. Enumerate memory map informations from the page table structure.
+2. Detect `.rodata` area of kernel from memory map informations.
 3. Scan `.rodata` to identify the kernel version.
 4. Parse the structure of `kallsyms` in `.rodata` and get all "symbol and address" pairs.
 5. If global variable symbols are available at this point, use it. (= `CONFIG_KALLSYMS_ALL=y`).
-    * If not, disassemble the function which uses specified global variable.
-    * By parsing the result, we obtain the address of the required global variable.
+    * If not, GEF disassembles the function which uses specified global variable.
+    * By parsing the result, GEF obtains the address of the required global variable.
     * This is implemented at `KernelAddressHeuristicFinder` class and `KernelAddressHeuristicFinderUtil` class.
-6. Determine the offsets of the structure's members, if necessary.
-    * Use facts such as whether a value in memory is an address or whether a structure in memory has a specific structure to identify it heuristically.
-    * At this time, I take into account the presence or absence of members and changes in their order due to differences in kernel versions.
-7. Parse and display the value in memory using all the information determined so far.
+6. Detect the offset of the member of the structure, if necessary.
+    * To identify it heuristically, GEF uses the fact such as whether a value in memory is an address or whether a structure in memory has a specific structure.
+    * At this time, GEF takes into account the presence or absence of members and changes in their order due to differences in kernel versions.
+7. Parse and display the value in memory using all the information detected so far.
 
-As you can see, it doesn't work well if the structures are arranged randomly (`CONFIG_RANDSTRUCT=y`).
+As you can see, it doesn't work well if structure members are arranged randomly (`CONFIG_RANDSTRUCT=y`).
 Also, depending on the assembly output by the compiler, it may not be possible to parse it correctly.
 
 ## What command should I start with when debugging the kernel?
@@ -116,7 +130,7 @@ Other commands are less important, so check them with `gef help` if necessary.
 
 ## I prefer the AT&T style.
 Please specify each time using the `set disassembly-flavor att` command.
-Or, since the `set disassembly-flavor intel` command is executed in the GEF's main function, it may be a good idea to comment it out.
+Or, since the `set disassembly-flavor intel` command is executed in the main function of GEF, it may be a good idea to comment it out.
 However, since GEF does not take AT&T syntax parsing into consideration, so some commands may do not work fine.
 If you find a case where it doesn't work, please report it on the issue page.
 
@@ -310,25 +324,6 @@ Additionally, if the issue is related to kernel debugging, please provide a set 
 
 ## Is it okay to fork and modify?
 Yes. However, please follow the license.
-
-
-# About me
-
-## What kind of environment are you developing in?
-I don't use anything special.
-I am using a test environment built with buildroot while viewing the Linux kernel source with Bootlin.
-I also use images of kernel exploit task from various CTFs.
-
-## Why is there no master branch?
-I'm a `git` beginner, so one `dev` branch is the best I can do.
-
-## Are you bad at English?
-Yes, I mostly use Google Translate. This is the reason for the inconsistent writing style.
-If the expression in English is strange, please feel free to correct it on the issue page.
-
-## I would like to contact you about a GEF?
-Find `bata___` on Discord of official GEF's server or Pwndbg's server.
-Or send DM to [`@bata_24` on X](https://twitter.com/bata_24).
 
 
 # Other memo (Japanese)

@@ -16898,7 +16898,7 @@ class MmapMemoryCommand(GenericCommand):
 
 @register_command
 class ReadSystemRegisterCommand(GenericCommand):
-    """Read system register for old qemu (only ARM32)."""
+    """Read system register for old qemu-system-arm."""
     _cmdline_ = "read-system-register"
     _category_ = "04-a. Register - View"
 
