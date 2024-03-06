@@ -5805,6 +5805,26 @@ class X86(Architecture):
         key = "[sp + {:#x}]".format(i * sz)
         return key, val
 
+    def read28(self, addr):
+        codes = [
+            b"\x8b\x00", # mov eax, dword ptr [eax]
+            b"\x8b\x09", # mov ecx, dword ptr [ecx]
+            b"\x8b\x12", # mov edx, dword ptr [edx]
+            b"\x8b\x1b", # mov ebx, dword ptr [ebx]
+            b"\x8b\x24\x24", # mov esp, dword ptr [esp]
+            # If I rewrite ebp, an error message will be displayed and it will be annoying, so I will skip it.
+            #b"\x8b\x6d\x00", # mov ebp, dword ptr [ebp]
+            b"\x8b\x36", # mov esi, dword ptr [esi]
+            b"\x8b\x3f", # mov edi, dword ptr [edi]
+        ]
+        regs = [
+            "$eax", "$ebx", "$ecx", "$edx", "$esp", "$esi", "$edi",
+        ]
+        regs = {reg: addr + i * current_arch.ptrsize for i, reg in enumerate(regs)}
+        ret = ExecAsm(codes, regs=regs, step=len(codes)).exec_code()
+        values = [ret["reg"][reg] for reg in regs]
+        return b"".join([p32(v) for v in values])
+
 
 class X86_64(X86):
     arch = "X86"
@@ -5935,6 +5955,34 @@ class X86_64(X86):
         code = "; ".join(insns)
         arch, mode = get_keystone_arch()
         return keystone_assemble(code, arch, mode, raw=True)
+
+    def read128(self, addr):
+        codes = [
+            b"\x48\x8b\x00", # mov rax, qword ptr [rax]
+            b"\x48\x8b\x09", # mov rcx, qword ptr [rcx]
+            b"\x48\x8b\x12", # mov rdx, qword ptr [rdx]
+            b"\x48\x8b\x1b", # mov rbx, qword ptr [rbx]
+            b"\x48\x8b\x24\x24", # mov rsp, qword ptr [rsp]
+            b"\x48\x8b\x6d\x00", # mov rbp, qword ptr [rbp]
+            b"\x48\x8b\x36", # mov rsi, qword ptr [rsi]
+            b"\x48\x8b\x3f", # mov rdi, qword ptr [rdi]
+            b"\x4d\x8b\x00", # mov r8, qword ptr [r8]
+            b"\x4d\x8b\x09", # mov r9, qword ptr [r9]
+            b"\x4d\x8b\x12", # mov r10, qword ptr [r10]
+            b"\x4d\x8b\x1b", # mov r11, qword ptr [r11]
+            b"\x4d\x8b\x24\x24", # mov r12, qword ptr [r12]
+            b"\x4d\x8b\x6d\x00", # mov r13, qword ptr [r13]
+            b"\x4d\x8b\x36", # mov r14, qword ptr [r14]
+            b"\x4d\x8b\x3f", # mov r15, qword ptr [r15]
+        ]
+        regs = [
+            "$rax", "$rcx", "$rdx", "$rbx", "$rsp", "$rbp", "$rsi", "$rdi",
+            "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15",
+        ]
+        regs = {reg: addr + i * current_arch.ptrsize for i, reg in enumerate(regs)}
+        ret = ExecAsm(codes, regs=regs, step=len(codes)).exec_code()
+        values = [ret["reg"][reg] for reg in regs]
+        return b"".join([p64(v) for v in values])
 
 
 class PPC(Architecture):
@@ -14345,6 +14393,21 @@ class VvarCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
 
+    def read(self, addr, size):
+        if is_x86_64():
+            block_size = 128
+            dynamic_read = current_arch.read128
+        elif is_x86_32():
+            block_size = 28
+            dynamic_read = current_arch.read28
+
+        out = b""
+        pos = 0
+        while pos < size:
+            out += dynamic_read(addr + pos)
+            pos += block_size
+        return out[:size]
+
     @parse_args
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr"))
@@ -14366,59 +14429,97 @@ class VvarCommand(GenericCommand):
             return
 
         # dump
-        if is_x86_64():
-            codes = [
-                b"\x48\x8b\x00", # mov rax, qword ptr [rax]
-                b"\x48\x8b\x09", # mov rcx, qword ptr [rcx]
-                b"\x48\x8b\x12", # mov rdx, qword ptr [rdx]
-                b"\x48\x8b\x1b", # mov rbx, qword ptr [rbx]
-                b"\x48\x8b\x24\x24", # mov rsp, qword ptr [rsp]
-                b"\x48\x8b\x6d\x00", # mov rbp, qword ptr [rbp]
-                b"\x48\x8b\x36", # mov rsi, qword ptr [rsi]
-                b"\x48\x8b\x3f", # mov rdi, qword ptr [rdi]
-                b"\x4d\x8b\x00", # mov r8, qword ptr [r8]
-                b"\x4d\x8b\x09", # mov r9, qword ptr [r9]
-                b"\x4d\x8b\x12", # mov r10, qword ptr [r10]
-                b"\x4d\x8b\x1b", # mov r11, qword ptr [r11]
-                b"\x4d\x8b\x24\x24", # mov r12, qword ptr [r12]
-                b"\x4d\x8b\x6d\x00", # mov r13, qword ptr [r13]
-                b"\x4d\x8b\x36", # mov r14, qword ptr [r14]
-                b"\x4d\x8b\x3f", # mov r15, qword ptr [r15]
-            ]
-            regs = [
-                "$rax", "$rcx", "$rdx", "$rbx", "$rsp", "$rbp", "$rsi", "$rdi",
-                "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15",
-            ]
-        else:
-            codes = [
-                b"\x8b\x00", # mov eax, dword ptr [eax]
-                b"\x8b\x09", # mov ecx, dword ptr [ecx]
-                b"\x8b\x12", # mov edx, dword ptr [edx]
-                b"\x8b\x1b", # mov ebx, dword ptr [ebx]
-                b"\x8b\x24\x24", # mov esp, dword ptr [esp]
-                # If I rewrite ebp, an error message will be displayed and it will be annoying, so I will skip it.
-                #b"\x8b\x6d\x00", # mov ebp, dword ptr [ebp]
-                b"\x8b\x36", # mov esi, dword ptr [esi]
-                b"\x8b\x3f", # mov edi, dword ptr [edi]
-            ]
-            regs = [
-                "$eax", "$ebx", "$ecx", "$edx", "$esp", "$esi", "$edi",
-            ]
-
         # arch/x86/include/asm/vvar.h
-        # DECLARE_VVAR(128, struct vdso_data, _vdso_data)
-        start = entry.page_start + 128
-        end = start + 0x180 # >= sizeof(struct vdso_data)
-        step = current_arch.ptrsize * len(regs)
-        for addr in range(start, end, step):
-            regs = {reg: addr + i * current_arch.ptrsize for i, reg in enumerate(regs)}
-            ret = ExecAsm(codes, regs=regs, step=len(codes)).exec_code()
-            values = [ret["reg"][reg] for reg in regs]
+        self.out = []
+        start = entry.page_start + 128 # DECLARE_VVAR(128, struct vdso_data, _vdso_data)
+        size = 0x180 # >= sizeof(struct vdso_data)
+        data = self.read(start, size)
+        hex_data = hexdump(data, base=start, unit=current_arch.ptrsize)
+        self.out.extend(hex_data.splitlines())
 
-            # print
-            for i in range(len(regs)):
-                gef_print("{:#x}: {:#x}".format(addr + i * current_arch.ptrsize, values[i]))
-            gef_print()
+        # print
+        if self.out:
+            gef_print("\n".join(self.out).rstrip())
+        return
+
+
+@register_command
+class IouringDumpCommand(GenericCommand):
+    """Dump the area of iouring (only x64)."""
+    _cmdline_ = "iouring-dump"
+    _category_ = "02-e. Process Information - Complex Structure Information"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    def read(self, addr, size):
+        block_size = 128
+        dynamic_read = current_arch.read128
+
+        out = b""
+        pos = 0
+        while pos < size:
+            out += dynamic_read(addr + pos)
+            pos += block_size
+        return out[:size]
+
+    def merge_lines(self, lines_unmerged):
+        lines = []
+        keep_asterisk = False
+        for i, line in enumerate(lines_unmerged):
+            if lines == [] or i < 0x10:
+                lines.append(line)
+                continue
+            if "    " not in lines[-1] or "    " not in line:
+                lines.append(line)
+                continue
+            if re.split("    +", lines[-1])[1] == re.split("    +", line)[1]:
+                if not keep_asterisk:
+                    keep_asterisk = True
+            else:
+                if keep_asterisk:
+                    lines.append("*")
+                    keep_asterisk = False
+                lines.append(line)
+        if keep_asterisk:
+            lines.append("*")
+        return lines
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr"))
+    @only_if_specific_arch(arch=("x86_64",))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        # get map entry
+        maps = get_process_maps()
+        if maps is None:
+            err("Failed to get maps")
+            return
+
+        # get anon_inode:[io_uring]
+        iouring_entries = []
+        for entry in maps:
+            if entry.path == "anon_inode:[io_uring]":
+                iouring_entries.append(entry)
+
+        # dump
+        self.out = []
+        for entry in iouring_entries:
+            if entry.offset in [0, 0x8000000]: # IORING_OFF_SQ_RING ,IORING_OFF_CQ_RING
+                self.out.append(titlify("struct io_rings: {:#x}".format(entry.page_start)))
+            elif entry.offset == 0x10000000: # IORING_OFF_SQES
+                self.out.append(titlify("struct io_uring_sqe: {:#x}".format(entry.page_start)))
+
+            data = self.read(entry.page_start, entry.size)
+            hex_data = hexdump(data, base=entry.page_start, unit=current_arch.ptrsize)
+            hex_data_merged = self.merge_lines(hex_data.splitlines())
+            self.out.extend(hex_data_merged)
+
+        # print
+        if self.out:
+            gef_print("\n".join(self.out).rstrip())
         return
 
 
