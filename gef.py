@@ -77840,6 +77840,8 @@ class ExecUntilCommand(GenericCommand):
         lines = gdb.execute("info breakpoints", to_string=True).splitlines()
         if lines[0] == "No breakpoints or watchpoints.":
             return []
+        if lines[0] == "No breakpoints, watchpoints, tracepoints, or catchpoints.": # gdb 15.x ~
+            return []
 
         enable_idx = lines[0].index("Enb")
         addr_idx = lines[0].index("Address")
