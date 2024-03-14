@@ -24919,20 +24919,21 @@ class ContextCommand(GenericCommand):
             gdb.execute("telescope {:#x} 4 --no-pager".format(addr))
         return
 
-    RE_SUB_BRANCH_ADDR1 = re.compile(r".*# (0x[a-fA-F0-9]*).*")
-    RE_SUB_BRANCH_ADDR2 = re.compile(r".*# (0x[a-fA-F0-9]*).*")
-    RE_SUB_BRANCH_ADDR3 = re.compile(r".* PTR \[(.+?)\].*")
-    RE_SUB_BRANCH_ADDR4 = re.compile(r".* PTR fs:(0x[a-fA-F0-9]*).*")
-    RE_SUB_BRANCH_ADDR5 = re.compile(r".* PTR gs:(0x[a-fA-F0-9]*).*")
+    RE_SUB_BRANCH_ADDR1 = re.compile(r".*# (0x[a-fA-F0-9]+).*")
+    RE_SUB_BRANCH_ADDR2 = re.compile(r".*# (0x[a-fA-F0-9]+).*")
+    RE_SUB_BRANCH_ADDR3 = re.compile(r".* (PTR|ptr) \[(.+?)\].*")
+    RE_SUB_BRANCH_ADDR4 = re.compile(r".* (PTR|ptr) fs:\[?(0x[a-fA-F0-9]+)\]?.*")
+    RE_SUB_BRANCH_ADDR5 = re.compile(r".* (PTR|ptr) gs:\[?(0x[a-fA-F0-9]+)\]?.*")
     RE_SUB_BRANCH_ADDR6 = re.compile(r"^.*\s+([-0-9]+)$")
-    RE_SUB_BRANCH_ADDR7 = re.compile(r".*(0x[a-fA-F0-9]*).*")
+    RE_SUB_BRANCH_ADDR7 = re.compile(r".*(0x[a-fA-F0-9]+).*")
 
     @staticmethod
     def get_branch_addr(insn, to_str=False):
         ops = " ".join(insn.operands)
         ops = re.sub(r"<.*?>", "", ops)
 
-        # x86/x64: call ... [rip+0x1111] # 0xAABBCCDD
+        # is there an evaluated immediate value?
+        #   x86/x64 (default): call ... [rip+0x1111] # 0xAABBCCDD
         if " # 0x" in ops and not is_loongarch64():
             addr = ContextCommand.RE_SUB_BRANCH_ADDR1.sub(r"\1", ops)
             ptr = to_unsigned_long(gdb.parse_and_eval(addr))
@@ -24947,7 +24948,8 @@ class ContextCommand(GenericCommand):
                 else:
                     return None
 
-        # loongarch64: bnez $t1, -8 (0x7ffff8) # 0x120000868
+        # is there an evaluated immediate value?
+        #   loongarch64: bnez $t1, -8 (0x7ffff8) # 0x120000868
         if " # 0x" in ops and is_loongarch64():
             addr = ContextCommand.RE_SUB_BRANCH_ADDR2.sub(r"\1", ops)
             ptr = to_unsigned_long(gdb.parse_and_eval(addr))
@@ -24956,12 +24958,17 @@ class ContextCommand(GenericCommand):
             else:
                 return ptr
 
-        # x86/x64: call ... PTR [rbx]
+        # is there a memory reference by register?
+        #   x86/x64 (default): call ... PTR [rbx]
+        #   x86/x64 (capstone): call ... ptr [rbx]
+        #   x64 (capstone): call ... ptr [rip + 0x1111]
         if is_x86():
-            if " PTR [" in ops:
-                addr = ContextCommand.RE_SUB_BRANCH_ADDR3.sub(r"\1", ops)
+            if " PTR [" in ops or " ptr [" in ops:
+                addr = ContextCommand.RE_SUB_BRANCH_ADDR3.sub(r"\2", ops)
                 for gr in current_arch.gpr_registers:
                     addr = addr.replace(gr.replace("$", ""), gr)
+                if is_x86_64():
+                    addr = addr.replace("$rip", "$rip+{:#x}".format(len(insn.opcodes)))
                 ptr = to_unsigned_long(gdb.parse_and_eval(addr))
                 try:
                     if to_str:
@@ -24974,10 +24981,12 @@ class ContextCommand(GenericCommand):
                     else:
                         return None
 
-        # x64: call ... PTR fs:0x10
+        # is there a segment relative?
+        #   x64 (default): call ... PTR fs:0x10
+        #   x64 (capstone): call ... ptr fs:[0x10]
         if is_x86_64():
-            if " PTR fs:" in ops:
-                ofs = ContextCommand.RE_SUB_BRANCH_ADDR4.sub(r"\1", ops)
+            if " PTR fs:" in ops or " ptr fs:" in ops:
+                ofs = ContextCommand.RE_SUB_BRANCH_ADDR4.sub(r"\2", ops)
                 ofs = to_unsigned_long(gdb.parse_and_eval(ofs))
                 fs = current_arch.get_fs()
                 try:
@@ -24991,10 +25000,12 @@ class ContextCommand(GenericCommand):
                     else:
                         return None
 
-        # x86: call ... PTR gs:0x10
+        # is there a segment relative?
+        #   x86 (default): call ... PTR gs:0x10
+        #   x86 (capstone): call ... ptr gs:[0x10]
         if is_x86_32():
-            if " PTR gs:" in ops:
-                ofs = ContextCommand.RE_SUB_BRANCH_ADDR5.sub(r"\1", ops)
+            if " PTR gs:" in ops or " ptr gs:" in ops:
+                ofs = ContextCommand.RE_SUB_BRANCH_ADDR5.sub(r"\2", ops)
                 ofs = to_unsigned_long(gdb.parse_and_eval(ofs))
                 gs = current_arch.get_gs()
                 try:
@@ -25008,9 +25019,9 @@ class ContextCommand(GenericCommand):
                     else:
                         return None
 
-        # is there a immediate? (relative)
-        # brlid  r15, -136
-        # bneid  r4, -8    // 3ffe9848
+        # is there a relative immediate?
+        #   microblaze:  brlid  r15, -136
+        #   microblaze:  bneid  r4, -8    // 3ffe9848
         if is_microblaze():
             addr = ContextCommand.RE_SUB_BRANCH_ADDR6.sub(r"\1", ops.split("//")[0].strip())
             try:
@@ -25022,7 +25033,7 @@ class ContextCommand(GenericCommand):
             except Exception:
                 pass
 
-        # is there a immediate? (absolute)
+        # is there a absolute immediate value?
         #   s390x:   bra    0x3ffdfc60
         #   s390x:   brasl  %r14, 0x1020b50
         #   RISCV:   jal    ra, 0x13894
