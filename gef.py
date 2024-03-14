@@ -4596,6 +4596,8 @@ class Architecture:
     """Generic metaclass for the architecture supported by GEF."""
     __metaclass__ = abc.ABCMeta
 
+    # base properties
+
     @abc.abstractproperty
     def arch(self):
         pass
@@ -4608,6 +4610,8 @@ class Architecture:
     def load_condition(self):
         pass
 
+    # register properties
+
     @abc.abstractproperty
     def all_registers(self):
         pass
@@ -4619,6 +4623,32 @@ class Architecture:
     @abc.abstractproperty
     def special_registers(self):
         pass
+
+    @abc.abstractproperty
+    def flag_register(self):
+        pass
+
+    @abc.abstractproperty
+    def flags_table(self):
+        pass
+
+    @abc.abstractproperty
+    def return_register(self):
+        pass
+
+    @abc.abstractproperty
+    def function_parameters(self):
+        pass
+
+    @abc.abstractproperty
+    def syscall_register(self):
+        pass
+
+    @abc.abstractproperty
+    def syscall_parameters(self):
+        pass
+
+    # architecture properties
 
     @abc.abstractproperty
     def bit_length(self):
@@ -4652,6 +4682,22 @@ class Architecture:
     def tls_supported(self):
         pass
 
+    # module properties
+
+    @abc.abstractproperty
+    def keystone_support(self):
+        pass
+
+    @abc.abstractproperty
+    def capstone_support(self):
+        pass
+
+    @abc.abstractproperty
+    def unicorn_support(self):
+        pass
+
+    # instruction properties
+
     @abc.abstractproperty
     def nop_insn(self):
         pass
@@ -4669,24 +4715,10 @@ class Architecture:
         pass
 
     @abc.abstractproperty
-    def return_register(self):
+    def syscall_insn(self):
         pass
 
-    @abc.abstractproperty
-    def flag_register(self):
-        pass
-
-    @abc.abstractproperty
-    def flags_table(self):
-        pass
-
-    @abc.abstractproperty
-    def function_parameters(self):
-        pass
-
-    @abc.abstractmethod
-    def flag_register_to_human(self, val=None):
-        pass
+    # instruction methods
 
     @abc.abstractmethod
     def is_syscall(self, insn):
@@ -4712,6 +4744,12 @@ class Architecture:
     def is_branch_taken(self, insn):
         pass
 
+    # register methods
+
+    @abc.abstractmethod
+    def flag_register_to_human(self, val=None):
+        pass
+
     @abc.abstractmethod
     def get_ra(self, insn, frame):
         pass
@@ -4730,18 +4768,6 @@ class Architecture:
 
     @abc.abstractmethod
     def mprotect_asm(self, addr, size, perm):
-        pass
-
-    @abc.abstractmethod
-    def keystone_support(self):
-        pass
-
-    @abc.abstractmethod
-    def capstone_support(self):
-        pass
-
-    @abc.abstractmethod
-    def unicorn_support(self):
         pass
 
     @property
