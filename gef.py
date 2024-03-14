@@ -6065,6 +6065,88 @@ class X86_64(X86):
         return b"".join([p64(v) for v in values])
 
 
+class X86_16(X86):
+    arch = "X86"
+    mode = "16"
+
+    load_condition = [
+        "I8086",
+    ]
+
+    seg_extended_registers = {
+        "$cs:$ip": ["$cs", "$pc"],
+        "$ss:$sp": ["$ss", "$sp"],
+        "$ss:$bp": ["$ss", "$bp"],
+        "$ds:$si": ["$ds", "$si"],
+        "$es:$di": ["$es", "$di"],
+    }
+
+    # https://stanislavs.org/helppc/int_21.html
+    return_register = "$ax"
+    syscall_register = "$ah"
+    syscall_parameters = None # TODO
+
+    bit_length = 16
+
+    def __init__(self):
+        gdb.execute("gef config context.use_capstone True")
+        return
+
+    def is_syscall(self, insn):
+        return insn.mnemonic == "int" and insn.operands[0] == "0x21"
+
+    def is_jump(self, insn):
+        return insn.mnemonic in ["jmp", "ljmp"] or self.is_conditional_branch(insn)
+
+    def is_ret(self, insn):
+        return insn.mnemonic in ["ret", "retf", "iret"]
+
+    def get_ra(self, insn, frame):
+        ra = None
+        try:
+            if self.is_ret(insn):
+                if insn.mnemonic == "ret":
+                    reg = dereference(current_arch.sp) & 0xffff
+                    ra = current_arch.real2phys("$cs", reg)
+                elif insn.mnemonic == "retf": # ip, cs
+                    reg = dereference(current_arch.sp) & 0xffff
+                    seg = dereference(current_arch.sp + current_arch.ptrsize) & 0xffff
+                    ra = current_arch.real2phys(seg, reg)
+                elif insn.mnemonic == "iret": # ip, cs, flags, sp, ss
+                    reg = dereference(current_arch.sp) & 0xffff
+                    seg = dereference(current_arch.sp + current_arch.ptrsize) & 0xffff
+                    ra = current_arch.real2phys(seg, reg)
+            elif frame.older():
+                ra = frame.older().pc()
+        except gdb.error:
+            pass
+        return ra
+
+    A20 = True
+
+    def real2phys(self, seg, reg):
+        if isinstance(seg, str):
+            segval = get_register(seg) & 0xffff
+        else:
+            segval = seg
+        if isinstance(reg, str):
+            regval = get_register(reg) & 0xffff
+        else:
+            regval = reg
+        if self.A20:
+            return ((segval << 4) + regval) & 0x1fffff
+        else:
+            return ((segval << 4) + regval) & 0x0fffff
+
+    @property
+    def pc(self):
+        return self.real2phys("$cs", "$pc")
+
+    @property
+    def sp(self):
+        return self.real2phys("$ss", "$sp")
+
+
 class PPC(Architecture):
     arch = "PPC"
     mode = "32"
@@ -10225,12 +10307,18 @@ def is_valid_addr(addr):
     if addr < 0:
         return False
 
-    if is_64bit():
-        if (1 << 64) - 1 < addr:
-            return False
+    if is_x86_16():
+        if current_arch.A20:
+            shift = 21
+        else:
+            shift = 20
+    elif is_64bit():
+        shift = 64
     elif is_32bit():
-        if (1 << 32) - 1 < addr:
-            return False
+        shift = 32
+
+    if (1 << shift) - 1 < addr:
+        return False
 
     if is_qemu_system():
         if check_gic_address(addr):
@@ -10254,7 +10342,7 @@ def read_int_from_memory(addr):
     """Return an integer read from memory."""
     sz = current_arch.ptrsize
     mem = read_memory(addr, sz)
-    unpack = u32 if sz == 4 else u64
+    unpack = {2:u16, 4:u32, 8:u64}[sz]
     return unpack(mem)
 
 
@@ -10727,6 +10815,7 @@ def only_if_specific_arch(arch=()):
             dic = {
                 "x86_32": is_x86_32,
                 "x86_64": is_x86_64,
+                "x86_16": is_x86_16,
                 "ARM64": is_arm64,
                 "ARM32": is_arm32,
                 "MIPS32": is_mips32,
@@ -10775,6 +10864,7 @@ def exclude_specific_arch(arch=()):
             dic = {
                 "x86_32": is_x86_32,
                 "x86_64": is_x86_64,
+                "x86_16": is_x86_16,
                 "ARM64": is_arm64,
                 "ARM32": is_arm32,
                 "MIPS32": is_mips32,
@@ -12155,9 +12245,14 @@ def is_x86_32():
     return current_arch and current_arch.arch == "X86" and current_arch.mode == "32"
 
 
+def is_x86_16():
+    """Architecture determination function for x86-16."""
+    return current_arch and current_arch.arch == "X86" and current_arch.mode == "16"
+
+
 def is_x86():
-    """Architecture determination function for x86-32 or x86-64."""
-    return is_x86_32() or is_x86_64()
+    """Architecture determination function for x86-32 or x86-64 or x86_16."""
+    return is_x86_32() or is_x86_64() or is_x86_16()
 
 
 def is_arm32():
@@ -12321,7 +12416,10 @@ def get_arch():
     if is_alive():
         try:
             arch = gdb.selected_frame().architecture()
-            return arch.name()
+            name = arch.name()
+            # check i386 or i8086
+            if name != "i386":
+                return name
         except gdb.error:
             # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
             # Resolve by moving to the slow path.
@@ -12396,6 +12494,8 @@ def set_arch(arch_str=None):
         current_arch = arches[key]()
     except KeyError as err:
         raise OSError("Specified arch {!s} is not supported".format(key)) from err
+
+    reset_gef_caches(all=True)
     return
 
 
@@ -12414,6 +12514,13 @@ def get_memory_alignment(in_bits=False):
     Next, use the size of `size_t`.
     Finally, try the size of $pc.
     If `in_bits` is set to True, the result is returned in bits, otherwise in bytes."""
+
+    if is_x86_16():
+        if current_arch.A20:
+            return 2 if not in_bits else 21
+        else:
+            return 2 if not in_bits else 20
+
     if is_32bit():
         return 4 if not in_bits else 32
     elif is_64bit():
@@ -12481,6 +12588,13 @@ def format_address(addr, memalign_size=None, long_fmt=False):
     addr = align_address(addr, memalign_size)
     if memalign_size == 4:
         return "{:#010x}".format(addr)
+    elif memalign_size == 2:
+        return "{:#06x}".format(addr)
+    elif memalign_size == 2.5:
+        if current_arch.A20:
+            return "{:#08x}".format(addr)
+        else:
+            return "{:#07x}".format(addr)
     if long_fmt:
         return "{:#018x}".format(addr)
     if is_in_kernel():
@@ -12492,9 +12606,21 @@ def align_address(addr, memalign_size=None):
     """Align the provided address to the process's native length."""
     # if qemu-xxx(32bit arch) runs on x86-64 machine, memalign_size does not match
     # get_memory_alignment(), so use the value forcibly if memalign_size is not None
-    if memalign_size is None and get_memory_alignment() == 4:
+    if memalign_size is None:
+        memalign_size = get_memory_alignment()
+
+    if memalign_size == 8:
+        return addr & 0xFFFFFFFFFFFFFFFF
+    elif memalign_size == 4:
         return addr & 0xFFFFFFFF
-    return addr & 0xFFFFFFFFFFFFFFFF
+    elif memalign_size == 2:
+        return addr & 0xFFFF
+    elif memalign_size == 2.5:
+        if current_arch.A20:
+            return addr & 0x1FFFFF
+        else:
+            return addr & 0x0FFFFF
+    return None
 
 
 def align_address_to_size(addr, align):
@@ -19451,6 +19577,7 @@ class RegistersCommand(GenericCommand):
         widest = current_arch.get_aliased_registers_name_max()
         special_line = ""
 
+        out = []
         for regname in regs:
             reg = gdb.parse_and_eval(regname)
             if reg.type.code == gdb.TYPE_CODE_VOID:
@@ -19465,11 +19592,14 @@ class RegistersCommand(GenericCommand):
                     padreg = current_arch.get_aliased_registers()[regname].ljust(widest, " ")
                     line = "{}: ".format(Color.colorify(padreg, unchanged_color))
                     line += Color.colorify("<unavailable>", "yellow underline")
-                    gef_print(line)
+                    out.append(line)
                     continue
 
             # colorling
-            value = align_address(int(reg))
+            if is_x86_16():
+                value = align_address(int(reg), memalign_size=4)
+            else:
+                value = align_address(int(reg))
             old_value = ContextCommand.old_registers.get(regname, 0)
             if value == old_value:
                 color = unchanged_color
@@ -19490,16 +19620,47 @@ class RegistersCommand(GenericCommand):
             # flag register
             if current_arch.flag_register and regname == current_arch.flag_register:
                 line += current_arch.flag_register_to_human()
-                gef_print(line)
+                out.append(line)
                 continue
 
             # dereference values
-            line += to_string_dereference_from(value)
+            if is_x86_16():
+                line += format_address(value, memalign_size=4)
+                derefs = to_string_dereference_from(value, skip_idx=1)
+                if derefs:
+                    line += " {:s} {:s}".format(RIGHT_ARROW, derefs)
+            else:
+                line += to_string_dereference_from(value)
 
-            gef_print(line)
+            out.append(line)
 
         if special_line:
-            gef_print(special_line)
+            out.append(special_line)
+
+        if is_x86_16():
+            for regname, (seg, reg) in current_arch.seg_extended_registers.items():
+                segval = get_register(seg) & 0xffff
+                regval = get_register(reg) & 0xffff
+                value = current_arch.real2phys(segval, regval)
+
+                # colorling
+                old_value = ContextCommand.old_registers.get(regname, 0)
+                if value == old_value:
+                    color = unchanged_color
+                else:
+                    color = changed_color
+
+                # reg name
+                line = "{}:".format(Color.colorify(regname, color))
+
+                # dereference values
+                value_s = format_address(value, memalign_size=2.5)
+                line += " {:04x}:{:04x}: {:s} {:s} ".format(segval, regval, value_s, RIGHT_ARROW)
+                line += to_string_dereference_from(value, skip_idx=1)
+
+                out.append(line)
+
+        gef_print("\n".join(out))
         return
 
 
@@ -24424,6 +24585,16 @@ class ContextCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
+        if is_qemu_system() and get_arch() == "i8086":
+            # check whether protected mode or not.
+            # even if `CR0.PE=1`, it will not switch until `ljmp`, so it is better to judge whether `$cs=0x8` or not.
+            # https://wiki.osdev.org/Protected_Mode
+            cs = get_register("$cs")
+            if cs is None or cs == 8:
+                set_arch("x86")
+            else:
+                set_arch("i8086")
+
         if "on" in args.commands:
             gdb.execute("gef config context.enable True")
             return
@@ -25086,6 +25257,19 @@ class ContextCommand(GenericCommand):
             except Exception:
                 pass
 
+        # is there a absolute immediate value (with segment)?
+        #   x86_16:  ljmp   0xf000:0xe05b
+        if is_x86_16() and ":0x" in ops:
+            seg, val = [int(x, 16) for x in ops.split(":")]
+            if ops.startswith("0x"):
+                addr = current_arch.real2phys(seg, val)
+            else:
+                addr = val
+            if to_str:
+                return "{:#x}".format(addr)
+            else:
+                return addr
+
         # is there a absolute immediate value?
         #   s390x:   bra    0x3ffdfc60
         #   s390x:   brasl  %r14, 0x1020b50
@@ -25398,6 +25582,8 @@ class ContextCommand(GenericCommand):
 
             # address and symbol
             pc = current_frame.pc()
+            if is_x86_16():
+                pc = current_arch.real2phys("$cs", pc)
             sym = get_symbol_string(pc, nosymbol_string=" <NO_SYMBOL>")
 
             # frame name
@@ -25848,7 +26034,11 @@ class HexdumpCommand(GenericCommand):
             to_idx *= -1
             to_idx += 0x10
 
-        read_from = align_address(args.location) + min(from_idx, to_idx)
+        memalign_size = None
+        if is_x86_16():
+            memalign_size = 2.5
+
+        read_from = align_address(args.location, memalign_size=memalign_size) + min(from_idx, to_idx)
         mem = self.read_memory(read_from, args.count)
         if mem is None:
             err("cannot access memory")
@@ -26993,9 +27183,14 @@ class DereferenceCommand(GenericCommand):
         base_address_color = get_gef_setting("theme.dereference_base_address")
         registers_color = get_gef_setting("theme.dereference_register_value")
         memalign = current_arch.ptrsize
-
         offset = idx * memalign
-        current_address = align_address(addr + offset)
+
+        # used as first element
+        memalign_size = None
+        if is_x86_16():
+            memalign_size = 2.5
+
+        current_address = align_address(addr + offset, memalign_size=memalign_size)
 
         addrs, error = dereference_from(current_address, phys=phys)
         if len(addrs) == 1 and not error: # cannot access this area
@@ -27005,7 +27200,7 @@ class DereferenceCommand(GenericCommand):
         link = to_string_dereference_from(current_address, skip_idx=1, phys=phys)
 
         # craete line of one entry
-        addr_colored = Color.colorify(format_address(addrs[0]), base_address_color)
+        addr_colored = Color.colorify(format_address(addrs[0], memalign_size=memalign_size), base_address_color)
         if tag:
             line = f"{addr_colored}{VERTICAL_LINE}{offset:+#07x}{VERTICAL_LINE}{idx:+04d}: {tag:s}: {link:{memalign * 2 + 2}s}"
         else:
@@ -58601,7 +58796,7 @@ class GdtInfoCommand(GenericCommand):
         return
 
     @parse_args
-    @only_if_specific_arch(arch=("x86_32", "x86_64"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "x86_16"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -58799,7 +58994,7 @@ class IdtInfoCommand(GenericCommand):
             err("IDT is uninitialized")
             return
 
-        idtinfo = slice_unpack(read_memory(base, limit + 1), current_arch.ptrsize * 2)
+        idtinfo = slice_unpack(read_memory(base, limit + 1), max(current_arch.ptrsize * 2, 4))
 
         # print entry
         for i, b in enumerate(idtinfo):
@@ -58834,7 +59029,7 @@ class IdtInfoCommand(GenericCommand):
         return
 
     @parse_args
-    @only_if_specific_arch(arch=("x86_32", "x86_64"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "x86_16"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -72575,7 +72770,7 @@ class QemuRegistersCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system",))
-    @only_if_specific_arch(arch=("x86_32", "x86_64"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "x86_16"))
     def do_invoke(self, args):
         self.dont_repeat()
         self.add_info = args.verbose
@@ -73155,10 +73350,10 @@ class PagewalkCommand(GenericCommand):
     # Need not @parse_args because argparse can't stop interpreting options for pagewalk sub-command.
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "x86_16", "ARM32", "ARM64"))
     def do_invoke(self, argv):
         self.dont_repeat()
-        if is_x86_32():
+        if is_x86_32() or is_x86_16():
             gdb.execute("pagewalk x86 {}".format(" ".join(argv)))
         elif is_x86_64():
             gdb.execute("pagewalk x64 {}".format(" ".join(argv)))
@@ -73670,7 +73865,7 @@ class PagewalkX64Command(PagewalkCommand):
                     self.pagewalk_PDT()
                     self.pagewalk_PT()
                     self.merging()
-        elif is_x86_32():
+        elif is_x86_32() or is_x86_16():
             if (cr4 >> 5) & 1: # PAE check
                 # 32bit PAE(4KB): 2,9,9,12 (PTE Size: 64bit)
                 # 32bit PAE(2MB): 2,9,0,21 (PTE Size: 64bit)
@@ -73711,7 +73906,7 @@ class PagewalkX64Command(PagewalkCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "x86_16"))
     def do_invoke(self, args):
         self.dont_repeat()
 

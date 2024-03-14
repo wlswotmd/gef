@@ -52,9 +52,13 @@ GEF always uses its own resolved address with `ksymaddr-remote`.
 It also performs its own heuristic structure member detection in each command.
 
 ## Does GEF support i386 16-bit mode (real mode)?
-No, GEF does not support real mode.
+Yes, GEF suuports real mode experimentally.
 
-Please consider using other scripts, such as [here](https://astralvx.com/debugging-16-bit-in-qemu-with-gdb-on-windows/).
+`qemu-system-x86_64` cannot be used, use `qemu-system-i386`.
+Explicitly specify the i8086 architecture before connecting: `gdb -ex 'set architecture i8086' -ex 'target remote localhost:1234'`.
+
+When switching from real mode (16-bit) to protected mode (32-bit), 16bit mode debugging is no longer possible.
+GEF will switch to/from 32-bit mode automatically.
 
 ## Does GEF support to debug Android?
 I have never tried it, so I don't know.

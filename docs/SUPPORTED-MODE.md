@@ -8,6 +8,7 @@
     * Or `gdb-multiarch -ex 'set architecture TARGET_ARCH' -ex 'target remote localhost:1234'` (for old qemu).
 * Supported architectures
     * x86, x64, ARM and ARM64
+    * i8086 (16-bit) is supported experimentally.
 * Note
     * Most commands should work fine unless `CONFIG_RANDSTRUCT=y`.
     * It works with any version qemu-system, but latest version is recommended.
