@@ -4081,59 +4081,6 @@ def gdb_get_nth_previous_instruction_address(addr, n):
     return None
 
 
-def gdb_get_nth_next_instruction_address(addr, n):
-    """Return the address (Integer) of the `n`-th instruction after `addr`."""
-    if addr is None:
-        return None
-
-    # fixed-length ABI
-    if current_arch.instruction_length:
-        return addr + n * current_arch.instruction_length
-
-    # variable-length ABI
-    insn = list(gdb_disassemble(addr, count=n))[-1]
-    return insn.address
-
-
-def gef_instruction_n(addr, n):
-    """Return the `n`-th instruction after `addr` as an Instruction object."""
-    return list(gdb_disassemble(addr, count=n + 1))[n]
-
-
-def get_insn(addr=None):
-    """Return the current instruction as an Instruction object."""
-    if addr is None:
-        if not is_alive():
-            return None
-        addr = current_arch.pc
-    return gef_instruction_n(addr, 0)
-
-
-def get_insn_next(addr=None):
-    """Return the next instruction as an Instruction object."""
-    if addr is None:
-        if not is_alive():
-            return None
-        addr = current_arch.pc
-    return gef_instruction_n(addr, 1)
-
-
-def get_insn_prev(addr=None):
-    """Return the prev instruction as an Instruction object."""
-    if addr is None:
-        if not is_alive():
-            return None
-        addr = current_arch.pc
-    try:
-        # Use gef_disassemble because gdb_get_nth_previous_instruction_address
-        # may return incorrect address.
-        gen = gef_disassemble(addr, 0, nb_prev=2)
-        gen.__next__()
-        return gen.__next__()
-    except (gdb.error, StopIteration):
-        return None
-
-
 def gef_disassemble(addr, nb_insn, nb_prev=0):
     """Disassemble `nb_insn` instructions after `addr` and `nb_prev` before `addr`.
     Return an iterator of Instruction objects."""
@@ -4164,6 +4111,41 @@ def gef_disassemble(addr, nb_insn, nb_prev=0):
 
 
 @load_capstone
+def capstone_get_nth_previous_instruction_address(addr, n, cs):
+    """Return the address (Integer) of the `n`-th instruction before `addr`."""
+    if addr is None:
+        return None
+
+    # fixed-length ABI
+    if current_arch.instruction_length:
+        return max(0, addr - n * current_arch.instruction_length)
+
+    # variable-length ABI
+
+    # we try to find a good set of previous instructions by "guessing" disassembling backwards
+    # the 15 comes from the longest instruction valid size
+    for i in range(15 * n, 0, -1):
+        try:
+            code = read_memory(addr - i, i)
+        except gdb.MemoryError:
+            continue
+
+        insns = list(cs.disasm(code, addr - i))
+
+        # 1. check that the disassembled instructions list size can satisfy
+        if len(insns) < n:
+            continue
+        insns = insns[-n:]
+
+        # 2. check that the sequence ends with the current address
+        if insns[-1].address + insns[-1].size != addr:
+            continue
+
+        return insns[0].address
+    return None
+
+
+@load_capstone
 def capstone_disassemble(location, nb_insn, **kwargs):
     """Disassemble `nb_insn` instructions after `addr` and `nb_prev` before
     `addr` using the Capstone-Engine disassembler, if available.
@@ -4189,8 +4171,10 @@ def capstone_disassemble(location, nb_insn, **kwargs):
     # fix location by nb_prev
     nb_prev = kwargs.get("nb_prev", 0)
     if nb_prev > 0:
-        location = gdb_get_nth_previous_instruction_address(location, nb_prev)
-        nb_insn += nb_prev
+        _location = capstone_get_nth_previous_instruction_address(location, nb_prev, capstone.Cs(arch, mode))
+        if _location is not None:
+            location = _location
+            nb_insn += nb_prev
 
     # split reading by page_size
     read_addr = location
@@ -4252,6 +4236,49 @@ def capstone_disassemble(location, nb_insn, **kwargs):
         read_addr += read_size # 1st loop is the offset size. 2nd~ loops are the page size.
         read_size = gef_getpagesize()
     return
+
+
+def gef_instruction_n(addr, n):
+    """Return the `n`-th instruction after `addr` as an Instruction object."""
+    if get_gef_setting("context.use_capstone"):
+        return list(capstone_disassemble(addr, n + 1))[n]
+    else:
+        return list(gdb_disassemble(addr, count=n + 1))[n]
+
+
+def get_insn(addr=None):
+    """Return the current instruction as an Instruction object."""
+    if addr is None:
+        if not is_alive():
+            return None
+        addr = current_arch.pc
+    return gef_instruction_n(addr, 0)
+
+
+def get_insn_next(addr=None):
+    """Return the next instruction as an Instruction object."""
+    if addr is None:
+        if not is_alive():
+            return None
+        addr = current_arch.pc
+    return gef_instruction_n(addr, 1)
+
+
+def get_insn_prev(addr=None):
+    """Return the prev instruction as an Instruction object."""
+    if addr is None:
+        if not is_alive():
+            return None
+        addr = current_arch.pc
+    try:
+        if get_gef_setting("context.use_capstone"):
+            gen = capstone_disassemble(addr, 0, nb_prev=2)
+        else:
+            gen = gef_disassemble(addr, 0, nb_prev=2)
+        gen.__next__()
+        return gen.__next__()
+    except (gdb.error, StopIteration):
+        return None
 
 
 def gef_execute_external(command, as_list=False, *args, **kwargs):
