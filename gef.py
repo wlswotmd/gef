@@ -24639,25 +24639,34 @@ class ContextCommand(GenericCommand):
             err("Missing info about architecture. Please set: `file /path/to/target_binary`")
             return
 
-        if current_arch.sp is None:
+        sp = current_arch.sp
+
+        if sp is None:
             err("Failed to get value of $SP")
             return
 
         if show_raw is True:
             try:
-                mem = read_memory(current_arch.sp, 0x10 * nb_lines)
-                gef_print(hexdump(mem, base=current_arch.sp))
+                mem = read_memory(sp, 0x10 * nb_lines)
+                gef_print(hexdump(mem, base=sp))
             except gdb.MemoryError:
                 err("Cannot read memory from $SP (corrupted stack pointer?)")
         else:
             if not current_arch.stack_grow_down:
-                gdb.execute("telescope {:#x} {:d} --no-pager".format(current_arch.sp, nb_lines))
+                gdb.execute("telescope {:#x} {:d} --no-pager".format(sp, nb_lines))
             else:
-                gdb.execute("telescope {:#x} -{:d} --no-pager".format(current_arch.sp, nb_lines))
+                gdb.execute("telescope {:#x} -{:d} --no-pager".format(sp, nb_lines))
         return
 
-    def addr_has_breakpoint(self, address, bp_locations):
-        return any(hex(address) in b for b in bp_locations)
+    def get_breakpoints(self):
+        breakpoints = gdb.breakpoints()
+        if not breakpoints:
+            return []
+        bp_locations = []
+        for b in breakpoints:
+            for bl in b.locations:
+                bp_locations.append(bl.address)
+        return bp_locations
 
     def context_code(self):
         use_native_x_command = self.get_setting("use_native_x_command")
@@ -24673,8 +24682,7 @@ class ContextCommand(GenericCommand):
             return
 
         pc = current_arch.pc
-        breakpoints = gdb.breakpoints() or []
-        bp_locations = [b.location for b in breakpoints if b.location and b.location.startswith("*")]
+        bp_locations = self.get_breakpoints()
 
         try:
             frame = gdb.selected_frame()
@@ -24698,7 +24706,7 @@ class ContextCommand(GenericCommand):
             delay_slot = None
 
             # bp prefix
-            if self.addr_has_breakpoint(insn.address, bp_locations):
+            if insn.address in bp_locations:
                 bp_prefix = Color.redify(BP_GLYPH)
             else:
                 bp_prefix = " "
@@ -24803,7 +24811,11 @@ class ContextCommand(GenericCommand):
             return
 
         inst_iter = gef_disassemble(current_arch.pc, 2)
-        insn_here = inst_iter.__next__()
+        try:
+            insn_here = inst_iter.__next__()
+        except StopIteration:
+            return
+
         if insn_here.operands == []:
             return
         if insn_here.mnemonic == "nop":
@@ -24883,14 +24895,21 @@ class ContextCommand(GenericCommand):
             return
 
         inst_iter = gef_disassemble(current_arch.pc, 2)
-        insn_here = inst_iter.__next__()
+        try:
+            insn_here = inst_iter.__next__()
+        except StopIteration:
+            return
+
         if insn_here.operands == []:
             return
 
         insn = ",".join(insn_here.operands)
         insn = re.sub(r"<.+>", "", insn)
 
-        insn_next = inst_iter.__next__()
+        try:
+            insn_next = inst_iter.__next__()
+        except StopIteration:
+            return
         codesize = insn_next.address - insn_here.address
 
         r = self.RE_FINDALL_SEG2.findall(str(insn))
@@ -24925,7 +24944,11 @@ class ContextCommand(GenericCommand):
             return
 
         inst_iter = gef_disassemble(current_arch.pc, 1)
-        insn_here = inst_iter.__next__()
+        try:
+            insn_here = inst_iter.__next__()
+        except StopIteration:
+            return
+
         if insn_here.operands == []:
             return
 
@@ -24996,7 +25019,10 @@ class ContextCommand(GenericCommand):
                     addr = addr.replace(gr.replace("$", ""), gr)
                 if is_x86_64():
                     addr = addr.replace("$rip", "$rip+{:#x}".format(len(insn.opcodes)))
-                ptr = to_unsigned_long(gdb.parse_and_eval(addr))
+                try:
+                    ptr = to_unsigned_long(gdb.parse_and_eval(addr))
+                except gdb.error:
+                    return None
                 try:
                     if to_str:
                         return "{:#x}".format(read_int_from_memory(ptr))
@@ -25080,11 +25106,12 @@ class ContextCommand(GenericCommand):
         maybe_reg = insn.operands[-1].split()[0]
         if len(maybe_reg) <= 5 and maybe_reg[0] == "(" and maybe_reg[-1] == ")":
             maybe_reg = maybe_reg[1:-1]
-        if get_register(maybe_reg):
+        ptr = get_register(maybe_reg)
+        if ptr is not None:
             if to_str:
-                return "{:#x}".format(get_register(maybe_reg))
+                return "{:#x}".format(ptr)
             else:
-                return get_register(maybe_reg)
+                return ptr
 
         return None
 
@@ -25098,6 +25125,9 @@ class ContextCommand(GenericCommand):
         try:
             insn = get_insn()
         except gdb.MemoryError:
+            return
+
+        if insn is None:
             return
 
         if current_arch.is_syscall(insn):
@@ -25241,6 +25271,17 @@ class ContextCommand(GenericCommand):
         gef_print(")")
         return
 
+    def get_source_breakpoints(self, file_base_name):
+        breakpoints = gdb.breakpoints()
+        if not breakpoints:
+            return []
+        bp_locations = []
+        for b in breakpoints:
+            for bl in b.locations:
+                if bl.source:
+                    bp_locations.append("{:s}:{:d}".format(bl.source[0], bl.source[1]))
+        return bp_locations
+
     def line_has_breakpoint(self, file_name, line_number, bp_locations):
         filename_line = "{}:{}".format(file_name, line_number)
         return any(filename_line in loc for loc in bp_locations)
@@ -25262,15 +25303,12 @@ class ContextCommand(GenericCommand):
             return
 
         file_base_name = os.path.basename(symtab.filename)
-        breakpoints = gdb.breakpoints() or []
-        bp_locations = [b.location for b in breakpoints if b.location and file_base_name in b.location]
+        bp_locations = self.get_source_breakpoints(file_base_name)
         past_lines_color = get_gef_setting("theme.old_context")
 
         nb_line = self.get_setting("nb_lines_code")
-        fn = symtab.filename
-        title = "source:{}+{}".format(fn, line_num + 1)
         cur_line_color = get_gef_setting("theme.source_current_line")
-        self.context_title(title)
+        self.context_title("source:{}+{}".format(symtab.filename, line_num + 1))
         show_extra_info = self.get_setting("show_source_code_variable_values")
 
         for i in range(line_num - nb_line + 1, line_num + nb_line):
