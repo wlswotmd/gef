@@ -19378,10 +19378,30 @@ class RegistersCommand(GenericCommand):
     _example_ = "{:s}\n".format(_cmdline_)
     _example_ += "{:s} $eax $eip $esp".format(_cmdline_)
 
+    def __init__(self):
+        super().__init__()
+        self.regs_to_check_unavailable = None
+        return
+
+    def check_unavailable_regs(self):
+        if self.regs_to_check_unavailable is not None:
+            return
+
+        self.regs_to_check_unavailable = []
+        for regname in current_arch.all_registers:
+            reg = gdb.parse_and_eval(regname)
+            if reg.type.code == gdb.TYPE_CODE_VOID:
+                continue
+            if str(reg) == "<unavailable>":
+                self.regs_to_check_unavailable.append(regname)
+        return
+
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
         self.dont_repeat()
+
+        self.check_unavailable_regs()
 
         unchanged_color = get_gef_setting("theme.registers_register_name")
         changed_color = get_gef_setting("theme.registers_value_changed")
@@ -19406,15 +19426,17 @@ class RegistersCommand(GenericCommand):
             if reg.type.code == gdb.TYPE_CODE_VOID:
                 continue
 
-            # https://arvid.io/2016/08/21/test-if-a-variable-is-unavailable-in-gdb/
-            # It seems unnecessary because Mac OS is not supported,
-            # but when executing aarch64 under qiling framework, cpsr/fpsr/fpcr is unavailable.
-            if str(reg) == "<unavailable>":
-                padreg = current_arch.get_aliased_registers()[regname].ljust(widest, " ")
-                line = "{}: ".format(Color.colorify(padreg, unchanged_color))
-                line += Color.colorify("<unavailable>", "yellow underline")
-                gef_print(line)
-                continue
+            # str(reg) is slow, so skip if unneeded
+            if regname in self.regs_to_check_unavailable:
+                # https://arvid.io/2016/08/21/test-if-a-variable-is-unavailable-in-gdb/
+                # It seems unnecessary because Mac OS is not supported,
+                # but when executing aarch64 under qiling framework, cpsr/fpsr/fpcr is unavailable.
+                if str(reg) == "<unavailable>":
+                    padreg = current_arch.get_aliased_registers()[regname].ljust(widest, " ")
+                    line = "{}: ".format(Color.colorify(padreg, unchanged_color))
+                    line += Color.colorify("<unavailable>", "yellow underline")
+                    gef_print(line)
+                    continue
 
             # colorling
             value = align_address(int(reg))
