@@ -26761,6 +26761,7 @@ def to_string_dereference_from(value, skip_idx=0, phys=False):
     """Create string from dereference array"""
     string_color = get_gef_setting("theme.dereference_string")
     nb_max_string_length = get_gef_setting("context.nb_max_string_length")
+    recursion = get_gef_setting("dereference.max_recursion") or 4
 
     # dereference
     addrs, error = dereference_from(value, phys=phys)
@@ -26774,7 +26775,7 @@ def to_string_dereference_from(value, skip_idx=0, phys=False):
 
     # add "..."
     if error is None:
-        if addrs[-1] > 0x100 and is_valid_addr(addrs[-1]):
+        if addrs[-1] > 0x100 and is_valid_addr(addrs[-1]) and recursion > 1:
             error = "..."
 
     # replace to string if valid
