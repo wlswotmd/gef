@@ -5593,13 +5593,12 @@ class X86(Architecture):
         "X86",
         "I386",
         "I386:INTEL",
-        "I8086",
     ]
 
-    gpr_registers = ["$eax", "$ebx", "$ecx", "$edx", "$esp", "$ebp", "$esi", "$edi", "$eip"]
+    gpr_registers = ["$eax", "$ebx", "$ecx", "$edx", "$esp", "$ebp", "$esi", "$edi", "$eip", "$eflags"]
     special_registers = ["$cs", "$ss", "$ds", "$es", "$fs", "$gs"]
     flag_register = "$eflags"
-    all_registers = gpr_registers + [flag_register] + special_registers
+    all_registers = gpr_registers + special_registers
     alias_registers = {}
     flags_table = {
         21: "ident",
@@ -5734,8 +5733,15 @@ class X86(Architecture):
         ra = None
         try:
             if self.is_ret(insn):
-                ra = to_unsigned_long(dereference(current_arch.sp))
-            if frame.older():
+                if insn.mnemonic == "ret":
+                    ra = to_unsigned_long(dereference(current_arch.sp))
+                elif insn.mnemonic == "retf": # eip, cs
+                    ra = to_unsigned_long(dereference(current_arch.sp))
+                elif insn.mnemonic == "sysret": # ecx
+                    ra = to_unsigned_long(get_register("$ecx"))
+                elif insn.mnemonic == "iret": # eip, cs, eflags, esp, ss
+                    ra = to_unsigned_long(dereference(current_arch.sp))
+            elif frame.older():
                 ra = frame.older().pc()
         except gdb.error:
             pass
@@ -5868,9 +5874,9 @@ class X86_64(X86):
 
     gpr_registers = [
         "$rax", "$rbx", "$rcx", "$rdx", "$rsp", "$rbp", "$rsi", "$rdi", "$rip",
-        "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15",
+        "$r8", "$r9", "$r10", "$r11", "$r12", "$r13", "$r14", "$r15", "$eflags",
     ]
-    all_registers = gpr_registers + [X86.flag_register] + X86.special_registers
+    all_registers = gpr_registers + X86.special_registers
     alias_registers = {}
 
     return_register = "$rax"
@@ -5884,6 +5890,24 @@ class X86_64(X86):
 
     def is_syscall(self, insn):
         return insn.mnemonic in ["sysenter", "syscall"]
+
+    def get_ra(self, insn, frame):
+        ra = None
+        try:
+            if self.is_ret(insn):
+                if insn.mnemonic == "ret":
+                    ra = to_unsigned_long(dereference(current_arch.sp))
+                elif insn.mnemonic == "retf": # rip, cs
+                    ra = to_unsigned_long(dereference(current_arch.sp))
+                elif insn.mnemonic == "sysret": # rcx
+                    ra = to_unsigned_long(get_register("$rcx"))
+                elif insn.mnemonic == "iret": # rip, cs, rflags, rsp, ss
+                    ra = to_unsigned_long(dereference(current_arch.sp))
+            elif frame.older():
+                ra = frame.older().pc()
+        except gdb.error:
+            pass
+        return ra
 
     def get_tls(self):
         if is_in_kernel():
