@@ -12411,6 +12411,8 @@ def clear_screen():
 def is_in_kernel():
     if not is_alive():
         return False
+    if is_qiling():
+        return False
     if is_x86():
         return (get_register("$cs") & 0b11) != 3
     elif is_arm32():
