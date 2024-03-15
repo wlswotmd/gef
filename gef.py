@@ -20112,24 +20112,41 @@ class AsmListCommand(GenericCommand):
 
 @register_command
 class ProcessSearchCommand(GenericCommand):
-    """List and filter processes."""
-    _cmdline_ = "process-search"
+    """Display a smart list of processes."""
+    _cmdline_ = "ps"
     _category_ = "07-a. External Command - General"
-    _aliases_ = ["ps"]
+    _aliases_ = ["process-search"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("pattern", metavar="REGEX_PATTERN", nargs="?", help="filter by regex.")
-    parser.add_argument("-a", dest="do_attach", action="store_true", help="attach it.")
-    parser.add_argument("-s", dest="smart_scan", action="store_true",
-                        help="filter kernel thread, socat, grep, gdb, sshd, bash, systemd, etc.")
+    parser.add_argument("-a", "--attach", action="store_true", help="attach it.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="include kernel thread, socat, grep, gdb, sshd, bash, systemd, etc.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} gdb.*".format(_cmdline_)
+    _example_ = "{:s} ./a.out".format(_cmdline_)
 
     def __init__(self):
         super().__init__()
         ps = which("ps")
         self.add_setting("ps_command", "{:s} auxww".format(ps), "`ps` command to get process information")
+        return
+
+    def get_processes(self):
+        output = gef_execute_external(self.get_setting("ps_command").split(), True)
+        names = [x.lower().replace("%", "") for x in output[0].split()]
+
+        for line in output[1:]:
+            fields = line.split()
+            t = {}
+
+            for i, name in enumerate(names):
+                if i == len(names) - 1:
+                    t[name] = " ".join(fields[i:])
+                else:
+                    t[name] = fields[i]
+            yield t
         return
 
     @parse_args
@@ -20142,6 +20159,7 @@ class ProcessSearchCommand(GenericCommand):
         else:
             pattern = re.compile("^.*$")
 
+        out = []
         for process in self.get_processes():
             pid = int(process["pid"])
             command = process["command"]
@@ -20150,7 +20168,7 @@ class ProcessSearchCommand(GenericCommand):
             if not re.search(pattern, command):
                 continue
 
-            if args.smart_scan:
+            if not args.verbose:
                 if command.startswith("[") and command.endswith("]"): # kernel thread
                     continue
                 if command.startswith("socat "):
@@ -20158,6 +20176,8 @@ class ProcessSearchCommand(GenericCommand):
                 if command.startswith("grep "):
                     continue
                 if command.startswith("gdb "):
+                    continue
+                if command.startswith("gdb-multiarch "):
                     continue
                 if command.startswith("-bash"):
                     continue
@@ -20177,36 +20197,25 @@ class ProcessSearchCommand(GenericCommand):
                     continue
                 if command.startswith("fusermount3 "):
                     continue
-                if command.startswith("/usr/bin/vmtoolsd "):
+                if command.startswith("/usr/bin/vmtoolsd"):
                     continue
                 if command.startswith("/usr/libexec/"):
                     continue
                 if command.startswith("/snap/"):
                     continue
 
-            if args and args.do_attach:
+            if args.attach:
                 ok("Attaching to process='{:s}' pid={:d}".format(process["command"], pid))
                 gdb.execute("attach {:d}".format(pid))
                 return
 
             line = [process[i] for i in ("pid", "user", "cpu", "mem", "tty", "command")]
-            gef_print("\t".join(line))
-        return
+            out.append("\t".join(line))
 
-    def get_processes(self):
-        output = gef_execute_external(self.get_setting("ps_command").split(), True)
-        names = [x.lower().replace("%", "") for x in output[0].split()]
-
-        for line in output[1:]:
-            fields = line.split()
-            t = {}
-
-            for i, name in enumerate(names):
-                if i == len(names) - 1:
-                    t[name] = " ".join(fields[i:])
-                else:
-                    t[name] = fields[i]
-            yield t
+        if len(out) > get_terminal_size()[0]:
+            gef_print("\n".join(out), less=not args.no_pager)
+        else:
+            gef_print("\n".join(out), less=False)
         return
 
 
