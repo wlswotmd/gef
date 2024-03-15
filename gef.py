@@ -3819,7 +3819,7 @@ def hexdump(source, length=0x10, separator=".", show_raw=False, show_symbol=True
             result.append(hexa)
     else:
         for addr, sym, _, data, text in tmp:
-            fmt = "{addr:#0{aw}x}:{sym:{sym_width}}    {data}    |  {text}  |"
+            fmt = "{addr:#0{aw}x}:{sym:<{sym_width}}    {data}    |  {text}  |"
             result.append(fmt.format(aw=align, addr=addr, sym=sym, sym_width=max_sym_width, data=data, text=text))
     return "\n".join(result)
 
@@ -29827,7 +29827,7 @@ class GotCommand(GenericCommand):
         # print legend
         if not self.quiet:
             if self.verbose:
-                fmt = "{:{:d}} {:s} {:9s} {:s} {:{:d}s} @ {:12s} {:>8s} {:>9s} {:s} {:{:d}s} @ {:12s} {:>8s} {:s} {:{:d}}"
+                fmt = "{:<{:d}} {:s} {:9s} {:s} {:{:d}s} @ {:12s} {:>8s} {:>9s} {:s} {:{:d}s} @ {:12s} {:>8s} {:s} {:{:d}}"
                 legend = [
                     "Name", name_width, VERTICAL_LINE,
                     "Type", VERTICAL_LINE,
@@ -29835,7 +29835,7 @@ class GotCommand(GenericCommand):
                     "GOT", width, "Section", "Offset", VERTICAL_LINE, "GOT value", width,
                 ]
             else:
-                fmt = "{:{:d}s} {:s} {:{:d}s} {:s} {:{:d}s} {:s} {:{:d}}"
+                fmt = "{:<{:d}s} {:s} {:{:d}s} {:s} {:{:d}s} {:s} {:{:d}}"
                 legend = [
                     "Name", name_width,  VERTICAL_LINE,
                     "PLT", width, VERTICAL_LINE,
