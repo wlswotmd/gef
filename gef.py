@@ -25676,6 +25676,7 @@ class HexdumpCommand(GenericCommand):
     _cmdline_ = "hexdump"
     _category_ = "03-b. Memory - View"
     _aliases_ = ["xxd", "hd"]
+    _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("format", choices=["byte", "word", "dword", "qword"], nargs="?", default="byte",
@@ -25829,6 +25830,8 @@ class HexdumpFlexibleCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
+        self.dont_repeat()
+
         if args.phys:
             if not is_qemu_system():
                 err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
