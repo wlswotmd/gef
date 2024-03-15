@@ -601,6 +601,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-arch-list.png)
 * `gef pyobj-list`: displays defined global python object.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-pyobj-list.png)
+* `gef avail-comm-list": displays a list of commands available for the current architecture and gdb execution mode.
 * `dt`: is wrapper for `ptype /ox TYPE` and `p ((TYPE*) ADDRESS)[0]`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dt.png)
 * `mte-tags`: displays the MTE tags for the specified address.

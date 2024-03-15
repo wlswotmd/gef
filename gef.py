@@ -81847,6 +81847,7 @@ class GefCommand(GenericCommand):
     subparsers.add_parser("arch-list")
     subparsers.add_parser("raise-exception")
     subparsers.add_parser("pyobj-list")
+    subparsers.add_parser("avail-comm-list")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -82541,6 +82542,106 @@ class GefPyObjListCommand(GenericCommand):
         output.append(titlify("Othres"))
         output.extend(sorted(others))
         gef_print("\n".join(output), less=not args.no_pager)
+        return
+
+
+@register_command
+class GefAvailableCommandListCommand(GenericCommand):
+    """Displays a list of commands available for the current architecture and gdb execution mode."""
+    _cmdline_ = "gef avail-comm-list"
+    _category_ = "99. GEF Maintenance Command"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-u", "--unavailable", action="store_true", help="show unavailable commands.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    _syntax_ = parser.format_help()
+
+    def check_include_mode(self, decorators):
+        for line in decorators:
+            if "@only_if_specific_gdb_mode" in line:
+                if is_pin():
+                    return '"pin"' in line
+                if is_qemu_system():
+                    return '"qemu-system"' in line
+                if is_qemu_user():
+                    return '"qemu-user"' in line
+                if is_vmware():
+                    return '"vmware"' in line
+                if is_qiling():
+                    return '"qiling"' in line
+                if is_rr():
+                    return '"rr"' in line
+        return True
+
+    def check_exclude_mode(self, decorators):
+        for line in decorators:
+            if "@exclude_specific_gdb_mode" in line:
+                if is_pin():
+                    return '"pin"' in line
+                if is_qemu_system():
+                    return '"qemu-system"' in line
+                if is_qemu_user():
+                    return '"qemu-user"' in line
+                if is_vmware():
+                    return '"vmware"' in line
+                if is_qiling():
+                    return '"qiling"' in line
+                if is_rr():
+                    return '"rr"' in line
+        return False
+
+    def get_arch_name(self):
+        s = get_source(only_if_specific_arch).replace("\n", "")
+        r = re.search(r"dic = (\{.*\})", s)
+        dic = eval(r.group(1))
+
+        for arch, func in dic.items():
+            if func():
+                return '"{:s}"'.format(arch)
+        return None
+
+    def check_include_arch(self, decorators, arch_name):
+        for line in decorators:
+            if "@only_if_specific_arch" in line:
+                return arch_name in line
+        return True
+
+    def check_exclude_arch(self, decorators, arch_name):
+        for line in decorators:
+            if "@exclude_specific_arch" in line:
+                return arch_name in line
+        return False
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        arch_name = self.get_arch_name()
+
+        avail_comms = []
+        for cmdline, (cmd_class, _) in __gef__.loaded_commands.items():
+            s = get_source(cmd_class.do_invoke)
+            decorators = [line for line in s.splitlines() if line.lstrip().startswith("@")]
+            if not self.check_include_mode(decorators):
+                continue
+            if self.check_exclude_mode(decorators):
+                continue
+            if not self.check_include_arch(decorators, arch_name):
+                continue
+            if self.check_exclude_arch(decorators, arch_name):
+                continue
+            avail_comms.append(cmdline)
+
+        if args.unavailable:
+            unavail_comms = []
+            for cmdline in __gef__.loaded_commands.keys():
+                if cmdline not in avail_comms:
+                    unavail_comms.append(cmdline)
+            out = unavail_comms
+        else:
+            out = avail_comms
+
+        gef_print("\n".join(out), less=not args.no_pager)
         return
 
 
