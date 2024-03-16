@@ -3998,12 +3998,9 @@ def load_ropper(f):
     return wrapper
 
 
-def gdb_disassemble(start_pc, **kwargs):
-    """Disassemble instructions from `start_pc` (Integer). Accepts the following named parameters:
-    - `end_pc` (Integer) only instructions whose start address fall in the interval from start_pc to end_pc are returned.
-    - `count` (Integer) list at most this many disassembled instructions
-    If `end_pc` and `count` are not provided, the function will behave as if `count=1`.
-    Return an iterator of Instruction objects"""
+def gdb_disassemble(start_pc, nb_insn=None, end_pc=None):
+    """Disassemble instructions from `start_pc` (Integer). Return an iterator of Instruction objects.
+    This is the backend used by gef_disassemble by default."""
     if start_pc is None:
         return None
 
@@ -4017,6 +4014,12 @@ def gdb_disassemble(start_pc, **kwargs):
         if __gef_prev_arch__ is None:
             raise
         arch = __gef_prev_arch__
+
+    kwargs = {}
+    if nb_insn is not None:
+        kwargs["count"] = nb_insn
+    if end_pc is not None:
+        kwargs["end_pc"] = end_pc
 
     for insn in arch.disassemble(start_pc, **kwargs):
         address = insn["addr"]
@@ -4081,40 +4084,14 @@ def gdb_get_nth_previous_instruction_address(addr, n):
     return None
 
 
-def gef_disassemble(addr, nb_insn, nb_prev=0):
-    """Disassemble `nb_insn` instructions after `addr` and `nb_prev` before `addr`.
-    Return an iterator of Instruction objects."""
-    nb_insn = max(1, nb_insn)
-
-    if nb_prev:
-        done = False
-        for i in range(nb_prev):
-            if done:
-                break
-            start_addr = gdb_get_nth_previous_instruction_address(addr, nb_prev - i)
-            if not start_addr:
-                continue
-            try:
-                for insn in gdb_disassemble(start_addr, count=nb_prev):
-                    if insn.address == addr:
-                        done = True
-                        break
-                    yield insn
-                done = True
-                break
-            except gdb.error:
-                pass
-
-    for insn in gdb_disassemble(addr, count=nb_insn):
-        yield insn
-    return None
-
-
 @load_capstone
-def capstone_get_nth_previous_instruction_address(addr, n, cs):
+def capstone_get_nth_previous_instruction_address(addr, n, cs=None):
     """Return the address (Integer) of the `n`-th instruction before `addr`."""
     if addr is None:
         return None
+
+    if cs is None:
+        cs = sys.modules["capstone"].Cs(*get_capstone_arch())
 
     # fixed-length ABI
     if current_arch.instruction_length:
@@ -4147,9 +4124,10 @@ def capstone_get_nth_previous_instruction_address(addr, n, cs):
 
 @load_capstone
 def capstone_disassemble(location, nb_insn, **kwargs):
-    """Disassemble `nb_insn` instructions after `addr` and `nb_prev` before
-    `addr` using the Capstone-Engine disassembler, if available.
-    Return an iterator of Instruction objects."""
+    """Disassemble `nb_insn` instructions after `addr` and `nb_prev` before `addr` using the capstone disassembler.
+    Return an iterator of Instruction objects.
+    This is the backend used by gef_disassemble if specified in the config.
+    It is also called directly from some commands such as capstone_disassemble."""
     def cs_insn_to_gef_insn(cs_insn):
         loc = get_symbol_string(cs_insn.address, nosymbol_string=" <NO_SYMBOL>")
         ops = [] + cs_insn.op_str.split(", ")
@@ -4238,12 +4216,40 @@ def capstone_disassemble(location, nb_insn, **kwargs):
     return
 
 
+def gef_disassemble(addr, nb_insn, nb_prev=0):
+    """Disassemble `nb_insn` instructions after `addr` and `nb_prev` before `addr`.
+    Return an iterator of Instruction objects.
+    Use gdb_disassemble or capstone_disassemble according to the settings."""
+    if get_gef_setting("context.use_capstone"):
+        get_nth_prev_address = capstone_get_nth_previous_instruction_address
+        get_insns = capstone_disassemble
+    else:
+        get_nth_prev_address = gdb_get_nth_previous_instruction_address
+        get_insns = gdb_disassemble
+
+    if nb_prev:
+        for i in range(nb_prev):
+            nb_prev_addr = get_nth_prev_address(addr, nb_prev - i)
+            if not nb_prev_addr:
+                continue
+            for insn in get_insns(nb_prev_addr, nb_prev):
+                if insn.address == addr:
+                    break
+                yield insn
+            break
+
+    nb_insn = max(1, nb_insn)
+    for insn in get_insns(addr, nb_insn):
+        yield insn
+    return None
+
+
 def gef_instruction_n(addr, n):
     """Return the `n`-th instruction after `addr` as an Instruction object."""
-    if get_gef_setting("context.use_capstone"):
-        return list(capstone_disassemble(addr, n + 1))[n]
-    else:
-        return list(gdb_disassemble(addr, count=n + 1))[n]
+    try:
+        return list(gef_disassemble(addr, n + 1))[n]
+    except IndexError:
+        return None
 
 
 def get_insn(addr=None):
@@ -4271,10 +4277,7 @@ def get_insn_prev(addr=None):
             return None
         addr = current_arch.pc
     try:
-        if get_gef_setting("context.use_capstone"):
-            gen = capstone_disassemble(addr, 0, nb_prev=2)
-        else:
-            gen = gef_disassemble(addr, 0, nb_prev=2)
+        gen = gef_disassemble(addr, 0, nb_prev=2)
         gen.__next__()
         return gen.__next__()
     except (gdb.error, StopIteration):
@@ -24672,7 +24675,6 @@ class ContextCommand(GenericCommand):
         use_native_x_command = self.get_setting("use_native_x_command")
         nb_insn = self.get_setting("nb_lines_code")
         nb_insn_prev = self.get_setting("nb_lines_code_prev")
-        use_capstone = self.get_setting("use_capstone")
         show_opcodes_size = self.get_setting("show_opcodes_size")
         padding = " " * len(RIGHT_ARROW[1:])
 
@@ -24697,9 +24699,7 @@ class ContextCommand(GenericCommand):
             gdb.execute("x/16i {:#x}".format(current_arch.pc))
             return
 
-        instruction_iterator = capstone_disassemble if use_capstone else gef_disassemble
-
-        for insn in instruction_iterator(pc, nb_insn, nb_prev=nb_insn_prev):
+        for insn in gef_disassemble(pc, nb_insn, nb_prev=nb_insn_prev):
             line = ""
             is_taken = False
             target = None
@@ -24766,7 +24766,7 @@ class ContextCommand(GenericCommand):
                 # for delay slot
                 try:
                     if delay_slot:
-                        next_insn = list(instruction_iterator(insn.address, 2))[-1]
+                        next_insn = list(gef_disassemble(insn.address, 2))[-1]
                         if show_opcodes_size == 0:
                             text = str(next_insn)
                         else:
@@ -24779,7 +24779,7 @@ class ContextCommand(GenericCommand):
 
                 # branch target address
                 try:
-                    for i, tinsn in enumerate(instruction_iterator(target, nb_insn)):
+                    for i, tinsn in enumerate(gef_disassemble(target, nb_insn)):
                         if show_opcodes_size == 0:
                             text = str(tinsn)
                         else:
