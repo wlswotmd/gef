@@ -77828,43 +77828,26 @@ class QemuDeviceInfoCommand(GenericCommand):
 
 
 @register_command
-class UntilNextCommand(GenericCommand):
-    """Execute until next address for rep prefix, or the case of stepi/nexti failed."""
-    _cmdline_ = "until-next"
-    _category_ = "01-d. Debugging Support - Execution"
-    _aliases_ = ["exec-next", "stepover"]
-
-    parser = argparse.ArgumentParser(prog=_cmdline_)
-    _syntax_ = parser.format_help()
-
-    @parse_args
-    @only_if_gdb_running
-    def do_invoke(self, args):
-        if is_arm32() or is_arm64():
-            next_addr = gdb_get_nth_next_instruction_address(current_arch.pc, 1)
-        else:
-            next_addr = gdb_get_nth_next_instruction_address(current_arch.pc, 2)
-        # `until` command has a bug(?) because sometimes fail. we use `tbreak` and `continue` instead of `until`.
-        gdb.Breakpoint("*{:#x}".format(next_addr), gdb.BP_BREAKPOINT, internal=True, temporary=True)
-        gdb.execute("c") # use c wrapper
-        return
-
-
-@register_command
 class XUntilCommand(GenericCommand):
     """Execute until specified address. It is slightly easier to use than the original until command."""
     _cmdline_ = "xuntil"
     _category_ = "01-d. Debugging Support - Execution"
+    _aliases_ = ["exec-next", "stepover", "until-next"]
+    _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="the address you want to stop.")
+    parser.add_argument("address", metavar="ADDRESS", nargs="?", type=parse_address, help="the address you want to stop.")
     _syntax_ = parser.format_help()
 
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        # `until` command has a bug(?) because sometimes fail. we use `tbreak` and `continue` instead of `until`.
-        gdb.Breakpoint("*{:#x}".format(args.address), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        if args.address is None:
+            stop_addr = gef_instruction_n(current_arch.pc, 1).address
+        else:
+            stop_addr = args.address
+        # `until` command has a bug(?) because sometimes fail, so we should use `tbreak` and `continue` instead of `until`.
+        gdb.Breakpoint("*{:#x}".format(stop_addr), gdb.BP_BREAKPOINT, internal=True, temporary=True)
         gdb.execute("c") # use c wrapper
         return
 
