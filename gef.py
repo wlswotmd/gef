@@ -5692,13 +5692,19 @@ class X86(Architecture):
         return False
 
     def is_call(self, insn):
-        return insn.mnemonic in ["call", "callq"]
+        return insn.mnemonic == "call"
 
     def is_jump(self, insn):
         return insn.mnemonic == "jmp" or self.is_conditional_branch(insn)
 
     def is_ret(self, insn):
-        return insn.mnemonic in ["ret", "retf", "sysret", "iret"]
+        if insn.mnemonic in ["ret", "retf"]:
+            return True
+        if insn.mnemonic in ["sysret"]:
+            return True
+        if insn.mnemonic in ["iret", "iretd", "iretw"]:
+            return True
+        return False
 
     def is_conditional_branch(self, insn):
         branch_mnemos = [
@@ -5768,9 +5774,13 @@ class X86(Architecture):
                 elif insn.mnemonic == "retf": # eip, cs
                     ra = to_unsigned_long(dereference(current_arch.sp))
                 elif insn.mnemonic == "sysret": # ecx
-                    ra = to_unsigned_long(get_register("$ecx"))
-                elif insn.mnemonic == "iret": # eip, cs, eflags, esp, ss
-                    ra = to_unsigned_long(dereference(current_arch.sp))
+                    ra = get_register("$ecx")
+                elif insn.mnemonic in ["iret", "iretd", "iretw"]: # eip, cs, eflags, esp, ss
+                    reg = to_unsigned_long(dereference(current_arch.sp))
+                    seg = dereference(current_arch.sp + current_arch.ptrsize) & 0xffff
+                    if get_register("$cs") == 0x08:
+                        return ((seg << 4) + reg) & (0x1fffff if X86_16.A20 else 0x0fffff)
+                    return reg
             elif frame.older():
                 ra = frame.older().pc()
         except gdb.error:
@@ -5921,6 +5931,15 @@ class X86_64(X86):
     def is_syscall(self, insn):
         return insn.mnemonic in ["sysenter", "syscall"]
 
+    def is_ret(self, insn):
+        if insn.mnemonic in ["ret", "retf"]:
+            return True
+        if insn.mnemonic in ["sysret", "sysretd", "sysretq"]:
+            return True
+        if insn.mnemonic in ["iret", "iretd", "iretq", "iretw"]:
+            return True
+        return False
+
     def get_ra(self, insn, frame):
         ra = None
         try:
@@ -5929,9 +5948,9 @@ class X86_64(X86):
                     ra = to_unsigned_long(dereference(current_arch.sp))
                 elif insn.mnemonic == "retf": # rip, cs
                     ra = to_unsigned_long(dereference(current_arch.sp))
-                elif insn.mnemonic == "sysret": # rcx
-                    ra = to_unsigned_long(get_register("$rcx"))
-                elif insn.mnemonic == "iret": # rip, cs, rflags, rsp, ss
+                elif insn.mnemonic in ["sysret", "sysretd", "sysretq"]: # rcx
+                    ra = get_register("$rcx")
+                elif insn.mnemonic in ["iret", "iretd", "iretq", "iretw"]: # rip, cs, rflags, rsp, ss
                     ra = to_unsigned_long(dereference(current_arch.sp))
             elif frame.older():
                 ra = frame.older().pc()
