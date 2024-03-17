@@ -27680,6 +27680,11 @@ class XInfoCommand(GenericCommand):
     def xinfo_kernel(self, address):
         ret = gdb.execute("pagewalk --vrange {:#x} --no-pager --quiet".format(address), to_string=True)
         ret = [x for x in ret.splitlines() if not Color.remove_color(x).startswith(("---", "[+]"))]
+
+        if not ret:
+            err("Not found")
+            return
+
         gef_print("\n".join(ret))
 
         if ret[-1].startswith("0x"):
