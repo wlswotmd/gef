@@ -14463,28 +14463,6 @@ class IouringDumpCommand(GenericCommand):
             pos += block_size
         return out[:size]
 
-    def merge_lines(self, lines_unmerged):
-        lines = []
-        keep_asterisk = False
-        for i, line in enumerate(lines_unmerged):
-            if lines == [] or i < 0x10:
-                lines.append(line)
-                continue
-            if "    " not in lines[-1] or "    " not in line:
-                lines.append(line)
-                continue
-            if re.split("    +", lines[-1])[1] == re.split("    +", line)[1]:
-                if not keep_asterisk:
-                    keep_asterisk = True
-            else:
-                if keep_asterisk:
-                    lines.append("*")
-                    keep_asterisk = False
-                lines.append(line)
-        if keep_asterisk:
-            lines.append("*")
-        return lines
-
     @parse_args
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr"))
@@ -14514,7 +14492,7 @@ class IouringDumpCommand(GenericCommand):
 
             data = self.read(entry.page_start, entry.size)
             hex_data = hexdump(data, base=entry.page_start, unit=current_arch.ptrsize)
-            hex_data_merged = self.merge_lines(hex_data.splitlines())
+            hex_data_merged = HexdumpCommand.merge_lines(hex_data.splitlines(), nb_skip_merge=0x10)
             self.out.extend(hex_data_merged)
 
         # print
@@ -25629,25 +25607,38 @@ class HexdumpCommand(GenericCommand):
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
-    def merge_lines(self, lines_unmerged):
+    @staticmethod
+    def merge_lines(lines_unmerged, nb_skip_merge=1):
         lines = []
-        keep_asterisk = False
-        for line in lines_unmerged:
-            if lines == []:
+        keep_asterisk = 0
+
+        for i, line in enumerate(lines_unmerged):
+            # about first line
+            if i < nb_skip_merge:
                 lines.append(line)
                 continue
+            # don't merge error string etc.
             if "    " not in lines[-1] or "    " not in line:
                 lines.append(line)
                 continue
+            # check if mergeable
             if re.split("    +", lines[-1])[1] == re.split("    +", line)[1]:
-                if not keep_asterisk:
-                    keep_asterisk = True
-            else:
-                if keep_asterisk:
-                    lines.append("*")
-                    keep_asterisk = False
-                lines.append(line)
-        if keep_asterisk:
+                keep_asterisk += 1
+                prev_line = line
+                continue
+            # append line
+            if keep_asterisk == 1:
+                lines.append(prev_line)
+                keep_asterisk = 0
+            elif keep_asterisk > 1:
+                lines.append("*")
+                keep_asterisk = 0
+            lines.append(line)
+
+        # final process
+        if keep_asterisk == 1:
+            lines.append(prev_line)
+        elif keep_asterisk > 1:
             lines.append("*")
         return lines
 
@@ -25707,7 +25698,7 @@ class HexdumpCommand(GenericCommand):
         lines = hexdump(mem, show_symbol=args.symbol, base=read_from, unit=unit).splitlines()
 
         if not args.full:
-            lines = self.merge_lines(lines)
+            lines = HexdumpCommand.merge_lines(lines)
 
         if args.reverse:
             lines.reverse()
