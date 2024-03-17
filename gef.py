@@ -58321,34 +58321,39 @@ class GdtInfoCommand(GenericCommand):
             res = gdb.execute("monitor info registers", to_string=True)
             gdtr = re.search(r"GDT\s*=\s*(\S+) (\S+)", res)
             base, limit = [int(gdtr.group(i), 16) for i in range(1, 3)]
+
+            tr = re.search(r"TR\s*=\s*(\S+) (\S+) (\S+) (\S+)", res)
+            trseg, *_ = [int(tr.group(i), 16) for i in range(1, 5)]
+            tr_idx = trseg >> 3
+
         elif is_vmware():
             res = gdb.execute("monitor r gdtr", to_string=True)
             r = re.search(r"gdtr base=(\S+) limit=(\S+)", res)
             base, limit = int(r.group(1), 16), int(r.group(2), 16)
-        gdtinfo = slice_unpack(read_memory(base, limit + 1), 8)
 
-
-        if is_qemu_system():
-            tr = re.search(r"TR\s*=\s*(\S+) (\S+) (\S+) (\S+)", res)
-            trseg, *_ = [int(tr.group(i), 16) for i in range(1, 5)]
-            tr_idx = trseg >> 3
-        elif is_vmware():
             # TODO: how to get
             if is_x86_64():
                 tr_idx = 8
             else:
                 tr_idx = 16
 
-        if is_x86_64():
-            segm_desc = self.SEGMENT_DESCRIPTION_64
-        else:
-            segm_desc = self.SEGMENT_DESCRIPTION_32
-
         # print title
         gef_print(titlify("GDT Entry"))
 
         # print legend
         gef_print(Color.colorify(self.gdtval2str_legend(), get_gef_setting("theme.table_heading")))
+
+        # check initialized or not
+        if (base == 0x0 and limit == 0xffff) or limit == 0x0:
+            err("GDT is uninitialized")
+            return
+
+        gdtinfo = slice_unpack(read_memory(base, limit + 1), 8)
+
+        if is_x86_64():
+            segm_desc = self.SEGMENT_DESCRIPTION_64
+        else:
+            segm_desc = self.SEGMENT_DESCRIPTION_32
 
         # print entry
         regs = self.get_segreg_list()
@@ -58614,7 +58619,6 @@ class IdtInfoCommand(GenericCommand):
             res = gdb.execute("monitor r idtr", to_string=True)
             r = re.search(r"idtr base=(\S+) limit=(\S+)", res)
             base, limit = int(r.group(1), 16), int(r.group(2), 16)
-        idtinfo = slice_unpack(read_memory(base, limit + 1), current_arch.ptrsize * 2)
 
         # print title
         gef_print(titlify("IDT Entry"))
@@ -58622,12 +58626,20 @@ class IdtInfoCommand(GenericCommand):
         # print legend
         gef_print(Color.colorify(self.idtval2str_legend(), get_gef_setting("theme.table_heading")))
 
+        # check initialized or not
+        if (base == 0x0 and limit == 0xffff) or limit == 0x0:
+            err("IDT is uninitialized")
+            return
+
+        idtinfo = slice_unpack(read_memory(base, limit + 1), current_arch.ptrsize * 2)
+
         # print entry
         for i, b in enumerate(idtinfo):
             int_name = self.INTERRUPT_DESCRIPTION.get(i, "User defined Interrupt {:#x}".format(i))
             valstr = self.idtval2str(b)
             sym = get_symbol_string(self.idt_unpack(b).offset, nosymbol_string=" <NO_SYMBOL>")
             gef_print("{:<3d} {:36s} {:s}{:s}".format(i, int_name, valstr, sym))
+        return
 
     def print_idt_entry_legend(self):
         gef_print(titlify("legend (Normal IDT entry)"))
