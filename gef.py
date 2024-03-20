@@ -186,7 +186,6 @@ __heap_allocated_list__         = []
 __heap_freed_list__             = []
 __heap_uaf_watchpoints__        = []
 __patch_history__               = []
-__cached_syscall_table__        = {}
 __cached_kernel_info__          = None
 __cached_kernel_version__       = None
 __cached_kernel_cmdline__       = None
@@ -401,8 +400,6 @@ def reset_gef_caches(function=None, all=False):
     if all:
         __gef_global_cache__["this_session"] = {}
 
-        global __cached_syscall_table__
-        __cached_syscall_table__ = {}
         global __cached_kernel_info__
         __cached_kernel_info__ = None
         global __cached_kernel_version__
@@ -42025,10 +42022,11 @@ def get_syscall_table(arch=None, mode=None):
     elif arch in ["X86", "ARM"] and mode == "N32":
         mode = "Native-32"
 
-    global __cached_syscall_table__
-    if (arch, mode) in __cached_syscall_table__:
-        return __cached_syscall_table__[arch, mode]
+    return __get_syscall_table(arch, mode)
 
+
+@cache_this_session
+def __get_syscall_table(arch, mode):
     if arch == "X86" and mode == "64":
         register_list = X86_64().syscall_parameters
         sc_def = parse_common_syscall_defs()
@@ -43756,8 +43754,6 @@ def get_syscall_table(arch=None, mode=None):
     for nr, name, args in syscall_list:
         args = list(zip(register_list[:len(args)], args))
         syscall_table.table[nr] = Entry(name, [Param(*p) for p in args])
-
-    __cached_syscall_table__[arch, mode] = syscall_table
     return syscall_table
 
 
