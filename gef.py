@@ -43764,8 +43764,8 @@ class SyscallArgsCommand(GenericCommand):
     _category_ = "01-a. Debugging Support - Context"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("syscall_num", metavar="SYSCALL_NUM", nargs="?", type=lambda x: int(x, 0),
-                        help="syscall number you want to search.")
+    parser.add_argument("nr", metavar="SYSCALL_NUM", nargs="?", type=lambda x: int(x, 0),
+                        help="syscall number to search.")
     _syntax_ = parser.format_help()
 
     @staticmethod
@@ -43848,8 +43848,8 @@ class SyscallArgsCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        if args.syscall_num is not None:
-            syscall_register, nr = "-", args.syscall_num
+        if args.nr is not None:
+            syscall_register, nr = "-", args.nr
         else:
             syscall_register, nr = SyscallArgsCommand.get_nr()
 
