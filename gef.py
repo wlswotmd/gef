@@ -6101,9 +6101,10 @@ class X86_16(X86):
     }
 
     # https://stanislavs.org/helppc/int_21.html
-    return_register = "$ax"
+    return_register = None
+    function_parameters = ["$sp"] # but unused because x86 uses stack
     syscall_register = "$ah"
-    syscall_parameters = None # TODO
+    syscall_parameters = None
 
     bit_length = 16
 
@@ -20477,19 +20478,32 @@ class ArchInfoCommand(GenericCommand):
         gef_print("{:30s} {:s} {!s}".format("current_arch.arch", RIGHT_ARROW, current_arch.arch))
         gef_print("{:30s} {:s} {!s}".format("current_arch.mode", RIGHT_ARROW, current_arch.mode))
         gef_print("{:30s} {:s} {!s}".format("current_arch.ptrsize", RIGHT_ARROW, current_arch.ptrsize))
+
         if current_arch.instruction_length is None:
             inst_len = "variable length"
         else:
             inst_len = str(current_arch.instruction_length)
         gef_print("{:30s} {:s} {!s}".format("instruction length", RIGHT_ARROW, inst_len))
+
+        if current_arch.return_register is None:
+            ret_regs = "different for each system call"
+        else:
+            ret_regs = str(current_arch.return_register)
+        gef_print("{:30s} {:s} {!s}".format("return register", RIGHT_ARROW, ret_regs))
+
         fparams = ", ".join(current_arch.function_parameters)
         if len(current_arch.function_parameters) == 1:
             fparams += " (passing via stack)"
-        gef_print("{:30s} {:s} {!s}".format("return register", RIGHT_ARROW, current_arch.return_register))
         gef_print("{:30s} {:s} {!s}".format("function parameters", RIGHT_ARROW, fparams))
+
         gef_print("{:30s} {:s} {!s}".format("syscall register", RIGHT_ARROW, current_arch.syscall_register))
-        sparams = ", ".join(current_arch.syscall_parameters)
+
+        if current_arch.syscall_parameters is None:
+            sparams = "different for each system call"
+        else:
+            sparams = ", ".join(current_arch.syscall_parameters)
         gef_print("{:30s} {:s} {!s}".format("syscall parameters", RIGHT_ARROW, sparams))
+
         if is_x86() or is_arm32() or is_arm64():
             gef_print("{:30s} {:s} {!s}".format("32bit-emulated (compat mode)", RIGHT_ARROW, is_emulated32()))
         gef_print("{:30s} {:s} {!s}".format("Has a call/jump delay slot", RIGHT_ARROW, current_arch.has_delay_slot))
@@ -82637,6 +82651,7 @@ class GefArchListCommand(GenericCommand):
         # settings
         self.out.append("{:30s} {:s} {!s}".format("bit length", RIGHT_ARROW, arch.bit_length))
         self.out.append("{:30s} {:s} {!s}".format("endianness", RIGHT_ARROW, arch.endianness))
+
         if arch.arch == "ARM":
             inst_len = "ARM:4 / THUMB:2or4"
         elif arch.instruction_length is None:
@@ -82644,14 +82659,26 @@ class GefArchListCommand(GenericCommand):
         else:
             inst_len = str(arch.instruction_length)
         self.out.append("{:30s} {:s} {!s}".format("instruction length", RIGHT_ARROW, inst_len))
+
+        if arch.return_register is None:
+            ret_regs = "different for each system call"
+        else:
+            ret_regs = str(arch.return_register)
+        self.out.append("{:30s} {:s} {!s}".format("return register", RIGHT_ARROW, ret_regs))
+
         fparams = ", ".join(arch.function_parameters)
         if len(arch.function_parameters) == 1:
             fparams += " (passing via stack)"
-        self.out.append("{:30s} {:s} {!s}".format("return register", RIGHT_ARROW, arch.return_register))
         self.out.append("{:30s} {:s} {!s}".format("function parameters", RIGHT_ARROW, fparams))
+
         self.out.append("{:30s} {:s} {!s}".format("syscall register", RIGHT_ARROW, arch.syscall_register))
-        sparams = ", ".join(arch.syscall_parameters)
+
+        if arch.syscall_parameters is None:
+            sparams = "different for each system call"
+        else:
+            sparams = ", ".join(arch.syscall_parameters)
         self.out.append("{:30s} {:s} {!s}".format("syscall parameters", RIGHT_ARROW, sparams))
+
         self.out.append("{:30s} {:s} {!s}".format("Has a call/jump delay slot", RIGHT_ARROW, arch.has_delay_slot))
         self.out.append("{:30s} {:s} {!s}".format("Has a syscall delay slot", RIGHT_ARROW, arch.has_syscall_delay_slot))
         self.out.append("{:30s} {:s} {!s}".format("Has a ret delay slot", RIGHT_ARROW, arch.has_ret_delay_slot))
