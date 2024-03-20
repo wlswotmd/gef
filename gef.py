@@ -16978,7 +16978,7 @@ class CallSyscallCommand(GenericCommand):
     _category_ = "05-a. Syscall - Invoke"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("syscall_name", metavar="SYSCALL_NAME", help="system call name you want to invoke.")
+    parser.add_argument("syscall_name", metavar="SYSCALL_NAME", help="system call name to invoke.")
     parser.add_argument("syscall_args", metavar="SYSCALL_ARG", nargs="*", type=parse_address, help="arguments of system call.")
     _syntax_ = parser.format_help()
 
@@ -17001,28 +17001,34 @@ class CallSyscallCommand(GenericCommand):
             err("syscall table does not exist")
             return
 
-        syscall_name = args.syscall_name
-        syscall_args = args.syscall_args
-
-        for key, entry in syscall_table.table.items():
-            if syscall_name == entry.name:
-                syscall_params = entry.params
-                nr = key
+        # get syscall entry
+        for nr, entry in syscall_table.table.items():
+            if is_x86_64() and nr >= 0x40000000:
+                continue
+            if args.syscall_name == entry.name:
                 break
         else:
-            err("System call `{:s}` is not found.".format(syscall_name))
+            err("System call `{:s}` is not found.".format(args.syscall_name))
             return
 
-        if len(syscall_params) != len(syscall_args):
+        # length check
+        if len(args.syscall_args) != len(entry.args_full):
             err("Argument count mismatch.")
-            params = "(" + ", ".join([param.param for param in syscall_params]) + ");"
-            gef_print("Prototype: {:s}{:s}".format(Color.boldify(syscall_name), params))
+            params = "(" + ", ".join(entry.args_full) + ");"
+            gef_print("Prototype: {:s}{:s}".format(Color.boldify(args.syscall_name), params))
             return
 
-        title = "{:s}({:s})".format(syscall_name, ", ".join(["{:#x}".format(x) for x in syscall_args]))
+        # title
+        title = "{:s}({:s})".format(args.syscall_name, ", ".join(["{:#x}".format(x) for x in args.syscall_args]))
         gef_print(titlify(title))
-        ret = ExecSyscall(nr, syscall_args).exec_code()
-        gef_print("{:s} = {:#x}".format(current_arch.return_register, ret["reg"][current_arch.return_register]))
+
+        ret = ExecSyscall(nr, args.syscall_args).exec_code()
+
+        if isinstance(current_arch.return_register, list):
+            for ret_regs in current_arch.return_register:
+                gef_print("{:s} = {:#x}".format(ret_regs, ret["reg"][ret_regs]))
+        else:
+            gef_print("{:s} = {:#x}".format(current_arch.return_register, ret["reg"][current_arch.return_register]))
         return
 
 
@@ -30953,7 +30959,7 @@ class SyscallSearchCommand(GenericCommand):
                 continue
             params = ""
             if self.verbose:
-                params = "(" + ", ".join([param.param for param in entry.params]) + ");"
+                params = "(" + ", ".join(entry.args_full) + ");"
             self.out.append("NR={:<#14x}{:s}{:s}".format(nr, Color.boldify(entry.name), params))
         return
 
@@ -41983,6 +41989,131 @@ arm_ldelf_syscall_list = [ # noqa: F841
 ]
 
 
+# x86_16 FreeDOS int 0x21
+# https://en.wikipedia.org/wiki/DOS_API
+# https://stanislavs.org/helppc/int_21.html
+# http://www2.ift.ulaval.ca/~marchand/ift17583/dosints.pdf
+x86_16_dos_syscall_list = [
+    # nr, syscall name, return registers, args, arg registers
+    # 1.0+
+    [0x00, "ProgramTerminate", [], [], []],
+    [0x01, "CharacterInput", ["$al"], [], []],
+    [0x02, "CharacterOutput", [], ["character"], ["$dl"]],
+    [0x03, "AuxiliaryInput", ["$al"], [], []],
+    [0x04, "AuxiliaryOutput", [], ["character"], ["$dl"]],
+    [0x05, "PrinterOutput", [], ["character"], ["$dl"]],
+    [0x06, "DirectConsoleIo", ["$al", "$eflags.zf"], ["character"], ["$dl"]],
+    [0x07, "DirectStdinInputNoEcho", ["$al"], [], []],
+    [0x08, "ConsoleInputNoEcho", ["$al"], [], []],
+    [0x09, "DisplayString", [], ["string"], ["$ds:$dx"]],
+    [0x0a, "BufferedKeyboardInput", [], ["buffer"], ["$ds:$dx"]],
+    [0x0b, "GetInputStatus", ["$al"], [], []],
+    [0x0c, "FlushInputBufferAndInput", ["$al"], ["function"], ["$al"]],
+    [0x0d, "DiskReset", [], [], []],
+    [0x0e, "SetDefaultDrive", ["$al"], ["drive_number"], ["$dl"]],
+    [0x0f, "OpenFile", ["$al"], ["FCB"], ["$ds:$dx"]],
+    [0x10, "CloseFile", ["$al"], ["FCB"], ["$ds:$dx"]],
+    [0x11, "FindFirstFile", ["$al"], ["FCB"], ["$ds:$dx"]],
+    [0x12, "FindNextFile", ["$al"], ["FCB"], ["$ds:$dx"]],
+    [0x13, "DeleteFile", ["$al"], ["FCB"], ["$ds:$dx"]],
+    [0x14, "SequentialRead", ["$al"], ["FCB"], ["$ds:$dx"]],
+    [0x15, "SequentialWrite", ["$al"], ["FCB"], ["$ds:$dx"]],
+    [0x16, "CreateFile", ["$al"], ["FCB"], ["$ds:$dx"]],
+    [0x17, "RenameFile", ["$al"], ["FCB"], ["$ds:$dx"]],
+    # 0x18: reserved
+    [0x19, "GetDefaultDrive", ["$al"], [], []],
+    [0x1a, "SetDiskTransferAddress", [], ["DTA"], ["$ds:$dx"]],
+    [0x1b, "GetAllocationInfoForDefaultDrive", ["$al", "$cx", "$dx", "$ds:$bx"], [], []],
+    [0x1c, "GetAllocationInfoForSpecifiedDrive", ["$al", "$cx", "$dx", "$ds:$bx"], ["drive_number"], ["$dl"]],
+    # 0x1d: reserved
+    # 0x1e: reserved
+    [0x1f, "GetDiskParameterBlockForDefaultDrive", ["$al"], ["drive_number"], ["$dl"]],
+    # 0x20: reserved
+    [0x21, "RandomRead", ["$al"], ["FCB"], ["$ds:$dx"]],
+    [0x22, "RandomWrite", ["$al"], ["FCB"], ["$ds:$dx"]],
+    [0x23, "GetFileSizeInRecords", ["$al"], ["FCB"], ["$ds:$dx"]],
+    [0x24, "SetRandomRecordNumber", [], ["FCB"], ["$ds:$dx"]],
+    [0x25, "SetInterruptVector", [], ["interrupt_number", "handler"], ["$al", "$ds:$dx"]],
+    [0x26, "CreatePSP", [], ["segment_number"], ["$dx"]],
+    [0x27, "RandomBlockRead", ["$al", "$cx"], ["FCB", "record_count"], ["$ds:$dx", "$cx"]],
+    [0x28, "RandomBlockWrite", ["$al", "$cx"], ["FCB", "record_count"], ["$ds:$dx", "$cx"]],
+    [0x29, "ParseFilename", ["$al", "$ds:$si", "$es:$di"], ["control", "string", "buffer"], ["$al", "$ds:$si", "$es:$di"]],
+    [0x2a, "GetDate", ["$al", "$cx", "$dh", "$dl"], [], []],
+    [0x2b, "SetDate", ["$al"], ["year", "month", "day"], ["$cx", "$dh", "$dl"]],
+    [0x2c, "GetTime", ["$ch", "$cl", "$dh", "$dl"], [], []],
+    [0x2d, "SetTime", ["$al"], ["hour", "minutes", "seconds", "hundredths"], ["$ch", "$cl", "$dh", "$dl"]],
+    [0x2e, "SetVerifyFlag", [], ["verify_flag", "0"], ["$al", "$dl"]],
+    # 2.0+
+    [0x2f, "GetDiskTransferAddress", ["$es:$bx"], [], []],
+    [0x30, "GetDosVersion", ["$al", "$ah", "$bh", "$bl", "$cx"], [], []],
+    [0x31, "TerminateAndStayResident", [], ["exit_code", "program_size"], ["$al", "$dx"]],
+    [0x32, "GetDiskParameterBlock", ["$al", "$ds:$bx"], ["drive"], ["$dl"]],
+    [0x33, "GetOrSetCtrlBreak", ["$al", "$dl"], ["subfunction", "value"], ["$al", "$dl"]],
+    [0x34, "GetDosCriticalFlagPointer", ["$es:$bx"], [], []],
+    [0x35, "GetInterruptVector", ["$es:$bx"], ["interrupt_number"], ["$al"]],
+    [0x36, "GetFreeDiskSpace", ["$ax", "$bx", "$cx", "$dx"], ["drive_number"], ["$dl"]],
+    [0x37, "GetOrSetSwitchCharacter", ["$al", "$dl"], ["subfunction", "value"], ["$al", "$dl"]],
+    [0x38, "GetOrSetCountryInfo", ["$ax", "$bx", "$ds:$dx"], ["subfunction", "country_code", "buffer"], ["$al", "$bx", "$ds:dx"]],
+    [0x39, "CreateSubDirectory", ["$ax"], ["pathname"], ["$ds:$dx"]],
+    [0x3a, "RemoveSubDirectory", ["$ax"], ["pathname"], ["$ds:$dx"]],
+    [0x3b, "ChangeCurrentDirectory", ["$ax"], ["pathname"], ["$ds:$dx"]],
+    [0x3c, "CreateFile", ["$ax"], ["pathname", "attribute"], ["$ds:$dx", "$cx"]],
+    [0x3d, "OpenFile", ["$ax"], ["mode", "pathname"], ["$al", "$ds:$dx"]],
+    [0x3e, "CloseFile", ["$ax"], ["handle"], ["$bx"]],
+    [0x3f, "ReadFileOrDevice", ["$ax"], ["handle", "size"], ["$bx", "$cx", "$ds:$dx"]],
+    [0x40, "WriteFileOrDevice", ["$ax"], ["handle", "size", "buffer"], ["$bx", "$cx", "$ds:$dx"]],
+    [0x41, "DeleteFile", ["$ax"], ["pathname"], ["$ds:$dx"]],
+    [0x42, "SeekFile", ["$dx", "$ax"], ["origin", "handle", "move_size_high", "move_size_low"], ["$al", "$bx", "$cx", "$dx"]],
+    [0x43, "GetOrSetFileAttributes", ["$ax", "$cx"], ["subfunction", "pathname", "attribute"], ["$al", "$ds:$dx", "$cx"]],
+    [0x44, "IoControlForDevices", ["$ax", "$dx"], ["subfunction", "arg1", "arg2", "arg3"], ["$al", "$bx", "$cx", "$ds:$dx"]],
+    [0x45, "DuplicateHandle", ["$ax"], ["handle"], ["$bx"]],
+    [0x46, "RedirectHandle", ["$ax"], ["old_handle", "new_handle"], ["$bx", "$cx"]],
+    [0x47, "GetCurrentDirectory", ["$ds:$si", "$ax"], ["drive_number", "buffer"], ["$dl", "$ds:$si"]],
+    [0x48, "AllocateMemory", ["$ax", "$bx"], ["block_size"], ["$bx"]],
+    [0x49, "ReleaseMemory", ["$ax"], ["segment"], ["$es"]],
+    [0x4a, "ReallocateMemory", ["$ax", "$bx"], ["new_block_size", "segment"], ["$bx", "$es"]],
+    [0x4b, "ExecuteProgram", ["$ax", "$es:$bx"], ["subfunction", "pathname", "parameter"], ["$al", "$ds:$dx", "$es:$bx"]],
+    [0x4c, "TerminateWithReturnCode", [], ["return_code"], ["$al"]],
+    [0x4d, "GetProgramReturnCode", ["$ah", "$al"], [], []],
+    [0x4e, "FindFirstFile", ["$ax"], ["pathname", "attribute"], ["$ds:$dx", "$cx"]], # DTA omitted
+    [0x4f, "FindNextFile", ["$ax"], ["pathname"], ["$ds:$dx"]], # DTA omitted
+    [0x50, "SetCurrentPSP", [], ["segment"], ["$bx"]],
+    [0x51, "GetCurrentPSP", ["$bx"], [], []],
+    [0x52, "GetListOfLists", ["$es:$bx"], [], []],
+    [0x53, "CreateDiskParameterBlock", ["$es:$bp"], ["bios_parameter", "buffer"], ["$ds:si", "$es:$bp"]],
+    [0x54, "GetVerifyFlag", ["$al"], [], []],
+    [0x55, "CreateProgramPSP", [], ["segment", "size"], ["$dx", "$si"]],
+    [0x56, "RenameFile", ["$ax"], ["old_pathname", "new_pathname"], ["$ds:$dx", "$es:$di"]],
+    [0x57, "GetOrSetFileDateAndTime", ["$ax", "$cx", "$dx"], ["subfunction", "handle", "time", "date", "buffer"], ["$al", "$bx", "$cx", "$dx", "$es:$di"]],
+    # 2.11+
+    [0x58, "GetOrSetAllocationStrategy", ["$ax"], ["subfunction", "strategy"], ["$al", "$bx"]],
+    # 3.0+
+    [0x59, "GetExtendedErrorInfo", ["$ax", "$bh", "$bl", "$ch"], ["0"], ["$bx"]],
+    [0x5a, "CreateTempFile", ["$ax", "$ds:$dx"], ["pathname", "attribute"], ["$ds:$dx", "$cx"]],
+    [0x5b, "CreateNewFile", ["$ax"], ["pathname", "attribute"], ["$ds:$dx", "$cx"]],
+    [0x5c, "LockOrUnlockFile", ["$ax"], ["subfunction", "handle", "offset_high", "offset_low", "length_high", "length_low"], ["$al", "$bx", "$cx", "$dx", "$si", "$di"]],
+    [0x5d, "FileSharingFunctions", ["$ds:$si"], ["subfunction", "arg1"], ["$al", "$ds:$dx"]],
+    [0x5e, "NetworkFunctions", ["$ax"], ["subfunction"], ["$al"]], # too complicated
+    [0x5f, "NetworkRedirectionFunctions", ["$ax"], ["subfunction"], ["$al"]], # too complicated
+    [0x60, "QualifyFilename", ["$es:$di", "$ah"], ["pathname", "buffer"], ["$ds:$si", "$es:$di"]],
+    # 0x61: reserved
+    [0x62, "GetCurrentPSP", ["$bx"], [], []],
+    [0x63, "GetLeadByteTable", ["$ax", "$ds:$si", "$dl"], ["subfunction", "flag"], ["$al", "$dl"]],
+    # 3.2+
+    [0x64, "SetDeviceDriverLookAhead", ["$dl"], ["subfunction", "arg1"], ["$al", "$dl"]],
+    # 3.3+
+    [0x65, "GetExtendedCountryInfo", ["$ax"], ["subfunction"], ["$al"]], # too complicated
+    [0x66, "GetOrSetGlobalCodePage", ["$ax", "$bx", "$cx"], ["subfunction", "active_codepage", "system_codepage"], ["$al", "$bx", "$dx"]],
+    [0x67, "SetHandleCount", ["$ax"], ["max_handle_count"], ["$bx"]],
+    [0x68, "CommitFile", ["$ax"], ["handle"], ["$bx"]],
+    # 4.0+
+    [0x69, "GetOrSetMediaId", ["$ax", "$ds:$dx"], ["subfunction", "drive_number", "buffer"], ["$al", "$bl", "$ds:$dx"]],
+    # 0x6a: reserved
+    # 0x6b: reserved
+    [0x6c, "ExtendedOpenCreateFile", ["$ax", "$cx"], ["0", "mode", "attribute", "control", "spec"], ["$al", "$bx", "$cx", "$dx", "$ds:$si"]],
+]
+
+
 def get_syscall_table(arch=None, mode=None):
 
     def is_secure():
@@ -42028,7 +42159,8 @@ def get_syscall_table(arch=None, mode=None):
 @cache_this_session
 def __get_syscall_table(arch, mode):
     if arch == "X86" and mode == "64":
-        register_list = X86_64().syscall_parameters
+        return_register = X86_64.return_register
+        args_register = X86_64.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(x64_syscall_tbl)
         arch_specific_dic = {
@@ -42077,7 +42209,8 @@ def __get_syscall_table(arch, mode):
                 syscall_list.append([nr + 0x40000000, name, sc_def[func]])
 
     elif arch == "X86" and mode == "Emulated-32":
-        register_list = X86().syscall_parameters
+        return_register = X86.return_register
+        args_register = X86.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(x86_syscall_tbl)
         arch_specific_dic = {
@@ -42172,7 +42305,8 @@ def __get_syscall_table(arch, mode):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "X86" and mode == "Native-32":
-        register_list = X86().syscall_parameters
+        return_register = X86.return_register
+        args_register = X86.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(x86_syscall_tbl)
         arch_specific_dic = {
@@ -42254,8 +42388,18 @@ def __get_syscall_table(arch, mode):
                 raise
             syscall_list.append([nr, name, sc_def[func]])
 
+    elif arch == "X86" and mode == "16":
+        syscall_list = []
+        return_register = {}
+        args_register = {}
+        for nr, name, ret_regs, args, arg_regs in x86_16_dos_syscall_list:
+            syscall_list.append([nr, name, args])
+            return_register[nr] = ret_regs
+            args_register[nr] = arg_regs
+
     elif arch == "ARM64" and mode == "ARM":
-        register_list = AARCH64().syscall_parameters
+        return_register = AARCH64.return_register
+        args_register = AARCH64.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(arm64_syscall_tbl)
         arch_specific_dic = {
@@ -42288,7 +42432,8 @@ def __get_syscall_table(arch, mode):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "ARM" and mode == "Emulated-32": # only support EABI
-        register_list = ARM().syscall_parameters
+        return_register = ARM.return_register
+        args_register = ARM.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(arm_compat_syscall_tbl)
         arch_specific_dic = {
@@ -42371,7 +42516,8 @@ def __get_syscall_table(arch, mode):
         syscall_list += arch_specific_extra
 
     elif arch == "ARM" and mode == "Native-32": # only support EABI
-        register_list = ARM().syscall_parameters
+        return_register = ARM.return_register
+        args_register = ARM.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(arm_native_syscall_tbl)
         arch_specific_dic = {
@@ -42429,13 +42575,16 @@ def __get_syscall_table(arch, mode):
 
     elif arch in ["ARM64", "ARM"] and mode == "Secure-World":
         if arch == "ARM64":
-            register_list = AARCH64().syscall_parameters + ["$x6"] # OPTEE uses 7 args
+            return_register = AARCH64.return_register
+            args_register = AARCH64.syscall_parameters + ["$x6"] # OPTEE uses 7 args
         else:
-            register_list = ARM().syscall_parameters
+            return_register = ARM.return_register
+            args_register = ARM.syscall_parameters
         syscall_list = arm_OPTEE_syscall_list.copy()
 
     elif arch == "MIPS" and mode == "32":
-        register_list = MIPS().syscall_parameters
+        return_register = MIPS.return_register
+        args_register = MIPS.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(mips_o32_syscall_tbl)
         arch_specific_dic = {
@@ -42498,7 +42647,8 @@ def __get_syscall_table(arch, mode):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "MIPS" and mode == "n32":
-        register_list = MIPSN32().syscall_parameters
+        return_register = MIPSN32.return_register
+        args_register = MIPSN32.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(mips_n32_syscall_tbl)
         arch_specific_dic = {
@@ -42561,7 +42711,8 @@ def __get_syscall_table(arch, mode):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "MIPS" and mode == "64":
-        register_list = MIPS64().syscall_parameters
+        return_register = MIPS64.return_register
+        args_register = MIPS64.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(mips_n64_syscall_tbl)
         arch_specific_dic = {
@@ -42612,7 +42763,8 @@ def __get_syscall_table(arch, mode):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "PPC" and mode == "32":
-        register_list = PPC().syscall_parameters
+        return_register = PPC.return_register
+        args_register = PPC.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(ppc_syscall_tbl)
         arch_specific_dic = {
@@ -42692,7 +42844,8 @@ def __get_syscall_table(arch, mode):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "PPC" and mode == "64":
-        register_list = PPC64().syscall_parameters
+        return_register = PPC64.return_register
+        args_register = PPC64.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(ppc_syscall_tbl)
         arch_specific_dic = {
@@ -42743,9 +42896,11 @@ def __get_syscall_table(arch, mode):
 
     elif arch == "SPARC" and mode in ["32", "32PLUS"]:
         if mode == "32":
-            register_list = SPARC().syscall_parameters
+            return_register = SPARC.return_register
+            args_register = SPARC.syscall_parameters
         elif mode == "32PLUS":
-            register_list = SPARC32PLUS().syscall_parameters
+            return_register = SPARC32PLUS.return_register
+            args_register = SPARC32PLUS.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(sparc_syscall_tbl)
         arch_specific_dic = {
@@ -42799,7 +42954,8 @@ def __get_syscall_table(arch, mode):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "SPARC" and mode == "64":
-        register_list = SPARC64().syscall_parameters
+        return_register = SPARC64.return_register
+        args_register = SPARC64.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(sparc_syscall_tbl)
         arch_specific_dic = {
@@ -42881,7 +43037,8 @@ def __get_syscall_table(arch, mode):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "RISCV" and mode == "32":
-        register_list = RISCV().syscall_parameters
+        return_register = RISCV.return_register
+        args_register = RISCV.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(riscv32_syscall_tbl)
         arch_specific_dic = {
@@ -42921,7 +43078,8 @@ def __get_syscall_table(arch, mode):
         syscall_list += arch_specific_extra
 
     elif arch == "RISCV" and mode == "64":
-        register_list = RISCV64().syscall_parameters
+        return_register = RISCV64.return_register
+        args_register = RISCV64.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(riscv64_syscall_tbl)
         arch_specific_dic = {
@@ -42961,7 +43119,8 @@ def __get_syscall_table(arch, mode):
         syscall_list += arch_specific_extra
 
     elif arch == "S390X" and mode == "64":
-        register_list = S390X().syscall_parameters
+        return_register = S390X.return_register
+        args_register = S390X.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(s390x_syscall_tbl)
         arch_specific_dic = {
@@ -43014,7 +43173,8 @@ def __get_syscall_table(arch, mode):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "SH4" and mode == "SH4":
-        register_list = SH4().syscall_parameters
+        return_register = SH4.return_register
+        args_register = SH4.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(sh4_syscall_tbl)
         arch_specific_dic = {
@@ -43065,7 +43225,8 @@ def __get_syscall_table(arch, mode):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "M68K" and mode == "32":
-        register_list = M68K().syscall_parameters
+        return_register = M68K.return_register
+        args_register = M68K.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(m68k_syscall_tbl)
         arch_specific_dic = {
@@ -43117,7 +43278,8 @@ def __get_syscall_table(arch, mode):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "ALPHA" and mode == "ALPHA":
-        register_list = ALPHA().syscall_parameters
+        return_register = ALPHA.return_register
+        args_register = ALPHA.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(alpha_syscall_tbl)
         arch_specific_dic = {
@@ -43259,7 +43421,8 @@ def __get_syscall_table(arch, mode):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "HPPA" and mode == "32":
-        register_list = HPPA().syscall_parameters
+        return_register = HPPA.return_register
+        args_register = HPPA.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(hppa_syscall_tbl)
         arch_specific_dic = {
@@ -43356,7 +43519,8 @@ def __get_syscall_table(arch, mode):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "HPPA" and mode == "64":
-        register_list = HPPA64().syscall_parameters
+        return_register = HPPA64.return_register
+        args_register = HPPA64.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(hppa_syscall_tbl)
         arch_specific_dic = {
@@ -43421,7 +43585,8 @@ def __get_syscall_table(arch, mode):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "OR1K" and mode == "OR1K":
-        register_list = OR1K().syscall_parameters
+        return_register = OR1K.return_register
+        args_register = OR1K.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(or1k_syscall_tbl)
         arch_specific_dic = {
@@ -43454,7 +43619,8 @@ def __get_syscall_table(arch, mode):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "NIOS2" and mode == "NIOS2":
-        register_list = NIOS2().syscall_parameters
+        return_register = NIOS2.return_register
+        args_register = NIOS2.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(nios2_syscall_tbl)
         arch_specific_dic = {
@@ -43487,7 +43653,8 @@ def __get_syscall_table(arch, mode):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "MICROBLAZE" and mode == "MICROBLAZE":
-        register_list = MICROBLAZE().syscall_parameters
+        return_register = MICROBLAZE.return_register
+        args_register = MICROBLAZE.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(microblaze_syscall_tbl)
         arch_specific_dic = {
@@ -43524,7 +43691,8 @@ def __get_syscall_table(arch, mode):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "XTENSA" and mode == "XTENSA":
-        register_list = XTENSA().syscall_parameters
+        return_register = XTENSA.return_register
+        args_register = XTENSA.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(xtensa_syscall_tbl)
         arch_specific_dic = {
@@ -43559,7 +43727,8 @@ def __get_syscall_table(arch, mode):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "CRIS" and mode == "CRIS":
-        register_list = CRIS().syscall_parameters
+        return_register = CRIS.return_register
+        args_register = CRIS.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(cris_syscall_tbl)
         arch_specific_dic = {
@@ -43599,7 +43768,8 @@ def __get_syscall_table(arch, mode):
             syscall_list.append([nr, name, sc_def[func]])
 
     elif arch == "LOONGARCH" and mode == "64":
-        register_list = LOONGARCH64().syscall_parameters
+        return_register = LOONGARCH64.return_register
+        args_register = LOONGARCH64.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(loongarch_syscall_tbl)
         arch_specific_dic = {
@@ -43633,11 +43803,14 @@ def __get_syscall_table(arch, mode):
 
     elif arch == "ARC":
         if mode in ["32v2", "32"]:
-            register_list = ARC().syscall_parameters
+            return_register = ARC.return_register
+            args_register = ARC.syscall_parameters
         elif mode in ["32v3"]:
-            register_list = ARCv3().syscall_parameters
+            return_register = ARCv3.return_register
+            args_register = ARCv3.syscall_parameters
         elif mode in ["64v3", "64"]:
-            register_list = ARC64().syscall_parameters
+            return_register = ARC64.return_register
+            args_register = ARC64.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(arc_syscall_tbl)
         arch_specific_dic = {
@@ -43690,7 +43863,8 @@ def __get_syscall_table(arch, mode):
         syscall_list += arch_specific_extra
 
     elif arch == "CSKY" and mode == "CSKY":
-        register_list = CSKY().syscall_parameters
+        return_register = CSKY.return_register
+        args_register = CSKY.syscall_parameters
         sc_def = parse_common_syscall_defs()
         tbl = parse_syscall_table_defs(csky_syscall_tbl)
         arch_specific_dic = {
@@ -43739,21 +43913,24 @@ def __get_syscall_table(arch, mode):
         raise
 
     Table = collections.namedtuple("Table", "arch mode table")
-    Entry = collections.namedtuple("Entry", "name params")
-    Param = collections.namedtuple("Param", "reg param")
+    Entry = collections.namedtuple("Entry", "name ret_regs arg_regs args_full args")
     syscall_table = Table(arch=arch, mode=mode, table={})
 
     # example:
     #   syscall_table.arch: 'X86'
     #   syscall_table.mode: '64'
     #   syscall_table.table[0].name: 'read'
-    #   syscall_table.table[0].params[0].reg: '$rdi'
-    #   syscall_table.table[0].params[0].param: 'unsigned int fd'
-
-    syscall_list = sorted(syscall_list, key=lambda x: x[0])
-    for nr, name, args in syscall_list:
-        args = list(zip(register_list[:len(args)], args))
-        syscall_table.table[nr] = Entry(name, [Param(*p) for p in args])
+    #   syscall_table.table[0].ret_regs: ['$rax']
+    #   syscall_table.table[0].arg_regs: ['$rdi', '$rsi', ...]
+    #   syscall_table.table[0].args_full: ['unsigned int fd', ...]
+    #   syscall_table.table[0].args: ['fd', ...]
+    for nr, name, args_full in sorted(syscall_list, key=lambda x: x[0]):
+        args = [re.split(" |\*", p)[-1] for p in args_full]
+        if (arch, mode) == ("X86", "16"):
+            entry = Entry(name, return_register[nr], args_register[nr], args_full, args)
+        else:
+            entry = Entry(name, [return_register], args_register[:len(args)], args_full, args)
+        syscall_table.table[nr] = entry
     return syscall_table
 
 
@@ -43802,41 +43979,51 @@ class SyscallArgsCommand(GenericCommand):
     def get_values(self, registers):
         values = []
         for reg in registers:
-            if "+" not in reg:
-                values.append(get_register(reg))
-            else:
-                _reg, _off = reg.split("+") # like `$sp + 0x10`
+            if "+" in reg: # `$sp + 0x10`
+                _reg, _off = reg.split("+")
                 values.append(read_int_from_memory(get_register(_reg) + int(_off, 0)))
+            elif is_x86_16() and ":" in reg: # $ds:$dx
+                seg, reg = reg.split(":")
+                values.append(current_arch.real2phys(seg, reg))
+            else:
+                values.append(get_register(reg))
         return values
 
     def print_syscall(self, syscall_table, syscall_register, nr):
         if syscall_table:
             syscall_name = syscall_table.table[nr].name
-            parameters = [s.param for s in syscall_table.table[nr].params]
-            param_names = [re.split(r" |\*", p)[-1] for p in parameters]
-            registers = [s.reg for s in syscall_table.table[nr].params]
+            ret_regs = syscall_table.table[nr].ret_regs
+            arg_regs = syscall_table.table[nr].arg_regs
+            args_full = syscall_table.table[nr].args_full
+            args = syscall_table.table[nr].args
             arch = syscall_table.arch
             mode = syscall_table.mode
         else:
             syscall_name = None
-            registers = current_arch.syscall_parameters
-            parameters = None
-            param_names = ["?"] * len(registers)
+            ret_regs = [current_arch.return_register]
+            arg_regs = current_arch.syscall_parameters
+            args_full = None
+            args = ["?"] * len(arg_regs)
             arch = current_arch.arch
             mode = current_arch.mode
 
+        # header
         info("Detected syscall (arch:{:s}, mode:{:s})".format(arch, mode))
-
-        if syscall_name and parameters is not None:
-            gef_print("    " + Color.colorify("{}({})".format(syscall_name, ", ".join(parameters)), "bold yellow"))
-
+        if syscall_name and args_full is not None:
+            gef_print("    " + Color.colorify("{}({})".format(syscall_name, ", ".join(args_full)), "bold yellow"))
         headers = ["Parameter", "Register", "Value"]
         info(Color.colorify("{:<20} {:<20} {}".format(*headers), get_gef_setting("theme.table_heading")))
-        gef_print("    {:<20} {:<20} {:<20}".format("RET", current_arch.return_register, "-"))
+
+        # ret
+        for ret in ret_regs:
+            gef_print("    {:<20} {:<20} {:<20}".format("RET", ret, "-"))
+
+        # syscall number
         gef_print("    {:<20} {:<20} {:#x}".format("_NR", syscall_register, nr))
 
-        values = self.get_values(registers)
-        for name, register, value in zip(param_names, registers, values):
+        # syscall args
+        values = self.get_values(arg_regs)
+        for name, register, value in zip(args, arg_regs, values):
             line = "    {:<20} {:<20} ".format(name, register)
             if value is not None:
                 line += to_string_dereference_from(value)
