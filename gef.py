@@ -57875,7 +57875,7 @@ class SyscallTableViewCommand(GenericCommand):
         return
 
     @switch_to_intel_syntax
-    def parse_syscall_table(self, sys_call_table_addr, syscall_list, nr_base):
+    def parse_syscall_table(self, sys_call_table_addr):
         # scan
         cached_table = []
         i = 0
@@ -57983,7 +57983,7 @@ class SyscallTableViewCommand(GenericCommand):
 
         # parse
         if tag not in self.cached_table:
-            self.cached_table[tag] = self.parse_syscall_table(sys_call_table_addr, syscall_list, nr_base)
+            self.cached_table[tag] = self.parse_syscall_table(sys_call_table_addr)
 
         # print legend
         if not self.quiet:
