@@ -4416,7 +4416,7 @@ def get_pac_status():
 @cache_until_next
 def checksec(filename):
     """Check the security property of the ELF binary. The following properties are:
-    Canary, NX, PIE, RELRO, Fortify, Static, Stripped, CET, RPATH/RUNPATH, and Clang CFI/SafeStack.
+    Canary, NX, PIE, RELRO, Fortify, Static, Symbol, Debuginfo, CET, RPATH/RUNPATH, and Clang CFI/SafeStack.
     Return a dict() with the different keys mentioned above, and the boolean
     associated whether the protection was found."""
 
@@ -4451,8 +4451,11 @@ def checksec(filename):
     # Static
     results["Static"] = is_static(filename)
 
-    # Stripped
-    results["Stripped"] = is_stripped(filename)
+    # Symbol
+    results["Symbol"] = not is_stripped(filename)
+
+    # Debuginfo
+    results["Debuginfo"] = has_debuginfo(filename)
 
     # Canary
     if is_stripped(filename) and is_static(filename):
@@ -4500,30 +4503,6 @@ def checksec(filename):
         results["Fortify"] = __check_security_property("-rs", filename, r"__mem(cpy|move)_chk") is True
     else:
         results["Fortify"] = __check_security_property("-rs", filename, r"_chk@GLIBC") is True
-
-    # CET opcodes
-    if is_x86():
-        if not is_stripped(filename) and not is_static(filename):
-            results["CET IBT opcodes"] = __check_security_property("-S", filename, r"\.plt\.sec") is True
-        else: # static or stripped
-            try:
-                cmd = [objdump, "-d", "-j", ".plt", filename] # check only .plt section for speed up
-                out = gef_execute_external(cmd, as_list=True)
-            except subprocess.CalledProcessError:
-                cmd = [objdump, "-d", filename] # no .plt section
-                out = gef_execute_external(cmd, as_list=True)
-
-            results["CET IBT opcodes"] = False
-            for line in out:
-                line = line.strip()
-                if not line:
-                    continue
-                if is_x86_64() and line.endswith("endbr64"):
-                    results["CET IBT opcodes"] = True
-                    break
-                elif is_x86_32() and line.endswith("endbr32"):
-                    results["CET IBT opcodes"] = True
-                    break
 
     # CET flags via Ehdr
     if is_x86():
@@ -4579,18 +4558,17 @@ def get_endian():
 
 
 @cache_this_session
-def get_entry_point():
+def get_entry_point(fpath=None):
     """Return the binary entry point."""
-    if current_elf:
-        return current_elf.e_entry
+    if fpath:
+        elf = get_elf_headers(fpath)
+    elif current_elf:
+        elf = current_elf
+    else:
+        elf = get_elf_headers()
 
-    elf = get_elf_headers()
     if elf and elf.is_valid:
         return elf.e_entry
-
-    for line in gdb.execute("info target", to_string=True).split("\n"):
-        if "Entry point:" in line:
-            return int(line.strip().split(" ")[-1], 16)
     return None
 
 
@@ -12425,6 +12403,16 @@ def is_stripped(filename=None):
     cmd = [file_bin, filename]
     out = gef_execute_external(cmd)
     return "not stripped" not in out
+
+
+@cache_this_session
+def has_debuginfo(filename=None):
+    if filename is None:
+        filename = get_filepath()
+    file_bin = which("file")
+    cmd = [file_bin, filename]
+    out = gef_execute_external(cmd)
+    return "with debug_info" in out
 
 
 @cache_until_next
@@ -21245,13 +21233,17 @@ class ChecksecCommand(GenericCommand):
         else:
             gef_print("{:<40s}: {:s}".format("Static/Dynamic", "Dynamic"))
 
-        # Stripped
-        if sec["Stripped"]:
-            msg = Color.colorify("Yes", "bold green")
-            gef_print("{:<40s}: {:s}".format("Stripped", msg))
+        # Symbol
+        if sec["Symbol"]:
+            gef_print("{:<40s}: {:s}".format("Symbol", Color.colorify("Found", "bold red")))
         else:
-            msg = Color.colorify("No", "bold red") + " (The symbol remains)"
-            gef_print("{:<40s}: {:s}".format("Stripped", msg))
+            gef_print("{:<40s}: {:s}".format("Symbol", Color.colorify("Stripped", "bold green")))
+
+        # Debug information
+        if sec["Debuginfo"]:
+            gef_print("{:<40s}: {:s}".format("Debuginfo", Color.colorify("Found", "bold red")))
+        else:
+            gef_print("{:<40s}: {:s}".format("Debuginfo", Color.colorify("Stripped", "bold green")))
 
         # Intel CET
         if is_x86():
@@ -21318,12 +21310,6 @@ class ChecksecCommand(GenericCommand):
                 gef_print("{:<40s}: {:s}".format("CET IBT feature flag (via Ehdr)", Color.colorify("Found", "bold green")))
             else:
                 gef_print("{:<40s}: {:s}".format("CET IBT feature flag (via Ehdr)", Color.colorify("Not found", "bold red")))
-
-            # IBT opcodes
-            if sec["CET IBT opcodes"]:
-                gef_print("{:<40s}: {:s}".format("CET IBT opcodes (endbr64/endbr32)", Color.colorify("Found", "bold green")))
-            else:
-                gef_print("{:<40s}: {:s}".format("CET IBT opcodes (endbr64/endbr32)", Color.colorify("Not found", "bold red")))
 
             # IBT status via arch_prctl
             if is_alive() and not is_rr():

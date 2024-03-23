@@ -371,7 +371,6 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * It shows whether Static or Dynamic.
     * It shows whether Stripped or not.
     * It detects canary against static stripped binary.
-    * It shows whether Intel CET instructions (`endbr64`/`endbr32`) is found or not.
     * It shows whether Intel CET IBT/SHSTK is enabled or not.
     * It shows whether ARMv8 PAC / MTE is enabled or not.
     * It shows whether RPATH/RUNPATH is set or not.
