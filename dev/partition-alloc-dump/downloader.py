@@ -1,62 +1,82 @@
 #!/usr/bin/python3
-
 import sys
 import os
-import re
 import subprocess
 import requests
 import json
+import functools
+import bisect
 
-def get_base_pos(current_version):
-  r = requests.get("https://raw.githubusercontent.com/vikyd/chromium-history-version-position/master/json/ver-pos-os/version-position-Linux_x64.json")
-  j = json.loads(r.text)
 
-  vlist = [("{:04d}.{:02d}.{:05d}.{:03d}".format(*map(int, k.split("."))), v) for k, v in j.items()]
-  curr_ver = "{:04d}.{:02d}.{:05d}.{:03d}".format(*map(int, current_version.split(".")))
+@functools.lru_cache
+def get_chrome_info():
+    url = "https://chromiumdash.appspot.com/fetch_releases?num=1"
+    r = requests.get(url)
+    j = json.loads(r.text)
+    return j
 
-  best = None
-  for ver, pos in vlist:
-    if ver == curr_ver:
-      return pos
-    if ver < curr_ver:
-      continue
-    if best is None:
-      best = (ver, pos)
-      continue
-    if ver < best[0]:
-      best = (ver, pos)
-      continue
-  if best is None:
-    return None
-  return best[1]
+
+@functools.lru_cache
+def get_channel_info(channel):
+    j = get_chrome_info()
+    for entry in j:
+        if entry["channel"].lower() == channel and entry["platform"] == "Linux":
+            return entry
+    raise
+
+
+@functools.lru_cache
+def get_valid_positions():
+    url = "https://raw.githubusercontent.com/vikyd/chromium-history-version-position/master/json/position/position-Linux_x64.json"
+    r = requests.get(url)
+    j = json.loads(r.text)
+    return [int(x) for x in j]
+
+
+@functools.lru_cache
+def get_valid_pos(pos):
+    valid_positions = get_valid_positions()
+    pos = valid_positions[bisect.bisect(valid_positions, pos) - 1]
+    return pos
+
 
 def download_binary(channel):
-  print("#"*50)
-  print("[*] channel: {:s}".format(channel))
-  current_version = subprocess.getoutput(f"python3 omahaproxy.py --os=linux --channel={channel} --field=current_version")
-  print("[*] current_version: {:s}".format(current_version))
-  pos = get_base_pos(current_version)
-  if pos is None:
-    print("Not found good target binary")
-    return
-  print("[*] near position: {:s}".format(pos))
+    print("#"*50)
+    print(f"[*] channel: {channel}")
 
-  dirname = f"./chrome_{channel}"
-  os.makedirs(dirname, exist_ok=True)
-  if not os.path.exists(f"{dirname}/chrome-linux-{pos}.zip"):
-    url = 'https://www.googleapis.com/download/storage/v1/b/chromium-browser-snapshots/o/Linux_x64%2F{:s}%2Fchrome-linux.zip?&alt=media'.format(pos)
+    # preparing
+    e = get_channel_info(channel)
+    current_version = e["version"]
+    print(f"[*] current_version: {current_version}")
+    pos = e["chromium_main_branch_position"]
+    print(f"[*] position: {pos}")
+    pos = get_valid_pos(pos)
+    print(f"[*] position where snapshot exists: {pos}")
+
+    # check exists
+    dirname = f"./chrome_{channel}"
+    os.makedirs(dirname, exist_ok=True)
+    if os.path.exists(f"{dirname}/chrome-linux-{pos}.zip"):
+        print("  Already exists, download is skipped")
+        return
+
+    # download
+    # https://commondatastorage.googleapis.com/chromium-browser-snapshots/index.html?prefix=Linux_x64/
+    url = f"https://www.googleapis.com/download/storage/v1/b/chromium-browser-snapshots/o/Linux_x64%2F{pos}%2Fchrome-linux.zip?&alt=media"
     cmd = f"wget -O {dirname}/chrome-linux-{pos}.zip '{url}'"
     print("  Execute: {:s}".format(cmd))
     subprocess.getoutput(cmd)
-  else:
-    print("  Already exists, download is skipped")
+    return
 
-  res = subprocess.getoutput(f"curl -L https://crrev.com/{pos}")
-  r = re.findall(r"<title>(\S+) .*?</title>", res)
-  if r:
-    commit = r[0]
+
+def print_git_url(channel):
+    e = get_channel_info(channel)
+    current_version = e["version"]
+    pos = get_valid_pos(e["chromium_main_branch_position"])
     url_base = "https://source.chromium.org/chromium/chromium/src/+/main:base"
     dir_base = "allocator/partition_allocator/src/partition_alloc"
+    commit = e["hashes"]["chromium"]
+
     print("[*] commit hash: {:s}".format(commit))
     print("[*] struct base::PartitionRoot")
     print("    {:s}/{:s}/partition_root.h;drc={:s}".format(url_base, dir_base, commit))
@@ -68,40 +88,47 @@ def download_binary(channel):
     print("    {:s}/{:s}/partition_direct_map_extent.h;drc={:s}".format(url_base, dir_base, commit))
     print("[*] struct SlotSpanMetadata:")
     print("    {:s}/{:s}/partition_page.h;drc={:s}".format(url_base, dir_base, commit))
-    print("[*] v{:s}.x / {:s} / {:s}".format(current_version.split(".")[0], pos, commit))
 
-  print()
-  return
+    print("[*] v{:s}.x / {:d} / {:s}".format(current_version.split(".")[0], pos, commit))
+    print()
+    return
+
+
+def memo():
+    print("#"*50)
+    print("[*] memo")
+    print("  [term1]")
+    print("    cd www && python3 -m http.server 8080")
+    print("  [term2]")
+    print("    cd chrome_stable/chrome-linux/")
+    print("    rm -rf /tmp/u && sudo -u nobody ./chrome --headless --disable-gpu "
+          "--remote-debugging-port=1338 --user-data-dir=/tmp/u --enable-logging=stderr http://0:8080/inf-loop.html")
+    print("  [term3 (for renderer process)]")
+    print("""    gdb -q -p $(ps -ef | grep -- "--[t]ype=renderer" | awk '{print $2}')""")
+    print("  [term3 (for browser process)]")
+    print("""    gdb -q -p $(ps -ef | grep ./chrome | grep -v type | grep -v sudo | awk '{print $2}')""")
+    return
+
 
 if __name__ == '__main__':
-  if len(sys.argv) == 1:
-    channels = ["stable", "beta", "dev"]
-  elif sys.argv[1] in ["-h", "--help"]:
-    print("[*] usage")
-    print("  python3 {:s}             # download all channels (stable, beta, dev)".format(sys.argv[0]))
-    print("  python3 {:s} stable beta # download specific channel(s)".format(sys.argv[0]))
-    print()
-    channels = []
-  else:
-    channels = sys.argv[1:]
-
-  if channels:
-    for chan in channels:
-      if chan in ["stable", "beta", "dev"]:
-        download_binary(chan)
-      else:
-        print("channel is stable, beta, or dev")
-        exit()
+    if len(sys.argv) == 1:
+        channels = ["stable", "beta", "dev"]
+    elif sys.argv[1] in ["-h", "--help"]:
+        print("[*] usage")
+        print("  python3 {:s}             # download all channels (stable, beta, dev)".format(sys.argv[0]))
+        print("  python3 {:s} stable beta # download specific channel(s)".format(sys.argv[0]))
+        print()
+        channels = []
     else:
-      print("[*] done\n\n")
+        channels = sys.argv[1:]
 
-  print("[*] memo")
-  print("  [term1]")
-  print("    cd www && python3 -m http.server 8080")
-  print("  [term2]")
-  print("    cd chrome_stable/chrome-linux/")
-  print("    rm -rf /tmp/u && sudo -u nobody ./chrome --headless --disable-gpu --remote-debugging-port=1338 --user-data-dir=/tmp/u --enable-logging=stderr http://0:8080/inf-loop.html")
-  print("  [term3 (for renderer process)]")
-  print("""    gdb -q -p $(ps -ef | grep -- "--[t]ype=renderer" | awk '{print $2}')""")
-  print("  [term3 (for browser process)]")
-  print("""    gdb -q -p $(ps -ef | grep ./chrome | grep -v type | grep -v sudo | awk '{print $2}')""")
+    if channels:
+        for chan in channels:
+            if chan in ["stable", "beta", "dev"]:
+                download_binary(chan)
+                print_git_url(chan)
+            else:
+                print("channel is stable, beta, or dev")
+                exit()
+
+    memo()
