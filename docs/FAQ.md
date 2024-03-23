@@ -21,6 +21,7 @@ If you have any trouble, please report it on the issue page.
 
 ## GDB will not load GEF.
 This is probably because gdb does not support cooperation with python3.
+
 Consider building gdb from source with `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`.
 
 ## Where is `gef.py`?
@@ -57,8 +58,8 @@ Yes, GEF suuports real mode experimentally.
 `qemu-system-x86_64` cannot be used, use `qemu-system-i386`.
 Explicitly specify the i8086 architecture before connecting: `gdb -ex 'set architecture i8086' -ex 'target remote localhost:1234'`.
 
-When switching from real mode (16-bit) to protected mode (32-bit), 16bit mode debugging is no longer possible.
-GEF will switch to/from 32-bit mode automatically.
+When switching from real mode (16-bit) to protected mode (32-bit), 16-bit mode debugging is no longer possible.
+GEF will switch to and from 32-bit mode automatically.
 
 ## Does GEF support to debug Android?
 I have never tried it, so I don't know.
@@ -130,16 +131,19 @@ Also, depending on the assembly output by the compiler, it may not be possible t
 ## What command should I start with when debugging the kernel?
 Try `pagewalk` , `ks-apply` and `kchecksec`.
 After that, try `slub-dump`, `ktask` and `ksysctl` as well.
+
 Other commands are less important, so check them with `gef help` if necessary.
 
 ## I prefer the AT&T style.
 Please specify each time using the `set disassembly-flavor att` command.
+
 Or, since the `set disassembly-flavor intel` command is executed in the main function of GEF, it may be a good idea to comment it out.
 However, since GEF does not take AT&T syntax parsing into consideration, so some commands may do not work fine.
 If you find a case where it doesn't work, please report it on the issue page.
 
 ## I don't like the color scheme.
 Customize it using the `theme` command, then `gef save`. The config is saved to `~/.gef.rc`.
+
 There is another option is disable colors. Try `gef config gef.disable_color True`.
 
 ## I don't want to add `-n` to every command to disable pager.
@@ -318,6 +322,7 @@ Please feel free to report it on the issue page. I will respond as soon as possi
 
 ## Can you please add this feature? / I don't like a certain feature, so please fix it.
 I will consider it, so please report it on the issue page.
+
 But this is a personal development, so I have the final decision. I appreciate your understanding.
 
 ## What information should I provide when reporting a issue?
