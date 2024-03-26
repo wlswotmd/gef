@@ -24860,8 +24860,17 @@ class ContextCommand(GenericCommand):
             return []
         bp_locations = []
         for b in breakpoints:
-            for bl in b.locations:
-                bp_locations.append(bl.address)
+            if hasattr(b, "locations"):
+                for bl in b.locations:
+                    bp_locations.append(bl.address)
+            else: # for old gdb
+                if b.location.startswith("*"):
+                    pos = b.location.lstrip("*")
+                    try:
+                        x = int(pos, 16)
+                        bp_locations.append(x)
+                    except ValueError:
+                        pass
         return bp_locations
 
     def context_code(self):
