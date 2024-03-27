@@ -25630,31 +25630,38 @@ class ContextCommand(GenericCommand):
     def get_pc_context_info(self, pc, line):
         try:
             current_block = gdb.block_for_pc(pc)
-            if not current_block or not current_block.is_valid():
-                return ""
-            m = collections.OrderedDict()
-            while current_block and not current_block.is_static:
-                for sym in current_block:
-                    symbol = sym.name
-                    if not sym.is_function and re.search(r"\W{}\W".format(symbol), line):
-                        val = gdb.parse_and_eval(symbol)
-                        if val.type.code in (gdb.TYPE_CODE_PTR, gdb.TYPE_CODE_ARRAY):
-                            addr = int(val.address)
-                            val = to_string_dereference_from(addr)
-                        elif val.type.code == gdb.TYPE_CODE_INT:
-                            val = hex(int(val))
-                        else:
-                            continue
+        except gdb.error:
+            return []
 
-                        if symbol not in m:
-                            m[symbol] = val
-                current_block = current_block.superblock
+        if not current_block or not current_block.is_valid():
+            return []
 
-            if m:
-                return ["{} = {}".format(Color.yellowify(a), b) for a, b in m.items()]
-        except Exception:
-            pass
-        return []
+        m = []
+        seen_symbol = []
+        while current_block and not current_block.is_static:
+            for sym in current_block:
+                if sym.is_function:
+                    continue
+                if re.search(r"\W{}\W".format(sym.name), line):
+                    try:
+                        val = gdb.parse_and_eval(sym.name)
+                    except gdb.error:
+                        continue
+
+                    if val.type.code in (gdb.TYPE_CODE_PTR, gdb.TYPE_CODE_ARRAY):
+                        addr = int(val.address)
+                        val = to_string_dereference_from(addr)
+                    elif val.type.code == gdb.TYPE_CODE_INT:
+                        val = hex(int(val))
+                    else:
+                        continue
+
+                    if sym.name not in seen_symbol:
+                        seen_symbol.append(sym.name)
+                        msg = "{} = {}".format(Color.yellowify(sym.name), val)
+                        m.append(msg)
+            current_block = current_block.superblock
+        return m
 
     def context_trace(self):
         self.context_title("trace")
