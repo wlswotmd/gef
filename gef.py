@@ -1595,6 +1595,34 @@ class Elf:
     def is_valid(self):
         return self.e_magic == Elf.ELF_MAGIC
 
+    def is_static(self):
+        for phdr in self.phdrs:
+            if phdr.p_type == Phdr.PT_INTERP:
+                return False
+        # static or static-pie
+        return True
+
+    def has_dynamic(self):
+        for phdr in self.phdrs:
+            if phdr.p_type == Phdr.PT_DYNAMIC:
+                return True
+        return False
+
+    def is_stripped(self):
+        for shdr in self.shdrs:
+            if shdr.sh_name == ".symtab":
+                return False
+        return True
+
+    def has_debuginfo(self):
+        for shdr in self.shdrs:
+            if shdr.sh_name == ".debug_info":
+                return True
+        return False
+
+    def is_pie(self):
+        return self.e_type == Elf.ET_DYN
+
 
 class Phdr:
     # p_type
@@ -4447,18 +4475,19 @@ def checksec(filename):
         return False
 
     results = collections.OrderedDict()
+    elf = get_elf_headers(filename)
 
     # Static
-    results["Static"] = is_static(filename)
+    results["Static"] = elf.is_static()
 
     # Symbol
-    results["Symbol"] = not is_stripped(filename)
+    results["Symbol"] = not elf.is_stripped()
 
     # Debuginfo
-    results["Debuginfo"] = has_debuginfo(filename)
+    results["Debuginfo"] = elf.has_debuginfo()
 
     # Canary
-    if is_stripped(filename) and is_static(filename):
+    if elf.is_stripped() and elf.is_static():
         # heuristic search
         results["Canary"] = None # it means unknown
         if is_x86_64():
@@ -4490,16 +4519,16 @@ def checksec(filename):
         results["NX"] = False
 
     # PIE
-    results["PIE"] = __check_security_property("-h", filename, r":.*EXEC") is False
+    results["PIE"] = elf.is_pie()
 
     # RELRO
     results["Partial RELRO"] = __check_security_property("-l", filename, r"GNU_RELRO") is True
     results["Full RELRO"] = results["Partial RELRO"] and __check_security_property("-d", filename, r"BIND_NOW") is True
 
     # Fortify
-    if is_stripped(filename):
+    if elf.is_stripped():
         results["Fortify"] = None # it means unknown
-    elif is_static(filename):
+    elif elf.is_static():
         results["Fortify"] = __check_security_property("-rs", filename, r"__mem(cpy|move)_chk") is True
     else:
         results["Fortify"] = __check_security_property("-rs", filename, r"_chk@GLIBC") is True
@@ -4570,11 +4599,6 @@ def get_entry_point(fpath=None):
     if elf and elf.is_valid:
         return elf.e_entry
     return None
-
-
-def is_pie(fpath):
-    elf = get_elf_headers(fpath)
-    return elf.e_type != Elf.ET_EXEC
 
 
 def is_big_endian():
@@ -11437,7 +11461,7 @@ def get_explored_regions():
                 continue
 
             vaddr = phdr.p_vaddr
-            if elf.e_type == Elf.ET_DYN: # PIE
+            if elf.is_pie():
                 vaddr += elf.addr
             vaddr_end = vaddr + phdr.p_memsz
 
@@ -11502,7 +11526,7 @@ def get_explored_regions():
         if len(phdrs) != 1:
             return None
         vaddr = phdrs[0].p_vaddr
-        if elf.e_type == Elf.ET_DYN: # PIE
+        if elf.is_pie():
             vaddr += elf.addr
         linker = read_cstring_from_memory(vaddr)
         return linker
@@ -11519,7 +11543,7 @@ def get_explored_regions():
             return None
         vaddr = phdrs[0].p_vaddr
         vaddr_end = vaddr + phdrs[0].p_memsz
-        if elf.e_type == Elf.ET_DYN: # PIE
+        if elf.is_pie():
             vaddr += elf.addr
             vaddr_end += elf.addr
 
@@ -12383,36 +12407,6 @@ def is_arc64():
 def is_csky():
     """Architecture determination function for csky."""
     return current_arch and current_arch.arch == "CSKY"
-
-
-@cache_this_session
-def is_static(filename=None):
-    if filename is None:
-        filename = get_filepath()
-    file_bin = which("file")
-    cmd = [file_bin, filename]
-    out = gef_execute_external(cmd)
-    return "statically linked" in out or "static-pie linked" in out
-
-
-@cache_this_session
-def is_stripped(filename=None):
-    if filename is None:
-        filename = get_filepath()
-    file_bin = which("file")
-    cmd = [file_bin, filename]
-    out = gef_execute_external(cmd)
-    return "not stripped" not in out
-
-
-@cache_this_session
-def has_debuginfo(filename=None):
-    if filename is None:
-        filename = get_filepath()
-    file_bin = which("file")
-    cmd = [file_bin, filename]
-    out = gef_execute_external(cmd)
-    return "with debug_info" in out
 
 
 @cache_until_next
@@ -14082,7 +14076,12 @@ class BreakRelativeVirtualAddressCommand(GenericCommand):
         self.dont_repeat()
 
         filepath = get_filepath()
-        if filepath and not is_pie(filepath):
+        if not filepath:
+            err("Not found filepath")
+            return
+
+        elf = get_elf_headers(filepath)
+        if not elf.is_pie():
             err("No-PIE elf is unsupported")
             return
 
@@ -21097,6 +21096,7 @@ class ChecksecCommand(GenericCommand):
     """Checksec the security properties of the current executable or passed as argument."""
     _cmdline_ = "checksec"
     _category_ = "02-f. Process Information - Security"
+    _aliases_ = ["cs"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-r", "--remote", action="store_true", help="parse remote binary if download feature is available.")
@@ -22705,7 +22705,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                 new_pos, eh_frame_ptr = self.read_encoded(eh_frame_ptr_enc, data, pos)
                 if (eh_frame_ptr_enc & 0x70) == self.DW_EH_PE_pcrel:
                     elf_offset = shdr.sh_offset + 4 + eh_frame_ptr
-                    if self.is_pie:
+                    if self.elf.is_pie():
                         extra_s = "vma: $codebase+{:#x}".format(load_base + elf_offset)
                     else:
                         extra_s = "vma: {:#x}".format(load_base + elf_offset)
@@ -22727,7 +22727,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
 
                     new_pos, initial_loc = self.read_4sbyte(data, pos)
                     initial_offset = shdr.sh_offset + initial_loc
-                    if self.is_pie:
+                    if self.elf.is_pie():
                         extra_s = "vma: $codebase+{:#x}".format(load_base + initial_offset)
                     else:
                         extra_s = "vma: {:#x}".format(load_base + initial_offset)
@@ -22736,7 +22736,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
 
                     new_pos, fde_offset = self.read_4sbyte(data, pos)
                     fde_offset_adjusted = fde_offset - (eh_frame_ptr + 4)
-                    if self.is_pie:
+                    if self.elf.is_pie():
                         extra_s = "vma: $codebase+{:#x}".format(load_base + shdr.sh_offset + fde_offset)
                     else:
                         extra_s = "vma: {:#x}".format(load_base + shdr.sh_offset + fde_offset)
@@ -22887,7 +22887,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                                 new_pos, p_addr = self.read_encoded(p_encoding, data, pos)
                                 if (p_encoding & 0x70) == self.DW_EH_PE_pcrel:
                                     p_addr += shdr.sh_offset + pos
-                                    if self.is_pie:
+                                    if self.elf.is_pie():
                                         extra_s = "Personality pointer address: $codebase+{:#x}".format(load_base + p_addr)
                                     else:
                                         extra_s = "Personality pointer address: {:#x}".format(load_base + p_addr)
@@ -22933,7 +22933,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                             vma_base &= 0xffffffff
                         elif ptr_size == 8:
                             vma_base &= 0xffffffffffffffff
-                        if self.is_pie:
+                        if self.elf.is_pie():
                             extra_s = "pc_begin vma: $codebase+{:#x}".format(load_base + vma_base)
                         else:
                             extra_s = "pc_begin vma: {:#x}".format(load_base + vma_base)
@@ -22955,7 +22955,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                         end_off &= 0xffffffff
                     elif ptr_size == 8:
                         end_off &= 0xffffffffffffffff
-                    if self.is_pie:
+                    if self.elf.is_pie():
                         extra_s = "pc_end vma: $codebase+{:#x}".format(load_base + end_off)
                     else:
                         extra_s = "pc_end vma: {:#x}".format(load_base + end_off)
@@ -22975,7 +22975,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                                     new_pos, lsda_pointer = self.read_encoded(cie.lsda_encoding, data, pos)
                                     if (cie.lsda_encoding & 0x70) == self.DW_EH_PE_pcrel:
                                         lsda_pointer += shdr.sh_offset + pos
-                                        if self.is_pie:
+                                        if self.elf.is_pie():
                                             extra_s = "LSDA pointer vma: $codebase+{:#x}".format(load_base + lsda_pointer)
                                         else:
                                             extra_s = "LSDA pointer vma: {:#x}".format(load_base + lsda_pointer)
@@ -23936,7 +23936,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                     entries.append([pos, "Call site table[{:4d}]".format(table_cnt), ""])
 
                     new_pos, call_site_start = self.read_encoded(call_site_encoding, data, pos)
-                    if self.is_pie:
+                    if self.elf.is_pie():
                         extra_s = "try-start vma: $codebase+{:#x}".format(lpstart + call_site_start)
                     else:
                         extra_s = "try-start vma: {:#x}".format(lpstart + call_site_start)
@@ -23944,7 +23944,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                     pos = new_pos
 
                     new_pos, call_site_length = self.read_encoded(call_site_encoding, data, pos)
-                    if self.is_pie:
+                    if self.elf.is_pie():
                         extra_s = "try-end vma: $codebase+{:#x}".format(lpstart + call_site_start + call_site_length)
                     else:
                         extra_s = "try-end vma: {:#x}".format(lpstart + call_site_start + call_site_length)
@@ -23954,7 +23954,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                     new_pos, call_site_lpad = self.read_encoded(call_site_encoding, data, pos)
                     if call_site_lpad == 0:
                         extra_s = ""
-                    elif self.is_pie:
+                    elif self.elf.is_pie():
                         extra_s = "catch vma: $codebase+{:#x}".format(lpstart + call_site_lpad)
                     else:
                         extra_s = "catch vma: {:#x}".format(lpstart + call_site_lpad)
@@ -24017,7 +24017,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                         if (ttype_encoding & 0x70) == self.DW_EH_PE_pcrel:
                             ttype_pointer = shdr.sh_offset + pos + ttype
                             if ttype:
-                                if self.is_pie:
+                                if self.elf.is_pie():
                                     extra_s = "TType pointer vma: $codebase+{:#x}".format(load_base + ttype_pointer)
                                 else:
                                     extra_s = "TType pointer vma: {:#x}".format(load_base + ttype_pointer)
@@ -24116,8 +24116,6 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                 os.unlink(tmp_filepath)
             return
 
-        self.is_pie = is_pie(local_filepath)
-
         # read section
         eh_frame_hdr = self.read_section(".eh_frame_hdr")
         if eh_frame_hdr is None:
@@ -24185,7 +24183,7 @@ class MainBreakCommand(GenericCommand):
         if libc_start_main == 0:
             elf = get_elf_headers()
             entry = elf.e_entry
-            if elf.e_type != Elf.ET_EXEC: # is_pie
+            if elf.is_pie():
                 codebase = get_section_base_address(get_filepath(append_proc_root_prefix=False))
                 if codebase is None:
                     codebase = get_section_base_address(get_path_from_info_proc())
@@ -24312,7 +24310,7 @@ class EntryPointBreakCommand(GenericCommand):
 
         # no symbols. use elf entry point
         # non-PIE
-        if not is_pie(fpath):
+        if not get_elf_headers(fpath).is_pie():
             entry = get_entry_point()
             info("Breaking at entry-point: {:#x}".format(entry))
             EntryBreakBreakpoint("*{:#x}".format(entry))
@@ -28785,7 +28783,7 @@ class LinkMapCommand(GenericCommand):
 
     def dump_link_map(self, link_map):
         if link_map is None:
-            info("link_map is 0.")
+            info("Not found link_map.")
             return
 
         info("link_map: {!s} [{!s}]".format(link_map, link_map.section.permission))
@@ -28891,10 +28889,9 @@ class LinkMapCommand(GenericCommand):
             val = lookup_address(read_int_from_memory(current))
             current += current_arch.ptrsize
             if tag not in DynamicCommand.DT_TABLE:
-                link_map = None
                 if not silent:
                     info("Not found link_map")
-                break
+                return None
             if DynamicCommand.DT_TABLE[tag] == "DT_DEBUG":
                 dt_debug = val
                 val_addr = lookup_address(current - current_arch.ptrsize)
@@ -28902,6 +28899,8 @@ class LinkMapCommand(GenericCommand):
                 if not silent:
                     info("_DYNAMIC+{:#x}(=DT_DEBUG): {!s} -> {!s}".format(val_addr_offset, val_addr, dt_debug))
                 link_map_ptr = lookup_address(dt_debug.value + current_arch.ptrsize)
+                if not is_valid_addr(link_map_ptr.value):
+                    return None
                 link_map = lookup_address(read_int_from_memory(link_map_ptr.value))
                 if not silent:
                     info("DT_DEBUG+{:#x}: {!s} -> {!s}".format(current_arch.ptrsize, link_map_ptr, link_map))
@@ -28937,8 +28936,8 @@ class LinkMapCommand(GenericCommand):
                 err("{:s} is not found.".format(filename))
                 return
 
-            if is_static(filename):
-                info("The binary is static build. There is no link_map.")
+            if not get_elf_headers(filename).has_dynamic():
+                info("The binary has no link_map.")
                 return
 
             try:
@@ -29195,7 +29194,7 @@ class DynamicCommand(GenericCommand):
             return None
 
         if isinstance(filename_or_addr, str):
-            if is_pie(filename_or_addr):
+            if elf.is_pie():
                 load_base = get_section_base_address(filename_or_addr)
                 dynamic = phdrs[0].p_vaddr + load_base
             else:
@@ -29240,8 +29239,8 @@ class DynamicCommand(GenericCommand):
                 err("{:s} is not found.".format(filename))
                 return
 
-            if is_static(filename):
-                info("The binary is static build. There is no _DYNAMIC.")
+            if not get_elf_headers(filename).has_dynamic():
+                info("The binary has no _DYNAMIC.")
                 return
 
             if get_section_base_address(filename) is None:
@@ -29570,12 +29569,12 @@ class DestructorDumpCommand(GenericCommand):
 
         # method 2 (from msymbols)
         if tls_dtor_list is None:
-            if self.is_static:
+            if self.elf.is_static():
                 tls_dtor_list = self.get_dtor_list_from_msymbols()
 
         # method 3 (from link-map)
         if tls_dtor_list is None:
-            if not self.is_static:
+            if not self.elf.is_static():
                 tls_dtor_list = self.get_dtor_list_from_linkmap_relative()
 
         # method 4 (from tls with likely pattern)
@@ -29713,12 +29712,13 @@ class DestructorDumpCommand(GenericCommand):
             link_map = LinkMap(*dic.values())
             yield link_map
             current = dic["next"]
+        return
 
     def dump_fini(self):
         if not self.codebase:
             return None
 
-        if not self.is_static:
+        if self.elf.has_dynamic():
             # Parse all loaded libraries.
             for link_map in self.yield_link_map(self.codebase):
                 # get dynamic
@@ -29751,9 +29751,8 @@ class DestructorDumpCommand(GenericCommand):
         else:
             # Static binary has no _DYNAMIC, but we can resolve the target address
             # from section name due to local file path.
-            elf = Elf(self.local_filepath)
             try:
-                shdr = [s for s in elf.shdrs if s.sh_name == ".fini"][0]
+                shdr = [s for s in self.elf.shdrs if s.sh_name == ".fini"][0]
             except IndexError:
                 err("Not found .fini section")
                 return
@@ -29770,7 +29769,7 @@ class DestructorDumpCommand(GenericCommand):
         if not self.codebase:
             return None
 
-        if not self.is_static:
+        if self.elf.has_dynamic():
             # Parse all loaded libraries.
             for link_map in self.yield_link_map(self.codebase):
                 # get dynamic
@@ -29819,9 +29818,8 @@ class DestructorDumpCommand(GenericCommand):
         else:
             # Static binary has no _DYNAMIC, but we can resolve the target address
             # from section name due to local file path.
-            elf = Elf(self.local_filepath)
             try:
-                shdr = [s for s in elf.shdrs if s.sh_name == ".fini_array"][0]
+                shdr = [s for s in self.elf.shdrs if s.sh_name == ".fini_array"][0]
             except IndexError:
                 err("Not found .fini_array section")
                 return
@@ -29897,11 +29895,9 @@ class DestructorDumpCommand(GenericCommand):
             err("File name could not be determined.")
             return
 
-        # filepath
+        # filepath and elf
         self.local_filepath = local_filepath
-
-        # is_static
-        self.is_static = is_static(local_filepath)
+        self.elf = get_elf_headers(local_filepath)
 
         # codebase
         if remote_filepath:
@@ -29974,6 +29970,8 @@ class GotCommand(GenericCommand):
         return
 
     def get_jmp_slots(self):
+        elf = get_elf_headers(self.filename)
+
         try:
             cmd = [self.readelf, "--relocs", "--wide", self.filename]
             lines = gef_execute_external(cmd, as_list=True)
@@ -30018,7 +30016,7 @@ class GotCommand(GenericCommand):
                 continue
 
             # count up reloc_arg
-            if is_static(self.filename):
+            if elf.is_static():
                 reloc_arg = None
             elif section_name not in [".rel.plt", ".rela.plt"]:
                 reloc_arg = None
@@ -30027,7 +30025,7 @@ class GotCommand(GenericCommand):
                 reloc_count += 1
 
             # fix address
-            if is_pie(self.filename):
+            if elf.is_pie():
                 address += self.base_address
 
             # save
@@ -30041,6 +30039,8 @@ class GotCommand(GenericCommand):
         return a + b + c
 
     def get_plt_addresses(self):
+        elf = get_elf_headers(self.filename)
+
         try:
             cmd = [self.objdump, "-j", ".plt", "-j", ".plt.sec", "-j", ".plt.got", "-d", self.filename]
             lines = gef_execute_external(cmd, as_list=True)
@@ -30056,7 +30056,7 @@ class GotCommand(GenericCommand):
             address, func_name = int(r[0][0], 16), r[0][1]
 
             # fix address
-            if is_pie(self.filename):
+            if elf.is_pie():
                 address += self.base_address
 
             # save
@@ -30077,7 +30077,7 @@ class GotCommand(GenericCommand):
         plt_end = max([x.sh_addr + x.sh_size for x in sections])
 
         # fix address
-        if is_pie(self.filename):
+        if elf.is_pie():
             plt_begin += self.base_address
             plt_end += self.base_address
 
@@ -30096,7 +30096,7 @@ class GotCommand(GenericCommand):
         for shdr in elf.shdrs:
             sh_start = shdr.sh_addr
             sh_end = shdr.sh_addr + shdr.sh_size
-            if is_pie(self.filename):
+            if elf.is_pie():
                 sh_start += self.base_address
                 sh_end += self.base_address
             ranges.append([shdr.sh_name, sh_start, sh_end])
@@ -44148,7 +44148,12 @@ class CodebaseCommand(GenericCommand):
         gef_print(f"$codebase = {codebase:#x}")
 
         filepath = get_filepath()
-        if filepath and is_pie(filepath):
+        if not filepath:
+            err("Not found filepath")
+            return
+
+        elf = get_elf_headers(filepath)
+        if elf.is_pie():
             gdb.execute(f"set $piebase = {codebase}")
             gef_print(f"$piebase = {codebase:#x}")
         return
