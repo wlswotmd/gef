@@ -14908,12 +14908,6 @@ class ProcInfoCommand(GenericCommand):
 
     def get_tty_str(self, major, minor):
         try:
-            file = which("file")
-        except FileNotFoundError as e:
-            err("{}".format(e))
-            return "Not found"
-
-        try:
             devices = open("/proc/devices", "r").read()
         except (FileNotFoundError, OSError):
             return "Not found"
@@ -14928,26 +14922,31 @@ class ProcInfoCommand(GenericCommand):
         else:
             return "Not found"
 
+        def get_major_minor(name):
+            devnum = os.stat(name).st_rdev
+            major = (devnum >> 8) & 0xff
+            minor = devnum & 0xff
+            return major, minor
+
+        if not os.path.exists(name):
+            return "Not found"
+
         if os.path.islink(name):
             return "Not found"
-        elif os.path.isfile(name):
-            res = gef_execute_external([file, name], as_iist=True)
-            m = re.search(r"\((\d+)/(\d+)\)", res)
-            if m and int(m.group(1)) == major and int(m.group(2)) == minor:
+
+        if os.path.isfile(name):
+            if get_major_minor(name) == (major, minor):
                 return name
-            else:
-                return "Not found"
-        elif os.path.isdir(name):
+
+        if os.path.isdir(name):
             for root, _dirs, files in os.walk(name, followlinks=False):
                 for f in files:
                     path = os.path.join(root, f)
                     if os.path.islink(path):
                         continue
-                    res = gef_execute_external([file, path], as_iist=True)
-                    m = re.search(r"\((\d+)/(\d+)\)", res)
-                    if m and int(m.group(1)) == major and int(m.group(2)) == minor:
+                    if get_major_minor(path) == (major, minor):
                         return path
-            return "Not found"
+        return "Not found"
 
     def show_info_proc(self):
         gef_print(titlify("Process Information"))
