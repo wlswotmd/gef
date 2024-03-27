@@ -12441,13 +12441,13 @@ def get_arch():
     if "The target architecture is set automatically (currently " in arch_str:
         arch_str = arch_str.split("(currently ", 1)[1]
         arch_str = arch_str.split(")", 1)[0]
-    elif "The target architecture is set to \"auto\" (currently \"" in arch_str:
-        arch_str = arch_str.split("(currently \"", 1)[1]
-        arch_str = arch_str.split("\")", 1)[0]
+    elif 'The target architecture is set to "auto" (currently "' in arch_str:
+        arch_str = arch_str.split('(currently "', 1)[1]
+        arch_str = arch_str.split('")', 1)[0]
     elif "The target architecture is assumed to be " in arch_str:
         arch_str = arch_str.replace("The target architecture is assumed to be ", "")
     elif "The target architecture is set to " in arch_str:
-        arch_str = arch_str.split("\"")[1]
+        arch_str = arch_str.split('"')[1]
     else:
         # Unknown, we throw an exception to be safe
         raise RuntimeError("Unknown architecture: {}".format(arch_str))
@@ -13388,7 +13388,7 @@ class VersionCommand(GenericCommand):
         if os.path.exists("/etc/os-release"):
             content = open("/etc/os-release").read()
             for line in content.splitlines():
-                r = re.search(r"PRETTY_NAME=\"(.+)\"", line)
+                r = re.search(r'PRETTY_NAME="(.+)"', line)
                 if r:
                     return r.group(1)
 
@@ -14022,9 +14022,9 @@ class DisplayTypeCommand(GenericCommand):
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} \"struct malloc_state\"          # shortcut for `ptype /ox struct malloc_state`\n".format(_cmdline_)
-    _example_ += "{:s} \"struct malloc_state\" $rsp     # shortcut for `p ((struct malloc_state*) $rsp)[0]`\n".format(_cmdline_)
-    _example_ += "{:s} -r mstate $rsp                 # mstate is typedef of `struct malloc_state*`, so need remove `*` once".format(_cmdline_)
+    _example_ = '{:s} "struct malloc_state"        # shortcut for `ptype /ox struct malloc_state`\n'.format(_cmdline_)
+    _example_ += '{:s} "struct malloc_state" $rsp   # shortcut for `p ((struct malloc_state*) $rsp)[0]`\n'.format(_cmdline_)
+    _example_ += "{:s} -r mstate $rsp               # mstate is typedef of `struct malloc_state*`, so need remove `*` once".format(_cmdline_)
 
     _note_ = "You can remove any number of `*` by specifying multiple `-r` options."
 
@@ -15598,7 +15598,7 @@ class SmartMemoryDumpCommand(GenericCommand):
         self.smart_memory_dump()
 
         if not self.commit:
-            warn("This is dry run mode. No dump has been performed yet. To dump, please add \"--commit\".")
+            warn('This is dry run mode. No dump has been performed yet. To dump, please add "--commit".')
         return
 
     def smart_memory_dump(self):
@@ -16955,7 +16955,7 @@ class KillThreadsCommand(GenericCommand):
             orig_thread.switch()
             gdb.execute("set scheduler-locking {:s}".format(sched_lock), to_string=True)
         else:
-            warn("This is dry run mode. Thread is not killed yet. To kill, please add \"--commit\".")
+            warn('This is dry run mode. Thread is not killed yet. To kill, please add "--commit".')
         return
 
 
@@ -24427,7 +24427,7 @@ class CommandBreakCommand(GenericCommand):
     parser.add_argument("command", metavar="COMMAND", type=str, help="the command executed if breakpoint is hit.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} 0x55555555aab9 \"hexdump -n $sp+0x120\"".format(_cmdline_)
+    _example_ = '{:s} 0x55555555aab9 "hexdump -n $sp+0x120"'.format(_cmdline_)
 
     @parse_args
     def do_invoke(self, args):
@@ -26107,8 +26107,8 @@ class HexdumpFlexibleCommand(GenericCommand):
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
 
-    _example_ = "{:s} \"2Q2I2H2B\" $rsp 4  # \"Show qword*2, dword*2, short*2, byte*2\" from $rsp and repeat 4 times\n".format(_cmdline_)
-    _example_ += "{:s} \"4Q-2Q\" $rsp 4     # \"Show qword*4 and skip qword*2\" from $rsp and repeat 4 times".format(_cmdline_)
+    _example_ = '{:s} "2Q2I2H2B" $rsp 4  # "Show qword*2, dword*2, short*2, byte*2" from $rsp and repeat 4 times\n'.format(_cmdline_)
+    _example_ += '{:s} "4Q-2Q" $rsp 4     # "Show qword*4 and skip qword*2" from $rsp and repeat 4 times'.format(_cmdline_)
 
     def extract_each_type(self, fmt):
         out = []
@@ -27204,12 +27204,12 @@ class DereferenceCommand(GenericCommand):
     _example_ += "{:s} --tag 0 A --tag 1 B $sp 20  # display with tags".format(_cmdline_)
 
     _note_ = "Use blacklist feature if reading the address causes process crash.\n"
-    _note_ += "e.g.: `gef config dereference.blacklist \"[ [0xffffffffc9000000, 0xffffffffc9001000], ]\"`, then `gef save`"
+    _note_ += 'e.g.: `gef config dereference.blacklist "[ [0xffffffffc9000000, 0xffffffffc9001000], ]"`, then `gef save`'
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         self.add_setting("max_recursion", 4, "Maximum level of pointer recursion")
-        self.add_setting("blacklist", "[]", "Dereference black list address ranges (e.g.: \"[ [start1, end1], [start2, end2], ]\")")
+        self.add_setting("blacklist", "[]", 'Dereference black list address ranges (e.g.: "[ [start1, end1], [start2, end2], ]")')
         return
 
     @staticmethod
@@ -45689,7 +45689,7 @@ class ErrnoCommand(GenericCommand):
 
         if args.all:
             for val, es in sorted(self.ERRNO_DICT.items()):
-                gef_print("{:3d} (={:#4x}): {:<15s}: \"{:s}\"".format(val, val, es[0], es[1]))
+                gef_print('{:3d} (={:#4x}): {:<15s}: "{:s}"'.format(val, val, es[0], es[1]))
             return
 
         if args.errno is None:
@@ -45720,7 +45720,7 @@ class ErrnoCommand(GenericCommand):
 
         if val in self.ERRNO_DICT:
             es = self.ERRNO_DICT[val]
-            gef_print("{:3d} (={:#4x}): {:<15s}: \"{:s}\"".format(val, val, es[0], es[1]))
+            gef_print('{:3d} (={:#4x}): {:<15s}: "{:s}"'.format(val, val, es[0], es[1]))
         else:
             err("Not found value in ERRNO_DICT (1~{:d})".format(len(self.ERRNO_DICT)))
         return
@@ -57950,7 +57950,7 @@ class StringsCommand(GenericCommand):
 
     _example_ = "{:s} 0x00007ffffffde000 0x00007ffffffff000              # detect all\n".format(_cmdline_)
     _example_ += "{:s} --minlen 10 0x00007ffffffde000 0x00007ffffffff000  # filter by length\n".format(_cmdline_)
-    _example_ += "{:s} -e \"\\\\^A\" 0x00007ffffffde000 0x00007ffffffff000    # filter by keywords (-f, -e). need double-escape".format(_cmdline_)
+    _example_ += '{:s} -f "GLIBC" 0x00007ffffffde000 0x00007ffffffff000   # filter by keywords (-f, -e). need double-escape'.format(_cmdline_)
 
     def strings(self, data, len_threshold):
         string_printable = bytes(range(0x20, 0x7f))
@@ -68371,7 +68371,7 @@ class TcmallocDumpCommand(GenericCommand):
             return
 
         current_or_not = "(current thread)" if lwpid == current_lwpid else ""
-        fmt = "thread cache [lwpid={:d}{:s},name=\"{:s}\"] @ {:#x} freelist"
+        fmt = 'thread cache [lwpid={:d}{:s},name="{:s}"] @ {:#x} freelist'
         self.out.append(titlify(fmt.format(lwpid, current_or_not, name, thread_heap)))
 
         freelist = thread_heap + self.ThreadCache_offset_freelist_array
@@ -79774,7 +79774,7 @@ class KmallocAllocatedByCommand(GenericCommand):
             attr += p64(0x100) # mq_msgsize
             attr += p64(0)     # mq_curmsgs
             attr += p64(0) * 4 # __reserved[4]
-            yield ("fd = mq_open(\"mq_test\", O_RDWR|O_CREAT, 0700, &attr)", "mq_open", [MQ_NAME, 0o2 | 0o100, 0o700, attr])
+            yield ('fd = mq_open("mq_test", O_RDWR|O_CREAT, 0700, &attr)', "mq_open", [MQ_NAME, 0o2 | 0o100, 0o700, attr])
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
                 msg = "A" * 0x100
@@ -79797,7 +79797,7 @@ class KmallocAllocatedByCommand(GenericCommand):
                 attr += p64(0)     # mq_curmsgs
                 attr += p64(0) * 4 # __reserved[4]
                 yield ("mq_getsetattr(fd, NULL, &attr)", "mq_getsetattr", [fd, 0, attr])
-                yield ("mq_unlink(\"mq_test\")", "mq_unlink", [MQ_NAME])
+                yield ('mq_unlink("mq_test")', "mq_unlink", [MQ_NAME])
                 yield ("close(fd)", "close", [fd])
 
             yield "signalfd4 -> close"
@@ -80328,7 +80328,7 @@ class KmallocAllocatedByCommand(GenericCommand):
 
             yield "open -> fallocate -> write -> fdatasync -> fsync -> syncfs -> fadvise64 -> close"
             TMP_XXX = "/tmp/xxx\0"
-            yield ("fd = open(\"/tmp/xxx\", 0_WRONLY|O_CREAT, 0666)", "open", [TMP_XXX, 0o1 | 0o100, 0o666])
+            yield ('fd = open("/tmp/xxx", 0_WRONLY|O_CREAT, 0666)', "open", [TMP_XXX, 0o1 | 0o100, 0o666])
             self.skipped_syscall.add("creat")
             self.skipped_syscall.add("openat")
             self.skipped_syscall.add("openat2")
@@ -80336,7 +80336,7 @@ class KmallocAllocatedByCommand(GenericCommand):
                 fd = ret_history[-1]
                 yield ("fallocate(fd, 0, 0, 0x100)", "fallocate", [fd, 0, 0, 0x100])
                 buf = "A" * 4
-                yield ("write(fd, \"AAAA\", 4)", "write", [fd, buf, len(buf)])
+                yield ('write(fd, "AAAA", 4)', "write", [fd, buf, len(buf)])
                 self.skipped_syscall.add("writev")
                 self.skipped_syscall.add("pwrite64")
                 self.skipped_syscall.add("pwritev")
@@ -80350,7 +80350,7 @@ class KmallocAllocatedByCommand(GenericCommand):
                 yield ("close(fd)", "close", [fd])
 
             yield "open -> flock -> lseek -> readahead -> poll -> read -> dup -> close_range"
-            yield ("fd = open(\"/tmp/xxx\", 0_RDONLY)", "open", [TMP_XXX, 0o0])
+            yield ('fd = open("/tmp/xxx", 0_RDONLY)', "open", [TMP_XXX, 0o0])
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
                 yield ("flock(fd, LOCK_SH|LOCK_NB)", "flock", [fd, 1 | 4])
@@ -80375,7 +80375,7 @@ class KmallocAllocatedByCommand(GenericCommand):
                 yield ("close_range(fd, fd2, 0)", "close_range", [fd, fd2, 0])
 
             yield "open -> mmap -> remap_file_pages -> munmap -> close"
-            yield ("fd = open(\"/tmp/xxx\", 0_RDONLY)", "open", [TMP_XXX, 0o0])
+            yield ('fd = open("/tmp/xxx", 0_RDONLY)', "open", [TMP_XXX, 0o0])
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
                 size = gef_getpagesize()
@@ -80387,16 +80387,16 @@ class KmallocAllocatedByCommand(GenericCommand):
                 yield ("close(fd)", "close", [fd])
 
             yield "chmod -> chown"
-            yield ("chmod(\"/tmp/xxx\", 0o664)", "chmod", [TMP_XXX, 0o664])
+            yield ('chmod("/tmp/xxx", 0o664)', "chmod", [TMP_XXX, 0o664])
             self.skipped_syscall.add("fchmod")
             self.skipped_syscall.add("fchmodat")
-            yield ("chown(\"/tmp/xxx\", -1, -1)", "chown", [TMP_XXX, -1, -1])
+            yield ('chown("/tmp/xxx", -1, -1)', "chown", [TMP_XXX, -1, -1])
             self.skipped_syscall.add("fchown")
             self.skipped_syscall.add("lchown")
             self.skipped_syscall.add("fchownat")
 
             yield "open -> pipe -> sendfile -> splice -> select -> vmsplice -> close_range -> close"
-            yield ("fd = open(\"/tmp/xxx\", 0_RDONLY)", "open", [TMP_XXX, 0o0])
+            yield ('fd = open("/tmp/xxx", 0_RDONLY)', "open", [TMP_XXX, 0o0])
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
                 pipefd_array = p32(0) * 2 # pipefd[2]
@@ -80435,31 +80435,31 @@ class KmallocAllocatedByCommand(GenericCommand):
 
             yield "mknod -> unlink"
             TMP_PIPE = "/tmp/pipe\0"
-            yield ("mknod(\"/tmp/pipe\", S_IFIFO|0644, 0)", "mknod", [TMP_PIPE, 0o10000 | 0o644, 0])
+            yield ('mknod("/tmp/pipe", S_IFIFO|0644, 0)', "mknod", [TMP_PIPE, 0o10000 | 0o644, 0])
             self.skipped_syscall.add("mknodat")
             if u2i(ret_history[-1]) >= 0:
-                yield ("unlink(\"/tmp/pipe\")", "unlink", [TMP_PIPE])
+                yield ('unlink("/tmp/pipe")', "unlink", [TMP_PIPE])
 
             yield "open -> sync_file_range -> copy_file_range -> close -> unlink -> close"
             TMP_XXX2 = "/tmp/xxx2\0"
-            yield ("fd_in = open(\"/tmp/xxx\", 0_RDONLY)", "open", [TMP_XXX, 0o0])
+            yield ('fd_in = open("/tmp/xxx", 0_RDONLY)', "open", [TMP_XXX, 0o0])
             if u2i(ret_history[-1]) >= 0:
                 fd_in = ret_history[-1]
-                yield ("fd_out = open(\"/tmp/xxx2\", 0_WRONLY|O_CREAT, 0666)", "open", [TMP_XXX2, 0o1 | 0o100, 0o666])
+                yield ('fd_out = open("/tmp/xxx2", 0_WRONLY|O_CREAT, 0666)', "open", [TMP_XXX2, 0o1 | 0o100, 0o666])
                 if u2i(ret_history[-1]) >= 0:
                     fd_out = ret_history[-1]
                     yield ("sync_file_range(fd_out, 0, 4, SYNC_FILE_RANGE_WAIT_AFTER)", "sync_file_range", [fd_out, 0, 4, 4])
                     yield ("copy_file_range(fd_in, 0, fd_out, 0, 4, 0)", "copy_file_range", [fd_in, 0, fd_out, 0, 4, 0])
                     yield ("close(fd_out)", "close", [fd_out])
-                    yield ("unlink(\"/tmp/xxx2\")", "unlink", [TMP_XXX2])
+                    yield ('unlink("/tmp/xxx2")', "unlink", [TMP_XXX2])
                 yield ("close(fd_in)", "close", [fd_in])
 
             yield "access -> utime -> stat -> statx -> truncate"
-            yield ("access(\"/tmp/xxx\", F_OK)", "access", [TMP_XXX, 0])
+            yield ('access("/tmp/xxx", F_OK)', "access", [TMP_XXX, 0])
             self.skipped_syscall.add("faccessat")
             self.skipped_syscall.add("faccessat2")
             if u2i(ret_history[-1]) >= 0:
-                yield ("utime(\"/tmp/xxx\", NULL)", "utime", [TMP_XXX, 0])
+                yield ('utime("/tmp/xxx", NULL)', "utime", [TMP_XXX, 0])
                 self.skipped_syscall.add("utimes")
                 self.skipped_syscall.add("futimesat")
                 self.skipped_syscall.add("utimensat")
@@ -80481,7 +80481,7 @@ class KmallocAllocatedByCommand(GenericCommand):
                 buf += p64(0)     # st_ctim.tv_sec
                 buf += p64(0)     # st_ctim.tv_nsec
                 buf += p64(0) * 3 # __glibc_reserved[3]
-                yield ("stat(\"/tmp/xxx\", &buf)", "stat", [TMP_XXX, buf])
+                yield ('stat("/tmp/xxx", &buf)', "stat", [TMP_XXX, buf])
                 self.skipped_syscall.add("fstat")
                 self.skipped_syscall.add("lstat")
                 self.skipped_syscall.add("newfstatat")
@@ -80516,53 +80516,53 @@ class KmallocAllocatedByCommand(GenericCommand):
                 statxbuf += p64(0) # stx_mnt_id
                 statxbuf += p32(0) # stx_dio_mem_align
                 statxbuf += p32(0) # stx_dio_offset_align
-                yield ("statx(0, \"/tmp/xxx\", 0, 0, &statxbuf)", "statx", [0, TMP_XXX, 0, 0, statxbuf])
-                yield ("truncate(\"/tmp/xxx\", 10)", "truncate", [TMP_XXX, 10])
+                yield ('statx(0, "/tmp/xxx", 0, 0, &statxbuf)', "statx", [0, TMP_XXX, 0, 0, statxbuf])
+                yield ('truncate("/tmp/xxx", 10)', "truncate", [TMP_XXX, 10])
                 self.skipped_syscall.add("ftruncate")
 
             yield "access -> setxattr -> getxattr -> listxattr -> removexattr"
-            yield ("access(\"/tmp/xxx\", F_OK)", "access", [TMP_XXX, 0])
+            yield ('access("/tmp/xxx", F_OK)', "access", [TMP_XXX, 0])
             if u2i(ret_history[-1]) >= 0:
                 buf = "A" * 0xff + "\0"
                 userx = "user.x\0"
-                yield ("setxattr(\"/tmp/xxx\", \"user.x\", &buf, sizeof(buf), 0)", "setxattr", [TMP_XXX, userx, buf, len(buf), 0])
+                yield ('setxattr("/tmp/xxx", "user.x", &buf, sizeof(buf), 0)', "setxattr", [TMP_XXX, userx, buf, len(buf), 0])
                 self.skipped_syscall.add("lsetxattr")
                 self.skipped_syscall.add("fsetxattr")
                 if u2i(ret_history[-1]) >= 0:
                     buf= "\0" * 0x100
-                    yield ("getxattr(\"/tmp/xxx\", \"user.x\", &buf, sizeof(buf))", "getxattr", [TMP_XXX, userx, buf, len(buf)])
+                    yield ('getxattr("/tmp/xxx", "user.x", &buf, sizeof(buf))', "getxattr", [TMP_XXX, userx, buf, len(buf)])
                     self.skipped_syscall.add("lgetxattr")
                     self.skipped_syscall.add("fgetxattr")
                     buf = "\0" * 0x100
-                    yield ("listxattr(\"/tmp/xxx\", &buf, sizeof(buf))", "listxattr", [TMP_XXX, buf, len(buf)])
+                    yield ('listxattr("/tmp/xxx", &buf, sizeof(buf))', "listxattr", [TMP_XXX, buf, len(buf)])
                     self.skipped_syscall.add("llistxattr")
                     self.skipped_syscall.add("flistxattr")
-                    yield ("removexattr(\"/tmp/xxx\", \"user.x\")", "removexattr", [TMP_XXX, userx])
+                    yield ('removexattr("/tmp/xxx", "user.x")', "removexattr", [TMP_XXX, userx])
                     self.skipped_syscall.add("lremovexattr")
                     self.skipped_syscall.add("fremovexattr")
 
             yield "link -> unlink"
             TMP_XXX3 = "/tmp/xxx3\0"
-            yield ("link(\"/tmp/xxx\", \"/tmp/xxx3\")", "link", [TMP_XXX, TMP_XXX3])
+            yield ('link("/tmp/xxx", "/tmp/xxx3")', "link", [TMP_XXX, TMP_XXX3])
             self.skipped_syscall.add("linkat")
             if u2i(ret_history[-1]) >= 0:
-                yield ("unlink(\"/tmp/xxx3\")", "unlink", [TMP_XXX3])
+                yield ('unlink("/tmp/xxx3")', "unlink", [TMP_XXX3])
                 self.skipped_syscall.add("unlinkat")
 
             yield "symlink -> readlink -> rename -> unlink"
             TMP_XXX4 = "/tmp/xxx4\0"
-            yield ("symlink(\"/tmp/xxx\", \"/tmp/xxx4\")", "symlink", [TMP_XXX, TMP_XXX4])
+            yield ('symlink("/tmp/xxx", "/tmp/xxx4")', "symlink", [TMP_XXX, TMP_XXX4])
             self.skipped_syscall.add("symlinkat")
             if u2i(ret_history[-1]) >= 0:
                 buf = "\0" * 0x100
-                yield ("readlink(\"/tmp/xxx4\", &buf, sizeof(buf))", "readlink", [TMP_XXX4, buf, len(buf)])
+                yield ('readlink("/tmp/xxx4", &buf, sizeof(buf))', "readlink", [TMP_XXX4, buf, len(buf)])
                 self.skipped_syscall.add("readlinkat")
                 TMP_XXX5 = "/tmp/xxx5\0"
-                yield ("rename(\"/tmp/xxx4\", \"/tmp/xxx5\")", "rename", [TMP_XXX4, TMP_XXX5])
+                yield ('rename("/tmp/xxx4", "/tmp/xxx5")', "rename", [TMP_XXX4, TMP_XXX5])
                 self.skipped_syscall.add("renameat")
                 self.skipped_syscall.add("renameat2")
                 if u2i(ret_history[-1]) >= 0:
-                    yield ("unlink(\"/tmp/xxx5\")", "unlink", [TMP_XXX5])
+                    yield ('unlink("/tmp/xxx5")', "unlink", [TMP_XXX5])
                     self.skipped_syscall.add("unlinkat")
 
             yield "inotify_init1 -> inotify_add_watch -> inotify_rm_watch -> close"
@@ -80570,14 +80570,14 @@ class KmallocAllocatedByCommand(GenericCommand):
             self.skipped_syscall.add("inotify_init")
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
-                yield ("wd = inotify_add_watch(fd, \"/tmp/xxx\", IN_MOVE_SELF)", "inotify_add_watch", [fd, TMP_XXX, 0x800])
+                yield ('wd = inotify_add_watch(fd, "/tmp/xxx", IN_MOVE_SELF)', "inotify_add_watch", [fd, TMP_XXX, 0x800])
                 if u2i(ret_history[-1]) >= 0:
                     wd = ret_history[-1]
                     yield ("inotify_rm_watch(fd, wd)", "inotify_rm_watch", [fd, wd])
                 yield ("close(fd)", "close", [fd])
 
             yield "open -> io_setup -> io_submit -> io_getevents -> close -> io_destroy"
-            yield ("fd = open(\"/tmp/xxx\", 0_RDONLY)", "open", [TMP_XXX, 0o0])
+            yield ('fd = open("/tmp/xxx", 0_RDONLY)', "open", [TMP_XXX, 0o0])
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
                 ctx_idp = p64(0)
@@ -80661,22 +80661,22 @@ class KmallocAllocatedByCommand(GenericCommand):
             handle += p32(0)       # handle_type
             handle += b"\0" * 0x80 # f_handle
             mntid = p32(0)
-            yield ("name_to_handle_at(0, \"/tmp/xxx\", &handle, &mntid, 0)", "name_to_handle_at", [0, TMP_XXX, handle, mntid, 0])
-            yield ("unlink(\"/tmp/xxx\")", "unlink", [TMP_XXX])
+            yield ('name_to_handle_at(0, "/tmp/xxx", &handle, &mntid, 0)', "name_to_handle_at", [0, TMP_XXX, handle, mntid, 0])
+            yield ('unlink("/tmp/xxx")', "unlink", [TMP_XXX])
 
             yield "mkdir -> open_tree -> close -> chdir -> rmdir"
             TMP_YYY = "/tmp/yyy\0"
-            yield ("mkdir(\"/tmp/yyy\", 0777)", "mkdir", [TMP_YYY, 0o777])
+            yield ('mkdir("/tmp/yyy", 0777)', "mkdir", [TMP_YYY, 0o777])
             self.tested_syscall.add("mkdirat")
             if u2i(ret_history[-1]) >= 0:
-                yield ("fd = open_tree(-1, \"/tmp/yyy\", 0)", "open_tree", [-1, TMP_YYY, 0])
+                yield ('fd = open_tree(-1, "/tmp/yyy", 0)', "open_tree", [-1, TMP_YYY, 0])
                 if u2i(ret_history[-1]) >= 0:
                     fd = ret_history[-1]
                     yield ("close(fd)", "close", [fd])
-                yield ("chdir(\"/tmp/yyy\")", "chdir", [TMP_YYY])
+                yield ('chdir("/tmp/yyy")', "chdir", [TMP_YYY])
                 self.skipped_syscall.add("fchdir")
-                yield ("chdir(\"..\")", "chdir", ["..\0"])
-                yield ("rmdir(\"/tmp/yyy\")", "rmdir", [TMP_YYY])
+                yield ('chdir("..")', "chdir", ["..\0"])
+                yield ('rmdir("/tmp/yyy")', "rmdir", [TMP_YYY])
 
             yield "statfs"
             buf = p64(0)      # f_type
@@ -80691,12 +80691,12 @@ class KmallocAllocatedByCommand(GenericCommand):
             buf += p64(0)     # f_frsize
             buf += p64(0)     # f_flags
             buf += p64(0) * 4 # f_spare[4]
-            yield ("statfs(\"/\", &buf)", "statfs", ["/\0", buf])
+            yield ('statfs("/", &buf)', "statfs", ["/\0", buf])
             self.skipped_syscall.add("fstatfs")
             self.skipped_syscall.add("ustat")
 
             yield "open -> getdents -> fcntl -> close"
-            yield ("fd = open(\"/\", 0_RDONLY)", "open", ["/\0", 0])
+            yield ('fd = open("/", 0_RDONLY)', "open", ["/\0", 0])
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
                 buf = "\0" * 0x200
@@ -80755,7 +80755,7 @@ class KmallocAllocatedByCommand(GenericCommand):
                 sv0 = u32(read_memory(current_arch.sp, 4))
                 sv1 = u32(read_memory(current_arch.sp + 4, 4))
                 buf = "A" * 4
-                yield ("sendto(sv[0], \"AAAA\", 4, 0, NULL, 0)", "sendto", [sv0, buf, len(buf), 0, 0, 0])
+                yield ('sendto(sv[0], "AAAA", 4, 0, NULL, 0)', "sendto", [sv0, buf, len(buf), 0, 0, 0])
                 buf = "\0" * 4
                 yield ("recvfrom(sv[1], buf, 4, 0, NULL, NULL)", "recvfrom", [sv1, buf, len(buf), 0, 0, 0])
                 msg = p64(0)                       # msg_name
@@ -80778,7 +80778,7 @@ class KmallocAllocatedByCommand(GenericCommand):
                 yield ("close(sv[1])", "close", [sv1])
 
             yield "memfd_create -> close"
-            yield ("fd = memfd_create(\"test\", 0)", "memfd_create", ["test\0", 0])
+            yield ('fd = memfd_create("test", 0)', "memfd_create", ["test\0", 0])
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
                 yield ("close(fd)", "close", [fd])
@@ -80787,10 +80787,10 @@ class KmallocAllocatedByCommand(GenericCommand):
             user = "user\0"
             tkey = "test:testkey\0"
             payload = "payload\0"
-            yield ("add_key(\"user\", \"test:testkey\", \"payload\", plen, KEY_SPEC_PROCESS_KEYRING)",
+            yield ('add_key("user", "test:testkey", "payload", plen, KEY_SPEC_PROCESS_KEYRING)',
                    "add_key", [user, tkey, payload, len(payload) - 1, 0xfffffffe])
             callout_info = "\0" * 0x100
-            yield ("request_key(\"user\", \"test:testkey\", &callout_info, KEY_SPEC_PROCESS_KEYRING)",
+            yield ('request_key("user", "test:testkey", &callout_info, KEY_SPEC_PROCESS_KEYRING)',
                    "request_key", [user, tkey, callout_info, 0xfffffffe])
             if u2i(ret_history[-1]) >= 0:
                 key_serial = ret_history[-1]
@@ -80798,17 +80798,17 @@ class KmallocAllocatedByCommand(GenericCommand):
 
             yield "invalid add_key"
             tkey = "A" * 0x100
-            yield ("add_key(\"user\", \"AAAAAAAA...\", NULL, 0, KEY_SPEC_PROCESS_KEYRING)",
+            yield ('add_key("user", "AAAAAAAA...", NULL, 0, KEY_SPEC_PROCESS_KEYRING)',
                    "add_key", [user, tkey, 0, 0, 0xfffffffe])
 
             yield "open /dev/ptmx -> close"
-            yield ("fd = open(\"/dev/ptmx\", O_RDWR|O_NOCTTY)", "open", ["/dev/ptmx\0", 0o2 | 0o400])
+            yield ('fd = open("/dev/ptmx", O_RDWR|O_NOCTTY)', "open", ["/dev/ptmx\0", 0o2 | 0o400])
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
                 yield ("close(fd)", "close", [fd])
 
             yield "open /proc/self/stat -> close"
-            yield ("fd = open(\"/proc/self/stat\", O_RDONLY)", "open", ["/proc/self/stat\0", 0])
+            yield ('fd = open("/proc/self/stat", O_RDONLY)', "open", ["/proc/self/stat\0", 0])
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
                 yield ("close(fd)", "close", [fd])
