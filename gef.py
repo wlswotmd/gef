@@ -68538,6 +68538,7 @@ class PartitionAllocDumpCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("target_buffer_root", choices=["fast_malloc", "array_buffer", "buffer", "fm", "ab", "b"],
                         help="the target buffer_root. The last three are abbreviated forms.")
+    parser.add_argument("-f", "--force-heuristic", action="store_true", help="use heuristic roots detection.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="display also empty slots.")
     _syntax_ = parser.format_help()
@@ -68656,20 +68657,20 @@ class PartitionAllocDumpCommand(GenericCommand):
 
             """
             https://source.chromium.org/chromium/chromium/src/+/main:third_party/blink/renderer/platform/wtf/allocator/partitions.cc
-            base::ThreadSafePartitionRoot* Partitions::fast_malloc_root_ = nullptr;
-            base::ThreadSafePartitionRoot* Partitions::array_buffer_root_ = nullptr;
-            base::ThreadSafePartitionRoot* Partitions::buffer_root_ = nullptr;
+            partition_alloc::PartitionRoot* Partitions::fast_malloc_root_ = nullptr;
+            partition_alloc::PartitionRoot* Partitions::array_buffer_root_ = nullptr;
+            partition_alloc::PartitionRoot* Partitions::buffer_root_ = nullptr;
 
-            0x564883728440 <WTF::Partitions::fast_malloc_root_>:    0x0000000000000000
-            0x564883728448 <WTF::Partitions::array_buffer_root_>:   0x000056488372a380
-            0x564883728450 <WTF::Partitions::buffer_root_>: 0x0000564883729400
-            0x564883728458 <guard variable for WTF::Partitions::Initialize()::initialized>: 0x0000000100000101
+            0x646ce5801660 <WTF::Partitions::fast_malloc_root_>:    0x0000000000000000
+            0x646ce5801668 <WTF::Partitions::array_buffer_root_>:   0x0000646ce5804b00
+            0x646ce5801670 <WTF::Partitions::buffer_root_>: 0x0000646ce5801680
+            0x646ce5801678 <guard variable for WTF::Partitions::Initialize()::initialized>: 0x0000000100000101
             ...
-            0x55c7e358d480 <WTF::Partitions::InitializeOnce()::fast_malloc_allocator>:      0x0000000000000000
+            0x646ce58030c0 <WTF::Partitions::InitializeOnce()::fast_malloc_allocator>:      0x0000000000000000
             ...
-            0x55c7e358e400 <WTF::Partitions::InitializeOnce()::buffer_allocator>:   0x0000000100000001
+            0x646ce5801680 <WTF::Partitions::InitializeOnce()::buffer_allocator>:   0x0000000000000001
             ...
-            0x55c7e358f380 <WTF::Partitions::InitializeArrayBufferPartition()::array_buffer_allocator>:     0x0000000100000001
+            0x646ce5804b00 <WTF::Partitions::InitializeArrayBufferPartition()::array_buffer_allocator>:     0x0000000000000001
             """
             # check consecutive quadruples
             for addr, data in zip(n_gram(addrs, 4), n_gram(datas, 4)):
@@ -68697,16 +68698,16 @@ class PartitionAllocDumpCommand(GenericCommand):
                 buffer_root_size = data[1] - data[2]
                 if buffer_root_size < 0x300: # 0x300 is heuristic value
                     continue
-                if buffer_root_size > 0x2000: # 0x2000 is heuristic value
+                if buffer_root_size > 0x4000: # 0x4000 is heuristic value
                     continue
                 # check root struct.
                 """
                 The first 64 bytes of root are mostly 0 due to padding considering the cache line.
                 This is same both at 64-bit and 32bit arch.
-                0x55719118e380: 0x0000000100000001      0x0000000000000000     <--- here may be used
-                0x55719118e390: 0x0000000000000000      0x0000000000000000     <--- here may be used
-                0x55719118e3a0: 0x0000000000000000      0x0000000000000000     <--- hare may be not used
-                0x55719118e3b0: 0x0000000000000000      0x0000000000000000     <--- here may be not used
+                0x646ce5801680: 0x0000000100000001      0x0000000000000000     <--- here may be used
+                0x646ce5801690: 0x0000000000000000      0x0000000000000000     <--- here may be used
+                0x646ce58016a0: 0x0000000000000000      0x0000000000000000     <--- hare may be not used
+                0x646ce58016b0: 0x0000000000000000      0x0000000000000000     <--- here may be not used
                 """
                 if read_memory(data[1], 64)[32:] != b"\0" * 32:
                     continue
@@ -68739,7 +68740,7 @@ class PartitionAllocDumpCommand(GenericCommand):
                 gef_print()
             return []
 
-    def get_roots(self):
+    def get_roots(self, force_heuristic):
         def get_root(root_string):
             try:
                 root_addr = parse_address("&'WTF::Partitions::{:s}'".format(root_string))
@@ -68750,11 +68751,12 @@ class PartitionAllocDumpCommand(GenericCommand):
 
         roots = []
         # try from symbols
-        for root_string in ["fast_malloc_root_", "array_buffer_root_", "buffer_root_"]:
-            roots += get_root(root_string)
+        if not force_heuristic:
+            for root_string in ["fast_malloc_root_", "array_buffer_root_", "buffer_root_"]:
+                roots += get_root(root_string)
         # maybe no symbols, try heuristic
         if len(roots) == 0:
-            info("Symbol is not found. It will use heuristic search")
+            info("Use heuristic search.")
             roots = self.get_roots_heuristic()
         # retry checking
         if len(roots) == 0:
@@ -68789,20 +68791,18 @@ class PartitionAllocDumpCommand(GenericCommand):
                 ScanMode scan_mode = ScanMode::kDisabled; // uint8_t
                 BucketDistribution bucket_distribution = BucketDistribution::kNeutral; // uint8_t
                 bool with_thread_cache = false;
-                bool allow_aligned_alloc = false;
                 bool use_cookie = false;
                 bool brp_enabled_ = false;
-                bool brp_zapping_enabled_;
                 bool mac11_malloc_size_hack_enabled_ = false;
                 size_t mac11_malloc_size_hack_usable_size_ = 0;
                 bool use_configurable_pool = false;
+                bool zapping_by_free_flags = false;
+                bool scheduler_loop_quarantine = false;
                 bool memory_tagging_enabled_ = false;
                 TagViolationReportingMode memory_tagging_reporting_mode_ = TagViolationReportingMode::kUndefined;
-                size_t ref_count_size = 0;
                 ThreadIsolationOption thread_isolation;
                 bool use_pool_offset_freelists = false;
                 uint32_t extras_size = 0;
-                uint32_t extras_offset = 0;
             } settings; // 64 bytes
             internal::Lock lock_;  // 8 bytes
             Bucket buckets[internal::kNumBuckets] = {};
@@ -68828,13 +68828,15 @@ class PartitionAllocDumpCommand(GenericCommand):
             SuperPageExtentEntry* current_extent = nullptr;
             SuperPageExtentEntry* first_extent = nullptr;
             DirectMapExtent* direct_map_list PA_GUARDED_BY(internal::PartitionRootLock(this)) = nullptr;
-            SlotSpan* global_empty_slot_span_ring[internal::kMaxFreeableSpans] PA_GUARDED_BY(internal::PartitionRootLock(this)) = {};
+            SlotSpanMetadata* global_empty_slot_span_ring[internal::kMaxFreeableSpans] PA_GUARDED_BY(internal::PartitionRootLock(this)) = {};
             int16_t global_empty_slot_span_ring_index PA_GUARDED_BY(internal::PartitionRootLock(this)) = 0;
             int16_t global_empty_slot_span_ring_size PA_GUARDED_BY(internal::PartitionRootLock(this)) = internal::kDefaultEmptySlotSpanRingSize;
             uintptr_t inverted_self = 0;
             std::atomic<int> thread_caches_being_constructed_{0};
             bool quarantine_always_for_testing = false;
-            internal::base::NoDestructor<internal::SchedulerLoopQuarantine> scheduler_loop_quarantine;
+            size_t scheduler_loop_quarantine_capacity_in_bytes = 0;
+            internal::LightweightQuarantineRoot scheduler_loop_quarantine_root;
+            std::optional<internal::base::NoDestructor<internal::LightweightQuarantineBranch>> scheduler_loop_quarantine;
         };
         """
         current += 64 # sizeof(struct Settings)
@@ -68923,6 +68925,10 @@ class PartitionAllocDumpCommand(GenericCommand):
         current += 4
         _root["quarantine_always_for_testing"] = u32(read_memory(current, 4)) & 0xff
         current += 4
+        _root["scheduler_loop_quarantine_capacity_in_bytes"] = u32(read_memory(current, 4))
+        current += ptrsize # with pad
+        _root["scheduler_loop_quarantine_root"] = read_int_from_memory(current)
+        current += ptrsize
         _root["scheduler_loop_quarantine"] = read_int_from_memory(current)
         current += ptrsize
 
@@ -69036,7 +69042,7 @@ class PartitionAllocDumpCommand(GenericCommand):
         """
         https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/src/partition_alloc/partition_page.h
         struct SlotSpanMetadata {
-          EncodedNextFreelistEntry* freelist_head = nullptr;
+          PartitionFreelistEntry* freelist_head = nullptr;
           SlotSpanMetadata* next_slot_span = nullptr;
           PartitionBucket* const bucket = nullptr;
           uint32_t marked_full : 1
@@ -69046,8 +69052,8 @@ class PartitionAllocDumpCommand(GenericCommand):
           uint32_t freelist_is_sorted_ : 1;
           uint32_t unused1_ : (32 - 1 - 2 * kMaxSlotsPerSlotSpanBits - 1 - 1); // 3 bits
           uint16_t in_empty_cache_ : 1;
-          uint16_t empty_cache_index_ : kEmptyCacheIndexBits; // 7 bits
-          uint16_t unused2_ : (16 - 1 - kEmptyCacheIndexBits); // 8 bits
+          uint16_t empty_cache_index_ : kMaxEmptyCacheIndexBits; // 7 bits
+          uint16_t unused2_ : (16 - 1 - kMaxEmptyCacheIndexBits); // 8 bits
         };
         """
         _slot_span["freelist_head"] = read_int_from_memory(current)
@@ -69111,10 +69117,10 @@ class PartitionAllocDumpCommand(GenericCommand):
         self.out.append("size_t max_size_of_allocated_bytes:                    {:#x}".format(root.max_size_of_allocated_bytes))
         self.out.append("std::atomic<uint64_t> syscall_count:                   {:#x}".format(root.syscall_count))
         self.out.append("std::atomic<uint64_t> syscall_total_time_ns:           {:#x}".format(root.syscall_total_time_ns))
-        self.out.append("std::atomic<size_t> total_size_of_brp_quarantined_bytes:{:#x}".format(root.total_size_of_brp_quarantined_bytes))
-        self.out.append("std::atomic<size_t> total_count_of_brp_quarantined_slots:{:#x}".format(root.total_count_of_brp_quarantined_slots))
-        self.out.append("std::atomic<size_t> cumulative_size_of_brp_quarantined_bytes:{:#x}".format(root.cumulative_size_of_brp_quarantined_bytes))
-        self.out.append("std::atomic<size_t> cumulative_count_of_brp_quarantined_slots:{:#x}".format(root.cumulative_count_of_brp_quarantined_slots))
+        self.out.append("std::atomic<size_t> total_size_of_brp_quarantined_bytes: {:#x}".format(root.total_size_of_brp_quarantined_bytes))
+        self.out.append("std::atomic<size_t> total_count_of_brp_quarantined_slots: {:#x}".format(root.total_count_of_brp_quarantined_slots))
+        self.out.append("std::atomic<size_t> cumulative_size_of_brp_quarantined_bytes: {:#x}".format(root.cumulative_size_of_brp_quarantined_bytes))
+        self.out.append("std::atomic<size_t> cumulative_count_of_brp_quarantined_slots: {:#x}".format(root.cumulative_count_of_brp_quarantined_slots))
         self.out.append("size_t empty_slot_spans_dirty_bytes:                   {:#x}".format(root.empty_slot_spans_dirty_bytes))
         self.out.append("int max_empty_slot_spans_dirty_bytes_shift:            {:#x}".format(root.max_empty_slot_spans_dirty_bytes_shift))
         self.out.append("uintptr_t next_super_page:                             {:s}".format(self.P(root.next_super_page)))
@@ -69128,7 +69134,7 @@ class PartitionAllocDumpCommand(GenericCommand):
         self.dump_direct_map_list(root.direct_map_list, root)
         ring_len = len(root.global_empty_slot_span_ring)
         if self.verbose:
-            self.out.append("SlotSpan* global_empty_slot_span_ring[{:3d}]:".format(ring_len))
+            self.out.append("SlotSpanMetadata* global_empty_slot_span_ring[{:3d}]:".format(ring_len))
             for i in range(len(root.global_empty_slot_span_ring)):
                 colored_slot_span = self.C(root.global_empty_slot_span_ring[i])
                 self.out.append("    global_empty_slot_span_ring[{:3d}]:                       {:s}".format(i, colored_slot_span))
@@ -69141,6 +69147,8 @@ class PartitionAllocDumpCommand(GenericCommand):
         self.out.append("uintptr_t inverted_self:                               {:#x} (=~{:s})".format(root.inverted_self, inv_inv))
         self.out.append("std::atomic<int> thread_caches_being_constructed_:     {:#x}".format(root.thread_caches_being_constructed_))
         self.out.append("bool quarantine_always_for_testing:                    {:#x}".format(root.quarantine_always_for_testing))
+        self.out.append("size_t scheduler_loop_quarantine_capacity_in_bytes:    {:#x}".format(root.scheduler_loop_quarantine_capacity_in_bytes))
+        self.out.append("internal::LightweightQuarantineRoot scheduler_loop_quarantine_root: {:#x}".format(root.scheduler_loop_quarantine_root))
         self.out.append("NoDestructor<...> scheduler_loop_quarantine:           {:#x}".format(root.scheduler_loop_quarantine))
         return
 
@@ -69299,7 +69307,7 @@ class PartitionAllocDumpCommand(GenericCommand):
         self.verbose = args.verbose
 
         self.out = []
-        for r in self.get_roots():
+        for r in self.get_roots(args.force_heuristic):
             ok = False
             if args.target_buffer_root in ["fast_malloc", "fm"] and r.name == "fast_malloc_root_":
                 ok = True
