@@ -1595,6 +1595,13 @@ class Elf:
     def is_valid(self):
         return self.e_magic == Elf.ELF_MAGIC
 
+    def get_bits(self):
+        if self.e_class == Elf.ELF_64_BITS:
+            return 64
+        if self.e_class == Elf.ELF_32_BITS:
+            return 32
+        raise
+
     def is_static(self):
         for phdr in self.phdrs:
             if phdr.p_type == Phdr.PT_INTERP:
@@ -1622,6 +1629,71 @@ class Elf:
 
     def is_pie(self):
         return self.e_type == Elf.ET_DYN
+
+    def is_nx(self):
+        for phdr in self.phdrs:
+            if phdr.p_type == Phdr.PT_GNU_STACK:
+                return not bool(phdr.p_flags & Phdr.PF_X)
+        return False
+
+    def is_relro(self):
+        # partial or full
+        for phdr in self.phdrs:
+            if phdr.p_type == Phdr.PT_GNU_RELRO:
+                return True
+        return False
+
+    def get_dynamic_data(self):
+        # find dynamic
+        for phdr in self.phdrs:
+            if phdr.p_type == Phdr.PT_DYNAMIC:
+                dynamic = phdr
+                break
+        else:
+            return None
+
+        # read dynamic
+        fd = open(self.filename, "rb")
+        fd.seek(dynamic.p_offset)
+        data = fd.read(dynamic.p_filesz)
+        fd.close()
+
+        # unpack
+        data = slice_unpack(data, self.get_bits() // 8)
+        return data
+
+    def is_full_relro(self):
+        data = self.get_dynamic_data()
+        if data is None:
+            return False
+
+        # check
+        for tag, value in slicer(data, 2):
+            if tag == 0x18: # DT_BIND_NOW
+                return True
+            if tag == 0x1e: # DT_FLAGS
+                return bool(value & 0x08) # DF_BIND_NOW
+        return False
+
+    def has_rpath(self):
+        data = self.get_dynamic_data()
+        if data is None:
+            return False
+
+        for tag, _ in slicer(data, 2):
+            if tag == 0xf: # DT_RPATH
+                return True
+        return False
+
+    def has_runpath(self):
+        data = self.get_dynamic_data()
+        if data is None:
+            return False
+
+        for tag, _ in slicer(data, 2):
+            if tag == 0x1d: # DT_RUNPATH
+                return True
+        return False
 
 
 class Phdr:
@@ -4474,8 +4546,8 @@ def checksec(filename):
                 return True
         return False
 
-    results = collections.OrderedDict()
     elf = get_elf_headers(filename)
+    results = {}
 
     # Static
     results["Static"] = elf.is_static()
@@ -4512,18 +4584,14 @@ def checksec(filename):
             results["Canary"] = __check_security_property("-rs", filename, r"__intel_security_cookie") is True
 
     # NX
-    has_gnu_stack = __check_security_property("-W -l", filename, r"GNU_STACK") is True
-    if has_gnu_stack:
-        results["NX"] = __check_security_property("-W -l", filename, r"GNU_STACK.*RWE") is False
-    else:
-        results["NX"] = False
+    results["NX"] = elf.is_nx()
 
     # PIE
     results["PIE"] = elf.is_pie()
 
     # RELRO
-    results["Partial RELRO"] = __check_security_property("-l", filename, r"GNU_RELRO") is True
-    results["Full RELRO"] = results["Partial RELRO"] and __check_security_property("-d", filename, r"BIND_NOW") is True
+    results["Partial RELRO"] = elf.is_relro()
+    results["Full RELRO"] = results["Partial RELRO"] and elf.is_full_relro()
 
     # Fortify
     if elf.is_stripped():
@@ -4561,10 +4629,10 @@ def checksec(filename):
                 break
 
     # RPATH
-    results["RPATH"] = __check_security_property("-d", filename, r"\(RPATH\)") is True
+    results["RPATH"] = elf.has_rpath()
 
     # RUNPATH
-    results["RUNPATH"] = __check_security_property("-d", filename, r"\(RUNPATH\)") is True
+    results["RUNPATH"] = elf.has_runpath()
 
     # Clang CFI (detected only when `-fno-sanitize-trap=all`)
     results["Clang CFI"] = __check_security_property("-s", filename, r"__ubsan_handle_cfi_") is True
@@ -21212,10 +21280,13 @@ class ChecksecCommand(GenericCommand):
 
         # RELRO
         if sec["Full RELRO"]:
+            # -Wl,-z,relro -Wl,-z,now
             gef_print("{:<40s}: {:s}".format("RELRO", Color.colorify("Full RELRO", "bold green")))
         elif sec["Partial RELRO"]:
+            # -Wl,-z,relro -Wl,-z,lazy
             gef_print("{:<40s}: {:s}".format("RELRO", Color.colorify("Partial RELRO", "bold yellow")))
         else:
+            # -Wl,-z,norelro
             gef_print("{:<40s}: {:s}".format("RELRO", Color.colorify("No RELRO", "bold red")))
 
         # Fortify
@@ -21228,7 +21299,10 @@ class ChecksecCommand(GenericCommand):
 
         # Static
         if sec["Static"]:
-            gef_print("{:<40s}: {:s}".format("Static/Dynamic", "Static"))
+            if sec["PIE"]:
+                gef_print("{:<40s}: {:s}".format("Static/Dynamic", "Static-PIE"))
+            else:
+                gef_print("{:<40s}: {:s}".format("Static/Dynamic", "Static"))
         else:
             gef_print("{:<40s}: {:s}".format("Static/Dynamic", "Dynamic"))
 
@@ -21392,16 +21466,16 @@ class ChecksecCommand(GenericCommand):
                 gef_print("{:<40s}: {:s}".format("MTE", msg))
 
         # RPATH
-        if not sec["RPATH"]:
-            gef_print("{:<40s}: {:s}".format("RPATH", Color.colorify("Not found", "bold green")))
-        else:
+        if sec["RPATH"]:
             gef_print("{:<40s}: {:s}".format("RPATH", Color.colorify("Found", "bold red")))
+        else:
+            gef_print("{:<40s}: {:s}".format("RPATH", Color.colorify("Not found", "bold green")))
 
         # RUNPATH
-        if not sec["RUNPATH"]:
-            gef_print("{:<40s}: {:s}".format("RUNPATH", Color.colorify("Not found", "bold green")))
-        else:
+        if sec["RUNPATH"]:
             gef_print("{:<40s}: {:s}".format("RUNPATH", Color.colorify("Found", "bold red")))
+        else:
+            gef_print("{:<40s}: {:s}".format("RUNPATH", Color.colorify("Not found", "bold green")))
 
         # Clang CFI
         if sec["Clang CFI"]:
