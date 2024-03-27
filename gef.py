@@ -3055,14 +3055,14 @@ class GlibcArena:
             except gdb.MemoryError:
                 err("tcache[{:d}] is corrupted.".format(i))
                 continue
-            chunks = set()
+            chunks = []
             while True:
                 if chunk is None:
                     break
                 if chunk.address in chunks:
                     err("tcache[{:d}] has a loop.".format(i))
                     break # loop detected
-                chunks.add(chunk.address)
+                chunks.append(chunk.address)
                 next_chunk = chunk.get_fwd_ptr(True)
                 if next_chunk == 0:
                     break
@@ -3087,14 +3087,14 @@ class GlibcArena:
             except gdb.MemoryError:
                 err("fastbins[{:d}] is corrupted.".format(i))
                 continue
-            chunks = set()
+            chunks = []
             while True:
                 if chunk is None:
                     break
                 if chunk.address in chunks:
                     err("fastbins[{:d}] has a loop.".format(i))
                     break # loop detected
-                chunks.add(chunk.address)
+                chunks.append(chunk.address)
                 next_chunk = chunk.get_fwd_ptr(True)
                 if next_chunk == 0:
                     break
@@ -3109,19 +3109,19 @@ class GlibcArena:
         try:
             fw, bk = self.bin(index)
         except gdb.MemoryError:
-            return set() # invalid
+            return [] # invalid
         if bk == 0x00 and fw == 0x00:
-            return set() # invalid
+            return [] # invalid
         head = GlibcChunk(bk, from_base=True).fwd
         if fw == head:
-            return set() # no entry
-        chunks = set()
+            return [] # no entry
+        chunks = []
         while fw != head:
             chunk = GlibcChunk(fw, from_base=True)
             if chunk.address in chunks:
                 err("bins[{:d}] has a loop.".format(index))
                 break
-            chunks.add(chunk.chunk_base_address)
+            chunks.append(chunk.chunk_base_address)
             fw = chunk.fwd
             if fw is None:
                 err("bins[{:d}] is corrupted.".format(index))
@@ -19017,7 +19017,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
         nb_chunk = 0
         for i in range(GlibcArena.TCACHE_MAX_BINS):
             chunk = arena.tcachebin(i)
-            chunks = set()
+            chunks = []
             m = []
 
             # Only print the entry if there are valid chunks. Don't trust count
@@ -19030,7 +19030,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
                         m.append(Color.colorify("{:s}{:#x} [loop detected]".format(RIGHT_ARROW, chunk.address), corrupted_msg_color))
                         break
 
-                    chunks.add(chunk.address)
+                    chunks.append(chunk.address)
                     nb_chunk += 1
 
                     next_chunk = chunk.get_fwd_ptr(True)
@@ -19122,7 +19122,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
         nb_chunk = 0
         for i in range(NFASTBINS):
             chunk = arena.fastbin(i)
-            chunks = set()
+            chunks = []
             m = []
 
             while True:
@@ -19138,7 +19138,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
                     if fastbin_index(chunk.get_chunk_size()) != i:
                         m.append(Color.colorify("[incorrect fastbin_index]", corrupted_msg_color))
 
-                    chunks.add(chunk.address)
+                    chunks.append(chunk.address)
                     nb_chunk += 1
 
                     next_chunk = chunk.get_fwd_ptr(True)
@@ -27369,7 +27369,7 @@ class DereferenceCommand(GenericCommand):
         # dereference line by line
         out = []
         self.slab_contains_cache = {}
-        seen = set()
+        seen = []
         for idx in range(from_idx, to_idx, step):
             try:
                 # uniq filtering
@@ -27379,7 +27379,7 @@ class DereferenceCommand(GenericCommand):
                         if out == [] or out[-1] != "*":
                             out.append("*")
                         continue
-                    seen.add(v)
+                    seen.append(v)
                 # valid address filtering
                 if args.is_addr:
                     v = _read_int_from_memory(start_address + idx * current_arch.ptrsize)
@@ -50757,15 +50757,13 @@ class KernelTaskCommand(GenericCommand):
 
     def get_offset_ptregs(self, task_addrs, offset_stack):
         # calc kstack address pattern
-        kstacks = set()
         kstacks_raw = []
         for task in task_addrs:
             kstack = read_int_from_memory(task + offset_stack)
-            kstacks.add(kstack & 0xffff)
             kstacks_raw.append(kstack)
 
         # calc kstack size
-        kstacks = sorted(kstacks)
+        kstacks = sorted({x & 0xffff for x in kstacks_raw}) # uniq and sort
         diffs = []
         for i in range(len(kstacks) - 1):
             diff = kstacks[i + 1] - kstacks[i]
@@ -50943,7 +50941,7 @@ class KernelTaskCommand(GenericCommand):
         pid_max = 0x400000 if is_64bit() else 0x8000
         for i in range(0x400):
             found = False
-            seen_pid = set()
+            seen_pid = []
             for task in task_addrs[1:]: # swapper/0 has pid 0. Don't use it as it will cause false positives.
                 v1 = u32(read_memory(task + (i + 0) * 4, 4))
                 v2 = u32(read_memory(task + (i + 1) * 4, 4))
@@ -50953,7 +50951,7 @@ class KernelTaskCommand(GenericCommand):
                     break
                 if v1 in seen_pid:
                     break
-                seen_pid.add(v1)
+                seen_pid.append(v1)
             else:
                 found = True
 
@@ -61059,7 +61057,7 @@ class SlubDumpCommand(GenericCommand):
         # heuristic detection pattern 1
         # freed chunks are scattered and can be confirmed on each of the pages
         page_heads = [x & gef_getpagesize_mask_high() for x in freelist]
-        uniq_page_heads = set(page_heads)
+        uniq_page_heads = list(set(page_heads))
         if page["num_pages"] == len(uniq_page_heads):
             return min(uniq_page_heads)
 
@@ -61881,7 +61879,7 @@ class SlubTinyDumpCommand(GenericCommand):
         # heuristic detection pattern 1
         # freed chunks are scattered and can be confirmed on each of the pages
         page_heads = [x & gef_getpagesize_mask_high() for x in freelist]
-        uniq_page_heads = set(page_heads)
+        uniq_page_heads = list(set(page_heads))
         if page["num_pages"] == len(uniq_page_heads):
             return min(uniq_page_heads)
 
@@ -69184,7 +69182,7 @@ class PartitionAllocDumpCommand(GenericCommand):
     def dump_bucket(self, bucket, root, idx=None):
         sentinel1 = self.get_sentinel_slot_spans() # from symbol
         sentinel2 = [root.sentinel_bucket.active_slot_spans_head] # from heuristic search
-        sentinel_or_0 = set(sentinel1 + sentinel2 + [0x0]) # uniq
+        sentinel_or_0 = list(set(sentinel1 + sentinel2 + [0x0])) # uniq
 
         if not self.verbose:
             if bucket.active_slot_spans_head in sentinel_or_0:
@@ -77317,14 +77315,14 @@ class PagewalkWithHintsCommand(GenericCommand):
         res = gdb.execute("ktask --quiet --no-pager --print-thread", to_string=True)
 
         # calc kstack address pattern
-        kstacks = set()
+        kstacks = []
         for line in res.splitlines():
             line = line.split()
             kstack = int(line[-2], 16)
-            kstacks.add(kstack & 0xffff)
+            kstacks.append(kstack & 0xffff)
 
         # calc kstack size
-        kstacks = sorted(kstacks)
+        kstacks = sorted(set(kstacks))
         diffs = []
         for i in range(len(kstacks) - 1):
             diff = kstacks[i + 1] - kstacks[i]
@@ -81431,7 +81429,7 @@ class UefiOvmfInfoCommand(GenericCommand):
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
         current = self.gMemoryMap["ForwardLink"]
-        entries = set()
+        entries = []
         while current != self.gMemoryMap["__addr"]:
             entry = self.read_Entry(current)
 
@@ -81445,14 +81443,14 @@ class UefiOvmfInfoCommand(GenericCommand):
             att_s = att2str(att)
             fmt = "{:#010x}-{:#010x} {:#010x} {:#010x} {:#x}:{:26s} {:#x}:[{:s}]"
             entry_text = fmt.format(paddr_s, paddr_e, vaddr, size, typ, memtype, att, att_s)
-            entries.add(entry_text)
+            entries.append(entry_text)
 
             if entry["Signature"] != u32(b"mmap"):
                 err("Signature does not match. Corrupted?")
                 break
             current = entry["Link.ForwardLink"]
 
-        for entry_text in sorted(entries):
+        for entry_text in sorted(set(entries)):
             gef_print(entry_text)
 
         gef_print("Legend for attribute")
@@ -83251,7 +83249,6 @@ class AliasesRmCommand(AliasesCommand):
             __gef_aliases__.remove(alias_to_remove)
         except (ValueError, StopIteration):
             err("{:s} is not found in aliases.".format(args.alias))
-            return
         return
 
 
@@ -83291,7 +83288,7 @@ def __gef_prompt__(_current_prompt):
 
 def fix_venv():
     # venv check is very slow, so skip if unneeded
-    skip_config = os.path.join(GEF_TEMP_DIR, "skip-venv")
+    skip_config = os.path.join(GEF_TEMP_DIR, "skip-venv-check")
     if os.path.exists(skip_config):
         return
 
