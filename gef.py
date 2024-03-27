@@ -12392,7 +12392,7 @@ def is_static(filename=None):
     file_bin = which("file")
     cmd = [file_bin, filename]
     out = gef_execute_external(cmd)
-    return "statically linked" in out
+    return "statically linked" in out or "static-pie linked" in out
 
 
 @cache_this_session
