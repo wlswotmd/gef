@@ -5850,7 +5850,7 @@ class X86(Architecture):
                     return reg
             elif frame.older():
                 ra = frame.older().pc()
-        except gdb.error:
+        except (gdb.error, AttributeError):
             pass
         return ra
 
@@ -6021,7 +6021,7 @@ class X86_64(X86):
                     ra = to_unsigned_long(dereference(current_arch.sp))
             elif frame.older():
                 ra = frame.older().pc()
-        except gdb.error:
+        except (gdb.error, AttributeError):
             pass
         return ra
 
