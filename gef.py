@@ -63832,22 +63832,24 @@ class BuddyDumpCommand(GenericCommand):
     _note_ += "    v\n"
     _note_ += "  +-pglist_data---------------------------+\n"
     _note_ += "  | node_zones[MAX_NR_ZONES]              |\n"
-    _note_ += "  |   +-node_zones[0]--------------------+|\n"
-    _note_ += "  |   |  ...                             ||        +-page-----+    +-page-----+    +-page-----+\n"
-    _note_ += "  |   |  name                            ||        | flags    |    | flags    |    | flags    |\n"
-    _note_ += "  |   |  ...                             ||   +--->| lru.next |--->| lru.next |--->| lru.next |->...\n"
-    _note_ += "  |   |  free_area[MAX_ORDER]            ||   |    | lru.prev |    | lru.prev |    | lru.prev |\n"
-    _note_ += "  |   |    +-free_area[0]---------------+||   |    | ...      |    | ...      |    | ...      |\n"
-    _note_ += "  |   |    | free_list[MIGRATE_TYPES]   |||   |    +----------+    +----------+    +----------+\n"
-    _note_ += "  |   |    |   +-free_list[0]----------+|||   |\n"
+    _note_ += "  |   +-node_zones[0]--------------------+|   +--->+-per_cpu_pages-------+\n"
+    _note_ += "  |   |  ...                             ||   |    | ...                 |\n"
+    _note_ += "  |   |  per_cpu_pageset                 ||---+    | lists[NR_PCP_LISTS] |    +-page-----+\n"
+    _note_ += "  |   |  ...                             ||        |   +-lists[0]-------+|    | flags    |\n"
+    _note_ += "  |   |  name                            ||        |   | next           ||--->| lru.next |->...\n"
+    _note_ += "  |   |  ...                             ||        |   | prev           ||    | lru.prev |\n"
+    _note_ += "  |   |  free_area[MAX_ORDER]            ||        |   +-lists[1]-------+|    | ...      |\n"
+    _note_ += "  |   |    +-free_area[0]---------------+||        |   | ...            ||    +----------+\n"
+    _note_ += "  |   |    | free_list[MIGRATE_TYPES]   |||        |   +----------------+|\n"
+    _note_ += "  |   |    |   +-free_list[0]----------+|||        +---------------------+\n"
     _note_ += "  |   |    |   | next                  ||||---+\n"
-    _note_ += "  |   |    |   | prev                  ||||\n"
-    _note_ += "  |   |    |   +-free_list[1]----------+|||\n"
-    _note_ += "  |   |    |   | ...                   ||||\n"
-    _note_ += "  |   |    |   +-----------------------+|||\n"
-    _note_ += "  |   |    | nr_free                    |||\n"
-    _note_ += "  |   |    +-free_area[1]---------------+||\n"
-    _note_ += "  |   |    | ...                        |||\n"
+    _note_ += "  |   |    |   | prev                  ||||   |\n"
+    _note_ += "  |   |    |   +-free_list[1]----------+|||   |    +-page-----+    +-page-----+    +-page-----+\n"
+    _note_ += "  |   |    |   | ...                   ||||   |    | flags    |    | flags    |    | flags    |\n"
+    _note_ += "  |   |    |   +-----------------------+|||   +--->| lru.next |--->| lru.next |--->| lru.next |->...\n"
+    _note_ += "  |   |    | nr_free                    |||        | lru.prev |    | lru.prev |    | lru.prev |\n"
+    _note_ += "  |   |    +-free_area[1]---------------+||        | ...      |    | ...      |    | ...      |\n"
+    _note_ += "  |   |    | ...                        |||        +----------+    +----------+    +----------+\n"
     _note_ += "  |   |    +----------------------------+||\n"
     _note_ += "  |   +-node_zones[1]--------------------+|\n"
     _note_ += "  |   |  ...                             ||\n"
@@ -63917,6 +63919,10 @@ class BuddyDumpCommand(GenericCommand):
 
         struct zone {
             ...
+            struct pglist_data *zone_pgdat;
+            struct per_cpu_pageset __percpu *pageset; // ~v5.14
+            struct per_cpu_pages __percpu *per_cpu_pageset; // v5.14~
+            ...
             const char *name;
         #ifdef CONFIG_MEMORY_ISOLATION
             unsigned long nr_isolate_pageblock;
@@ -63960,6 +63966,56 @@ class BuddyDumpCommand(GenericCommand):
             current += current_arch.ptrsize
         self.offset_name = name_offsets[0]
         self.quiet_info("offsetof(zone, name): {:#x}".format(self.offset_name))
+
+        # zone->per_cpu_pageset
+        current = self.nodes[0]
+        while current < self.nodes[0] + self.offset_name:
+            val = read_int_from_memory(current)
+            if is_valid_addr(val):
+                offset_zone_pgdat = current - self.nodes[0]
+                self.offset_per_cpu_pageset = offset_zone_pgdat + current_arch.ptrsize
+                break
+            current += current_arch.ptrsize
+        if current == self.offset_name:
+            self.quiet_err("Failed to resolve per_cpu_pageset")
+            return False
+        self.quiet_info("offsetof(zone, per_cpu_pageset): {:#x}".format(self.offset_per_cpu_pageset))
+
+        # per_cpu_offset
+        __per_cpu_offset = KernelAddressHeuristicFinder.get_per_cpu_offset()
+        if __per_cpu_offset is None:
+            self.cpu_offset = None
+        else:
+            self.cpu_offset = KernelCurrentCommand.get_each_cpu_offset(__per_cpu_offset)
+
+        # per_cpu_pageset->lists
+        if __per_cpu_offset is None:
+            per_cpu_pageset = read_int_from_memory(self.nodes[0] + self.offset_per_cpu_pageset)
+        else:
+            per_cpu_pageset = read_int_from_memory(self.nodes[0] + self.offset_per_cpu_pageset) + self.cpu_offset[0]
+            per_cpu_pageset = align_address(per_cpu_pageset)
+
+        current = align_address_to_size(per_cpu_pageset + 4 * 3, current_arch.ptrsize) # count, high, batch
+        while True:
+            # search list_head
+            val1 = read_int_from_memory(current)
+            val2 = read_int_from_memory(current + current_arch.ptrsize)
+            if is_valid_addr(val1) and is_valid_addr(val2):
+                break
+            current += current_arch.ptrsize
+        self.offset_lists = current - per_cpu_pageset
+        self.quiet_info("offsetof(per_cpu_pageset, lists): {:#x}".format(self.offset_lists))
+
+        # NR_PCP_LISTS
+        current = per_cpu_pageset + self.offset_lists
+        while True:
+            val1 = read_int_from_memory(current)
+            val2 = read_int_from_memory(current + current_arch.ptrsize)
+            if not is_valid_addr(val1) and not is_valid_addr(val2):
+                break
+            current += current_arch.ptrsize * 2
+        self.NR_PCP_LISTS = ((current - per_cpu_pageset) - self.offset_lists) // (current_arch.ptrsize * 2)
+        self.quiet_info("NR_PCP_LISTS: {:d}".format(self.NR_PCP_LISTS))
 
         # sizeof(zone)
         self.sizeof_zone = name_offsets[1] - name_offsets[0]
@@ -64068,10 +64124,13 @@ class BuddyDumpCommand(GenericCommand):
             union {
                 struct {
                     struct list_head lru;
+                    struct address_space *mapping
+                    pgoff_t index;
                     ...
         """
-        # page->lru
+        # page->{lru,index}
         self.offset_lru = current_arch.ptrsize
+        self.offset_index = current_arch.ptrsize * 4
 
         self.initialized = True
         return True
@@ -64082,6 +64141,86 @@ class BuddyDumpCommand(GenericCommand):
         if r:
             return int(r.group(1), 16)
         return None
+
+    def dump_list(self, list_i, i, is_highmem):
+        heap_page_color = get_gef_setting("theme.heap_page_address")
+        chunk_size_color = get_gef_setting("theme.heap_chunk_size")
+        freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
+        align = get_format_address_width()
+
+        self.add_msg("  pcp_index: {:d}".format(i))
+
+        seen = [list_i]
+        current = read_int_from_memory(list_i)
+        if not is_valid_addr(current):
+            return
+
+        while current not in seen:
+            # page info
+            page = current - self.offset_lru
+            page_str = Color.colorify("{:#0{:d}x}".format(page, align), freed_address_color)
+
+            # mtype, order
+            index = u32(read_memory(page + self.offset_index, 4))
+            mtype = index >> 8
+            order = index & 0xff
+
+            # filtering
+            if self.mtype_filter and mtype not in self.mtype_filter:
+                current = read_int_from_memory(current)
+                continue
+            if self.order_filter and order not in self.order_filter:
+                current = read_int_from_memory(current)
+                continue
+
+            # size info
+            size = 0x1000 * (2 ** order)
+            size_str = Color.colorify("{:#08x}".format(size), chunk_size_color)
+
+            # address info
+            virt_str = "???"
+            phys_str = "???"
+
+            if not is_highmem:
+                virt = self.page2virt_wrapper(page)
+                phys = None
+                if virt:
+                    phys = Virt2PhysCommand.v2p(virt, self.maps)
+                if virt is not None:
+                    virt_str = "{:#0{:d}x}-{:#0{:d}x}".format(virt, align, virt + size, align)
+                    virt_str = Color.colorify(virt_str, heap_page_color)
+                if phys is not None:
+                    phys_str = "{:#0{:d}x}-{:#0{:d}x}".format(phys, align, phys + size, align)
+
+            # create msg
+            msg = "    page:{:s}  size:{:s}  virt:{:s}  phys:{:s}  order:{:d}  mtype:{:d} (={:s})".format(
+                page_str, size_str, virt_str, phys_str, order, mtype, self.migrate_types[mtype],
+            )
+
+            # add msg
+            if self.sort:
+                self.out.append([page, size, msg])
+            else:
+                self.out.append(msg)
+
+            # get next
+            current = read_int_from_memory(current)
+        return
+
+    def dump_pcp(self, zone, is_highmem):
+        per_cpu_pageset = read_int_from_memory(zone + self.offset_per_cpu_pageset)
+        if self.cpu_offset is None:
+            per_cpu_pageset = [per_cpu_pageset]
+        else:
+            per_cpu_pageset = [align_address(cpuoff + per_cpu_pageset) for cpuoff in self.cpu_offset]
+
+        sizeof_list_head = current_arch.ptrsize * 2
+        for cpu_num, pcp in enumerate(per_cpu_pageset):
+            self.add_msg("cpu: {:d}".format(cpu_num))
+            for i in range(self.NR_PCP_LISTS):
+                lists_i = pcp + self.offset_lists + sizeof_list_head * i
+                self.dump_list(lists_i, i, is_highmem)
+        return
 
     def dump_free_list(self, free_list, mtype, size, is_highmem):
         heap_page_color = get_gef_setting("theme.heap_page_address")
@@ -64147,6 +64286,9 @@ class BuddyDumpCommand(GenericCommand):
         return
 
     def dump_zone(self, zone, is_highmem=False):
+        self.add_msg(titlify("per_cpu_pageset"))
+        self.dump_pcp(zone, is_highmem)
+
         if self.quiet:
             tqdm = lambda x, leave: x # noqa: F841
         else:
@@ -64155,6 +64297,7 @@ class BuddyDumpCommand(GenericCommand):
             except ImportError:
                 tqdm = lambda x, leave: x # noqa: F841
 
+        self.add_msg(titlify("free_area"))
         free_area_array = zone + self.offset_free_area
         for order in tqdm(range(self.MAX_ORDER), leave=False):
             if self.order_filter and order not in self.order_filter:
@@ -77116,7 +77259,7 @@ class PagewalkWithHintsCommand(GenericCommand):
     parser.add_argument("--skip-full-slab-cache", action="store_true",
                         help="skip search full slab cache. use this option if take a long time to parse.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
-    parser.add_argument("-c", "--use-cache", action="store_true", help="use cache.")
+    parser.add_argument("-r", "--reparse", action="store_true", help="do not use map cache.")
     parser.add_argument("-q", "--quiet", action="store_true", help="quiet execution.")
     _syntax_ = parser.format_help()
 
@@ -77408,10 +77551,15 @@ class PagewalkWithHintsCommand(GenericCommand):
         res = gdb.execute("buddy-dump --quiet --no-pager --sort", to_string=True)
         for line in res.splitlines():
             line = Color.remove_color(line)
-            _page_str, size_str, virt_str, _phys_str = line.split()
+            _page_str, size_str, virt_str, _phys_str, *mtype_order = line.split()
+            if "???" in virt_str:
+                continue
             size = int(size_str[5:], 16)
             virt = int(virt_str[5:].split("-")[0], 16)
-            description = "free page in buddy allocator"
+            if mtype_order:
+                description = "free page in buddy allocator (pcp)"
+            else:
+                description = "free page in buddy allocator"
             self.insert_region(virt, size, description, merge=False)
         return
 
@@ -77709,7 +77857,7 @@ class PagewalkWithHintsCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        if args.use_cache and self.prev_out:
+        if not args.reparse and self.prev_out:
             gef_print("\n".join(self.prev_out), less=not args.no_pager)
             return
 
@@ -77733,8 +77881,9 @@ class PagewalkWithHintsCommand(GenericCommand):
 
         self.merge_region()
         for _, r in sorted(self.regions.items()):
-            fmt = "{:#018x}-{:#018x} {:#018x} [{:s}] {:s}"
-            self.out.append(fmt.format(r.addr_start, r.addr_end, r.size, r.perm, r.description))
+            self.out.append("{:#018x}-{:#018x} {:#018x} [{:s}] {:s}".format(
+                r.addr_start, r.addr_end, r.size, r.perm, r.description,
+            ))
         self.prev_out = self.out.copy()
 
         gef_print("\n".join(self.out), less=not args.no_pager)
