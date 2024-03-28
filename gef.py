@@ -22126,11 +22126,11 @@ class KernelChecksecCommand(GenericCommand):
             else:
                 sysctl_unprivileged_userfaultfd = KernelAddressHeuristicFinder.get_sysctl_unprivileged_userfaultfd()
                 if sysctl_unprivileged_userfaultfd is None:
-                    additional = "vm.unprivileged_userfaultfd: Not found"
+                    additional = "{:s}: Not found".format(cfg)
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
                 else:
                     v = u32(read_memory(sysctl_unprivileged_userfaultfd, 4))
-                    additional = "vm.unprivileged_userfaultfd: {:d}".format(v)
+                    additional = "{:s}: {:d}".format(cfg, v)
                     if v == 0:
                         gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold green"), additional))
                     else:
@@ -22152,11 +22152,11 @@ class KernelChecksecCommand(GenericCommand):
             else:
                 sysctl_unprivileged_bpf_disabled = KernelAddressHeuristicFinder.get_sysctl_unprivileged_bpf_disabled()
                 if sysctl_unprivileged_bpf_disabled is None:
-                    additional = "kernel.unprivileged_bpf_disabled: Not found"
+                    additional = "{:s}: Not found".format(cfg)
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
                 else:
                     v = u32(read_memory(sysctl_unprivileged_bpf_disabled, 4))
-                    additional = "kernel.unprivileged_bpf_disabled: {:d}".format(v)
+                    additional = "{:s}: {:d}".format(cfg, v)
                     if v == 0:
                         gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                     else:
@@ -22184,11 +22184,11 @@ class KernelChecksecCommand(GenericCommand):
             else:
                 kexec_load_disabled = KernelAddressHeuristicFinder.get_kexec_load_disabled()
                 if kexec_load_disabled is None:
-                    additional = "kernel.kexec_load_disabled: Not found"
+                    additional = "{:s}: Not found".format(cfg)
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
                 else:
                     v1 = u32(read_memory(kexec_load_disabled, 4))
-                    additional = "kernel.kexec_load_disabled: {:d}".format(v1)
+                    additional = "{:s}: {:d}".format(cfg, v1)
                     if v1 == 0:
                         gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                     else:
@@ -22231,6 +22231,19 @@ class KernelChecksecCommand(GenericCommand):
                 gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("{:d}".format(val), "bold red")))
             else:
                 gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("{:d}".format(val), "bold green")))
+
+        cfg = "kernel.unprivileged_userns_clone"
+        addr = get_ksysctl(cfg)
+        if addr is None:
+            additional = "{:s}: Not found".format(cfg)
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
+        else:
+            val = u32(read_memory(addr, 4))
+            additional = "{:s}: {:d}".format(cfg, val)
+            if val:
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold red"), additional))
+            else:
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold green"), additional))
 
         gef_print(titlify("Other"))
 
@@ -22407,7 +22420,7 @@ class KernelChecksecCommand(GenericCommand):
         cfg = "vm.mmap_min_addr"
         mmap_min_addr = KernelAddressHeuristicFinder.get_mmap_min_addr()
         if mmap_min_addr is None:
-            additional = "vm.mmap_min_addr: Not found"
+            additional = "{:s}: Not found".format(cfg)
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
         else:
             val = read_int_from_memory(mmap_min_addr)
