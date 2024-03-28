@@ -155,8 +155,6 @@ Basically you can't.
 Please save as appropriate with `|$cat > /tmp/foo.txt` while the less-pager is running.
 Or try `gef config gef.keep_pager_result True` then `gef save`. From next time onwards, temporary files will no longer be deleted.
 
-Note: The `pagewalk` command and `pagewalk-with-hints` command can be redisplayed by `-c`.
-
 ## `ktask` (or other kernel related commands) does not work.
 The kernel you are debugging may have been built with `CONFIG_RANDSTRUCT=y`.
 

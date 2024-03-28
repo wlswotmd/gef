@@ -77468,7 +77468,7 @@ class PagewalkWithHintsCommand(GenericCommand):
         else:
             # In a 32-bit environment, the range of rodata may not be measured correctly, so it is not used.
             if is_64bit():
-                if kinfo.kinfo.ro_base in self.regions:
+                if kinfo.ro_base in self.regions:
                     self.regions[kinfo.ro_base].add_description("maybe kernel .rodata")
 
         # .data
@@ -77806,6 +77806,48 @@ class PagewalkWithHintsCommand(GenericCommand):
                 self.insert_region(vdso32_start, vdso_size, "vdso32_start")
         return
 
+    def resolve_device_physmem(self):
+        if not self.quiet:
+            info("resolve device physmem")
+
+        try:
+            res = gdb.execute("monitor info mtree -f", to_string=True)
+        except gdb.error:
+            return
+
+        maps = Virt2PhysCommand.get_maps(None)
+        if maps is None:
+            return
+
+        for line in res.splitlines():
+            if not line.startswith("  "):
+                continue
+
+            m = re.search(r"  ([0-9a-f]+)-([0-9a-f]+) \(.+?\): (.+)", line)
+            if not m:
+                continue
+
+            paddr = int(m.group(1), 16)
+            if paddr % 0x1000:
+                continue
+
+            pend = int(m.group(2), 16)
+            if (pend & 0xfff) == 0xfff:
+                pend += 1
+            if pend % 0x1000:
+                continue
+
+            size = pend - paddr
+            if size % 0x1000 or size == 0:
+                continue
+
+            device_name = "device ({:s})".format(m.group(3))
+
+            vaddrs = Virt2PhysCommand.p2v(paddr, maps)
+            for vaddr in vaddrs:
+                self.insert_region(vaddr, size, device_name)
+        return
+
     def detect_zero_page(self):
         if not self.quiet:
             info("detect zero page")
@@ -77867,6 +77909,7 @@ class PagewalkWithHintsCommand(GenericCommand):
 
         self.add_legend()
         self.regions = self.get_maps()
+        self.resolve_device_physmem()
         self.resolve_kbase()
         if is_x86_64():
             self.resolve_direct_map()
