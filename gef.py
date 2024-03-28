@@ -1573,6 +1573,13 @@ class Elf:
             self.fd = None
         return
 
+    def __repr__(self):
+        if self.filename:
+            msg = '<{:s}.{:s} object at {:#x}, filename="{:s}">'.format(self.__module__, self.__class__.__name__, id(self), self.filename)
+        else:
+            msg = "<{:s}.{:s} object at {:#x}, address={:#x}>".format(self.__module__, self.__class__.__name__, id(self), self.addr)
+        return msg
+
     def read(self, size):
         if self.fd is not None:
             v = self.fd.read(size)
@@ -1779,6 +1786,13 @@ class Phdr:
             self.p_vaddr, self.p_paddr = struct.unpack("{}II".format(endian), elf.read(8))
             self.p_filesz, self.p_memsz, self.p_flags, self.p_align = struct.unpack("{}IIII".format(endian), elf.read(16))
 
+    def __repr__(self):
+        for e in dir(self):
+            if e.startswith("PT_"):
+                if self.p_type == getattr(self, e):
+                    return "<{:s}.{:s} object at {:#x}, p_type={:s}>".format(self.__module__, self.__class__.__name__, id(self), e)
+        return "<{:s}.{:s} object at {:#x}, p_type={:#x}>".format(self.__module__, self.__class__.__name__, id(self), self.p_type)
+
 
 class Shdr:
     # sh_type
@@ -1936,6 +1950,9 @@ class Shdr:
                 break
             self.sh_name += chr(c)
         return
+
+    def __repr__(self):
+        return '<{:s}.{:s} object at {:#x}, sh_name="{:s}">'.format(self.__module__, self.__class__.__name__, id(self), self.sh_name)
 
 
 class Instruction:
@@ -2135,13 +2152,15 @@ class Instruction:
             out = Color.colorify(out, get_gef_setting("theme.old_context"))
         return out
 
+    def __repr__(self):
+        return '<{:s}.{:s} object at {:#x}, asm="{:s}">'.format(self.__module__, self.__class__.__name__, id(self), str(self))
+
     def __str__(self):
         location = self.smartify_text(self.location)
         if not location:
             location = "<NO_SYMBOL>"
         operands = self.smartify_text(", ".join(self.operands))
-        fmt = "{:#10x} {:20s} {:6s} {:s}"
-        return fmt.format(self.address, location, self.mnemonic, operands)
+        return "{:#10x} {:20s} {:6s} {:s}".format(self.address, location, self.mnemonic, operands)
 
     def is_valid(self):
         return "(bad)" not in self.mnemonic
