@@ -69,18 +69,18 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 - It may work under ubuntu 20.04, 22.04, 23.04, debian 10.x or after.
 
 ## Supported mode
-* Normal debugging (start under `gdb`)
+* Normal debugging
 * Attach to the process
-* Attach to the process in another pid namespace (e.g., attaching from outside of `docker`)
+* Attach to the process in another pid namespace (e.g. attaching from outside of `docker`)
 * Connect to `gdbserver`
-* Connect to the gdb stub of `qemu-system` (via localhost:1234 etc.)
-* Connect to the gdb stub of `qemu-user` (via localhost:1234 etc.)
-* Connect to the gdb stub of `Intel Pin` (via localhost:1234 etc.)
-* Connect to the gdb stub of `Intel SDE` (via localhost:1234 etc.)
-* Connect to the gdb stub of `qiling framework` (via localhost:1234 etc.)
-* Connect to the gdb stub of `KGDB` (over the serial; currently, only gdb 12.x~ is supported)
-* Connect to the gdb stub of `VMWare` (via ipaddr:port)
-* Record and replay debugging (start under `rr replay`)
+* Connect to the gdb stub of `qemu-system`
+* Connect to the gdb stub of `qemu-user`
+* Connect to the gdb stub of `Intel Pin`
+* Connect to the gdb stub of `Intel SDE`
+* Connect to the gdb stub of `qiling framework`
+* Connect to the gdb stub of `KGDB` (need gdb 12, via serial)
+* Connect to the gdb stub of `VMWare`
+* Record and replay debugging (`rr replay`)
 
 See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORTED-MODE.md) for detail.
 
@@ -368,17 +368,17 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * It also supports kernel debugging.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xinfo.png)
 * `checksec`: is improved.
-    * It shows whether Static or Dynamic.
-    * It shows whether Stripped or not.
-    * It detects canary against static stripped binary.
-    * It shows whether Intel CET IBT/SHSTK is enabled or not.
-    * It shows whether ARMv8 PAC / MTE is enabled or not.
-    * It shows whether RPATH/RUNPATH is set or not.
-    * It shows if Clang CFI/SafeStack is used or not.
-    * It shows whether System-ASLR is enabled or not.
-    * It shows whether GDB ASLR setting is enabled or not.
+    * It shows additional informations.
+        * Static or Dynamic or Static-PIE
+        * Stripped or not
+        * Debuginfo or not
+        * Intel CET IBT/SHSTK
+        * ARMv8 PAC, ARMv8 MTE
+        * RPATH, RUNPATH
+        * Clang CFI/SafeStack
+        * System-ASLR, GDB ASLR setting
     * It supports parsing remote binary (if download feature is available).
-        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/checksec.png)
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/checksec.png)
 * `got`: is improved.
     * It displays not only GOT address but also PLT address.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/got.png)
@@ -598,7 +598,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-arch-list.png)
 * `gef pyobj-list`: displays defined global python object.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-pyobj-list.png)
-* `gef avail-comm-list": displays a list of commands available for the current architecture and gdb execution mode.
+* `gef avail-comm-list`: displays a list of commands available for the current architecture and gdb execution mode.
 * `dt`: is wrapper for `ptype /ox TYPE` and `p ((TYPE*) ADDRESS)[0]`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dt.png)
 * `mte-tags`: displays the MTE tags for the specified address.
