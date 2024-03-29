@@ -12650,6 +12650,29 @@ def is_in_kernel():
         return False
 
 
+@cache_until_next
+def is_double_link_list(addr):
+    # list up next pointer
+    seen = []
+    while True:
+        if not is_valid_addr(addr):
+            return False
+        if addr in seen:
+            break
+        seen.append(addr)
+        addr = read_int_from_memory(addr)
+
+    if addr != seen[0]:
+        return False
+
+    # check prev pointer
+    for i, x in enumerate(seen):
+        p = read_int_from_memory(x + current_arch.ptrsize)
+        if p != seen[i - 1]:
+            return False
+    return True
+
+
 def get_format_address_width(memalign_size=None):
     if not is_alive():
         return 18
@@ -27291,14 +27314,15 @@ class DereferenceCommand(GenericCommand):
                         help="the memory address you want to dump. (default: current_arch.sp)")
     parser.add_argument("nb_lines", metavar="NB_LINES", nargs="?", type=lambda x: int(x, 0), default=0x40,
                         help="the count of lines. (default: %(default)s)")
-    parser.add_argument("--slab-contains", action="store_true", help="display slab_cache name if available.")
-    parser.add_argument("--slab-contains-unaligned", action="store_true",
+    parser.add_argument("-s", "--slab-contains", action="store_true", help="display slab_cache name if available.")
+    parser.add_argument("-S", "--slab-contains-unaligned", action="store_true",
                         help="display slab_cache name (allow unaligned) if available.")
-    parser.add_argument("--phys", action="store_true", help="treat ADDRESS as a physical address.")
-    parser.add_argument("--uniq", action="store_true", help="display with uniq.")
-    parser.add_argument("--is-addr", action="store_true", help="display only valid address.")
-    parser.add_argument("--is-not-addr", action="store_true", help="display only invalid address.")
-    parser.add_argument("--tag", nargs=2, action="append", metavar=("IDX", "TAG"), help="display with tag.")
+    parser.add_argument("-l", "--list-head", action="store_true", help="display list_head or not.")
+    parser.add_argument("-p", "--phys", action="store_true", help="treat ADDRESS as a physical address.")
+    parser.add_argument("-u", "--uniq", action="store_true", help="display with uniq.")
+    parser.add_argument("-a", "--is-addr", action="store_true", help="display only valid address.")
+    parser.add_argument("-A", "--is-not-addr", action="store_true", help="display only invalid address.")
+    parser.add_argument("-t", "--tag", nargs=2, action="append", metavar=("IDX", "TAG"), help="display with tag.")
     parser.add_argument("-d", "--depth", default=1, type=int, help="depth of reference. (default: %(default)s)")
     parser.add_argument("-r", "--reverse", action="store_true", help="display in reverse order line by line.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
@@ -27307,8 +27331,8 @@ class DereferenceCommand(GenericCommand):
     _example_ = "{:s}                             # dereference $sp 64\n".format(_cmdline_)
     _example_ += "{:s} $sp 20                      # specifiy location and number of elements to display\n".format(_cmdline_)
     _example_ += "{:s} $sp -20                     # display memory backwards\n".format(_cmdline_)
-    _example_ += "{:s} -r $sp 20                   # display reverse order\n".format(_cmdline_)
-    _example_ += "{:s} -d 2 $sp 20                 # display recursively if valid aligned address\n".format(_cmdline_)
+    _example_ += "{:s} --reverse $sp 20            # display reverse order\n".format(_cmdline_)
+    _example_ += "{:s} --depth 2 $sp 20            # display recursively if valid aligned address\n".format(_cmdline_)
     _example_ += "{:s} --is-addr $sp 20            # display elements which is valid address\n".format(_cmdline_)
     _example_ += "{:s} --slab-contains $sp 20      # display with slab-contains result (available under qemu-system)\n".format(_cmdline_)
     _example_ += "{:s} --tag 0 A --tag 1 B $sp 20  # display with tags".format(_cmdline_)
@@ -27490,16 +27514,19 @@ class DereferenceCommand(GenericCommand):
                             out.append("*")
                         continue
                     seen.append(v)
+
                 # valid address filtering
                 if args.is_addr:
                     v = _read_int_from_memory(start_address + idx * current_arch.ptrsize)
                     if not is_valid_addr(v):
                         continue
+
                 # invalid address filtering
                 if args.is_not_addr:
                     v = _read_int_from_memory(start_address + idx * current_arch.ptrsize)
                     if is_valid_addr(v):
                         continue
+
                 # tags
                 if args.tag:
                     tag = tags_dict.get(idx, "").ljust(max_tag_width)
@@ -27518,6 +27545,15 @@ class DereferenceCommand(GenericCommand):
                 line = self.get_slab_contains(start_address + idx * current_arch.ptrsize, args.slab_contains_unaligned)
                 if line:
                     out.append(line)
+
+            # link list
+            if args.list_head:
+                # next
+                if is_double_link_list(start_address + idx * current_arch.ptrsize):
+                    out.append(Color.colorify("  list_head.next", "bold magenta"))
+                # prev
+                if is_double_link_list(start_address + (idx - 1) * current_arch.ptrsize):
+                    out.append(Color.colorify("  list_head.prev", "bold magenta"))
 
             # multiple level dump
             if args.depth - 1 > 0:
@@ -62699,38 +62735,16 @@ class SlabDumpCommand(GenericCommand):
                     kmem_cache_node_array = read_int_from_memory(kmem_cache + self.kmem_cache_offset_node)
                 kmem_cache_node_0 = read_int_from_memory(kmem_cache_node_array)
 
-                def is_link_list(x):
-                    seen = []
-                    while True:
-                        if not is_valid_addr(x):
-                            return False
-                        if x in seen:
-                            return True
-                        seen.append(x)
-                        x = read_int_from_memory(x)
-
-                # slabs_partial.next
-                if not is_link_list(kmem_cache_node_0 + candidate_offset + current_arch.ptrsize * 0):
+                # slabs_partial
+                if not is_double_link_list(kmem_cache_node_0 + candidate_offset + current_arch.ptrsize * 0):
                     found = False
                     break
-                # slabs_partial.prev
-                if not is_link_list(kmem_cache_node_0 + candidate_offset + current_arch.ptrsize * 1):
+                # slabs_full
+                if not is_double_link_list(kmem_cache_node_0 + candidate_offset + current_arch.ptrsize * 2):
                     found = False
                     break
-                # slabs_full.next
-                if not is_link_list(kmem_cache_node_0 + candidate_offset + current_arch.ptrsize * 2):
-                    found = False
-                    break
-                # slabs_full.prev
-                if not is_link_list(kmem_cache_node_0 + candidate_offset + current_arch.ptrsize * 3):
-                    found = False
-                    break
-                # slabs_free.next
-                if not is_link_list(kmem_cache_node_0 + candidate_offset + current_arch.ptrsize * 4):
-                    found = False
-                    break
-                # slabs_free.prev
-                if not is_link_list(kmem_cache_node_0 + candidate_offset + current_arch.ptrsize * 5):
+                # slabs_free
+                if not is_double_link_list(kmem_cache_node_0 + candidate_offset + current_arch.ptrsize * 4):
                     found = False
                     break
 
