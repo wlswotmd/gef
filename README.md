@@ -253,6 +253,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kdmabuf.png)
 * `kirq`: dumps irq information.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kirq.png)
+* `knetdev`: displays net devices.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/knetdev.png)
 
 ### Qemu-system cooperation - Linux specific - Other
 * `ksearch-code-ptr`: searches the code pointer in kernel data area.

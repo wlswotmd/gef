@@ -47382,6 +47382,26 @@ class KernelAddressHeuristicFinder:
                     g = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
                 for x in g:
                     return x
+
+        # plan 3 (available v2.6.24 or later)
+        if kversion and kversion >= "2.6.24":
+            addr = get_ksymaddr("netdev_boot_base")
+            if addr:
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
+                if is_x86_64():
+                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
+                elif is_x86_32():
+                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
+                elif is_arm64():
+                    g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res)
+                elif is_arm32():
+                    g = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res)
+                for x in g:
+                    if not is_valid_addr(x):
+                        continue
+                    if read_cstring_from_memory(x) == "%s%d":
+                        continue
+                    return x
         return None
 
     @staticmethod
@@ -66767,6 +66787,158 @@ class KernelIrqCommand(GenericCommand):
         self.dump_irq()
         if self.out:
             gef_print("\n".join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
+class KernelNetDeviceCommand(GenericCommand):
+    """Dump net device informations."""
+    _cmdline_ = "knetdev"
+    _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
+    _syntax_ = parser.format_help()
+
+    _note_ = "Simplified net_device structure:\n"
+    _note_ += "\n"
+    _note_ += "                     +-net_device--------+    +-net_device--------+\n"
+    _note_ += "                     | ... (kernel 6.8~) |    | ... (kernel 6.8~) |\n"
+    _note_ += "+-init_net------+    | name[]            |    | name[]            |\n"
+    _note_ += "| ...           |    | ...               |    | ...               |\n"
+    _note_ += "| dev_base_head |--->| dev_list          |--->| dev_list          |--->...\n"
+    _note_ += "| ...           |    | ...               |    | ...               |\n"
+    _note_ += "+---------------+    +-------------------+    +-------------------+"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.initialized = False
+        return
+
+    def initialize(self):
+        if self.initialized:
+            return True
+
+        # init_net
+        self.init_net = KernelAddressHeuristicFinder.get_init_net()
+        if self.init_net is None:
+            if not self.quiet:
+                err("Not found init_net")
+            return False
+        if not self.quiet:
+            info("init_net: {:#x}".format(self.init_net))
+
+        """
+        struct net {
+            ...
+            struct list_head dev_base_head;
+            ...
+        };
+
+        struct net_device {
+            char name[IFNAMSIZ];
+            ...
+            struct list_head dev_list;  // dev_base_head points here
+            struct list_head napi_list;
+            struct list_head unreg_list;
+            struct list_head close_list;
+            struct list_head ptype_all;
+            struct list_head ptype_specific; // ~v6.8
+            ...
+        };
+        """
+        # net->dev_base_head
+        for i in range(0x100):
+            candidate_offset = current_arch.ptrsize * i
+
+            addr = self.init_net + candidate_offset
+            if not is_double_link_list(addr):
+                continue
+
+            cand_netdev = read_int_from_memory(addr)
+            if not is_double_link_list(cand_netdev + current_arch.ptrsize * 2): # napi_list
+                continue
+            if not is_double_link_list(cand_netdev + current_arch.ptrsize * 4): # unreg_list
+                continue
+            if not is_double_link_list(cand_netdev + current_arch.ptrsize * 6): # close_list
+                continue
+            if not is_double_link_list(cand_netdev + current_arch.ptrsize * 8): # ptype_all
+                continue
+            break # found
+        else:
+            if not self.quiet:
+                err("Not found net->dev_base_head")
+            return False
+
+        self.offset_dev_base_head = candidate_offset
+        if not self.quiet:
+            info("offsetof(net, dev_base_head): {:#x}".format(self.offset_dev_base_head))
+
+        # net_device->dev_list
+        netdev_dev_list = read_int_from_memory(self.init_net + self.offset_dev_base_head)
+        for i in range(0x20):
+            candidate_offset = current_arch.ptrsize * i
+            if read_cstring_from_memory(netdev_dev_list - candidate_offset) == "lo":
+                break
+        else:
+            if not self.quiet:
+                err("Not found net_device->dev_list")
+            return False
+
+        self.offset_dev_list = candidate_offset
+        if not self.quiet:
+            info("offsetof(net_device, dev_list): {:#x}".format(self.offset_dev_list))
+
+        return True
+
+    def dump_net(self):
+        fmt = "{:18s} {:s}"
+        legend = ["net_device", "name"]
+        self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
+        # `struct net_device` is a very complex struct, and detecting the offset of its members is very difficult.
+        # My best effort is to detect only names and addresses.
+
+        head = current = self.init_net + self.offset_dev_base_head
+        while True:
+            current = read_int_from_memory(current)
+            if current == head:
+                break
+
+            netdev = current - self.offset_dev_list
+            name = read_cstring_from_memory(netdev)
+            self.out.append("{:#018x} {:s}".format(netdev, name))
+
+        kversion = KernelVersionCommand.kernel_version()
+        if kversion >= "6.8":
+            info("In kernel 6.8 and later, the order of the members of `struct net_device` has changed significantly.")
+            info("Please note that the address detected as `net_device` is precisely the address of &net_device.name.")
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        self.quiet = args.quiet
+        if not self.quiet:
+            info("Wait for memory scan")
+
+        ret = self.initialize()
+        if ret is False:
+            return
+
+        self.out = []
+        self.dump_net()
+        if self.out:
+            if len(self.out) > get_terminal_size()[0]:
+                gef_print("\n".join(self.out), less=not args.no_pager)
+            else:
+                gef_print("\n".join(self.out), less=False)
         return
 
 
