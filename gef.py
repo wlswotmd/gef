@@ -79520,7 +79520,7 @@ class ExecUntilLibcCodeCommand(ExecUntilCommand):
 
 @register_command
 class ExecUntilSecureWorldCommand(ExecUntilCommand):
-    """Execute until next secure-world instruction."""
+    """Execute until next secure-world instruction (only ARM/ARM64)."""
     _cmdline_ = "exec-until secure-world"
     _category_ = "01-d. Debugging Support - Execution"
     _aliases_ = ["next-secure-world"]

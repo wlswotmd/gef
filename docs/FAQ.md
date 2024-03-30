@@ -222,6 +222,14 @@ If you're referring to system-wide glibc, you can resolve it with these steps:
 1. Install the symbols with `apt install libc6-dbg`.
 2. Add `set debug-file-directory /usr/lib/debug` in `~/.gdbinit`.
 
+## The command to get the source (e.g. `ptr-mangle --source`) doesn't work.
+Please do not use tilde (`~`) in the path to specify `.gdbinit-gef.py` in `.gdbinit`.
+
+Depending on the environment, python `inspect` module may not interpret tildes.
+I encountered this behavior in python 3.9.2 on debian 11.
+This is because `~/.gdbinit-gef.py` was written in `/root/.gdbinit`.
+I modified it to `/root/.gdbinit-gef.py`, then it worked.
+
 
 # About python
 
