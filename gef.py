@@ -13512,6 +13512,21 @@ class VersionCommand(GenericCommand):
         except Exception:
             return "Not found"
 
+    def system_libc_version(self):
+        res = gef_execute_external(["cat", "/proc/self/maps"], as_list=True)
+        libc_targets = ("libc-2.", "libc.so.6", "libuClibc-")
+        for line in res:
+            if not any(kw in line for kw in libc_targets):
+                continue
+            path = line.split()[-1]
+            if not os.path.exists(path):
+                continue
+            data = open(path, "rb").read()
+            pos = re.search(b"(GNU C Library|uClibc-ng release) [\x20-\x7e]*", data)
+            if pos:
+                return bytes2str(pos.group(0))
+        return "Not found"
+
     def qemu_system_version(self):
         return gdb.execute("monitor info version", to_string=True).strip()
 
@@ -13633,6 +13648,7 @@ class VersionCommand(GenericCommand):
         gef_print("OS:                     {:s}".format(self.os_version()))
         gef_print("kernel (uname -a):      {:s}".format(self.kernel_version_from_uname()))
         gef_print("kernel (/proc/version): {:s}".format(self.kernel_version_from_proc()))
+        gef_print("System libc:            {:s}".format(self.system_libc_version()))
         if is_qemu_system():
             gef_print("qemu:                   {:s}".format(self.qemu_system_version()))
         if is_qemu_user():
