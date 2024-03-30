@@ -15155,6 +15155,10 @@ class ProcInfoCommand(GenericCommand):
         gdb_pid = os.getpid()
         ns_symbols = ["cgroup", "ipc", "mnt", "net", "pid", "time", "user", "uts"]
         for ns in ns_symbols:
+            if not os.path.exists("/proc/{:d}/ns/{:s}".format(pid, ns)):
+                continue
+            if not os.path.exists("/proc/{:d}/ns/{:s}".format(gdb_pid, ns)):
+                continue
             sym1 = os.readlink("/proc/{:d}/ns/{:s}".format(pid, ns))
             sym2 = os.readlink("/proc/{:d}/ns/{:s}".format(gdb_pid, ns))
             m = "{:s} namespace separation".format(ns.upper())
