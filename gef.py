@@ -18118,8 +18118,10 @@ class UnicornEmulateCommand(GenericCommand):
 
         content += "\n"
         content += "\n"
+        content += "cs = capstone.Cs({:s}, {:s})\n".format(cs_arch, cs_mode)
+        content += "\n"
+        content += "\n"
         content += "def disassemble(code, addr):\n"
-        content += "    cs = capstone.Cs({:s}, {:s})\n".format(cs_arch, cs_mode)
         content += "    for i in cs.disasm(code, addr):\n"
         content += "        return i\n"
         content += "\n"
@@ -18253,10 +18255,15 @@ class UnicornEmulateCommand(GenericCommand):
             content += "    buf = b'\\x0f\\x30' # x86: wrmsr\n"
             content += "    uc.mem_map(scratch, 0x1000)\n"
             content += "    uc.mem_write(scratch, buf)\n"
-            content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_RAX, value & 0xFFFFFFFF)\n"
-            content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_RDX, (value >> 32) & 0xFFFFFFFF)\n"
-            content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_RCX, msr & 0xFFFFFFFF)\n"
-            content += "    uc.emu_start(scratch, scratch+len(buf), count=1)\n"
+            if is_x86_64():
+                content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_RAX, value & 0xFFFFFFFF)\n"
+                content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_RDX, (value >> 32) & 0xFFFFFFFF)\n"
+                content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_RCX, msr & 0xFFFFFFFF)\n"
+            else:
+                content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_EAX, value & 0xFFFFFFFF)\n"
+                content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_EDX, (value >> 32) & 0xFFFFFFFF)\n"
+                content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_ECX, msr & 0xFFFFFFFF)\n"
+            content += "    uc.emu_start(scratch, scratch + len(buf), count=1)\n"
             content += "    uc.mem_unmap(scratch, 0x1000)\n"
             content += "    return\n"
             content += "\n"
@@ -18278,13 +18285,14 @@ class UnicornEmulateCommand(GenericCommand):
             info("Duplicating registers")
 
         if is_arm32() or is_arm64():
-            # need first. because other register values may be broken when $cpsr is set
+            # need first. because other register values may be broken when $cpsr is set.
             gregval = get_register("$cpsr")
             content += "    emu.reg_write({:s}, {:#x})\n".format(unicorn_registers["$cpsr"], gregval)
         for reg in current_arch.all_registers:
             if is_x86_64() and reg == "$fs":
                 continue
-            if is_x86_32() and reg == "$gs":
+            # On x86, writing to the segment register somehow fails, so skip it.
+            if is_x86_32() and reg in X86.special_registers:
                 continue
             if (is_arm32() or is_arm64()) and reg == "$cpsr":
                 continue
