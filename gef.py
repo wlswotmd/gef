@@ -24408,9 +24408,9 @@ class MainBreakCommand(GenericCommand):
         gdb.execute("c")
         unhide_context()
 
-        # get arg1 when break at __libc_start_main
-        arg1_reg = current_arch.function_parameters[0]
-        return get_register(arg1_reg)
+        # get first arg when break at __libc_start_main
+        _, val = current_arch.get_ith_parameter(0)
+        return val
 
     @parse_args
     @only_if_gdb_running
