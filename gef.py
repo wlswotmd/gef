@@ -178,6 +178,7 @@ __gef_delayed_breakpoints__     = set()
 __gef_delayed_bp_set__          = False
 __gef_use_info_proc_mappings__  = None
 __gef_global_cache__            = {}
+__gef_check_disabled_bp__       = False
 __context_comments__            = {}
 __context_messages__            = []
 __context_extra_commands__      = []
@@ -11963,6 +11964,16 @@ def hook_stop_handler(_event):
     """GDB event handler for stop cases."""
     reset_gef_caches()
 
+    # There seems to be a bug in some architecture (e.g. i386) where temporary breakpoints are not deleted even if they are hit.
+    # I don't know the conditions under which this happens, but if remains, gef would manually remove them.
+    global __gef_check_disabled_bp__
+    if __gef_check_disabled_bp__:
+        for bp in gdb.breakpoints():
+            if not bp.visible and bp.temporary:
+                if not bp.enabled:
+                    bp.delete()
+        __gef_check_disabled_bp__ = False
+
     global __gef_check_once__
     if __gef_check_once__:
         # Ubuntu 20.04 and earlier seem to have a bug (?) in libpython that mishandles SIGINT with no destination.
@@ -13796,6 +13807,21 @@ class HighlightRemoveCommand(GenericCommand):
         return
 
 
+class SimpleInternalTemporaryBreakpoint(gdb.Breakpoint):
+    """A simple wrapper that takes into account the bug where temporary breakpoints isn't deleted after it is hit."""
+    def __init__(self, loc):
+        super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        return
+
+    def stop(self):
+        global __gef_check_disabled_bp__
+        __gef_check_disabled_bp__ = True
+        self.enabled = False
+
+        reset_gef_caches()
+        return True
+
+
 class SecondBreakpoint(gdb.Breakpoint):
     """Breakpoint which sets a 2nd breakpoint, when hit."""
     def __init__(self, loc, second_loc):
@@ -13804,8 +13830,12 @@ class SecondBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
+        global __gef_check_disabled_bp__
+        __gef_check_disabled_bp__ = True
+        self.enabled = False
+
         reset_gef_caches()
-        gdb.Breakpoint("*{:#x}".format(self.second_loc), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        SimpleInternalTemporaryBreakpoint(loc=self.second_loc)
         return True
 
 
@@ -13850,14 +13880,14 @@ class NiCommand(GenericCommand):
             SecondBreakpoint(loc=insn_next.address, second_loc=target)
             return
 
-        gdb.Breakpoint("*{:#x}".format(target), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        SimpleInternalTemporaryBreakpoint(loc=target)
         if delay_slot:
-            gdb.Breakpoint("*{:#x}".format(insn_next.address), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+            SimpleInternalTemporaryBreakpoint(loc=insn_next.address)
         return
 
     def ni_set_bp_next(self):
         insn_next = get_insn_next()
-        gdb.Breakpoint("*{:#x}".format(insn_next.address), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        SimpleInternalTemporaryBreakpoint(loc=insn_next.address)
         return
 
     @parse_args
@@ -13928,14 +13958,14 @@ class SiCommand(GenericCommand):
             SecondBreakpoint(loc=insn_next.address, second_loc=target)
             return
 
-        gdb.Breakpoint("*{:#x}".format(target), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        SimpleInternalTemporaryBreakpoint(loc=target)
         if delay_slot:
-            gdb.Breakpoint("*{:#x}".format(insn_next.address), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+            SimpleInternalTemporaryBreakpoint(loc=insn_next.address)
         return
 
     def si_set_bp_next(self):
         insn_next = get_insn_next()
-        gdb.Breakpoint("*{:#x}".format(insn_next.address), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        SimpleInternalTemporaryBreakpoint(loc=insn_next.address)
         return
 
     @parse_args
@@ -16915,6 +16945,10 @@ class MprotectBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
+        global __gef_check_disabled_bp__
+        __gef_check_disabled_bp__ = True
+        self.enabled = False
+
         info("Restoring original context")
         write_memory(self.original_pc, self.original_code)
         info("Restoring registers")
@@ -24394,6 +24428,10 @@ class EntryBreakBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
+        global __gef_check_disabled_bp__
+        __gef_check_disabled_bp__ = True
+        self.enabled = False
+
         reset_gef_caches()
         return True
 
@@ -71417,6 +71455,9 @@ class TemporaryDummyBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
+        global __gef_check_disabled_bp__
+        __gef_check_disabled_bp__ = True
+        self.enabled = False
         return False
 
 
@@ -78858,7 +78899,7 @@ class XUntilCommand(GenericCommand):
         else:
             stop_addr = args.address
         # `until` command has a bug(?) because sometimes fail, so we should use `tbreak` and `continue` instead of `until`.
-        gdb.Breakpoint("*{:#x}".format(stop_addr), gdb.BP_BREAKPOINT, internal=True, temporary=True)
+        SimpleInternalTemporaryBreakpoint(loc=stop_addr)
         gdb.execute("c") # use c wrapper
         return
 
