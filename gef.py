@@ -3616,11 +3616,10 @@ class GlibcChunk:
 
 
 def get_libc_version():
+    RE_LIBC_PATH = re.compile(r"libc6?[-_](\d+)\.(\d+)\.so")
+    RE_GLIBC_VERSION = re.compile(rb"glibc (\d+)\.(\d+)")
 
     def get_libc_version_from_path():
-        RE_LIBC_PATH = re.compile(r"libc6?[-_](\d+)\.(\d+)\.so")
-        RE_GLIBC_VERSION = re.compile(rb"glibc (\d+)\.(\d+)")
-
         reset_gef_caches(all=True) # get_process_maps may be caching old information
 
         sections = get_process_maps()
@@ -3663,6 +3662,21 @@ def get_libc_version():
                 return tuple(int(x) for x in r.groups())
         return None
 
+    def get_system_libc_version():
+        res = gef_execute_external(["cat", "/proc/self/maps"], as_list=True)
+        libc_targets = ("libc-2.", "libc.so.6")
+        for line in res:
+            if not any(kw in line for kw in libc_targets):
+                continue
+            path = line.split()[-1]
+            if not os.path.exists(path):
+                continue
+            data = open(path, "rb").read()
+            r = RE_GLIBC_VERSION.search(data)
+            if r:
+                return tuple(int(x) for x in r.groups())
+        return None
+
     # use cache
     libc_assume_version = get_gef_setting("libc.assume_version")
     if libc_assume_version is not None:
@@ -3670,6 +3684,8 @@ def get_libc_version():
 
     # resolve
     libc_version = get_libc_version_from_path()
+    if libc_version is None:
+        libc_version = get_system_libc_version()
     if libc_version is None:
         libc_version = (2, 35) # assume Ubuntu 22.04
 
