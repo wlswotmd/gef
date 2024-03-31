@@ -17211,11 +17211,23 @@ class MmapMemoryCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        # get mmap symbol
+        # syscall name (mmap or mmap2 or arch-specific)
         try:
-            parse_address("mmap")
-        except gdb.error:
-            err("Not found mmap function")
+            syscall_table = get_syscall_table()
+        except Exception:
+            err("syscall table does not exist")
+            return
+
+        mmap_syscall_name = None
+        for entry in syscall_table.table.values():
+            if "mmap" not in entry.name:
+                continue
+            if len(entry.arg_regs) != 6:
+                continue
+            mmap_syscall_name = entry.name
+            break
+        if mmap_syscall_name is None:
+            err("Not found mmap syscall")
             return
 
         # location
@@ -17249,7 +17261,7 @@ class MmapMemoryCommand(GenericCommand):
             flags |= 0x800 # MAP_DENYWRITE (why?)
 
         # doit
-        cmd = "call-syscall mmap {:#x} {:#x} {:#x} {:#x} -1 0".format(args.location, args.size, perm, flags)
+        cmd = "call-syscall {:s} {:#x} {:#x} {:#x} {:#x} -1 0".format(mmap_syscall_name, args.location, args.size, perm, flags)
         gdb.execute(cmd)
         reset_gef_caches()
         return
