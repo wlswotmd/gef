@@ -44529,7 +44529,7 @@ class LdCommand(GenericCommand):
         self.dont_repeat()
         reset_gef_caches(all=True) # get_process_maps may be caching old information
 
-        ld_targets = ("ld-2.", "ld-linux-", "ld64-uClibc-", "ld-uClibc-")
+        ld_targets = ("ld-2.", "ld-linux-", "ld-linux.", "ld64-uClibc-", "ld-uClibc-")
 
         ld = get_section_base_address_by_list(ld_targets)
         if ld is None:
