@@ -25798,8 +25798,9 @@ class ContextCommand(GenericCommand):
                         val = gdb.parse_and_eval(sym.name)
                     except gdb.error:
                         continue
-
                     if val.type.code in (gdb.TYPE_CODE_PTR, gdb.TYPE_CODE_ARRAY):
+                        if val.address is None:
+                            continue
                         addr = int(val.address)
                         val = to_string_dereference_from(addr)
                     elif val.type.code == gdb.TYPE_CODE_INT:
