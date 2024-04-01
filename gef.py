@@ -18900,7 +18900,7 @@ class GlibcHeapChunksCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}\n".format(_cmdline_)
-    _example_ += "{:s} -a 0x7ffff0000020 -v".format(_cmdline_)
+    _example_ += "{:s} -a 0x7ffff0000020".format(_cmdline_)
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -18927,7 +18927,9 @@ class GlibcHeapChunksCommand(GenericCommand):
             return
 
         # It continues even if last_remainder is broken because it doesn't affect the exit condition.
-        if arena.last_remainder % 0x10:
+        if is_32bit() and arena.last_remainder % 0x08:
+            self.warn("arena.last_remainder is corrupted")
+        elif is_64bit() and arena.last_remainder % 0x10:
             self.warn("arena.last_remainder is corrupted")
 
         freelist_hint_color = get_gef_setting("theme.heap_freelist_hint")
