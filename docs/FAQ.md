@@ -1,31 +1,15 @@
 # FAQ
 
 
-# About the environment
-
-## Does GEF work properly on OS other than Ubuntu?
-Yes, it probably works fine for regular Linux.
-
-I have used it on debian. Also it seems to be working fine on WSL2 (ubuntu) so far.
-Some users are running it on Arch Linux.
-However, I have not confirmed that all commands work correctly.
-
-## What Linux kernel versions does GEF support as guests in qemu-system?
-I have confirmed that most commands work on versions 3.x ~ 6.7.x.
-
-However, I have not verified every kernel version.
-For example, certain symbols in some versions may not be supported by heuristic symbol detection.
-Also, the structure may differ depending on the build config and the compiler that built the kernel.
-So there may be environments where GEF does not work.
-If you have any trouble, please report it on the issue page.
-
-## GDB will not load GEF.
-This is probably because gdb does not support cooperation with python3.
-
-Consider building gdb from source with `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`.
+# About GEF's file or directory
 
 ## Where is `gef.py`?
 GEF (`gef.py`) is placed in `/root/.gdbinit-gef.py` by default. GEF is one file.
+
+## How to change the location of GEF?
+Move `/root/.gdbinit-gef.py` and edit `/root/.gdbinit`.
+
+If you want to use GEF as a user other than root, add `source /path/to/.gdbinit-gef.py` to that user's `$HOME/.gdbinit`.
 
 ## What is `~/.gef.rc`?
 This is the GEF config file. Not present by default.
@@ -40,11 +24,83 @@ This is the directory where GEF temporarily stores files.
 Since it is used for caching, there is no problem in deleting it.
 It will be created automatically the next time GEF starts.
 
+## What is `install-minimal.sh`?
+This is an installer for running GEF in limited environments where required packages cannot be installed for some reason.
+
+* To use all feature (=gef's command), use `install.sh`.
+* If you do not need some features (used in a limited environment), use `install-minimal.sh`. It should work at least except some commands.
+
+
+# About the host environment
+
+## Does GEF work properly on OS other than Ubuntu?
+Yes, it probably works fine for regular Linux.
+
+I have used it on debian. Also it seems to be working fine on WSL2 (ubuntu) so far.
+Some users are running it on Arch Linux.
+However, I have not confirmed that all commands work correctly.
+
+## GDB will not load GEF.
+This is probably because gdb does not support cooperation with python3.
+
+Consider building gdb from source with `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`.
+
 ## Will this GEF work as a plugin for `hugsy/gef`?
 No, it doesn't work. It replaces `hugsy/gef`.
 
 The compatibility with `hugsy/gef` has already been lost.
 Think of it as a completely different product.
+
+## Does GEF work with the latest version of gdb?
+Yes, it probably works.
+
+The example of build commands are shown below.
+```
+git clone --depth 1 https://github.com/bminor/binutils-gdb && cd binutils-gdb
+./configure --disable-binutils --disable-ld --disable-gold --disable-gas --disable-sim --disable-gprof --disable-gprofng \
+--enable-targets=all --with-python=/usr/bin/python3 --with-system-zlib --with-system-readline
+make && make install
+```
+
+## If I use `install-minimal.sh`, which commands will no longer be available?
+Followings are the breakdown. It may not be comprehensive.
+If you install with `install-minimal.sh`, you will not be able to use these commands unless you install the required packages and tools.
+
+* `apt` packages
+    * `gdb-multiarch`: `gdb` is also good, but of course one is required.
+    * `binutils`: Used by `checksec`, `got`, `add-symbol-temporary` and `ksymaddr-remote-apply` commands.
+    * `gcc`: Used by `add-symbol-temporary` and `ksymaddr-remote-apply` commands.
+    * `lsb-release`: You won't be able to get the correct information when a GEF exception occurs, but that's it. In other words, it's actually fine without it.
+    * `python3-pip`: Used to install `crccheck`, `unicorn`, `capstone`, `ropper`, `keystone-engine` and `tqdm` packages. Used to install `vmlinux-to-elf`.
+    * `git`: Used to install `vmlinux-to-elf`. Used by `diffo` command.
+    * `ruby-dev`: Used to install `one_gadget` and `seccomp-tools`.
+* `python3` packages
+    * `crccheck`: Used by `uefi-ovmf-info` and `hash-memory` commands.
+    * `unicorn`: Used by the `unicorn-emulate` command.
+    * `capstone`: Used by the `unicorn-emulate`, `capstone-disassemble`, `dasm` and `asm-list` commands.
+    * `ropper`: Used by the `ropper` command.
+    * `keystone-engine`: Used by `mprotect` and `asm` commands.
+    * `tqdm`: It just makes it look better, so GEF will work without it.
+* Others
+  * `vmlinux-to-elf`: Used by `vmlinux-to-elf-apply` command.
+  * `rp++`: Used by `rp` command.
+  * `seccomp-tools`: Used by `seccomp-tools` command.
+  * `one_gadget`: Used by `onegadget` command.
+
+## How can I install GEF offline?
+Please refer to `install.sh` or `install-minimal.sh`, and set it up manually.
+
+
+# About the guest (debugged) environment
+
+## What Linux kernel versions does GEF support as guests in qemu-system?
+I have confirmed that most commands work on versions 3.x ~ 6.7.x.
+
+However, I have not verified every kernel version.
+For example, certain symbols in some versions may not be supported by heuristic symbol detection.
+Also, the structure may differ depending on the build config and the compiler that built the kernel.
+So there may be environments where GEF does not work.
+If you have any trouble, please report it on the issue page.
 
 ## Will each GEF command be more accurate if I have `vmlinux` with debug symbols?
 No, whether `vmlinux` includes debug information has no effect on GEF behavior.
@@ -58,7 +114,6 @@ Yes, GEF suuports real mode experimentally.
 `qemu-system-x86_64` cannot be used, use `qemu-system-i386`.
 Explicitly specify the i8086 architecture before connecting: `gdb -ex 'set architecture i8086' -ex 'target remote localhost:1234'`.
 
-When switching from real mode (16-bit) to protected mode (32-bit), 16-bit mode debugging is no longer possible.
 GEF will switch to and from 32-bit mode automatically.
 
 ## Does GEF support to debug Android?
@@ -94,17 +149,6 @@ But if you're stuck in the kernel context of a different user process than you e
 the virtual address of the process you wanted isn't mapped.
 For this reason, software breakpoints that embed `0xcc` in virtual memory cannot be used in some situations.
 However, hardware breakpoints can be used without any problems.
-
-## Does GEF work with the latest version of gdb?
-Yes, it probably works.
-
-The example of build commands are shown below.
-```
-git clone --depth 1 https://github.com/bminor/binutils-gdb && cd binutils-gdb
-./configure --disable-binutils --disable-ld --disable-gold --disable-gas --disable-sim --disable-gprof --disable-gprofng \
---enable-targets=all --with-python=/usr/bin/python3 --with-system-zlib --with-system-readline
-make && make install
-```
 
 
 # About commands
@@ -227,8 +271,8 @@ Please do not use tilde (`~`) in the path to specify `.gdbinit-gef.py` in `.gdbi
 
 Depending on the environment, python `inspect` module may not interpret tildes.
 I encountered this behavior in python 3.9.2 on debian 11.
-This is because `~/.gdbinit-gef.py` was written in `/root/.gdbinit`.
-I modified it to `/root/.gdbinit-gef.py`, then it worked.
+This is because `source ~/.gdbinit-gef.py` was written in `/root/.gdbinit`.
+I modified it to `source /root/.gdbinit-gef.py`, then it worked.
 
 
 # About python
