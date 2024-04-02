@@ -15384,27 +15384,39 @@ class ProcDumpCommand(GenericCommand):
 
                 if f == "syscall":
                     try:
-                        data = open(path, "rb").read()
-                        out.append(bytes2str(data).strip())
+                        data = bytes2str(open(path, "rb").read())
+                        out.append(data.strip())
                     except OSError:
                         continue
-                    tag = [
-                        "syscall num", "sp", "pc",
-                    ]
-                    max_width = max(len(x) for x in tag)
+                    if int(data.split()[0]) < 0:
+                        tag = ["NR", "sp", "pc"]
+                    else:
+                        tag = ["NR", "arg1", "arg2", "arg3", "arg4", "arg5", "arg6", "sp", "pc"]
                     for i, elem in enumerate(data.split()):
-                        if i <= len(tag):
+                        if i < len(tag):
                             elem_name = tag[i]
                         else:
                             elem_name = "???"
-                        elem_name = Color.boldify("{:{:d}s}".format(elem_name, max_width))
-                        out.append("{:2d} {:s}: {:s}".format(i + 1, elem_name, bytes2str(elem)))
+                        elem_name = Color.boldify("{:4s}".format(elem_name))
+                        if i == 0: # NR
+                            nr = int(elem)
+                            table = get_syscall_table()
+                            if nr >= 0 and table and nr in table.table:
+                                syscall_name = table.table[nr].name
+                                out.append("{:2d} {:s}: {:s} ({:s})".format(i + 1, elem_name, elem, syscall_name))
+                            else:
+                                out.append("{:2d} {:s}: {:s}".format(i + 1, elem_name, elem))
+                        else: # argN, sp, pc
+                            address = int(elem, 0)
+                            sym = get_symbol_string(address)
+                            elem = "{!s}{:s}".format(lookup_address(address), sym)
+                            out.append("{:2d} {:s}: {:s}".format(i + 1, elem_name, elem))
                     continue
 
                 if f == "stat":
                     try:
-                        data = open(path, "rb").read()
-                        out.append(bytes2str(data).strip())
+                        data = bytes2str(open(path, "rb").read())
+                        out.append(data.strip())
                     except OSError:
                         continue
                     tag = [
@@ -15418,48 +15430,58 @@ class ProcDumpCommand(GenericCommand):
                         "arg_start", "arg_end", "env_startr", "env_end", "exit_code",
                     ]
                     max_width = max(len(x) for x in tag)
-                    lpos = data.find(b"(")
-                    rpos = data.rfind(b")") + 1
+                    lpos = data.find("(")
+                    rpos = data.rfind(")") + 1
                     data = [data[:lpos].strip(), data[lpos:rpos]] + data[rpos:].split()
                     for i, elem in enumerate(data):
+                        if i < len(tag):
+                            elem_name = tag[i]
+                        else:
+                            elem_name = "???"
+                        elem_name = Color.boldify("{:{:d}s}".format(elem_name, max_width))
                         if i + 1 in [25, 26, 27, 28, 29, 30, 45, 46, 47, 48, 49, 50, 51]:
                             address = int(elem)
                             sym = get_symbol_string(address)
                             elem = "{!s}{:s}".format(lookup_address(address), sym)
-                        if i <= len(tag):
-                            elem_name = tag[i]
-                        else:
-                            elem_name = "???"
-                        elem_name = Color.boldify("{:{:d}s}".format(elem_name, max_width))
-                        out.append("{:2d} {:s}: {:s}".format(i + 1, elem_name, bytes2str(elem)))
+                        elif i + 1 in [23, 33, 34]:
+                            elem = hex(int(elem))
+                        out.append("{:2d} {:s}: {:s}".format(i + 1, elem_name, elem))
                     continue
 
                 if f == "statm":
                     try:
-                        data = open(path, "rb").read()
-                        out.append(bytes2str(data).strip())
+                        data = bytes2str(open(path, "rb").read())
+                        out.append(data.strip())
                     except OSError:
                         continue
-                    tag = [
-                        "size", "resident", "shared", "text", "lib", "data", "dt",
-                    ]
+                    tag = ["size", "resident", "shared", "text", "lib", "data", "dt"]
                     max_width = max(len(x) for x in tag)
                     for i, elem in enumerate(data.split()):
-                        if i <= len(tag):
+                        if i < len(tag):
                             elem_name = tag[i]
                         else:
                             elem_name = "???"
                         elem_name = Color.boldify("{:{:d}s}".format(elem_name, max_width))
-                        out.append("{:2d} {:s}: {:s}".format(i + 1, elem_name, bytes2str(elem)))
+                        out.append("{:2d} {:s}: {:s}".format(i + 1, elem_name, elem))
                     continue
 
                 if f == "rt_acct":
-                    ret = gef_execute_external(["hexdump", "-C", path], as_list=True)
+                    try:
+                        hexdump_command = which("hexdump")
+                    except FileNotFoundError as e:
+                        out.append("{}".format(e))
+                        continue
+                    ret = gef_execute_external([hexdump_command, "-C", path], as_list=True)
                     out.extend(ret)
                     continue
 
                 if f == "status":
-                    ret = gef_execute_external(["column", "-s:", "-t", path], as_list=True)
+                    try:
+                        column_command = which("column")
+                    except FileNotFoundError as e:
+                        out.append("{}".format(e))
+                        continue
+                    ret = gef_execute_external([column_command, "-s:", "-t", path], as_list=True)
                     for line in ret:
                         k, v = line.split(maxsplit=1)
                         k = k.strip() + ":"
@@ -15468,23 +15490,38 @@ class ProcDumpCommand(GenericCommand):
                     continue
 
                 if f in ["mounts", "mountinfo", "mountstats", "unix", "protocols"]:
-                    ret = gef_execute_external(["column", "-t", path], as_list=True)
+                    try:
+                        column_command = which("column")
+                    except FileNotFoundError as e:
+                        out.append("{}".format(e))
+                        continue
+                    ret = gef_execute_external([column_command, "-t", path], as_list=True)
                     out.extend(ret)
                     continue
 
                 if f in ["raw", "tcp", "udp", "icmp", "raw6", "tcp6", "udp6", "icmp6", "udplite", "udplite6"]:
+                    try:
+                        column_command = which("column")
+                    except FileNotFoundError as e:
+                        out.append("{}".format(e))
+                        continue
                     data = open(path, "rb").read()
                     data = data.replace(b"tx_queue ", b"tx_queue:")
                     data = data.replace(b" tr ", b" tr:")
                     tmp_fd, tmp_filename = tempfile.mkstemp(dir=GEF_TEMP_DIR, prefix="proc-dump-")
                     os.write(tmp_fd, data)
                     os.close(tmp_fd)
-                    ret = gef_execute_external(["column", "-t", tmp_filename], as_list=True)
+                    ret = gef_execute_external([column_command, "-t", tmp_filename], as_list=True)
                     out.extend(ret)
                     os.unlink(tmp_filename)
                     continue
 
                 if f == "dev":
+                    try:
+                        column_command = which("column")
+                    except FileNotFoundError as e:
+                        out.append("{}".format(e))
+                        continue
                     data = open(path, "rb").read()
                     data = data.replace(b"|", b" |")
                     data = re.sub(rb"\|\s*Receive", b"|Receive", data)
@@ -15492,7 +15529,7 @@ class ProcDumpCommand(GenericCommand):
                     tmp_fd, tmp_filename = tempfile.mkstemp(dir=GEF_TEMP_DIR, prefix="proc-dump-")
                     os.write(tmp_fd, data)
                     os.close(tmp_fd)
-                    ret = gef_execute_external(["column", "-t", tmp_filename], as_list=True)
+                    ret = gef_execute_external([column_command, "-t", tmp_filename], as_list=True)
                     wrong = ret[0].rfind("|")
                     rright = ret[1].rfind("|")
                     lright = ret[1].find("|")
