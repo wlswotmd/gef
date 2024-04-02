@@ -4572,10 +4572,7 @@ def checksec(filename):
         if (opt, filename) in cache:
             lines = cache[(opt, filename)]
         else:
-            cmd = [readelf]
-            cmd += opt.split()
-            cmd += [filename]
-            lines = gef_execute_external(cmd, as_list=True)
+            lines = gef_execute_external([readelf] + opt.split() + [filename], as_list=True)
             cache[(opt, filename)] = lines
         for line in lines:
             if re.search(pattern, line):
@@ -4650,8 +4647,7 @@ def checksec(filename):
             "retaa", "retab", "braa", "brab", "blraa", "blrab",
             "eretaa", "eretab", "ldraa", "ldrab"
         ]
-        cmd = ["sh", "-c", "{:s} -d {:s} | head -100000".format(objdump, filename)]
-        out = gef_execute_external(cmd, as_list=True)
+        out = gef_execute_external(["sh", "-c", "{:s} -d {:s} | head -100000".format(objdump, filename)], as_list=True)
         results["PAC"] = False
         for line in out:
             line = line.strip()
