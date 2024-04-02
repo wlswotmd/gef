@@ -5691,7 +5691,10 @@ class AARCH64(ARM):
     def get_tls(self):
         if is_in_kernel():
             return None
-        return get_register("$TPIDR_EL0")
+        tls = get_register("$TPIDR_EL0")
+        if tls is None:
+            tls = get_register("$tpidr")
+        return tls
 
     def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 226
