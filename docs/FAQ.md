@@ -70,7 +70,6 @@ If you install with `install-minimal.sh`, you will not be able to use these comm
     * `gdb-multiarch`: `gdb` is also good, but of course one is required.
     * `binutils`: Used by `checksec`, `got`, `add-symbol-temporary` and `ksymaddr-remote-apply` commands.
     * `gcc`: Used by `add-symbol-temporary` and `ksymaddr-remote-apply` commands.
-    * `lsb-release`: You won't be able to get the correct information when a GEF exception occurs, but that's it. In other words, it's actually fine without it.
     * `python3-pip`: Used to install `crccheck`, `unicorn`, `capstone`, `ropper`, `keystone-engine` and `tqdm` packages. Used to install `vmlinux-to-elf`.
     * `git`: Used to install `vmlinux-to-elf`. Used by `diffo` command.
     * `ruby-dev`: Used to install `one_gadget` and `seccomp-tools`.

@@ -8,7 +8,7 @@ fi
 
 echo "[+] apt"
 apt-get update
-apt-get install -y gdb-multiarch binutils gcc python3-pip ruby-dev git lsb-release
+apt-get install -y gdb-multiarch binutils gcc python3-pip ruby-dev git
 
 echo "[+] pip3"
 pip3 install crccheck unicorn capstone ropper keystone-engine tqdm
