@@ -13493,12 +13493,12 @@ class VersionCommand(GenericCommand):
 
     def os_version(self):
         try:
-            command = which("lsb_release")
-            res = gef_execute_external([command, "-d"], as_list=True)
+            lsb_release_command = which("lsb_release")
+            res = gef_execute_external([lsb_release_command, "-d"], as_list=True)
             for line in res:
                 if line.startswith("Description:"):
                     return line.split(":")[1].strip("\\t")
-        except IOError:
+        except FileNotFoundError:
             pass
 
         if os.path.exists("/etc/issue.net"):
@@ -13523,16 +13523,16 @@ class VersionCommand(GenericCommand):
 
     def kernel_version_from_uname(self):
         try:
-            command = which("uname")
-            res = gef_execute_external([command, "-a"], as_list=True)
+            uname_command = which("uname")
+            res = gef_execute_external([uname_command, "-a"], as_list=True)
             return res[0]
-        except IOError:
+        except FileNotFoundError:
             return "Not found"
 
     def kernel_version_from_proc(self):
         try:
             return open("/proc/version").read().strip()
-        except Exception:
+        except FileNotFoundError:
             return "Not found"
 
     def system_libc_version(self):
@@ -13619,43 +13619,43 @@ class VersionCommand(GenericCommand):
 
     def gcc_version(self):
         try:
-            command = which("gcc")
-            res = gef_execute_external([command, "--version"], as_list=True)
-            return res[0]
-        except IOError:
+            gcc_command = which("gcc")
+        except FileNotFoundError:
             return "Not found"
+        res = gef_execute_external([gcc_command, "--version"], as_list=True)
+        return res[0]
 
     def readelf_version(self):
         try:
-            command = which("readelf")
-            res = gef_execute_external([command, "-v"], as_list=True)
-            return res[0]
-        except IOError:
+            readelf_command = which("readelf")
+        except FileNotFoundError:
             return "Not found"
+        res = gef_execute_external([readelf_command, "-v"], as_list=True)
+        return res[0]
 
     def objdump_version(self):
         try:
-            command = which("objdump")
-            res = gef_execute_external([command, "-v"], as_list=True)
-            return res[0]
-        except IOError:
+            objdump_command = which("objdump")
+        except FileNotFoundError:
             return "Not found"
+        res = gef_execute_external([objdump_command, "-v"], as_list=True)
+        return res[0]
 
     def seccomp_tools_version(self):
         try:
-            command = which("seccomp-tools")
-            res = gef_execute_external([command, "--version"], as_list=True)
-            return res[0]
-        except IOError:
+            seccomp_tools_command = which("seccomp-tools")
+        except FileNotFoundError:
             return "Not found"
+        res = gef_execute_external([seccomp_tools_command, "--version"], as_list=True)
+        return res[0]
 
     def one_gadget_version(self):
         try:
-            command = which("one_gadget")
-            res = gef_execute_external([command, "--version"], as_list=True)
-            return res[0]
-        except IOError:
+            one_gadget_command = which("one_gadget")
+        except FileNotFoundError:
             return "Not found"
+        res = gef_execute_external([one_gadget_command, "--version"], as_list=True)
+        return res[0]
 
     def show_compact_info(self):
         gef_print("gdb:     {:s}".format(self.gdb_version()))
