@@ -30289,7 +30289,7 @@ class GotCommand(GenericCommand):
             # GOT entry pattern 3 (?)
             elif "IRELATIVE" in line:
                 type = "IRELATIVE"
-                if is_x86_32():
+                if is_32bit():
                     address = line.split()[0]
                     address = int(address, 16)
                     name = "*ABS*"
@@ -30307,7 +30307,7 @@ class GotCommand(GenericCommand):
             elif section_name not in [".rel.plt", ".rela.plt"]:
                 reloc_arg = None
             else:
-                reloc_arg = reloc_count * [1, 8][is_x86_32()]
+                reloc_arg = reloc_count * [1, 8][is_32bit()]
                 reloc_count += 1
 
             # fix address
@@ -30646,12 +30646,29 @@ class GotCommand(GenericCommand):
         else:
             vmmap = get_process_maps()
             target_filepath = vmmap_filepath or local_filepath
-            try:
-                base_address = min([x.page_start for x in vmmap if x.path == target_filepath])
-            except Exception:
-                if not args.quiet:
-                    err("Not found {:s} in memory".format(target_filepath))
-                return
+
+            # get the address matching the specified path
+            path_match = [x.page_start for x in vmmap if x.path == target_filepath]
+            if path_match:
+                base_address = min(path_match)
+            else:
+                # When using the -L option with qemu-user, the file path on the disk and the file path on vmmap are different.
+                #
+                # e.g. qemu-arm -g 1234 -L /usr/arm-linux-gnueabihf ./a.out
+                # gef> vmm
+                # [ Legend:  Code | Heap | Stack | Writable | ReadOnly | None | RWX ]
+                # Start      End        Size       Offset     Perm Path
+                # 0x3f694000 0x3f79f000 0x0010b000 0x00000000 r-x /lib/libc.so.6
+                # 0x3f79f000 0x3f7b9000 0x0001a000 0x0010a000 r-- /lib/libc.so.6
+                # 0x3f7b9000 0x3f7c4000 0x0000b000 0x00124000 rw- /lib/libc.so.6
+                # ...
+                path_match_end = [x.page_start for x in vmmap if target_filepath.endswith(x.path)]
+                if path_match_end:
+                    base_address = min(path_match_end)
+                else:
+                    if not args.quiet:
+                        err("Not found {:s} in memory".format(target_filepath))
+                    return
 
         # get the filtering parameter
         self.filter = args.filter or []
