@@ -3853,7 +3853,7 @@ def byteswap(x, byte_size=None):
     return s
 
 
-@cache_until_next
+@cache_this_session
 def which(program):
     """Locate a command on the filesystem."""
     def is_exe(fpath):
