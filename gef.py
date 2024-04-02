@@ -20011,10 +20011,10 @@ class RpCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_FILENAME)
         return
 
-    def exec_rp(self, ropN):
-        output_file = "rp{}_rop_{}.txt".format(ropN, os.path.basename(self.path))
+    def exec_rp(self, rp, ropN, path):
+        output_file = "rp{}_rop_{}.txt".format(ropN, os.path.basename(path))
         output_path = os.path.join(GEF_TEMP_DIR, output_file)
-        cmd = f"{self.rp} --file='{self.path}' --rop={ropN} --unique > {output_path}"
+        cmd = f"{rp} --file='{path}' --rop={ropN} --unique > {output_path}"
         gef_print(titlify(cmd))
         if not os.path.exists(output_path):
             os.system(cmd)
@@ -20053,31 +20053,38 @@ class RpCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        # load rp path
         try:
-            self.rp = which("rp-lin")
+            rp = which("rp-lin")
         except FileNotFoundError as e:
             err("{}".format(e))
             return
 
+        if args.kernel:
+            try:
+                nm = which("nm")
+            except FileNotFoundError as e:
+                err("{}".format(e))
+                return
+
         base_address = 0
         if args.libc:
-            libc = process_lookup_path(("libc-2.", "libc.so.6"))
+            libc_targets = ("libc-2.", "libc.so.6", "libuClibc-")
+            libc = process_lookup_path(libc_targets)
             if libc is None:
                 err("libc is not found")
                 return
-            self.path = libc.path
+            path = libc.path
         elif args.bin:
             binary = get_filepath()
             if binary is None:
                 err("binary is not found")
                 return
-            self.path = binary
+            path = binary
         elif args.file:
             if not os.path.exists(args.file):
                 err("{} is not found".format(args.file))
                 return
-            self.path = args.file
+            path = args.file
         elif args.kernel:
             if not is_qemu_system():
                 err("--kernel are supported only under qemu-system.")
@@ -20089,9 +20096,9 @@ class RpCommand(GenericCommand):
             if symboled_vmlinux_file is None:
                 err("Failed to create kernel ELF.")
                 return
-            self.path = symboled_vmlinux_file
+            path = symboled_vmlinux_file
 
-            cmd = "nm '{:s}' | grep ' _stext$'".format(symboled_vmlinux_file)
+            cmd = "{:s} '{:s}' | grep ' _stext$'".format(nm, symboled_vmlinux_file)
             out = gef_execute_external(cmd, as_list=True, shell=True)
             if len(out) != 1:
                 err("Failed to resolve _stext")
@@ -20099,7 +20106,7 @@ class RpCommand(GenericCommand):
             base_address = int(out[0].split()[0], 16)
 
         # invoke rp++
-        rp_output_path = self.exec_rp(args.rop_N)
+        rp_output_path = self.exec_rp(rp, args.rop_N, path)
 
         # filtering
         out = self.apply_filter(rp_output_path, args.filter, base_address)
