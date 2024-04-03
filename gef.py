@@ -1007,6 +1007,11 @@ class Address:
         self.valid = kwargs.get("valid", True)
         return
 
+    def __repr__(self):
+        return '<{:s}.{:s} object at {:#x}, addr={:#x}, section={}, info={}, valid={}>'.format(
+            self.__module__, self.__class__.__name__, id(self),
+            self.value, bool(self.section), bool(self.section), bool(self.valid),
+        )
     def __str__(self):
         value = format_address(self.value)
         if not self.valid:
@@ -1118,6 +1123,11 @@ class Permission:
         self.value = kwargs.get("value", 0)
         return
 
+    def __repr__(self):
+        return '<{:s}.{:s} object at {:#x}, perm="{}">'.format(
+            self.__module__, self.__class__.__name__, id(self), str(self),
+        )
+
     def __or__(self, value):
         return self.value | value
 
@@ -1163,6 +1173,11 @@ class Section:
         self.path = kwargs.get("path", "")
         return
 
+    def __repr__(self):
+        return '<{:s}.{:s} object at {:#x}, page_start={:#x}, perm="{}", path="{:s}">'.format(
+            self.__module__, self.__class__.__name__, id(self), self.page_start, self.permission, self.path,
+        )
+
     def is_readable(self):
         v = self.permission.value
         return v and bool(v & Permission.READ)
@@ -1180,10 +1195,6 @@ class Section:
         if self.page_end is None or self.page_start is None:
             return -1
         return self.page_end - self.page_start
-
-    @property
-    def realpath(self):
-        return self.path
 
 
 class Elf:
@@ -1576,9 +1587,13 @@ class Elf:
 
     def __repr__(self):
         if self.filename:
-            msg = '<{:s}.{:s} object at {:#x}, filename="{:s}">'.format(self.__module__, self.__class__.__name__, id(self), self.filename)
+            msg = '<{:s}.{:s} object at {:#x}, filename="{:s}">'.format(
+                self.__module__, self.__class__.__name__, id(self), self.filename,
+            )
         else:
-            msg = "<{:s}.{:s} object at {:#x}, address={:#x}>".format(self.__module__, self.__class__.__name__, id(self), self.addr)
+            msg = "<{:s}.{:s} object at {:#x}, address={:#x}>".format(
+                self.__module__, self.__class__.__name__, id(self), self.addr,
+            )
         return msg
 
     def read(self, size):
@@ -1791,8 +1806,12 @@ class Phdr:
         for e in dir(self):
             if e.startswith("PT_"):
                 if self.p_type == getattr(self, e):
-                    return "<{:s}.{:s} object at {:#x}, p_type={:s}>".format(self.__module__, self.__class__.__name__, id(self), e)
-        return "<{:s}.{:s} object at {:#x}, p_type={:#x}>".format(self.__module__, self.__class__.__name__, id(self), self.p_type)
+                    return "<{:s}.{:s} object at {:#x}, p_type={:s}>".format(
+                        self.__module__, self.__class__.__name__, id(self), e,
+                    )
+        return "<{:s}.{:s} object at {:#x}, p_type={:#x}>".format(
+            self.__module__, self.__class__.__name__, id(self), self.p_type,
+        )
 
 
 class Shdr:
@@ -1953,7 +1972,9 @@ class Shdr:
         return
 
     def __repr__(self):
-        return '<{:s}.{:s} object at {:#x}, sh_name="{:s}">'.format(self.__module__, self.__class__.__name__, id(self), self.sh_name)
+        return '<{:s}.{:s} object at {:#x}, sh_name="{:s}">'.format(
+            self.__module__, self.__class__.__name__, id(self), self.sh_name,
+        )
 
 
 class Instruction:
@@ -2154,7 +2175,9 @@ class Instruction:
         return out
 
     def __repr__(self):
-        return '<{:s}.{:s} object at {:#x}, asm="{:s}">'.format(self.__module__, self.__class__.__name__, id(self), str(self))
+        return '<{:s}.{:s} object at {:#x}, asm="{:s}">'.format(
+            self.__module__, self.__class__.__name__, id(self), str(self),
+        )
 
     def __str__(self):
         location = self.smartify_text(self.location)
