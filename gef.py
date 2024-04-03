@@ -83502,7 +83502,13 @@ class GefReloadCommand(GenericCommand):
         self.dont_repeat()
 
         info("Check syntax {:s}".format(__gef_fpath__))
-        pythonbin = which("python3")
+
+        try:
+            pythonbin = which("python3")
+        except FileNotFoundError as e:
+            err("{}, failed to reload".format(e))
+            return
+
         try:
             subprocess.check_output([pythonbin, __gef_fpath__])
         except subprocess.CalledProcessError:
