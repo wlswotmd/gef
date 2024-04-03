@@ -16678,17 +16678,19 @@ class SearchCfiGadgetsCommand(GenericCommand):
 
                 if current_arch.is_ret(insn):
                     break
-                elif current_arch.is_call(insn):
+
+                if current_arch.is_call(insn):
                     if insn.operands[0].startswith("0x"):
                         valid = False
                     break
-                elif current_arch.is_jump(insn):
+
+                if current_arch.is_jump(insn):
                     if insn.operands[0].startswith("0x"):
                         valid = False
 
                     # If the GOT cannot be modified, you can jump directly to the jump destination,
                     # so there is no need to consider it in practice.
-                    if inscount == 2 and "[rip" in insn.operands[0]:
+                    elif inscount == 2 and "[rip" in insn.operands[0]:
                         # 0x555555558630 f30f1efa     <free@plt+0x0> endbr64
                         # 0x555555558634 ff2536e90100 <free@plt+0x4> jmp QWORD PTR [rip+0x1e936] # 0x555555576f70
                         r = re.search(r"# (0x\w+)", insn.operands[0])
@@ -16697,7 +16699,8 @@ class SearchCfiGadgetsCommand(GenericCommand):
                             if not v.section.is_writable():
                                 valid = False
                     break
-                elif "XMMWORD" in "".join(insn.operands):
+
+                if "XMMWORD" in "".join(insn.operands):
                     valid = False
                     break
 
@@ -16706,9 +16709,14 @@ class SearchCfiGadgetsCommand(GenericCommand):
         return filtered_addrs
 
     def disasm_addrs(self, candidates):
-        for start, inscount in candidates:
-            res = gdb.execute("capstone-disassemble --length {:d} {:#x}".format(inscount, start), to_string=True)
-            self.out.append(res)
+        try:
+            __import__("capstone")
+            for start, inscount in candidates:
+                res = gdb.execute("capstone-disassemble {:#x} --length {:d}".format(start, inscount), to_string=True)
+                self.out.append(res)
+        except ImportError:
+            for start, inscount in candidates:
+                self.out.extend([str(x) for x in gdb_disassemble(start, nb_insn=inscount)])
         return
 
     @parse_args
