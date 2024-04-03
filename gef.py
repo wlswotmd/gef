@@ -79006,14 +79006,16 @@ class QemuDeviceInfoCommand(GenericCommand):
         # get symbol related device
         try:
             nm = which("nm")
-        except FileNotFoundError:
-            err("Missing `nm` command")
+        except FileNotFoundError as e:
+            err("{}".format(e))
             return
+
         try:
             result = gef_execute_external([nm, qemu_path], as_list=True)
         except subprocess.CalledProcessError:
             err("Executing `nm` error")
             return
+
         for line in result:
             if device_name not in line:
                 continue
