@@ -82472,6 +82472,12 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
+        try:
+            which("objcopy")
+        except FileNotFoundError as e:
+            err("{}".format(e))
+            return
+
         if not args.quiet:
             info("Wait for memory scan")
         self.quiet = args.quiet
