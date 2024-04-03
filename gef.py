@@ -30468,16 +30468,14 @@ class GotCommand(GenericCommand):
         for name, start, end in ranges:
             if start <= addr < end:
                 return name
-        else:
-            return "???"
+        return "???"
 
     def get_section_sym(self, addr):
         ranges = self.get_shdr_range()
         for name, start, end in ranges:
             if start <= addr < end:
                 return " <{:s}+{:#x}>".format(name, addr - start)
-        else:
-            return ""
+        return ""
 
     def print_plt_got(self):
         width = get_format_address_width()
