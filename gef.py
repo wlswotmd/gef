@@ -11744,35 +11744,45 @@ def get_explored_regions():
                 stack_permission = "rwx" # no GNU_STACK phdr means no-NX
         regions += make_regions(current_arch.sp, "[stack]", stack_permission)
 
-    # registers
-    for regname in current_arch.all_registers:
-        try:
-            regions += make_regions(get_register(regname), "<explored>")
-        except TypeError:
-            pass
-
-    # walk from stack top
-    sp = current_arch.sp
-    data = None
-    if sp is not None:
-        try:
-            data = read_memory(sp & gef_getpagesize_mask_high(), gef_getpagesize())
-        except gdb.MemoryError:
-            pass
-    if data:
-        data = slice_unpack(data, current_arch.ptrsize)
-        data = list(set(data))
-        for d in data:
-            regions += make_regions(d, "<explored>")
-
     # walk from known map, because qemu may maps extra regions (?)
     for r in regions.copy():
         regions += make_regions(r.page_start - 1, "<explored>", str(r.permission))
         regions += make_regions(r.page_end + 1, "<explored>", str(r.permission))
 
+    queue = set()
+
+    # registers
+    for regname in current_arch.all_registers:
+        v = get_register(regname)
+        if v is None:
+            continue
+        queue.add(v & gef_getpagesize_mask_high())
+
+    # walk from stack top
+    sp = current_arch.sp
+    if sp is not None:
+        try:
+            data = read_memory(sp & gef_getpagesize_mask_high(), gef_getpagesize())
+            data = slice_unpack(data, current_arch.ptrsize)
+            queue |= {d & gef_getpagesize_mask_high() for d in data}
+        except gdb.MemoryError:
+            pass
+
+    # reduce queue
+    merged_queue = []
+    for addr in sorted(queue):
+        if not is_valid_addr(addr):
+            continue
+        if addr - gef_getpagesize() in merged_queue:
+            continue
+        merged_queue.append(addr)
+
+    # add regions
+    for addr in merged_queue:
+        regions += make_regions(addr, "<explored>")
+
     # ok
     regions = sorted(regions, key=lambda x: x.page_start)
-
     return regions
 
 
