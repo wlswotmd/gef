@@ -14753,10 +14753,17 @@ class VdsoCommand(GenericCommand):
         text_size = shdr.sh_size
         text_end = text_start + text_size
 
-        # pdisas
-        ret = gdb.execute("capstone-disassemble {:#x} -l {:#x}".format(text_start, text_size), to_string=True)
+        # disassemble
+        try:
+            __import__("capstone")
+            ret = gdb.execute("capstone-disassemble {:#x} -l {:#x}".format(text_start, text_size), to_string=True)
+            result_lines = ret.splitlines()
+        except ImportError:
+            gen = gdb_disassemble(text_start, end_pc=text_end - 1)
+            result_lines = [str(x) for x in gen]
+
         text_lines = []
-        for line in ret.splitlines():
+        for line in result_lines:
             if int(Color.remove_color(line.split()[0]), 16) < text_end:
                 text_lines.append(line)
             else:
