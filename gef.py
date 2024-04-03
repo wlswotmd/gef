@@ -11513,15 +11513,21 @@ def get_explored_regions():
     if current_arch is None:
         return []
 
-    regions = []
+    def is_valid_addr_fast(addr):
+        try:
+           gdb.selected_inferior().read_memory(addr, 1)
+           return True
+        except gdb.MemoryError:
+            return False
 
     def get_region_start_end(addr):
         addr &= gef_getpagesize_mask_high()
-        if not is_valid_addr(addr):
+        if not is_valid_addr_fast(addr):
             return None, None
         region_start = addr
         region_end = addr + gef_getpagesize()
 
+        nonlocal regions
         end_addrs = [r.page_end for r in regions]
         start_addrs = [r.page_start for r in regions]
 
@@ -11532,7 +11538,7 @@ def get_explored_regions():
                 break
             if region_start in end_addrs:
                 break
-            if not is_valid_addr(region_start - gef_getpagesize()):
+            if not is_valid_addr_fast(region_start - gef_getpagesize()):
                 break
             region_start -= gef_getpagesize()
 
@@ -11543,7 +11549,7 @@ def get_explored_regions():
                 break
             if region_end in start_addrs:
                 break
-            if not is_valid_addr(region_end):
+            if not is_valid_addr_fast(region_end):
                 break
             region_end += gef_getpagesize()
         return region_start, region_end
@@ -11552,6 +11558,7 @@ def get_explored_regions():
         if addr is None:
             return []
         # check if already in region
+        nonlocal regions
         for rg in regions:
             if rg.page_start <= addr < rg.page_end:
                 return []
@@ -11691,7 +11698,7 @@ def get_explored_regions():
 
         return link_map
 
-    def _get_filepath():
+    def get_filepath_wrapper():
         filepath = get_filepath()
         if filepath:
             return filepath
@@ -11702,50 +11709,55 @@ def get_explored_regions():
 
     def parse_region_from_link_map(link_map):
         current = link_map
-
-        regions = []
+        new_regions = []
         while True:
             l_addr = read_int_from_memory(current + current_arch.ptrsize * 0)
             l_name = read_int_from_memory(current + current_arch.ptrsize * 1)
             l_next = read_int_from_memory(current + current_arch.ptrsize * 3)
             name = read_cstring_from_memory(l_name)
             if not name:
-                name = _get_filepath() or "[code]"
-            regions += parse_region_from_ehdr(l_addr, name)
+                name = get_filepath_wrapper() or "[code]"
+            new_regions += parse_region_from_ehdr(l_addr, name)
             if l_next == 0:
                 break
             current = l_next
-        return regions
+        return new_regions
 
-    # auxv parse
-    auxv = gef_get_auxiliary_values()
-    if auxv:
+    def parse_auxv():
+        auxv = gef_get_auxiliary_values()
+        if not auxv:
+            return []
+
+        new_regions = []
         codebase = auxv.get("AT_PHDR", None) or auxv.get("AT_ENTRY", None)
 
         # plan1: from link_map info (code, all loaded shared library)
         link_map = get_link_map(codebase)
         if link_map:
-            regions += parse_region_from_link_map(link_map)
+            new_regions += parse_region_from_link_map(link_map)
 
         # plan2: use each auxv info (for code, linker)
         else:
             # code
             if "AT_PHDR" in auxv:
-                regions += parse_region_from_ehdr(auxv["AT_PHDR"], _get_filepath() or "[code]")
+                new_regions += parse_region_from_ehdr(auxv["AT_PHDR"], get_filepath_wrapper() or "[code]")
             elif "AT_ENTRY" in auxv:
-                regions += parse_region_from_ehdr(auxv["AT_ENTRY"], _get_filepath() or "[code]")
+                new_regions += parse_region_from_ehdr(auxv["AT_ENTRY"], get_filepath_wrapper() or "[code]")
             # linker
             if "AT_BASE" in auxv:
-                regions += parse_region_from_ehdr(auxv["AT_BASE"], get_linker(codebase) or "[linker]")
+                new_regions += parse_region_from_ehdr(auxv["AT_BASE"], get_linker(codebase) or "[linker]")
 
         # vdso
         if "AT_SYSINFO_EHDR" in auxv:
-            regions += parse_region_from_ehdr(auxv["AT_SYSINFO_EHDR"], "[vdso]")
+            new_regions += parse_region_from_ehdr(auxv["AT_SYSINFO_EHDR"], "[vdso]")
         elif "AT_SYSINFO" in auxv:
-            regions += parse_region_from_ehdr(auxv["AT_SYSINFO"], "[vdso]")
+            new_regions += parse_region_from_ehdr(auxv["AT_SYSINFO"], "[vdso]")
+        return new_regions
 
-        # stack registers
+    def parse_stack_register():
+        # get permission
         stack_permission = "rw-"
+        auxv = gef_get_auxiliary_values()
         if auxv and "AT_PHDR" in auxv:
             elf = get_ehdr(auxv["AT_PHDR"] & gef_getpagesize_mask_high())
             for phdr in elf.phdrs:
@@ -11765,44 +11777,54 @@ def get_explored_regions():
                 break
             else:
                 stack_permission = "rwx" # no GNU_STACK phdr means no-NX
-        regions += make_regions(current_arch.sp, "[stack]", stack_permission)
+        # add region
+        return make_regions(current_arch.sp, "[stack]", stack_permission)
+
+    def parse_registers_and_stack():
+        queue = set()
+
+        # registers
+        for regname in current_arch.all_registers:
+            v = get_register(regname)
+            if v is None:
+                continue
+            queue.add(v & gef_getpagesize_mask_high())
+
+        # walk value from stack top
+        sp = current_arch.sp
+        if sp is not None:
+            try:
+                data = read_memory(sp & gef_getpagesize_mask_high(), gef_getpagesize())
+                data = slice_unpack(data, current_arch.ptrsize)
+                queue |= {d & gef_getpagesize_mask_high() for d in set(data)}
+            except gdb.MemoryError:
+                pass
+
+        # contiguous areas are removed from the queue
+        merged_queue = []
+        for addr in sorted(queue):
+            if not is_valid_addr(addr):
+                continue
+            if addr - gef_getpagesize() in merged_queue:
+                continue
+            merged_queue.append(addr)
+
+        # add regions
+        new_regions = []
+        for addr in merged_queue:
+            new_regions += make_regions(addr, "<explored>")
+        return new_regions
+
+    regions = []
+    regions += parse_auxv()
+    regions += parse_stack_register()
 
     # walk from known map, because qemu may maps extra regions (?)
     for r in regions.copy():
         regions += make_regions(r.page_start - 1, "<explored>", str(r.permission))
         regions += make_regions(r.page_end + 1, "<explored>", str(r.permission))
 
-    queue = set()
-
-    # registers
-    for regname in current_arch.all_registers:
-        v = get_register(regname)
-        if v is None:
-            continue
-        queue.add(v & gef_getpagesize_mask_high())
-
-    # walk from stack top
-    sp = current_arch.sp
-    if sp is not None:
-        try:
-            data = read_memory(sp & gef_getpagesize_mask_high(), gef_getpagesize())
-            data = slice_unpack(data, current_arch.ptrsize)
-            queue |= {d & gef_getpagesize_mask_high() for d in data}
-        except gdb.MemoryError:
-            pass
-
-    # reduce queue
-    merged_queue = []
-    for addr in sorted(queue):
-        if not is_valid_addr(addr):
-            continue
-        if addr - gef_getpagesize() in merged_queue:
-            continue
-        merged_queue.append(addr)
-
-    # add regions
-    for addr in merged_queue:
-        regions += make_regions(addr, "<explored>")
+    regions += parse_registers_and_stack()
 
     # ok
     regions = sorted(regions, key=lambda x: x.page_start)
