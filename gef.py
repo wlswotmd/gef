@@ -13924,7 +13924,7 @@ class NiCommand(GenericCommand):
             exc_type, exc_value, exc_traceback = sys.exc_info()
             if str(exc_value).startswith("Cannot access memory at address"):
                 if is_valid_addr(current_arch.pc):
-                    gdb.execute("until-next")
+                    gdb.execute("xuntil")
                 else:
                     err(exc_value)
             else:
@@ -14002,7 +14002,7 @@ class SiCommand(GenericCommand):
             exc_type, exc_value, exc_traceback = sys.exc_info()
             if str(exc_value).startswith("Cannot access memory at address"):
                 if is_valid_addr(current_arch.pc):
-                    gdb.execute("until-next")
+                    gdb.execute("xuntil")
                 else:
                     err(exc_value)
             else:
@@ -14754,7 +14754,7 @@ class VdsoCommand(GenericCommand):
         text_end = text_start + text_size
 
         # pdisas
-        ret = gdb.execute("pdisas {:#x} -l {:#x}".format(text_start, text_size), to_string=True)
+        ret = gdb.execute("capstone-disassemble {:#x} -l {:#x}".format(text_start, text_size), to_string=True)
         text_lines = []
         for line in ret.splitlines():
             if int(Color.remove_color(line.split()[0]), 16) < text_end:
@@ -16690,7 +16690,7 @@ class SearchCfiGadgetsCommand(GenericCommand):
 
     def disasm_addrs(self, candidates):
         for start, inscount in candidates:
-            res = gdb.execute("pdisas --length {:d} {:#x}".format(inscount, start), to_string=True)
+            res = gdb.execute("capstone-disassemble --length {:d} {:#x}".format(inscount, start), to_string=True)
             self.out.append(res)
         return
 
@@ -24497,7 +24497,7 @@ class MainBreakCommand(GenericCommand):
             unhide_context()
             return
         unhide_context()
-        gdb.execute("ctx")
+        gdb.execute("context")
         return
 
 
@@ -25114,9 +25114,9 @@ class ContextCommand(GenericCommand):
                 err("Cannot read memory from $SP (corrupted stack pointer?)")
         else:
             if not current_arch.stack_grow_down:
-                gdb.execute("telescope {:#x} {:d} --no-pager".format(sp, nb_lines))
+                gdb.execute("dereference {:#x} {:d} --no-pager".format(sp, nb_lines))
             else:
-                gdb.execute("telescope {:#x} -{:d} --no-pager".format(sp, nb_lines))
+                gdb.execute("dereference {:#x} -{:d} --no-pager".format(sp, nb_lines))
         return
 
     def get_breakpoints(self):
@@ -25351,7 +25351,7 @@ class ContextCommand(GenericCommand):
                 # some binary fails to resolve "(long)"
                 addr = parse_address(code_orig)
             self.context_title("memory access: {:s} = {:#x}".format(code_orig, addr))
-            gdb.execute("telescope {:#x} 4 --no-pager".format(addr))
+            gdb.execute("dereference {:#x} 4 --no-pager".format(addr))
         return
 
     RE_FINDALL_SEG2 = re.compile(r"((fs|gs):\[?([^,\]]+)\]?)")
@@ -25400,7 +25400,7 @@ class ContextCommand(GenericCommand):
             offset = parse_address(offset)
             addr = align_address(fsgs_val + offset)
             self.context_title("memory access: {:s} = {:#x}".format(code, addr))
-            gdb.execute("telescope {:#x} 4 --no-pager".format(addr))
+            gdb.execute("dereference {:#x} 4 --no-pager".format(addr))
         return
 
     RE_FINDALL_SEG3 = re.compile(r"((es|ds|ss|cs):\[?([^,\]]+)\]?)")
@@ -25433,7 +25433,7 @@ class ContextCommand(GenericCommand):
             addr = ["$" + x if x.isalpha() or self.RE_MATCH_REG5.match(x) else x for x in addr]
             addr = parse_address("".join(addr))
             self.context_title("memory access: {:s} = {:#x}".format(code, addr))
-            gdb.execute("telescope {:#x} 4 --no-pager".format(addr))
+            gdb.execute("dereference {:#x} 4 --no-pager".format(addr))
         return
 
     RE_SUB_BRANCH_ADDR1 = re.compile(r".*# (0x[a-fA-F0-9]+).*")
@@ -26073,7 +26073,7 @@ class ContextCommand(GenericCommand):
             count, fmt = opt[0:2]
             self.context_title("memory:{:#x}".format(address))
             if fmt == "pointers":
-                gdb.execute("telescope {:#x} {:d} --no-pager".format(address, count))
+                gdb.execute("dereference {:#x} {:d} --no-pager".format(address, count))
             else:
                 gdb.execute("hexdump {:s} {:#x} {:d} --no-pager".format(fmt, address, count))
         return
@@ -44735,7 +44735,7 @@ class MagicCommand(GenericCommand):
         except Exception:
             return
 
-        gdb.execute("telescope {:#x} 22 --no-pager".format(vtable))
+        gdb.execute("dereference {:#x} 22 --no-pager".format(vtable))
         return
 
     def magic(self):
@@ -58695,7 +58695,7 @@ class ExecAsm:
         self.modify_regs()
         write_memory(d["pc"], self.code)
         if self.debug:
-            gdb.execute("ctx")
+            gdb.execute("context")
 
         # skip infloop
         dst = d["pc"] + len(current_arch.infloop_insn)
@@ -58712,15 +58712,15 @@ class ExecAsm:
         else:
             gdb.execute("set $pc = {:#x}".format(dst), to_string=True)
         if self.debug:
-            gdb.execute("ctx")
+            gdb.execute("context")
 
         # exec
         self.close_stdout()
         if self.debug:
-            gdb.execute("ctx")
+            gdb.execute("context")
         gdb.execute("stepi {:d}".format(self.step), to_string=True)
         if self.debug:
-            gdb.execute("ctx")
+            gdb.execute("context")
         self.revert_stdout()
 
         # get result
@@ -58885,9 +58885,9 @@ class TlsCommand(GenericCommand):
             return
 
         gef_print(titlify("TLS-{:#x}".format(current_arch.ptrsize * 16)))
-        gdb.execute("telescope $tls-{:#x} 16 --no-pager".format(current_arch.ptrsize * 16))
+        gdb.execute("dereference $tls-{:#x} 16 --no-pager".format(current_arch.ptrsize * 16))
         gef_print(titlify("TLS"))
-        gdb.execute("telescope $tls 16 --no-pager")
+        gdb.execute("dereference $tls 16 --no-pager")
         return
 
 
@@ -65417,7 +65417,7 @@ class KernelBpfCommand(GenericCommand):
             bpf_func = read_int_from_memory(prog + self.offset_bpf_func)
             self.out.append(fmt.format(i, prog, t1, t2, tag, aux, bpf_func))
             if self.verbose:
-                ret = gdb.execute("pdisas {:#x}".format(bpf_func), to_string=True).rstrip()
+                ret = gdb.execute("capstone-disassemble {:#x}".format(bpf_func), to_string=True).rstrip()
                 self.out.append(ret)
                 self.out.append("      ...")
         return
@@ -65472,7 +65472,7 @@ class KernelBpfCommand(GenericCommand):
 
             if self.verbose:
                 if map_type == 2: # ARRAY
-                    res = gdb.execute("telescope -n {:#x} {:#x}".format(union_array, max_ents), to_string=True)
+                    res = gdb.execute("dereference -n {:#x} {:#x}".format(union_array, max_ents), to_string=True)
                     self.out.append(res.rstrip())
         return
 
@@ -79222,7 +79222,7 @@ class ExecUntilCommand(GenericCommand):
                         self.err = "Detected infinity loop prev_addr ({:#x})".format(prev_addr)
                         break
                     # maybe rep prefix
-                    gdb.execute("until-next")
+                    gdb.execute("xuntil")
                     # recheck
                     if prev_prev_addr == prev_addr == current_arch.pc:
                         self.err = "Detected infinity loop prev_addr ({:#x})".format(prev_addr)
@@ -80122,7 +80122,7 @@ class KmallocTracerCommand(GenericCommand):
         if not is_valid_addr(loc):
             err("Invalid address")
             return
-        gdb.execute("telescope -n {:#x} 8".format(loc))
+        gdb.execute("dereference -n {:#x} 8".format(loc))
         return
 
     @staticmethod
@@ -81634,7 +81634,7 @@ class KmallocAllocatedByCommand(GenericCommand):
         breakpoints = KmallocTracerCommand.set_bp_to_kmalloc_kfree(option_info, self.extra_info, target_task)
 
         # wait to stop at userland `sleep` process
-        gdb.execute("ctx off")
+        gdb.execute("context off")
         info("Setup is complete. continueing...")
         gdb.execute("c")
 
@@ -81653,7 +81653,7 @@ class KmallocAllocatedByCommand(GenericCommand):
         hwbp.delete()
         for bp in breakpoints:
             bp.delete()
-        gdb.execute("ctx on")
+        gdb.execute("context on")
         info("Exiting `sleep` process... (Please issue Ctrl+C)")
         gdb.execute("c")
         return
