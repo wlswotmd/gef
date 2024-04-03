@@ -22482,15 +22482,28 @@ class KernelChecksecCommand(GenericCommand):
         cfg = "kernel.unprivileged_userns_clone"
         addr = get_ksysctl(cfg)
         if addr is None:
-            additional = "{:s}: Not found".format(cfg)
+            additional = "{:s}: Not found, Only present in debian-based environments".format(cfg)
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
         else:
             val = u32(read_memory(addr, 4))
-            additional = "{:s}: {:d}".format(cfg, val)
+            additional = "{:s}: {:d}, Only present in debian-based environments".format(cfg, val)
             if val:
                 gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold red"), additional))
             else:
                 gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold green"), additional))
+
+        cfg = "kernel.userns_restrict"
+        addr = get_ksysctl(cfg)
+        if addr is None:
+            additional = "{:s}: Not found, Only present in ALT-linux-based environments".format(cfg)
+            gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
+        else:
+            val = u32(read_memory(addr, 4))
+            additional = "{:s}: {:d}, Only present in ALT-linux-based environments".format(cfg, val)
+            if val:
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
+            else:
+                gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
 
         gef_print(titlify("Other"))
 
