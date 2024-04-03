@@ -82177,42 +82177,96 @@ class AddSymbolTemporaryCommand(GenericCommand):
     @staticmethod
     def create_blank_elf(text_base, text_end):
         try:
-            gcc = which("gcc")
             objcopy = which("objcopy")
         except FileNotFoundError as e:
             err("{}".format(e))
             return None
 
+        try:
+            gcc = which("gcc")
+        except FileNotFoundError:
+            gcc = None
+
         # create light ELF
-        fd, fname = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".c")
-        blank_elf = fname + ".elf"
-        os.fdopen(fd, "w").write("int main() {}")
-        # When adding symbols, it is not necessary to match the architecture of the ELF to be created
-        # and the architecture of the debugged kernel. Regardless of the architecture of the kernel
-        # you are debugging, create an ELF using gcc in the host environment.
-        os.system(f"{gcc} '{fname}' -no-pie -o '{blank_elf}'")
-        os.unlink(f"{fname}")
-        # delete unneeded section for faster (`ksymaddr-remote-apply` will embed many symbols)
-        os.system(f"{objcopy} --only-keep-debug '{blank_elf}'")
-        os.system(f"{objcopy} --strip-all '{blank_elf}'")
-        elf = get_elf_headers(blank_elf)
-        for s in elf.shdrs:
-            section_name = s.sh_name
-            if section_name == "": # null, skip
-                continue
-            if section_name == ".text": # .text is needed, don't remove
-                continue
-            if section_name == ".interp": # broken if remove
-                continue
-            if section_name == ".rela.dyn": # cannot remove
-                continue
-            if section_name == ".dynamic": # cannot remove
-                continue
-            if section_name == ".data": # broken if remove (e.g.: add-symbol-temporary hoge 0x1234)
-                continue
-            if section_name == ".bss": # broken if remove
-                continue
-            os.system(f"{objcopy} --remove-section='{section_name}' '{blank_elf}' 2>/dev/null")
+        if gcc:
+            fd, fname = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".c")
+            blank_elf = fname + ".elf"
+            os.fdopen(fd, "w").write("int main() {}")
+            # When adding symbols, it is not necessary to match the architecture of the ELF to be created
+            # and the architecture of the debugged kernel. Regardless of the architecture of the kernel
+            # you are debugging, create an ELF using gcc in the host environment.
+            os.system(f"{gcc} '{fname}' -no-pie -o '{blank_elf}'")
+            os.unlink(f"{fname}")
+            # delete unneeded section for faster (`ksymaddr-remote-apply` will embed many symbols)
+            os.system(f"{objcopy} --only-keep-debug '{blank_elf}'")
+            os.system(f"{objcopy} --strip-all '{blank_elf}'")
+            elf = get_elf_headers(blank_elf)
+            for s in elf.shdrs:
+                section_name = s.sh_name
+                if section_name == "": # null, skip
+                    continue
+                if section_name == ".text": # .text is needed, don't remove
+                    continue
+                if section_name == ".interp": # broken if remove
+                    continue
+                if section_name == ".rela.dyn": # cannot remove
+                    continue
+                if section_name == ".dynamic": # cannot remove
+                    continue
+                if section_name == ".data": # broken if remove (e.g.: add-symbol-temporary hoge 0x1234)
+                    continue
+                if section_name == ".bss": # broken if remove
+                    continue
+                os.system(f"{objcopy} --remove-section='{section_name}' '{blank_elf}' 2>/dev/null")
+        else:
+            # not found gcc. we use pre-built elf for x64
+            blank_elf_skelton = [
+                "7f45 4c46 0201 0100 0000 0000 0000 0000 0200 3e00 0100 0000 2010 4000 0000 0000",
+                "4000 0000 0000 0000 1803 0000 0000 0000 0000 0000 4000 3800 0c00 4000 0800 0700",
+                "0600 0000 0400 0000 4000 0000 0000 0000 4000 4000 0000 0000 4000 4000 0000 0000",
+                "a002 0000 0000 0000 a002 0000 0000 0000 0800 0000 0000 0000 0300 0000 0400 0000",
+                "1803 0000 0000 0000 1803 4000 0000 0000 1803 4000 0000 0000 0000 0000 0000 0000",
+                "1c00 0000 0000 0000 0100 0000 0000 0000 0100 0000 0400 0000 0000 0000 0000 0000",
+                "0000 4000 0000 0000 0000 4000 0000 0000 e002 0000 0000 0000 a804 0000 0000 0000",
+                "0010 0000 0000 0000 0100 0000 0500 0000 2000 0000 0000 0000 2010 4000 0000 0000",
+                "2010 4000 0000 0000 0000 0000 0000 0000 f500 0000 0000 0000 0010 0000 0000 0000",
+                "0100 0000 0400 0000 e002 0000 0000 0000 2820 4000 0000 0000 0000 0000 0000 0000",
+                "0000 0000 0000 0000 0000 0000 0000 0000 0010 0000 0000 0000 0100 0000 0600 0000",
+                "480e 0000 0000 0000 483e 4000 0000 0000 483e 4000 0000 0000 0000 0000 0000 0000",
+                "d001 0000 0000 0000 0010 0000 0000 0000 0200 0000 0600 0000 480e 0000 0000 0000",
+                "483e 4000 0000 0000 483e 4000 0000 0000 0000 0000 0000 0000 9001 0000 0000 0000",
+                "0800 0000 0000 0000 0400 0000 0400 0000 0000 0000 0000 0000 3803 4000 0000 0000",
+                "0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0800 0000 0000 0000",
+                "0400 0000 0400 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000",
+                "0000 0000 0000 0000 0000 0000 0000 0000 0800 0000 0000 0000 53e5 7464 0400 0000",
+                "0000 0000 0000 0000 3803 4000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000",
+                "0000 0000 0000 0000 0800 0000 0000 0000 50e5 7464 0400 0000 0000 0000 0000 0000",
+                "0420 4000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000",
+                "0800 0000 0000 0000 51e5 7464 0600 0000 0000 0000 0000 0000 0000 0000 0000 0000",
+                "0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0800 0000 0000 0000",
+                "002e 7368 7374 7274 6162 002e 696e 7465 7270 002e 7265 6c61 2e64 796e 002e 7465",
+                "7874 002e 6479 6e61 6d69 6300 2e64 6174 6100 2e62 7373 0000 0000 0000 0000 0000",
+                "0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000",
+                "0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0b00 0000 0800 0000",
+                "0200 0000 0000 0000 1803 4000 0000 0000 1803 0000 0000 0000 1c00 0000 0000 0000",
+                "0000 0000 0000 0000 0100 0000 0000 0000 0000 0000 0000 0000 1300 0000 0800 0000",
+                "0200 0000 0000 0000 7804 4000 0000 0000 1803 0000 0000 0000 3000 0000 0000 0000",
+                "0000 0000 0000 0000 0800 0000 0000 0000 1800 0000 0000 0000 1d00 0000 0800 0000",
+                "0600 0000 0000 0000 2010 4000 0000 0000 2010 0000 0000 0000 f500 0000 0000 0000",
+                "0000 0000 0000 0000 1000 0000 0000 0000 0000 0000 0000 0000 2300 0000 0800 0000",
+                "0300 0000 0000 0000 483e 4000 0000 0000 480e 0000 0000 0000 9001 0000 0000 0000",
+                "0000 0000 0000 0000 0800 0000 0000 0000 1000 0000 0000 0000 2c00 0000 0800 0000",
+                "0300 0000 0000 0000 0040 4000 0000 0000 480e 0000 0000 0000 1000 0000 0000 0000",
+                "0000 0000 0000 0000 0800 0000 0000 0000 0000 0000 0000 0000 3200 0000 0800 0000",
+                "0300 0000 0000 0000 1040 4000 0000 0000 480e 0000 0000 0000 0800 0000 0000 0000",
+                "0000 0000 0000 0000 0100 0000 0000 0000 0000 0000 0000 0000 0100 0000 0300 0000",
+                "0000 0000 0000 0000 0000 0000 0000 0000 e002 0000 0000 0000 3700 0000 0000 0000",
+                "0000 0000 0000 0000 0100 0000 0000 0000 0000 0000 0000 0000",
+            ]
+            blank_elf_skelton = bytes.fromhex("".join(blank_elf_skelton).replace(" ", ""))
+            fd, blank_elf = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".elf")
+            os.fdopen(fd, "wb").write(blank_elf_skelton)
+            elf = get_elf_headers(blank_elf)
 
         # fix .text base address
         os.system(f"{objcopy} --change-section-address .text={text_base:#x} '{blank_elf}' 2>/dev/null")

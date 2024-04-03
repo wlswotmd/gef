@@ -8,7 +8,7 @@ fi
 
 echo "[+] apt"
 apt-get update
-apt-get install -y gdb-multiarch binutils gcc
+apt-get install -y gdb-multiarch binutils
 
 echo "[+] download gef"
 if [ -e /root/.gdbinit-gef.py ]; then
