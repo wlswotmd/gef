@@ -14093,7 +14093,7 @@ class UpCommand(GenericCommand):
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("n", metavar="N", nargs="*", default=1, help="Number of frames to move. (default: %(default)s)")
+    parser.add_argument("n", metavar="N", nargs="?", type=int, default=1, help="Number of frames to move. (default: %(default)s)")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -14142,7 +14142,7 @@ class DownCommand(GenericCommand):
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("n", metavar="N", nargs="*", default=1, help="Number of frames to move. (default: %(default)s)")
+    parser.add_argument("n", metavar="N", nargs="?", type=int, default=1, help="Number of frames to move. (default: %(default)s)")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -25946,15 +25946,17 @@ class ContextCommand(GenericCommand):
             # current index coloring
             if current_frame == orig_frame:
                 idx = Color.colorify("#{}".format(level), "bold green")
+                arrow = "-> "
             else:
                 idx = Color.colorify("#{}".format(level), "bold magenta")
+                arrow = "   "
 
             # print
             if frame_name:
                 frame_name = Color.colorify(frame_name, "bold yellow")
-                gef_print("[{}] {!s}{:s} (frame name: {:s})".format(idx, lookup_address(pc), sym, frame_name))
+                gef_print("{:s}[{}] {!s}{:s} (frame name: {:s})".format(arrow, idx, lookup_address(pc), sym, frame_name))
             else:
-                gef_print("[{}] {!s}{:s}".format(idx, lookup_address(pc), sym))
+                gef_print("{:s}[{}] {!s}{:s}".format(arrow, idx, lookup_address(pc), sym))
 
             # go next frame
             try:
