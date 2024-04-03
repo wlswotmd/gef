@@ -82346,6 +82346,12 @@ class AddSymbolTemporaryCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
+        try:
+            objcopy = which("objcopy")
+        except FileNotFoundError as e:
+            err("{}".format(e))
+            return
+
         # check address validity
         bits = get_memory_alignment(in_bits=True)
         max_address = (1 << bits) - 1
@@ -82375,7 +82381,6 @@ class AddSymbolTemporaryCommand(GenericCommand):
             info("1 entries will be added")
 
         # embedding symbols
-        objcopy = which("objcopy")
         relative_addr = args.function_start - text_base
         os.system(f"{objcopy} --add-symbol '{args.function_name}'=.text:{relative_addr:#x},global,function '{sym_elf}' 2>/dev/null")
 
