@@ -64422,13 +64422,23 @@ class BuddyDumpCommand(GenericCommand):
             return int(r.group(1), 16)
         return None
 
+    # for per_cpu_pageset
     def dump_list(self, list_i, i, is_highmem):
         heap_page_color = get_gef_setting("theme.heap_page_address")
         chunk_size_color = get_gef_setting("theme.heap_chunk_size")
         freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
         align = get_format_address_width()
 
-        self.add_msg("  pcp_index: {:d}".format(i))
+        MIGRATE_PCPTYPES = 3
+        order = i // MIGRATE_PCPTYPES
+        mtype = i % MIGRATE_PCPTYPES
+
+        size = 0x1000 * (2 ** order)
+        size_str = Color.colorify("{:#08x}".format(size), chunk_size_color)
+
+        self.add_msg("  pcp_index: {:d}, order: {:d} ({:s} bytes), mtype: {:d} (={:s})".format(
+            i, order, size_str, mtype, self.migrate_types[mtype],
+        ))
 
         seen = [list_i]
         current = read_int_from_memory(list_i)
@@ -64440,11 +64450,6 @@ class BuddyDumpCommand(GenericCommand):
             page = current - self.offset_lru
             page_str = Color.colorify("{:#0{:d}x}".format(page, align), freed_address_color)
 
-            # mtype, order
-            index = u32(read_memory(page + self.offset_index, 4))
-            mtype = index >> 8
-            order = index & 0xff
-
             # filtering
             if self.mtype_filter and mtype not in self.mtype_filter:
                 current = read_int_from_memory(current)
@@ -64452,10 +64457,6 @@ class BuddyDumpCommand(GenericCommand):
             if self.order_filter and order not in self.order_filter:
                 current = read_int_from_memory(current)
                 continue
-
-            # size info
-            size = 0x1000 * (2 ** order)
-            size_str = Color.colorify("{:#08x}".format(size), chunk_size_color)
 
             # address info
             virt_str = "???"
@@ -64473,9 +64474,7 @@ class BuddyDumpCommand(GenericCommand):
                     phys_str = "{:#0{:d}x}-{:#0{:d}x}".format(phys, align, phys + size, align)
 
             # create msg
-            msg = "    page:{:s}  size:{:s}  virt:{:s}  phys:{:s}  order:{:d}  mtype:{:d} (={:s})".format(
-                page_str, size_str, virt_str, phys_str, order, mtype, self.migrate_types[mtype],
-            )
+            msg = "    page:{:s}  size:{:s}  virt:{:s}  phys:{:s} (pcp)".format(page_str, size_str, virt_str, phys_str)
 
             # add msg
             if self.sort:
@@ -77984,14 +77983,20 @@ class PagewalkWithHintsCommand(GenericCommand):
         if not self.quiet:
             info("resolve buddy")
         res = gdb.execute("buddy-dump --quiet --no-pager --sort", to_string=True)
+
         for line in res.splitlines():
             line = Color.remove_color(line)
-            _page_str, size_str, virt_str, _phys_str, *mtype_order = line.split()
-            if "???" in virt_str:
+            if not line.startswith("    "):
                 continue
+
+            _page_str, size_str, virt_str, _phys_str, *pcp = line.split()
+
+            if "???" in virt_str: # maybe x86 highmem
+                continue
+
             size = int(size_str[5:], 16)
             virt = int(virt_str[5:].split("-")[0], 16)
-            if mtype_order:
+            if pcp:
                 description = "free page in buddy allocator (pcp)"
             else:
                 description = "free page in buddy allocator"
