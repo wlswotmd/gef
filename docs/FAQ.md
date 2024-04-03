@@ -68,7 +68,13 @@ If you install with `install-minimal.sh`, you will not be able to use these comm
 
 * `apt` packages
     * `gdb-multiarch`: `gdb` is also good, but of course one is required.
-    * `binutils`: Used by `checksec`, `got`, `add-symbol-temporary` and `ksymaddr-remote-apply` commands.
+    * `binutils`: Used by `checksec`, `got`, `rp --kernel`, `qemu-device-info`, `add-symbol-temporary` and `ksymaddr-remote-apply` commands.
+        * `checksec` uses `readelf` and `objdump`.
+        * `got` uses `readelf` and `objdump`.
+        * `rp --kernel` uses `nm`.
+        * `qemu-device-info` uses `nm`.
+        * `add-symbol-temporary` uses `objcopy`.
+        * `ksymaddr-remote-apply` uses `objcopy`.
     * `python3-pip`: Used to install `crccheck`, `unicorn`, `capstone`, `ropper`, `keystone-engine` and `tqdm` packages. Used to install `vmlinux-to-elf`.
     * `git`: Used to install `vmlinux-to-elf`. Used by `diffo` command.
     * `ruby-dev`: Used to install `one_gadget` and `seccomp-tools`.
