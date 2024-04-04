@@ -1,5 +1,17 @@
 # FAQ
 
+## Table of Contents
+* [About GEF's file or directory](#about-gefs-file-or-directory)
+* [About the host environment](#about-the-host-environment)
+* [About the guest (debugged) environment](#about-the-guest-debugged-environment)
+* [About GEF settings](#about-gef-settings)
+* [About commands](#about-commands)
+* [About internal mechanism](#about-internal-mechanism)
+* [About python interface](#about-python-interface)
+* [About development schedule](#about-development-schedule)
+* [About reporting, etc.](#about-reporting-etc)
+* [Other memo (Japanese)](#other-memo-japanese)
+
 
 # About GEF's file or directory
 
@@ -68,28 +80,28 @@ If you install with `install-minimal.sh`, you will not be able to use these comm
 
 * `apt` packages
     * `gdb-multiarch`: `gdb` is also good, but of course one is required.
-    * `binutils`: Used by `checksec`, `got`, `rp --kernel`, `qemu-device-info`, `add-symbol-temporary` and `ksymaddr-remote-apply` commands.
+    * `binutils`: Required by following commands.
         * `checksec` uses `readelf` and `objdump`.
         * `got` uses `readelf` and `objdump`.
         * `rp --kernel` uses `nm`.
         * `qemu-device-info` uses `nm`.
         * `add-symbol-temporary` uses `objcopy`.
         * `ksymaddr-remote-apply` uses `objcopy`.
-    * `python3-pip`: Used to install `crccheck`, `unicorn`, `capstone`, `ropper`, `keystone-engine` and `tqdm` packages. Used to install `vmlinux-to-elf`.
-    * `git`: Used to install `vmlinux-to-elf`. Used by `diffo` command.
-    * `ruby-dev`: Used to install `one_gadget` and `seccomp-tools`.
+    * `python3-pip`: Required to install some python3 packages and `vmlinux-to-elf`.
+    * `git`: Required to install `vmlinux-to-elf`. Required by `diffo` command.
+    * `ruby-dev`: Required to install `one_gadget` and `seccomp-tools`.
 * `python3` packages
-    * `crccheck`: Used by `uefi-ovmf-info` and `hash-memory` commands.
-    * `unicorn`: Used by the `unicorn-emulate` command.
-    * `capstone`: Used by the `unicorn-emulate`, `capstone-disassemble`, `dasm` and `asm-list` commands.
-    * `ropper`: Used by the `ropper` command.
-    * `keystone-engine`: Used by `mprotect` and `asm` commands.
+    * `crccheck`: Required by `uefi-ovmf-info` and `hash-memory -v` commands.
+    * `unicorn`: Required by the `unicorn-emulate` command.
+    * `capstone`: Required by the `unicorn-emulate`, `capstone-disassemble`, `dasm` and `asm-list` commands. Also required by `i8086` mode.
+    * `ropper`: Required by the `ropper` command.
+    * `keystone-engine`: Required by `mprotect` and `asm` commands.
     * `tqdm`: It just makes it look better, so GEF will work without it.
 * Others
-  * `vmlinux-to-elf`: Used by `vmlinux-to-elf-apply` command.
-  * `rp++`: Used by `rp` command.
-  * `seccomp-tools`: Used by `seccomp-tools` command.
-  * `one_gadget`: Used by `onegadget` command.
+  * `vmlinux-to-elf`: Required by `vmlinux-to-elf-apply` command.
+  * `rp++`: Required by `rp` command.
+  * `seccomp-tools`: Required by `seccomp-tools` command.
+  * `one_gadget`: Required by `onegadget` command.
 
 ## How can I install GEF offline?
 Please refer to `install.sh` or `install-minimal.sh`, and set it up manually.
@@ -155,32 +167,7 @@ For this reason, software breakpoints that embed `0xcc` in virtual memory cannot
 However, hardware breakpoints can be used without any problems.
 
 
-# About commands
-
-## How does GEF implement kernel analysis related commands without symbols?
-Internally, it consists of several steps.
-
-1. Enumerate memory map informations from the page table structure.
-2. Detect `.rodata` area of kernel from memory map informations.
-3. Scan `.rodata` to identify the kernel version.
-4. Parse the structure of `kallsyms` in `.rodata` and get all "symbol and address" pairs.
-5. If global variable symbols are available at this point, use it. (= `CONFIG_KALLSYMS_ALL=y`).
-    * If not, GEF disassembles the function which uses specified global variable.
-    * By parsing the result, GEF obtains the address of the required global variable.
-    * This is implemented at `KernelAddressHeuristicFinder` class and `KernelAddressHeuristicFinderUtil` class.
-6. Detect the offset of the member of the structure, if necessary.
-    * To identify it heuristically, GEF uses the fact such as whether a value in memory is an address or whether a structure in memory has a specific structure.
-    * At this time, GEF takes into account the presence or absence of members and changes in their order due to differences in kernel versions.
-7. Parse and display the value in memory using all the information detected so far.
-
-As you can see, it doesn't work well if structure members are arranged randomly (`CONFIG_RANDSTRUCT=y`).
-Also, depending on the assembly output by the compiler, it may not be possible to parse it correctly.
-
-## What command should I start with when debugging the kernel?
-Try `pagewalk` , `ks-apply` and `kchecksec`.
-After that, try `slub-dump`, `ktask` and `ksysctl` as well.
-
-Other commands are less important, so check them with `gef help` if necessary.
+# About GEF settings
 
 ## I prefer the AT&T style.
 Please specify each time using the `set disassembly-flavor att` command.
@@ -197,11 +184,25 @@ There is another option is disable colors. Try `gef config gef.disable_color Tru
 ## I don't want to add `-n` to every command to disable pager.
 Try `gef config gef.always_no_pager True` then `gef save`.
 
+
+# About commands
+
+## What command should I start with when debugging the kernel?
+Try `pagewalk` , `ks-apply` and `kchecksec`.
+After that, try `slub-dump`, `ktask` and `ksysctl` as well.
+
+Other commands are less important, so check them with `gef help` if necessary.
+
 ## Is GEF possible to re-display the results of a command (for using less-pager)?
 Basically you can't.
 
 Please save as appropriate with `|$cat > /tmp/foo.txt` while the less-pager is running.
 Or try `gef config gef.keep_pager_result True` then `gef save`. From next time onwards, temporary files will no longer be deleted.
+
+## Is GEF possible to pass the result of a command to a shell command?
+Yes, you can use built-in `pipe` command.
+
+For example, `pipe elf-info -n |grep .data` or `|pdisas |grep call`.
 
 ## `ktask` (or other kernel related commands) does not work.
 The kernel you are debugging may have been built with `CONFIG_RANDSTRUCT=y`.
@@ -230,11 +231,6 @@ Try `pagewalk` command.
 
 When connected to qemu-system or vmware's gdb stub, the `vmmap` command is just redirected to the `pagewalk` command.
 All options are ignored at this time. If you want to use some options, please use the `pagewalk` command instead of `vmmap` command.
-
-## Is GEF possible to pass the result of a command to a shell command?
-Yes, you can use built-in `pipe` command.
-
-For example, `pipe elf-info -n |grep .data` or `|pdisas |grep call`.
 
 ## `vmlinux-to-elf-apply` command causes an error of creating ELF.
 Please update `vmlinux-to-elf` to the latest version.
@@ -279,7 +275,29 @@ This is because `source ~/.gdbinit-gef.py` was written in `/root/.gdbinit`.
 I modified it to `source /root/.gdbinit-gef.py`, then it worked.
 
 
-# About python
+# About internal mechanism
+
+## How does GEF implement kernel analysis related commands without symbols?
+Internally, it consists of several steps.
+
+1. Enumerate memory map informations from the page table structure.
+2. Detect `.rodata` area of kernel from memory map informations.
+3. Scan `.rodata` to identify the kernel version.
+4. Parse the structure of `kallsyms` in `.rodata` and get all "symbol and address" pairs.
+5. If global variable symbols are available at this point, use it. (= `CONFIG_KALLSYMS_ALL=y`).
+    * If not, GEF disassembles the function which uses specified global variable.
+    * By parsing the result, GEF obtains the address of the required global variable.
+    * This is implemented at `KernelAddressHeuristicFinder` class and `KernelAddressHeuristicFinderUtil` class.
+6. Detect the offset of the member of the structure, if necessary.
+    * To identify it heuristically, GEF uses the fact such as whether a value in memory is an address or whether a structure in memory has a specific structure.
+    * At this time, GEF takes into account the presence or absence of members and changes in their order due to differences in kernel versions.
+7. Parse and display the value in memory using all the information detected so far.
+
+As you can see, it doesn't work well if structure members are arranged randomly (`CONFIG_RANDSTRUCT=y`).
+Also, depending on the assembly output by the compiler, it may not be possible to parse it correctly.
+
+
+# About python interface
 
 ## Can I access each GEF command object from `python-interactive`?
 Yes, you can access it using `__LCO__` that means loaded command objects.
