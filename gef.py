@@ -1198,11 +1198,7 @@ class Section:
 
 
 class Elf:
-    """Basic ELF parsing.
-    Ref:
-    - http://www.skyfree.org/linux/references/ELF_Format.pdf
-    - http://refspecs.freestandards.org/elf/elfspec_ppc.pdf
-    - http://refspecs.linuxfoundation.org/ELF/ppc64/PPC-elf64abi.html"""
+    """Basic ELF parsing."""
     # e_ident[EI_MAG0:EI_MAG3]
     ELF_MAGIC                = 0x7f454c46
 
@@ -1517,12 +1513,8 @@ class Elf:
     e_shnum                  = None
     e_shstrndx               = None
 
-    def __init__(self, elf="", minimalist=False):
-        """Instantiate an ELF object. The default behavior is to create the object by parsing the ELF file.
-        But in some cases (QEMU-stub), we may just want a simple minimal object with default values."""
-        if minimalist:
-            return
-
+    def __init__(self, elf):
+        """Instantiate an ELF object. The default behavior is to create the object by parsing the ELF file."""
         if isinstance(elf, str):
             if not os.access(elf, os.R_OK):
                 err("'{:s}' not found/readable".format(elf))
@@ -1578,13 +1570,17 @@ class Elf:
                 self.shdrs = []
                 break
         else:
-            # The existence of multiple SHT_NULLs is assumed to be abnormal, and an error is raised.
+            # multiple SHT_NULLs are treated as abnormal
             if sum([x.sh_type == Shdr.SHT_NULL for x in self.shdrs]) > 1:
                 self.shdrs = []
 
         if self.fd is not None:
             self.fd.close()
             self.fd = None
+
+        # It will be unusable after initialization.
+        self.read = None
+        self.seek = None
         return
 
     def __repr__(self):
@@ -1637,6 +1633,62 @@ class Elf:
         for shdr in self.shdrs:
             if shdr.sh_name == name:
                 return shdr
+        return None
+
+    def read_phdr(self, p_type):
+        phdr = self.get_phdr(p_type)
+        if phdr is None:
+            return None
+
+        if self.filename:
+            fd = open(self.filename, "rb")
+            fd.seek(phdr.p_offset)
+            data = fd.read(phdr.p_filesz)
+            fd.close()
+            return data
+
+        if self.addr:
+            read_addr = phdr.p_vaddr
+            if self.is_pie():
+                read_addr += self.addr
+
+            data = read_memory(read_addr, phdr.p_memsz)
+            return data
+
+        return None
+
+    def read_shdr(self, name):
+        shdr = self.get_shdr(name)
+        if shdr is None:
+            return None
+
+        if self.filename:
+            fd = open(self.filename, "rb")
+            fd.seek(shdr.sh_offset)
+            data = fd.read(shdr.sh_size)
+            fd.close()
+            return data
+
+        if self.addr:
+            if shdr.sh_addr > 0:
+                read_addr = shdr.sh_addr
+            else:
+                # e.g. .comment section of vdso
+                """
+                [ #] Name                      Type Address Offset Size EntSiz Flags Link Info Align
+                ...
+                [13] .altinstr_replacement PROGBITS  0x106f 0x106f 0x3c    0x0 AX     0x0  0x0   0x1
+                [14] .comment              PROGBITS     0x0 0x10ab 0x25    0x1 MS     0x0  0x0   0x1
+                [15] .shstrtab               STRTAB     0x0 0x10d0 0x9e    0x0        0x0  0x0   0x1
+                """
+                read_addr = shdr.sh_offset
+
+            if self.is_pie():
+                read_addr += self.addr
+
+            data = read_memory(read_addr, shdr.sh_size)
+            return data
+
         return None
 
     def is_static(self):
