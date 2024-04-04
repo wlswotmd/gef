@@ -81,7 +81,6 @@ If you install with `install-minimal.sh`, you will not be able to use these comm
 * `apt` packages
     * `gdb-multiarch`: `gdb` is also good, but of course one is required.
     * `binutils`: Required by following commands.
-        * `checksec` uses `readelf` and `objdump`.
         * `got` uses `readelf` and `objdump`.
         * `rp --kernel` uses `nm`.
         * `qemu-device-info` uses `nm`.
