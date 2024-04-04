@@ -64120,32 +64120,32 @@ class BuddyDumpCommand(GenericCommand):
     _note_ += "    +--------------------------+\n"
     _note_ += "    |\n"
     _note_ += "    v\n"
-    _note_ += "  +-pglist_data---------------------------+\n"
-    _note_ += "  | node_zones[MAX_NR_ZONES]              |\n"
-    _note_ += "  |   +-node_zones[0]--------------------+|   +--->+-per_cpu_pages-------+\n"
-    _note_ += "  |   |  ...                             ||   |    | ...                 |\n"
-    _note_ += "  |   |  per_cpu_pageset                 ||---+    | lists[NR_PCP_LISTS] |    +-page-----+\n"
-    _note_ += "  |   |  ...                             ||        |   +-lists[0]-------+|    | flags    |\n"
-    _note_ += "  |   |  name                            ||        |   | next           ||--->| lru.next |->...\n"
-    _note_ += "  |   |  ...                             ||        |   | prev           ||    | lru.prev |\n"
-    _note_ += "  |   |  free_area[MAX_ORDER]            ||        |   +-lists[1]-------+|    | ...      |\n"
-    _note_ += "  |   |    +-free_area[0]---------------+||        |   | ...            ||    +----------+\n"
-    _note_ += "  |   |    | free_list[MIGRATE_TYPES]   |||        |   +----------------+|\n"
-    _note_ += "  |   |    |   +-free_list[0]----------+|||        +---------------------+\n"
-    _note_ += "  |   |    |   | next                  ||||---+\n"
-    _note_ += "  |   |    |   | prev                  ||||   |\n"
-    _note_ += "  |   |    |   +-free_list[1]----------+|||   |    +-page-----+    +-page-----+    +-page-----+\n"
-    _note_ += "  |   |    |   | ...                   ||||   |    | flags    |    | flags    |    | flags    |\n"
-    _note_ += "  |   |    |   +-----------------------+|||   +--->| lru.next |--->| lru.next |--->| lru.next |->...\n"
-    _note_ += "  |   |    | nr_free                    |||        | lru.prev |    | lru.prev |    | lru.prev |\n"
-    _note_ += "  |   |    +-free_area[1]---------------+||        | ...      |    | ...      |    | ...      |\n"
-    _note_ += "  |   |    | ...                        |||        +----------+    +----------+    +----------+\n"
-    _note_ += "  |   |    +----------------------------+||\n"
-    _note_ += "  |   +-node_zones[1]--------------------+|\n"
-    _note_ += "  |   |  ...                             ||\n"
-    _note_ += "  |   +----------------------------------+|\n"
-    _note_ += "  | ...                                   |\n"
-    _note_ += "  +---------------------------------------+\n"
+    _note_ += "  +-pglist_data------------------------------+\n"
+    _note_ += "  | node_zones[MAX_NR_ZONES]                 |\n"
+    _note_ += "  |   +-node_zones[0]----------------------+ |   +--->+-per_cpu_pages--------+\n"
+    _note_ += "  |   |  ...                               | |   |    | ...                  |\n"
+    _note_ += "  |   |  per_cpu_pageset                   |-|---+    | lists[NR_PCP_LISTS]  |    +-page-----+\n"
+    _note_ += "  |   |  ...                               | |        |   +-lists[0]-------+ |    | flags    |\n"
+    _note_ += "  |   |  name                              | |        |   | next           | |--->| lru.next |->...\n"
+    _note_ += "  |   |  ...                               | |        |   | prev           | |    | lru.prev |\n"
+    _note_ += "  |   |  free_area[MAX_ORDER]              | |        |   +-lists[1]-------+ |    | ...      |\n"
+    _note_ += "  |   |    +-free_area[0]----------------+ | |        |   | ...            | |    +----------+\n"
+    _note_ += "  |   |    | free_list[MIGRATE_TYPES]    | | |        |   +----------------+ |\n"
+    _note_ += "  |   |    |   +-free_list[0]----------+ | | |        +----------------------+\n"
+    _note_ += "  |   |    |   | next                  |-|-|-|---+\n"
+    _note_ += "  |   |    |   | prev                  | | | |   |\n"
+    _note_ += "  |   |    |   +-free_list[1]----------+ | | |   |    +-page-----+    +-page-----+    +-page-----+\n"
+    _note_ += "  |   |    |   | ...                   | | | |   |    | flags    |    | flags    |    | flags    |\n"
+    _note_ += "  |   |    |   +-----------------------+ | | |   +--->| lru.next |--->| lru.next |--->| lru.next |->...\n"
+    _note_ += "  |   |    | nr_free                     | | |        | lru.prev |    | lru.prev |    | lru.prev |\n"
+    _note_ += "  |   |    +-free_area[1]----------------+ | |        | ...      |    | ...      |    | ...      |\n"
+    _note_ += "  |   |    | ...                         | | |        +----------+    +----------+    +----------+\n"
+    _note_ += "  |   |    +-----------------------------+ | |\n"
+    _note_ += "  |   +-node_zones[1]----------------------+ |\n"
+    _note_ += "  |   |  ...                               | |\n"
+    _note_ += "  |   +------------------------------------+ |\n"
+    _note_ += "  | ...                                      |\n"
+    _note_ += "  +------------------------------------------+\n"
     _note_ += "\n"
     _note_ += "You can combine this result with information of in-use space. Try using `pagewalk-with-hints` command."
 
@@ -64414,13 +64414,10 @@ class BuddyDumpCommand(GenericCommand):
             union {
                 struct {
                     struct list_head lru;
-                    struct address_space *mapping
-                    pgoff_t index;
                     ...
         """
-        # page->{lru,index}
+        # page->lru
         self.offset_lru = current_arch.ptrsize
-        self.offset_index = current_arch.ptrsize * 4
 
         self.initialized = True
         return True
