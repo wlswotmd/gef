@@ -76,6 +76,7 @@ make && make install
 
 ## If I use `install-minimal.sh`, which commands will no longer be available?
 Followings are the breakdown. It may not be comprehensive.
+
 If you install with `install-minimal.sh`, you will not be able to use these commands unless you install the required packages and tools.
 
 * `apt` packages
@@ -91,9 +92,9 @@ If you install with `install-minimal.sh`, you will not be able to use these comm
     * `ruby-dev`: Required to install `one_gadget` and `seccomp-tools`.
 * `python3` packages
     * `crccheck`: Required by `uefi-ovmf-info` and `hash-memory -v` commands.
-    * `unicorn`: Required by the `unicorn-emulate` command.
-    * `capstone`: Required by the `unicorn-emulate`, `capstone-disassemble`, `dasm` and `asm-list` commands. Also required by `i8086` mode.
-    * `ropper`: Required by the `ropper` command.
+    * `unicorn`: Required by `unicorn-emulate` command.
+    * `capstone`: Required by `unicorn-emulate`, `capstone-disassemble`, `dasm` and `asm-list` commands. Also required by `i8086` mode.
+    * `ropper`: Required by `ropper` command.
     * `keystone-engine`: Required by `mprotect` and `asm` commands.
     * `tqdm`: It just makes it look better, so GEF will work without it.
 * Others
