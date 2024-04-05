@@ -4686,13 +4686,13 @@ def checksec(filename):
         results["Canary"] = None # it means unknown
 
         # heuristic search
-        if is_x86() and objdump_command:
-            proc = subprocess.Popen([objdump_command, "-d", filename], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if is_x86_64():
+        if elf.e_machine in (Elf.EM_X86_64, Elf.EM_386) and objdump_command:
+            if elf.e_machine == Elf.EM_X86_64:
                 kw = b"%fs:0x28"
-            elif is_x86_32():
+            else: # 32-bit
                 kw = b"%gs:0x14"
 
+            proc = subprocess.Popen([objdump_command, "-d", filename], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             results["Canary"] = False
             for _ in range(0x10000):
                 if kw in proc.stdout.readline():
@@ -4753,7 +4753,7 @@ def checksec(filename):
         results["Fortify"] = exists_sym(dynstr, strtab, keywords)
 
     # CET flags via Ehdr
-    if is_x86():
+    if elf.e_machine in (Elf.EM_X86_64, Elf.EM_386):
         results["CET IBT flag"] = False
         results["CET SHSTK flag"] = False
         note_gnu_property = elf.read_phdr(Phdr.PT_GNU_PROPERTY)
@@ -4763,7 +4763,7 @@ def checksec(filename):
             results["CET SHSTK flag"] = features & 2 # GNU_PROPERTY_X86_FEATURE_1_SHSTK
 
     # PAC
-    if is_arm64():
+    if elf.e_machine == Elf.EM_AARCH64:
         pac_ops = [
             b"paciasp", b"pacia", b"pacibsp", b"pacib", b"pacda", b"pacdb", b"pacga",
             b"autiasp", b"autia", b"autibsp", b"autib", b"autda", b"autdb",
@@ -21670,16 +21670,15 @@ class ChecksecCommand(GenericCommand):
         else:
             gef_print("{:<40s}: {:s}".format("Debuginfo", Color.colorify("Stripped", "bold green")))
 
-        # Intel CET
-        if is_x86():
-            # SHSTK flags via Ehdr
+        # Intel CET SHSTK flags via Ehdr
+        if "CET SHSTK flag" in sec:
             if sec["CET SHSTK flag"]:
                 gef_print("{:<40s}: {:s}".format("CET SHSTK feature flag (via Ehdr)", Color.colorify("Found", "bold green")))
             else:
                 gef_print("{:<40s}: {:s}".format("CET SHSTK feature flag (via Ehdr)", Color.colorify("Not found", "bold red")))
 
-            # SHSTK status via arch_prctl
-            if is_alive() and not is_rr():
+            if is_x86() and is_alive() and not is_rr():
+                # Intel CET SHSTK status via arch_prctl
                 if is_pin():
                     # Intel SDE implements userspace CET SHSTK but old interface
                     r = get_cet_status_old_interface()
@@ -21707,8 +21706,7 @@ class ChecksecCommand(GenericCommand):
                             msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled)"
                             gef_print("{:<40s}: {:s}".format("CET SHSTK status (via new arch_prctl IF)", msg))
 
-            # SHSTK status via procfs
-            if is_alive() and not is_rr():
+                # Intel CET SHSTK status via procfs
                 r = get_cet_status_via_procfs()
                 if r is None:
                     msg = Color.grayify("Unknown") + " (failed to open /proc/PID/status)"
@@ -21730,14 +21728,15 @@ class ChecksecCommand(GenericCommand):
                         msg = Color.colorify("Disabled", "bold red") + " (kernel supports but no locked)"
                         gef_print("{:<40s}: {:s}".format("CET SHSTK Lock status (via procfs)", msg))
 
-            # IBT flags via Ehdr
+        # Intel CET IBT flags via Ehdr
+        if "CET IBT flag" in sec:
             if sec["CET IBT flag"]:
                 gef_print("{:<40s}: {:s}".format("CET IBT feature flag (via Ehdr)", Color.colorify("Found", "bold green")))
             else:
                 gef_print("{:<40s}: {:s}".format("CET IBT feature flag (via Ehdr)", Color.colorify("Not found", "bold red")))
 
-            # IBT status via arch_prctl
-            if is_alive() and not is_rr():
+            if is_x86() and is_alive() and not is_rr():
+                # Intel CET IBT status via arch_prctl
                 if is_pin():
                     # Intel SDE implements userspace CET IBT but old interface
                     r = get_cet_status_old_interface()
@@ -21758,7 +21757,7 @@ class ChecksecCommand(GenericCommand):
                     gef_print("{:<40s}: {:s}".format("CET IBT status", msg))
 
         # PAC opcode
-        if is_arm64():
+        if "PAC" in sec:
             if sec["PAC"] is None:
                 gef_print("{:<40s}: {:s}".format("PAC opcode", Color.grayify("Unknown")))
             elif sec["PAC"]:
@@ -21766,36 +21765,36 @@ class ChecksecCommand(GenericCommand):
             else:
                 gef_print("{:<40s}: {:s}".format("PAC opcode", Color.colorify("Not found", "bold red")))
 
-        # PAC status
-        if is_alive() and is_arm64():
-            r = get_pac_status()
-            if r is None:
-                msg = Color.colorify("Disabled", "bold red") + " (kernel does not support PAC)"
-                gef_print("{:<40s}: {:s}".format("PAC", msg))
-            elif r < 0:
-                msg = Color.grayify("Unknown") + " (kernel supports PAC but does not support PR_PAC_GET_ENABLED_KEYS prctl option)"
-                gef_print("{:<40s}: {:s}".format("PAC", msg))
-            elif r == 0:
-                msg = Color.colorify("Disabled", "bold red") + " (kernel supports PAC but no keys are enabled)"
-                gef_print("{:<40s}: {:s}".format("PAC", msg))
-            elif r > 0:
-                keys = []
-                if r & 0b00001:
-                    keys.append("APIAKEY")
-                if r & 0b00010:
-                    keys.append("APIBKEY")
-                if r & 0b00100:
-                    keys.append("APDAKEY")
-                if r & 0b01000:
-                    keys.append("APDBKEY")
-                if r & 0b10000:
-                    keys.append("APGAKEY")
-                keys = ", ".join(keys)
-                msg = Color.colorify("Enabled", "bold green") + " (enabled keys: {:s})".format(keys)
-                gef_print("{:<40s}: {:s}".format("PAC", msg))
+            # PAC status
+            if is_arm64() and is_alive():
+                r = get_pac_status()
+                if r is None:
+                    msg = Color.colorify("Disabled", "bold red") + " (kernel does not support PAC)"
+                    gef_print("{:<40s}: {:s}".format("PAC", msg))
+                elif r < 0:
+                    msg = Color.grayify("Unknown") + " (kernel supports PAC but does not support PR_PAC_GET_ENABLED_KEYS prctl option)"
+                    gef_print("{:<40s}: {:s}".format("PAC", msg))
+                elif r == 0:
+                    msg = Color.colorify("Disabled", "bold red") + " (kernel supports PAC but no keys are enabled)"
+                    gef_print("{:<40s}: {:s}".format("PAC", msg))
+                elif r > 0:
+                    keys = []
+                    if r & 0b00001:
+                        keys.append("APIAKEY")
+                    if r & 0b00010:
+                        keys.append("APIBKEY")
+                    if r & 0b00100:
+                        keys.append("APDAKEY")
+                    if r & 0b01000:
+                        keys.append("APDBKEY")
+                    if r & 0b10000:
+                        keys.append("APGAKEY")
+                    keys = ", ".join(keys)
+                    msg = Color.colorify("Enabled", "bold green") + " (enabled keys: {:s})".format(keys)
+                    gef_print("{:<40s}: {:s}".format("PAC", msg))
 
         # MTE status
-        if is_alive() and is_arm64():
+        if is_arm64() and is_alive():
             r = get_mte_status()
             if r is None:
                 msg = Color.colorify("Disabled", "bold red") + " (kernel does not support MTE)"
