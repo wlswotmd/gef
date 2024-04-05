@@ -1584,7 +1584,11 @@ class Elf:
         return
 
     def __repr__(self):
-        if self.filename:
+        if not hasattr(self, "filename"):
+            msg = '<{:s}.{:s} object at {:#x}, invalid>'.format(
+                self.__module__, self.__class__.__name__, id(self),
+            )
+        elif self.filename:
             msg = '<{:s}.{:s} object at {:#x}, filename="{:s}">'.format(
                 self.__module__, self.__class__.__name__, id(self), self.filename,
             )
@@ -1705,6 +1709,30 @@ class Elf:
     def has_debuginfo(self):
         return bool(self.get_shdr(".debug_info"))
 
+    def has_canary_heuristic(self):
+        try:
+            objdump_command = which("objdump")
+        except FileNotFoundError:
+            return None # it means unknown
+
+        # heuristic search
+        if self.e_machine in (Elf.EM_X86_64, Elf.EM_386):
+            if self.e_machine == Elf.EM_X86_64:
+                kw = b"%fs:0x28"
+            else: # 32-bit
+                kw = b"%gs:0x14"
+
+            proc = subprocess.Popen(
+                [objdump_command, "-d", self.filename], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            )
+            for _ in range(0x10000):
+                if kw in proc.stdout.readline():
+                    proc.kill()
+                    return True
+            proc.kill()
+            return False
+        return None # it means unknown
+
     def is_pie(self):
         return self.e_type == Elf.ET_DYN
 
@@ -1766,6 +1794,172 @@ class Elf:
             if tag == 0x1d: # DT_RUNPATH
                 return True
         return False
+
+    def has_pac_heuristic(self):
+        pac_ops = [
+            b"paciasp", b"pacia", b"pacibsp", b"pacib", b"pacda", b"pacdb", b"pacga",
+            b"autiasp", b"autia", b"autibsp", b"autib", b"autda", b"autdb",
+            b"retaa", b"retab", b"braa", b"brab", b"blraa", b"blrab",
+            b"eretaa", b"eretab", b"ldraa", b"ldrab"
+        ]
+
+        try:
+            objdump_command = which("objdump")
+        except FileNotFoundError:
+            return None # it means unknown
+
+        proc = subprocess.Popen(
+            [objdump_command, "-d", self.filename], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+        for _ in range(0x10000):
+            line = proc.stdout.readline().strip()
+            if not line:
+                continue
+            if line.split()[-1] in pac_ops:
+                proc.kill()
+                return True
+        proc.kill()
+        return False
+
+    def checksec(self):
+        """Check the following security properties of the ELF binary.
+        Canary, NX, PIE, RELRO, Fortify, Static, Symbol, Debuginfo, CET,
+        RPATH/RUNPATH, and Clang CFI/SafeStack."""
+
+        def exists_sym(dymstr, strtab, keywords):
+            if dymstr:
+                for kw in keywords:
+                    if kw in dymstr:
+                        return True
+            if strtab:
+                for kw in keywords:
+                    if kw in strtab:
+                        return True
+            return False
+
+        def get_features_from_note(note):
+            note = note[0x10:] # skip header
+            while note:
+                pr_type, note = u32(note[:4]), note[4:]
+                pr_datasz, note = u32(note[:4]), note[4:]
+                pr_data, note = note[:pr_datasz], note[pr_datasz:]
+
+                if pr_type == 0xc0000002: # GNU_PROPERTY_X86_FEATURE_1_AND
+                    if pr_datasz == 4:
+                        return u32(pr_data)
+
+                pr_padding = 0
+                while (pr_datasz + pr_padding) % current_arch.ptrsize:
+                    pr_padding += 1
+                note = note[pr_padding:]
+            return 0
+
+        dynstr = self.read_shdr(".dynstr")
+        if dynstr:
+            dynstr = dynstr.split(b"\0")
+        strtab = self.read_shdr(".strtab")
+        if strtab:
+            strtab = strtab.split(b"\0")
+
+        sec = {}
+
+        # Static
+        sec["Static"] = self.is_static()
+
+        # Symbol
+        sec["Symbol"] = not self.is_stripped()
+
+        # Debuginfo
+        sec["Debuginfo"] = self.has_debuginfo()
+
+        # Canary
+        if self.is_static() and self.is_stripped():
+            sec["Canary"] = self.has_canary_heuristic()
+        else:
+            keywords = [
+                b"__stack_chk_fail",
+                b"__stack_chk_fail_local",
+                b"__stack_chk_guard", # for non-x86
+                b"__intel_security_cookie", # for intel compiler
+            ]
+            sec["Canary"] = exists_sym(dynstr, strtab, keywords)
+
+        # NX
+        sec["NX"] = self.is_nx()
+
+        # PIE
+        sec["PIE"] = self.is_pie()
+
+        # RELRO
+        sec["Partial RELRO"] = self.is_relro()
+        sec["Full RELRO"] = sec["Partial RELRO"] and self.is_full_relro()
+
+        # Fortify
+        if self.is_static() and self.is_stripped():
+            sec["Fortify"] = None # it means unknown
+        else:
+            keywords = [
+                b"__memcpy_chk",
+                b"__memmove_chk",
+                b"__mempcpy_chk",
+                b"__memset_chk",
+                b"__printf_chk",
+                b"__fprintf_chk",
+                b"__dprintf_chk",
+                b"__sprintf_chk",
+                b"__asprintf_chk",
+                b"__snprintf_chk",
+                b"__wprintf_chk",
+                b"__fwprintf_chk",
+                b"__swprintf_chk",
+                b"__obstack_printf_chk",
+                b"__vprintf_chk",
+                b"__vfprintf_chk",
+                b"__vdprintf_chk",
+                b"__vsprintf_chk",
+                b"__vasprintf_chk",
+                b"__vsnprintf_chk",
+                b"__vwprintf_chk",
+                b"__vfwprintf_chk",
+                b"__vswprintf_chk",
+                b"__obstack_vprintf_chk",
+                b"__syslog_chk",
+                b"__vsyslog_chk",
+            ]
+            sec["Fortify"] = exists_sym(dynstr, strtab, keywords)
+
+        # CET flags via Ehdr
+        if self.e_machine in (Elf.EM_X86_64, Elf.EM_386):
+            sec["CET IBT flag"] = False
+            sec["CET SHSTK flag"] = False
+            note_gnu_property = self.read_phdr(Phdr.PT_GNU_PROPERTY)
+            if note_gnu_property:
+                features = get_features_from_note(note_gnu_property)
+                sec["CET IBT flag"] = features & 1 # GNU_PROPERTY_X86_FEATURE_1_IBT
+                sec["CET SHSTK flag"] = features & 2 # GNU_PROPERTY_X86_FEATURE_1_SHSTK
+
+        # PAC
+        if self.e_machine == Elf.EM_AARCH64:
+            sec["PAC"] = self.has_pac_heuristic()
+
+        # RPATH
+        sec["RPATH"] = self.has_rpath()
+
+        # RUNPATH
+        sec["RUNPATH"] = self.has_runpath()
+
+        # Clang CFI (detected only when `-fno-sanitize-trap=all`)
+        if self.is_static() and self.is_stripped():
+            sec["Clang CFI"] = None
+        else:
+            sec["Clang CFI"] = exists_sym(dynstr, strtab, ["__ubsan_handle_cfi_"])
+
+        # Clang SafeStack
+        if self.is_static() and self.is_stripped():
+            sec["Clang SafeStack"] = None
+        else:
+            sec["Clang SafeStack"] = exists_sym(dynstr, strtab, ["__safestack_init"])
+        return sec
 
 
 class Phdr:
@@ -4619,188 +4813,6 @@ def get_pac_status():
     uq = lambda a: struct.unpack("<q", a)[0]
     u2i = lambda a: uq(pQ(a))
     return u2i(ret)
-
-
-@cache_until_next
-def checksec(filename):
-    """Check the security property of the ELF binary. The following properties are:
-    Canary, NX, PIE, RELRO, Fortify, Static, Symbol, Debuginfo, CET, RPATH/RUNPATH, and Clang CFI/SafeStack."""
-
-    if not os.path.exists(filename):
-        return False
-
-    try:
-        objdump_command = which("objdump")
-    except FileNotFoundError:
-        objdump_command = None
-
-    def exists_sym(dymstr, strtab, keywords):
-        if dymstr:
-            for kw in keywords:
-                if kw in dymstr:
-                    return True
-        if strtab:
-            for kw in keywords:
-                if kw in strtab:
-                    return True
-        return False
-
-    def get_features_from_note(note):
-        note = note[0x10:] # skip header
-        while note:
-            pr_type, note = u32(note[:4]), note[4:]
-            pr_datasz, note = u32(note[:4]), note[4:]
-            pr_data, note = note[:pr_datasz], note[pr_datasz:]
-
-            if pr_type == 0xc0000002: # GNU_PROPERTY_X86_FEATURE_1_AND
-                if pr_datasz == 4:
-                    return u32(pr_data)
-
-            pr_padding = 0
-            while (pr_datasz + pr_padding) % current_arch.ptrsize:
-                pr_padding += 1
-            note = note[pr_padding:]
-        return 0
-
-    elf = get_elf_headers(filename)
-    dynstr = elf.read_shdr(".dynstr")
-    if dynstr:
-        dynstr = dynstr.split(b"\0")
-    strtab = elf.read_shdr(".strtab")
-    if strtab:
-        strtab = strtab.split(b"\0")
-
-    results = {}
-
-    # Static
-    results["Static"] = elf.is_static()
-
-    # Symbol
-    results["Symbol"] = not elf.is_stripped()
-
-    # Debuginfo
-    results["Debuginfo"] = elf.has_debuginfo()
-
-    # Canary
-    if elf.is_static() and elf.is_stripped():
-        results["Canary"] = None # it means unknown
-
-        # heuristic search
-        if elf.e_machine in (Elf.EM_X86_64, Elf.EM_386) and objdump_command:
-            if elf.e_machine == Elf.EM_X86_64:
-                kw = b"%fs:0x28"
-            else: # 32-bit
-                kw = b"%gs:0x14"
-
-            proc = subprocess.Popen([objdump_command, "-d", filename], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            results["Canary"] = False
-            for _ in range(0x10000):
-                if kw in proc.stdout.readline():
-                    results["Canary"] = True
-                    break
-            proc.kill()
-    else:
-        keywords = [
-            b"__stack_chk_fail",
-            b"__stack_chk_fail_local",
-            b"__stack_chk_guard", # for non-x86
-            b"__intel_security_cookie", # for intel compiler
-        ]
-        results["Canary"] = exists_sym(dynstr, strtab, keywords)
-
-    # NX
-    results["NX"] = elf.is_nx()
-
-    # PIE
-    results["PIE"] = elf.is_pie()
-
-    # RELRO
-    results["Partial RELRO"] = elf.is_relro()
-    results["Full RELRO"] = results["Partial RELRO"] and elf.is_full_relro()
-
-    # Fortify
-    if elf.is_static() and elf.is_stripped():
-        results["Fortify"] = None # it means unknown
-    else:
-        keywords = [
-            b"__memcpy_chk",
-            b"__memmove_chk",
-            b"__mempcpy_chk",
-            b"__memset_chk",
-            b"__printf_chk",
-            b"__fprintf_chk",
-            b"__dprintf_chk",
-            b"__sprintf_chk",
-            b"__asprintf_chk",
-            b"__snprintf_chk",
-            b"__wprintf_chk",
-            b"__fwprintf_chk",
-            b"__swprintf_chk",
-            b"__obstack_printf_chk",
-            b"__vprintf_chk",
-            b"__vfprintf_chk",
-            b"__vdprintf_chk",
-            b"__vsprintf_chk",
-            b"__vasprintf_chk",
-            b"__vsnprintf_chk",
-            b"__vwprintf_chk",
-            b"__vfwprintf_chk",
-            b"__vswprintf_chk",
-            b"__obstack_vprintf_chk",
-            b"__syslog_chk",
-            b"__vsyslog_chk",
-        ]
-        results["Fortify"] = exists_sym(dynstr, strtab, keywords)
-
-    # CET flags via Ehdr
-    if elf.e_machine in (Elf.EM_X86_64, Elf.EM_386):
-        results["CET IBT flag"] = False
-        results["CET SHSTK flag"] = False
-        note_gnu_property = elf.read_phdr(Phdr.PT_GNU_PROPERTY)
-        if note_gnu_property:
-            features = get_features_from_note(note_gnu_property)
-            results["CET IBT flag"] = features & 1 # GNU_PROPERTY_X86_FEATURE_1_IBT
-            results["CET SHSTK flag"] = features & 2 # GNU_PROPERTY_X86_FEATURE_1_SHSTK
-
-    # PAC
-    if elf.e_machine == Elf.EM_AARCH64:
-        pac_ops = [
-            b"paciasp", b"pacia", b"pacibsp", b"pacib", b"pacda", b"pacdb", b"pacga",
-            b"autiasp", b"autia", b"autibsp", b"autib", b"autda", b"autdb",
-            b"retaa", b"retab", b"braa", b"brab", b"blraa", b"blrab",
-            b"eretaa", b"eretab", b"ldraa", b"ldrab"
-        ]
-        results["PAC"] = None
-        if objdump_command:
-            proc = subprocess.Popen([objdump_command, "-d", filename], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            results["PAC"] = False
-            for _ in range(0x10000):
-                line = proc.stdout.readline().strip()
-                if not line:
-                    continue
-                if line.split()[-1] in pac_ops:
-                    results["PAC"] = True
-                    break
-            proc.kill()
-
-    # RPATH
-    results["RPATH"] = elf.has_rpath()
-
-    # RUNPATH
-    results["RUNPATH"] = elf.has_runpath()
-
-    # Clang CFI (detected only when `-fno-sanitize-trap=all`)
-    if elf.is_static() and elf.is_stripped():
-        results["Clang CFI"] = None
-    else:
-        results["Clang CFI"] = exists_sym(dynstr, strtab, ["__ubsan_handle_cfi_"])
-
-    # Clang SafeStack
-    if elf.is_static() and elf.is_stripped():
-        results["Clang SafeStack"] = None
-    else:
-        results["Clang SafeStack"] = exists_sym(dynstr, strtab, ["__safestack_init"])
-    return results
 
 
 @cache_this_session
@@ -21768,7 +21780,11 @@ class ChecksecCommand(GenericCommand):
         return msg
 
     def print_security_properties(self, filename):
-        sec = checksec(filename)
+        elf = Elf(filename)
+        if not elf.is_valid():
+            return
+
+        sec = elf.checksec()
         if sec is False:
             err("checksec is failed")
             return
