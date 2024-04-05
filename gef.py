@@ -21530,17 +21530,244 @@ class ChecksecCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_FILENAME)
         return
 
-    def print_security_properties(self, filename):
+    def check_CET_SHSTK(self, sec):
+        # Intel CET SHSTK flags via Ehdr
+        if "CET SHSTK flag" not in sec:
+            # elf is not x86_64
+            return
+        if sec["CET SHSTK flag"]:
+            gef_print("{:<40s}: {:s}".format("CET SHSTK feature flag (via Ehdr)", Color.colorify("Found", "bold green")))
+        else:
+            gef_print("{:<40s}: {:s}".format("CET SHSTK feature flag (via Ehdr)", Color.colorify("Not found", "bold red")))
 
-        def get_colored_msg(val):
-            if val is True:
-                msg = Color.greenify(Color.boldify("Enabled"))
-            elif val is False:
-                msg = Color.redify(Color.boldify("Disabled"))
-            elif val is None:
+        # gdb mode check
+        if not is_x86():
+            return
+        if not is_alive():
+            return
+        if is_rr():
+            return
+
+        # Intel CET SHSTK status via arch_prctl
+        if is_pin():
+            # Intel SDE implements userspace CET SHSTK but old interface
+            r = get_cet_status_old_interface()
+            if r is None:
+                msg = Color.colorify("Disabled", "bold red") + " (kernel does not support; Intel SDE has no `-cet` option)"
+                gef_print("{:<40s}: {:s}".format("CET IBT status (via old arch_prctl IF)", msg))
+            else:
+                if r & 0b10:
+                    msg = Color.colorify("Enabled", "bold green") + " (kernel supports; Intel SDE has `-cet` option)"
+                    gef_print("{:<40s}: {:s}".format("CET SHSTK status (via old arch_prctl IF)", msg))
+                else:
+                    msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled; Intel SDE has `-cet` option)"
+                    gef_print("{:<40s}: {:s}".format("CET SHSTK status (via old arch_prctl IF)", msg))
+        else:
+            # kernel 6.6 or after supports userspace CET SHSTK
+            r = get_cet_status_new_interface()
+            if r is None:
+                msg = Color.colorify("Unimplemented", "bold red") + " (kernel does not support; kernel supports it from 6.6)"
+                gef_print("{:<40s}: {:s}".format("CET SHSTK status (via new arch_prctl IF)", msg))
+            else:
+                if r & 0b01:
+                    msg = Color.colorify("Enabled", "bold green") + " (kernel supports and enabled)"
+                    gef_print("{:<40s}: {:s}".format("CET SHSTK status (via new arch_prctl IF)", msg))
+                else:
+                    msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled)"
+                    gef_print("{:<40s}: {:s}".format("CET SHSTK status (via new arch_prctl IF)", msg))
+
+        # Intel CET SHSTK status via procfs
+        r = get_cet_status_via_procfs()
+        if r is None:
+            msg = Color.grayify("Unknown") + " (failed to open /proc/PID/status)"
+            gef_print("{:<40s}: {:s}".format("CET SHSTK status (via procfs)", msg))
+            gef_print("{:<40s}: {:s}".format("CET SHSTK Lock status (via procfs)", msg))
+        elif r is False:
+            msg = Color.colorify("Unimplemented", "bold red") + " (kernel does not support; kernel supports it from 6.6)"
+            gef_print("{:<40s}: {:s}".format("CET SHSTK status (via procfs)", msg))
+            gef_print("{:<40s}: {:s}".format("CET SHSTK Lock status (via procfs)", msg))
+        else:
+            if r["shstk"]:
+                gef_print("{:<40s}: {:s}".format("CET SHSTK status (via procfs)", Color.colorify("Enabled", "bold green")))
+            else:
+                msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled)"
+                gef_print("{:<40s}: {:s}".format("CET SHSTK status (via procfs)", msg))
+            if r["shstk lock"]:
+                gef_print("{:<40s}: {:s}".format("CET SHSTK Lock status (via procfs)", Color.colorify("Enabled", "bold green")))
+            else:
+                msg = Color.colorify("Disabled", "bold red") + " (kernel supports but no locked)"
+                gef_print("{:<40s}: {:s}".format("CET SHSTK Lock status (via procfs)", msg))
+        return
+
+    def check_CET_IBT(self, sec):
+        # Intel CET IBT flags via Ehdr
+        if "CET IBT flag" not in sec:
+            # elf is not x86_64
+            return
+        if sec["CET IBT flag"]:
+            gef_print("{:<40s}: {:s}".format("CET IBT feature flag (via Ehdr)", Color.colorify("Found", "bold green")))
+        else:
+            gef_print("{:<40s}: {:s}".format("CET IBT feature flag (via Ehdr)", Color.colorify("Not found", "bold red")))
+
+        # gdb mode check
+        if not is_x86():
+            return
+        if not is_alive():
+            return
+        if is_rr():
+            return
+
+        # Intel CET IBT status via arch_prctl
+        if is_pin():
+            # Intel SDE implements userspace CET IBT but old interface
+            r = get_cet_status_old_interface()
+            if r is None:
+                msg = Color.colorify("Disabled", "bold red") + " (kernel does not support; Intel SDE has no `-cet` option)"
+                gef_print("{:<40s}: {:s}".format("CET IBT status (via old arch_prctl IF)", msg))
+            else:
+                if r & 0b01:
+                    msg = Color.colorify("Enabled", "bold green") + " (kernel supports; Intel SDE has `-cet` option)"
+                    gef_print("{:<40s}: {:s}".format("CET IBT status (via old arch_prctl IF)", msg))
+                else:
+                    msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled; Intel SDE has `-cet` option)"
+                    gef_print("{:<40s}: {:s}".format("CET IBT status (via old arch_prctl IF)", msg))
+        else:
+            # kernel does not support userspace CET IBT yet, only supports kernel space CET IBT.
+            # https://lwn.net/Articles/889475/ (2022/3/31)
+            msg = Color.colorify("Unimplemented", "bold red") + " (at least kernel 6.6 does not support userspace IBT)"
+            gef_print("{:<40s}: {:s}".format("CET IBT status", msg))
+        return
+
+    def check_PAC(self, sec):
+        # PAC opcode
+        if "PAC" not in sec:
+            # elf is not ARM64
+            return
+        if sec["PAC"] is None:
+            gef_print("{:<40s}: {:s}".format("PAC opcode", Color.grayify("Unknown")))
+        elif sec["PAC"]:
+            gef_print("{:<40s}: {:s}".format("PAC opcode", Color.colorify("Found", "bold green")))
+        else:
+            gef_print("{:<40s}: {:s}".format("PAC opcode", Color.colorify("Not found", "bold red")))
+
+        # gdb mode check
+        if not is_arm64():
+            return
+        if not is_alive():
+            return
+        if is_rr():
+            return
+
+        # PAC status
+        r = get_pac_status()
+        if r is None:
+            msg = Color.colorify("Disabled", "bold red") + " (kernel does not support PAC)"
+            gef_print("{:<40s}: {:s}".format("PAC", msg))
+        elif r < 0:
+            msg = Color.grayify("Unknown") + " (kernel supports PAC but does not support PR_PAC_GET_ENABLED_KEYS prctl option)"
+            gef_print("{:<40s}: {:s}".format("PAC", msg))
+        elif r == 0:
+            msg = Color.colorify("Disabled", "bold red") + " (kernel supports PAC but no keys are enabled)"
+            gef_print("{:<40s}: {:s}".format("PAC", msg))
+        elif r > 0:
+            keys = []
+            if r & 0b00001:
+                keys.append("APIAKEY")
+            if r & 0b00010:
+                keys.append("APIBKEY")
+            if r & 0b00100:
+                keys.append("APDAKEY")
+            if r & 0b01000:
+                keys.append("APDBKEY")
+            if r & 0b10000:
+                keys.append("APGAKEY")
+            keys = ", ".join(keys)
+            msg = Color.colorify("Enabled", "bold green") + " (enabled keys: {:s})".format(keys)
+            gef_print("{:<40s}: {:s}".format("PAC", msg))
+        return
+
+    def check_MTE(self, sec):
+        # gdb mode check
+        if not is_arm64():
+            return
+        if not is_alive():
+            return
+        if is_rr():
+            return
+
+        # MTE status
+        r = get_mte_status()
+        if r is None:
+            msg = Color.colorify("Disabled", "bold red") + " (kernel does not support MTE)"
+            gef_print("{:<40s}: {:s}".format("MTE", msg))
+        elif r < 0:
+            msg = Color.grayify("Unknown") + " (kernel supports MTE but does not support PR_SET_TAGGED_ADDR_CTRL)"
+            gef_print("{:<40s}: {:s}".format("MTE", msg))
+        elif (r & 0b1) == 0:
+            msg = Color.colorify("Disabled", "bold red") + " (kernel supports MTE but disabled)"
+            gef_print("{:<40s}: {:s}".format("MTE", msg))
+        elif (r & 0b1) == 1 and (r & 0b110) == 0:
+            msg = Color.colorify("Disabled", "bold red") + " (MTE is enabled, but fault is ignored)"
+            gef_print("{:<40s}: {:s}".format("MTE", msg))
+        else:
+            keys = []
+            if r & 0b010:
+                keys.append("PR_MTE_TCF_SYNC")
+            if r & 0b100:
+                keys.append("PR_MTE_TCF_ASYNC")
+            keys = ", ".join(keys)
+            msg = Color.colorify("Enabled", "bold green") + " (MTE is enabled as: {:s})".format(keys)
+            gef_print("{:<40s}: {:s}".format("MTE", msg))
+        return
+
+    def check_system_ASLR(self):
+        if is_remote_debug():
+            msg = Color.grayify("Unknown")
+            gef_print("{:<40s}: {:s} (remote process)".format("System-ASLR", msg))
+        else:
+            try:
+                system_aslr = int(open("/proc/sys/kernel/randomize_va_space").read())
+                if system_aslr == 0:
+                    msg = Color.colorify("Disabled", "bold red")
+                    gef_print("{:<40s}: {:s} (randomize_va_space: 0)".format("System ASLR", msg))
+                elif system_aslr == 1:
+                    msg = Color.colorify("Partially Enabled", "bold yellow")
+                    gef_print("{:<40s}: {:s} (randomize_va_space: 1)".format("System ASLR", msg))
+                elif system_aslr == 2:
+                    msg = Color.colorify("Enabled", "bold green")
+                    gef_print("{:<40s}: {:s} (randomize_va_space: 2)".format("System ASLR", msg))
+            except (FileNotFoundError, OSError):
                 msg = Color.grayify("Unknown")
-            return msg
+                gef_print("{:<40s}: {:s} (randomize_va_space: error)".format("System-ASLR", msg))
+        return
 
+    def check_gdb_ASLR(self):
+        if is_attach() or is_remote_debug():
+            msg = Color.grayify("Ignored")
+            gef_print("{:<40s}: {:s} (attached or remote process)".format("GDB ASLR setting", msg))
+        else:
+            ret = gdb.parameter("disable-randomization")
+            if ret is True:
+                msg = Color.colorify("Disabled", "bold red")
+                gef_print("{:<40s}: {:s} (disable-randomization: on)".format("GDB ASLR setting", msg))
+            elif ret is False:
+                msg = Color.colorify("Enabled", "bold green")
+                gef_print("{:<40s}: {:s} (disable-randomization: off)".format("GDB ASLR setting", msg))
+            else:
+                msg = Color.grayify("Unknown")
+                gef_print("{:<40s}: {:s}".format("GDB ASLR setting", msg))
+        return
+
+    def get_colored_msg(self, val):
+        if val is True:
+            msg = Color.greenify(Color.boldify("Enabled"))
+        elif val is False:
+            msg = Color.redify(Color.boldify("Disabled"))
+        elif val is None:
+            msg = Color.grayify("Unknown")
+        return msg
+
+    def print_security_properties(self, filename):
         sec = checksec(filename)
         if sec is False:
             err("checksec is failed")
@@ -21549,7 +21776,7 @@ class ChecksecCommand(GenericCommand):
         gef_print(titlify("Basic information"))
 
         # Canary
-        msg = get_colored_msg(sec["Canary"])
+        msg = self.get_colored_msg(sec["Canary"])
         if sec["Canary"] is True and is_alive():
             res = gef_read_canary()
             if not res:
@@ -21559,10 +21786,10 @@ class ChecksecCommand(GenericCommand):
         gef_print("{:<40s}: {:s}".format("Canary", msg))
 
         # NX
-        gef_print("{:<40s}: {:s}".format("NX", get_colored_msg(sec["NX"])))
+        gef_print("{:<40s}: {:s}".format("NX", self.get_colored_msg(sec["NX"])))
 
         # PIE
-        gef_print("{:<40s}: {:s}".format("PIE", get_colored_msg(sec["PIE"])))
+        gef_print("{:<40s}: {:s}".format("PIE", self.get_colored_msg(sec["PIE"])))
 
         # RELRO
         if sec["Full RELRO"]:
@@ -21604,153 +21831,13 @@ class ChecksecCommand(GenericCommand):
         else:
             gef_print("{:<40s}: {:s}".format("Debuginfo", Color.colorify("Stripped", "bold green")))
 
-        # Intel CET SHSTK flags via Ehdr
-        if "CET SHSTK flag" in sec:
-            if sec["CET SHSTK flag"]:
-                gef_print("{:<40s}: {:s}".format("CET SHSTK feature flag (via Ehdr)", Color.colorify("Found", "bold green")))
-            else:
-                gef_print("{:<40s}: {:s}".format("CET SHSTK feature flag (via Ehdr)", Color.colorify("Not found", "bold red")))
+        # Intel CET
+        self.check_CET_SHSTK(sec)
+        self.check_CET_IBT(sec)
 
-            if is_x86() and is_alive() and not is_rr():
-                # Intel CET SHSTK status via arch_prctl
-                if is_pin():
-                    # Intel SDE implements userspace CET SHSTK but old interface
-                    r = get_cet_status_old_interface()
-                    if r is None:
-                        msg = Color.colorify("Disabled", "bold red") + " (kernel does not support; Intel SDE has no `-cet` option)"
-                        gef_print("{:<40s}: {:s}".format("CET IBT status (via old arch_prctl IF)", msg))
-                    else:
-                        if r & 0b10:
-                            msg = Color.colorify("Enabled", "bold green") + " (kernel supports; Intel SDE has `-cet` option)"
-                            gef_print("{:<40s}: {:s}".format("CET SHSTK status (via old arch_prctl IF)", msg))
-                        else:
-                            msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled; Intel SDE has `-cet` option)"
-                            gef_print("{:<40s}: {:s}".format("CET SHSTK status (via old arch_prctl IF)", msg))
-                else:
-                    # kernel 6.6 or after supports userspace CET SHSTK
-                    r = get_cet_status_new_interface()
-                    if r is None:
-                        msg = Color.colorify("Unimplemented", "bold red") + " (kernel does not support; kernel supports it from 6.6)"
-                        gef_print("{:<40s}: {:s}".format("CET SHSTK status (via new arch_prctl IF)", msg))
-                    else:
-                        if r & 0b01:
-                            msg = Color.colorify("Enabled", "bold green") + " (kernel supports and enabled)"
-                            gef_print("{:<40s}: {:s}".format("CET SHSTK status (via new arch_prctl IF)", msg))
-                        else:
-                            msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled)"
-                            gef_print("{:<40s}: {:s}".format("CET SHSTK status (via new arch_prctl IF)", msg))
-
-                # Intel CET SHSTK status via procfs
-                r = get_cet_status_via_procfs()
-                if r is None:
-                    msg = Color.grayify("Unknown") + " (failed to open /proc/PID/status)"
-                    gef_print("{:<40s}: {:s}".format("CET SHSTK status (via procfs)", msg))
-                    gef_print("{:<40s}: {:s}".format("CET SHSTK Lock status (via procfs)", msg))
-                elif r is False:
-                    msg = Color.colorify("Unimplemented", "bold red") + " (kernel does not support; kernel supports it from 6.6)"
-                    gef_print("{:<40s}: {:s}".format("CET SHSTK status (via procfs)", msg))
-                    gef_print("{:<40s}: {:s}".format("CET SHSTK Lock status (via procfs)", msg))
-                else:
-                    if r["shstk"]:
-                        gef_print("{:<40s}: {:s}".format("CET SHSTK status (via procfs)", Color.colorify("Enabled", "bold green")))
-                    else:
-                        msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled)"
-                        gef_print("{:<40s}: {:s}".format("CET SHSTK status (via procfs)", msg))
-                    if r["shstk lock"]:
-                        gef_print("{:<40s}: {:s}".format("CET SHSTK Lock status (via procfs)", Color.colorify("Enabled", "bold green")))
-                    else:
-                        msg = Color.colorify("Disabled", "bold red") + " (kernel supports but no locked)"
-                        gef_print("{:<40s}: {:s}".format("CET SHSTK Lock status (via procfs)", msg))
-
-        # Intel CET IBT flags via Ehdr
-        if "CET IBT flag" in sec:
-            if sec["CET IBT flag"]:
-                gef_print("{:<40s}: {:s}".format("CET IBT feature flag (via Ehdr)", Color.colorify("Found", "bold green")))
-            else:
-                gef_print("{:<40s}: {:s}".format("CET IBT feature flag (via Ehdr)", Color.colorify("Not found", "bold red")))
-
-            if is_x86() and is_alive() and not is_rr():
-                # Intel CET IBT status via arch_prctl
-                if is_pin():
-                    # Intel SDE implements userspace CET IBT but old interface
-                    r = get_cet_status_old_interface()
-                    if r is None:
-                        msg = Color.colorify("Disabled", "bold red") + " (kernel does not support; Intel SDE has no `-cet` option)"
-                        gef_print("{:<40s}: {:s}".format("CET IBT status (via old arch_prctl IF)", msg))
-                    else:
-                        if r & 0b01:
-                            msg = Color.colorify("Enabled", "bold green") + " (kernel supports; Intel SDE has `-cet` option)"
-                            gef_print("{:<40s}: {:s}".format("CET IBT status (via old arch_prctl IF)", msg))
-                        else:
-                            msg = Color.colorify("Disabled", "bold red") + " (kernel supports but disabled; Intel SDE has `-cet` option)"
-                            gef_print("{:<40s}: {:s}".format("CET IBT status (via old arch_prctl IF)", msg))
-                else:
-                    # kernel does not support userspace CET IBT yet, only supports kernel space CET IBT.
-                    # https://lwn.net/Articles/889475/ (2022/3/31)
-                    msg = Color.colorify("Unimplemented", "bold red") + " (at least kernel 6.6 does not support userspace IBT)"
-                    gef_print("{:<40s}: {:s}".format("CET IBT status", msg))
-
-        # PAC opcode
-        if "PAC" in sec:
-            if sec["PAC"] is None:
-                gef_print("{:<40s}: {:s}".format("PAC opcode", Color.grayify("Unknown")))
-            elif sec["PAC"]:
-                gef_print("{:<40s}: {:s}".format("PAC opcode", Color.colorify("Found", "bold green")))
-            else:
-                gef_print("{:<40s}: {:s}".format("PAC opcode", Color.colorify("Not found", "bold red")))
-
-            # PAC status
-            if is_arm64() and is_alive():
-                r = get_pac_status()
-                if r is None:
-                    msg = Color.colorify("Disabled", "bold red") + " (kernel does not support PAC)"
-                    gef_print("{:<40s}: {:s}".format("PAC", msg))
-                elif r < 0:
-                    msg = Color.grayify("Unknown") + " (kernel supports PAC but does not support PR_PAC_GET_ENABLED_KEYS prctl option)"
-                    gef_print("{:<40s}: {:s}".format("PAC", msg))
-                elif r == 0:
-                    msg = Color.colorify("Disabled", "bold red") + " (kernel supports PAC but no keys are enabled)"
-                    gef_print("{:<40s}: {:s}".format("PAC", msg))
-                elif r > 0:
-                    keys = []
-                    if r & 0b00001:
-                        keys.append("APIAKEY")
-                    if r & 0b00010:
-                        keys.append("APIBKEY")
-                    if r & 0b00100:
-                        keys.append("APDAKEY")
-                    if r & 0b01000:
-                        keys.append("APDBKEY")
-                    if r & 0b10000:
-                        keys.append("APGAKEY")
-                    keys = ", ".join(keys)
-                    msg = Color.colorify("Enabled", "bold green") + " (enabled keys: {:s})".format(keys)
-                    gef_print("{:<40s}: {:s}".format("PAC", msg))
-
-        # MTE status
-        if is_arm64() and is_alive():
-            r = get_mte_status()
-            if r is None:
-                msg = Color.colorify("Disabled", "bold red") + " (kernel does not support MTE)"
-                gef_print("{:<40s}: {:s}".format("MTE", msg))
-            elif r < 0:
-                msg = Color.grayify("Unknown") + " (kernel supports MTE but does not support PR_SET_TAGGED_ADDR_CTRL)"
-                gef_print("{:<40s}: {:s}".format("MTE", msg))
-            elif (r & 0b1) == 0:
-                msg = Color.colorify("Disabled", "bold red") + " (kernel supports MTE but disabled)"
-                gef_print("{:<40s}: {:s}".format("MTE", msg))
-            elif (r & 0b1) == 1 and (r & 0b110) == 0:
-                msg = Color.colorify("Disabled", "bold red") + " (MTE is enabled, but fault is ignored)"
-                gef_print("{:<40s}: {:s}".format("MTE", msg))
-            else:
-                keys = []
-                if r & 0b010:
-                    keys.append("PR_MTE_TCF_SYNC")
-                if r & 0b100:
-                    keys.append("PR_MTE_TCF_ASYNC")
-                keys = ", ".join(keys)
-                msg = Color.colorify("Enabled", "bold green") + " (MTE is enabled as: {:s})".format(keys)
-                gef_print("{:<40s}: {:s}".format("MTE", msg))
+        # ARM64 PAC/MTE
+        self.check_PAC(sec)
+        self.check_MTE(sec)
 
         # RPATH
         if sec["RPATH"]:
@@ -21766,47 +21853,15 @@ class ChecksecCommand(GenericCommand):
 
         # Clang CFI
         if sec["Clang CFI"]:
-            gef_print("{:<40s}: {:s}".format("Clang CFI", get_colored_msg(sec["Clang CFI"])))
+            gef_print("{:<40s}: {:s}".format("Clang CFI", self.get_colored_msg(sec["Clang CFI"])))
 
         # Clang SafeStack
         if sec["Clang SafeStack"]:
-            gef_print("{:<40s}: {:s}".format("Clang SafeStack", get_colored_msg(sec["Clang SafeStack"])))
+            gef_print("{:<40s}: {:s}".format("Clang SafeStack", self.get_colored_msg(sec["Clang SafeStack"])))
 
-        # System-ASLR
-        if is_remote_debug():
-            msg = Color.grayify("Unknown")
-            gef_print("{:<40s}: {:s} (remote process)".format("System-ASLR", msg))
-        else:
-            try:
-                system_aslr = int(open("/proc/sys/kernel/randomize_va_space").read())
-                if system_aslr == 0:
-                    msg = Color.colorify("Disabled", "bold red")
-                    gef_print("{:<40s}: {:s} (randomize_va_space: 0)".format("System ASLR", msg))
-                elif system_aslr == 1:
-                    msg = Color.colorify("Partially Enabled", "bold yellow")
-                    gef_print("{:<40s}: {:s} (randomize_va_space: 1)".format("System ASLR", msg))
-                elif system_aslr == 2:
-                    msg = Color.colorify("Enabled", "bold green")
-                    gef_print("{:<40s}: {:s} (randomize_va_space: 2)".format("System ASLR", msg))
-            except (FileNotFoundError, OSError):
-                msg = Color.grayify("Unknown")
-                gef_print("{:<40s}: {:s} (randomize_va_space: error)".format("System-ASLR", msg))
-
-        # gdb ASLR
-        if is_attach() or is_remote_debug():
-            msg = Color.grayify("Ignored")
-            gef_print("{:<40s}: {:s} (attached or remote process)".format("GDB ASLR setting", msg))
-        else:
-            ret = gdb.parameter("disable-randomization")
-            if ret is True:
-                msg = Color.colorify("Disabled", "bold red")
-                gef_print("{:<40s}: {:s} (disable-randomization: on)".format("GDB ASLR setting", msg))
-            elif ret is False:
-                msg = Color.colorify("Enabled", "bold green")
-                gef_print("{:<40s}: {:s} (disable-randomization: off)".format("GDB ASLR setting", msg))
-            else:
-                msg = Color.grayify("Unknown")
-                gef_print("{:<40s}: {:s}".format("GDB ASLR setting", msg))
+        # ASLR
+        self.check_system_ASLR()
+        self.check_gdb_ASLR()
         return
 
     @parse_args
