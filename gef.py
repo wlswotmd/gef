@@ -21530,72 +21530,6 @@ class ChecksecCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_FILENAME)
         return
 
-    @parse_args
-    def do_invoke(self, args):
-        self.dont_repeat()
-
-        if is_qemu_system():
-            info("Redirect to kchecksec")
-            gdb.execute("kchecksec")
-            return
-
-        local_filepath = None
-        remote_filepath = None
-        tmp_filepath = None
-
-        if args.remote:
-            if not is_remote_debug():
-                err("-r option is allowed only remote debug.")
-                return
-
-            if args.file:
-                remote_filepath = args.file # if specified, assume it is remote
-            elif gdb.current_progspace().filename:
-                f = gdb.current_progspace().filename
-                if f.startswith("target:"): # gdbserver
-                    f = f[7:]
-                remote_filepath = f
-            elif get_pid(remote=True):
-                remote_filepath = "/proc/{:d}/exe".format(get_pid(remote=True))
-            else:
-                err("File name could not be determined.")
-                return
-
-            data = read_remote_file(remote_filepath, as_byte=True) # qemu-user is failed here, it is ok
-            if not data:
-                err("Failed to read remote filepath")
-                return
-            tmp_fd, tmp_filepath = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".elf", prefix="checksec-")
-            os.write(tmp_fd, data)
-            os.close(tmp_fd)
-            local_filepath = tmp_filepath
-            del data
-
-        elif args.file:
-            local_filepath = args.file
-
-        elif args.file is None:
-            if is_qemu_system():
-                err("Argument-less calls are unsupported under qemu-system.")
-                return
-            local_filepath = get_filepath()
-
-        if local_filepath is None:
-            err("File name could not be determined.")
-            return
-
-        if remote_filepath:
-            print_filename = "{:s} (remote: {:s})".format(local_filepath, remote_filepath)
-        else:
-            print_filename = local_filepath
-        gef_print(titlify("checksec - {:s}".format(print_filename)))
-
-        self.print_security_properties(local_filepath)
-
-        if tmp_filepath and os.path.exists(tmp_filepath):
-            os.unlink(tmp_filepath)
-        return
-
     def print_security_properties(self, filename):
 
         def get_colored_msg(val):
@@ -21875,6 +21809,72 @@ class ChecksecCommand(GenericCommand):
                 gef_print("{:<40s}: {:s}".format("GDB ASLR setting", msg))
         return
 
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if is_qemu_system():
+            info("Redirect to kchecksec")
+            gdb.execute("kchecksec")
+            return
+
+        local_filepath = None
+        remote_filepath = None
+        tmp_filepath = None
+
+        if args.remote:
+            if not is_remote_debug():
+                err("-r option is allowed only remote debug.")
+                return
+
+            if args.file:
+                remote_filepath = args.file # if specified, assume it is remote
+            elif gdb.current_progspace().filename:
+                f = gdb.current_progspace().filename
+                if f.startswith("target:"): # gdbserver
+                    f = f[7:]
+                remote_filepath = f
+            elif get_pid(remote=True):
+                remote_filepath = "/proc/{:d}/exe".format(get_pid(remote=True))
+            else:
+                err("File name could not be determined.")
+                return
+
+            data = read_remote_file(remote_filepath, as_byte=True) # qemu-user is failed here, it is ok
+            if not data:
+                err("Failed to read remote filepath")
+                return
+            tmp_fd, tmp_filepath = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".elf", prefix="checksec-")
+            os.write(tmp_fd, data)
+            os.close(tmp_fd)
+            local_filepath = tmp_filepath
+            del data
+
+        elif args.file:
+            local_filepath = args.file
+
+        elif args.file is None:
+            if is_qemu_system():
+                err("Argument-less calls are unsupported under qemu-system.")
+                return
+            local_filepath = get_filepath()
+
+        if local_filepath is None:
+            err("File name could not be determined.")
+            return
+
+        if remote_filepath:
+            print_filename = "{:s} (remote: {:s})".format(local_filepath, remote_filepath)
+        else:
+            print_filename = local_filepath
+        gef_print(titlify("checksec - {:s}".format(print_filename)))
+
+        self.print_security_properties(local_filepath)
+
+        if tmp_filepath and os.path.exists(tmp_filepath):
+            os.unlink(tmp_filepath)
+        return
+
 
 @register_command
 class KernelChecksecCommand(GenericCommand):
@@ -21905,16 +21905,6 @@ class KernelChecksecCommand(GenericCommand):
         elif gdb.execute("ksymaddr-remote --quiet --no-pager slob_", to_string=True):
             return "SLOB"
         return "Unknown"
-
-    @parse_args
-    @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
-    @only_if_in_kernel_or_kpti_disabled
-    def do_invoke(self, args):
-        self.dont_repeat()
-        self.print_security_properties_qemu_system()
-        return
 
     def print_security_properties_qemu_system(self):
         # Common information
@@ -22821,6 +22811,16 @@ class KernelChecksecCommand(GenericCommand):
         else:
             gef_print("{:<40s}: {:s}".format(cfg, "???"))
 
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
+    def do_invoke(self, args):
+        self.dont_repeat()
+        self.print_security_properties_qemu_system()
         return
 
 
