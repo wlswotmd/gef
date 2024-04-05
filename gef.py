@@ -16570,6 +16570,7 @@ class PtrDemangleCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     @staticmethod
+    @cache_until_next
     def get_cookie():
         if is_qiling():
             return None
@@ -59102,7 +59103,10 @@ class ExecAsm:
         self.close_stdout()
         if self.debug:
             gdb.execute("context")
-        gdb.execute("stepi {:d}".format(self.step), to_string=True)
+        try:
+            gdb.execute("stepi {:d}".format(self.step), to_string=True)
+        except gdb.MemoryError:
+            pass
         if self.debug:
             gdb.execute("context")
         self.revert_stdout()
