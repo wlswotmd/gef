@@ -29396,7 +29396,7 @@ class Ret2dlHintCommand(GenericCommand):
             s += "  |      | DWORD r_offset                   |                        | DWORD st_name      |          | char[] symbol   |\n"
             s += "  |      | DWORD r_info                     |                        | DWORD st_value     |     +--->| char[] symbol   |\n"
             s += "  |      +----------------------------------+                        | DWORD st_size      |     |    | char[] symbol   |\n"
-            s += "  +----->| DWORD r_offset(=writable area)   |  (r_info>>8) * 0x18    | BYTE  st_info      |     |    | char[] symbol   |\n"
+            s += "  +----->| DWORD r_offset(=writable area)   |  (r_info>>8) * 0x10    | BYTE  st_info      |     |    | char[] symbol   |\n"
             s += "         | DWORD r_info(=(dynsym_idx<<8)|7) |------------+           | BYTE  st_other     |     |    | ...             |\n"
             s += "         +----------------------------------+            |           | WORD  st_shndx     |     |    +-----------------+\n"
             s += "         | ...                              |            +---------->+--------------------+     |\n"
