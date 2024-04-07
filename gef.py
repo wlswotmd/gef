@@ -24814,7 +24814,7 @@ class MainBreakCommand(GenericCommand):
         except gdb.error:
             pass
 
-        ret = gdb.execute("got --quiet __libc_start_main", to_string=True)
+        ret = gdb.execute("got --no-pager --quiet __libc_start_main", to_string=True)
         if not ret:
             err("Failed to resolve __libc_start_main")
             return None
@@ -30630,6 +30630,7 @@ class GotCommand(GenericCommand):
     parser.add_argument("-f", "--file", help="the filename you want to parse.")
     parser.add_argument("-e", "--elf-address", type=parse_address, help="the elf address you want to parse.")
     parser.add_argument("-r", "--remote", action="store_true", help="parse remote binary if download feature is available.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
     parser.add_argument("filter", metavar="FILTER", nargs="*", help="filter string.")
@@ -30646,13 +30647,14 @@ class GotCommand(GenericCommand):
         return
 
     def get_jmp_slots(self):
-        elf = get_elf_headers(self.filename)
-
         try:
-            cmd = [self.readelf, "--relocs", "--wide", self.filename]
+            readelf = which("readelf")
+            cmd = [readelf, "--relocs", "--wide", self.filename]
             lines = gef_execute_external(cmd, as_list=True)
-        except Exception:
-            lines = []
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            return []
+
+        elf = get_elf_headers(self.filename)
 
         output = {}
         section_name = None
@@ -30715,13 +30717,14 @@ class GotCommand(GenericCommand):
         return a + b + c
 
     def get_plt_addresses(self):
-        elf = get_elf_headers(self.filename)
-
         try:
-            cmd = [self.objdump, "-j", ".plt", "-j", ".plt.sec", "-j", ".plt.got", "-d", self.filename]
+            objdump = which("objdump")
+            cmd = [objdump, "-j", ".plt", "-j", ".plt.sec", "-j", ".plt.got", "-d", self.filename]
             lines = gef_execute_external(cmd, as_list=True)
-        except Exception:
-            lines = []
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            return {}
+
+        elf = get_elf_headers(self.filename)
 
         output = {}
         for line in lines:
@@ -30740,7 +30743,6 @@ class GotCommand(GenericCommand):
             # So there are multiple "*ABS*" entries, keep them in a list.
             array = output.get(func_name, [])
             output[func_name] = array + [address]
-
         return output
 
     def get_plt_range(self):
@@ -30756,14 +30758,13 @@ class GotCommand(GenericCommand):
         if elf.is_pie():
             plt_begin += self.base_address
             plt_end += self.base_address
-
         return plt_begin, plt_end
 
     def perm(self, addr):
-        try:
-            return "[{!s}]".format(lookup_address(addr).section.permission)
-        except Exception:
+        sec = lookup_address(addr).section
+        if sec is None:
             return "[???]"
+        return "[{!s}]".format(sec.permission)
 
     def get_shdr_range(self):
         # Required to identify the section name.
@@ -30792,7 +30793,7 @@ class GotCommand(GenericCommand):
                 return " <{:s}+{:#x}>".format(name, addr - start)
         return ""
 
-    def print_plt_got(self):
+    def parse_plt_got(self):
         width = get_format_address_width()
 
         # retrieve jump slots using readelf
@@ -30827,7 +30828,7 @@ class GotCommand(GenericCommand):
                     "PLT", width, VERTICAL_LINE,
                     "GOT", width, VERTICAL_LINE, "GOT value", width,
                 ]
-            gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+            self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
         # link each PLT entries and each GOT entries
         # and create lines for output
@@ -30835,11 +30836,11 @@ class GotCommand(GenericCommand):
         for got_address, name, section_name, type, reloc_arg in jmpslots:
             # resolve PLT from GOT name
             if section_name != ".rel.plt" and name == "*ABS*":
-                # i386 special case.
+                # 32-bit arch special case.
                 plt_address = None
             else:
                 # in many other case.
-                # This includes the common *ABS* duplication pattern on i386.
+                # This includes the common *ABS* duplication pattern on 32-bit arch.
                 plt_address = plts.get(name, None)
                 if plt_address:
                     # It is actually popped from plts[name]. plt_address is reassigned by int value.
@@ -30933,13 +30934,13 @@ class GotCommand(GenericCommand):
             # print section name
             if prev_section != section_name:
                 if not self.quiet:
-                    gef_print(titlify(section_name))
+                    self.out.append(titlify(section_name))
             prev_section = section_name
             # if we have a filter let's skip the entries that are not requested
             if self.filter:
                 if not any(pattern in line for pattern in self.filter):
                     continue
-            gef_print(line)
+            self.out.append(line)
         return
 
     @parse_args
@@ -30948,10 +30949,9 @@ class GotCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        # setup readelf/objdump
         try:
-            self.readelf = which("readelf")
-            self.objdump = which("objdump")
+            which("objdump")
+            which("readelf")
         except FileNotFoundError as e:
             if not args.quiet:
                 err("{}".format(e))
@@ -30971,6 +30971,7 @@ class GotCommand(GenericCommand):
         # It should be removed later.
         tmp_filepath = None
 
+        self.out = []
         if args.remote:
             if not is_remote_debug():
                 if not args.quiet:
@@ -31026,10 +31027,14 @@ class GotCommand(GenericCommand):
         else:
             print_filename = local_filepath
         if not args.quiet:
-            gef_print(titlify("PLT / GOT - {:s}".format(print_filename)))
+            self.out.append(titlify("PLT / GOT - {:s}".format(print_filename)))
 
         # get base address
         if args.elf_address:
+            if not args.file:
+                if not args.quiet:
+                    err("-e option needs -f option")
+                return
             base_address = args.elf_address
         else:
             vmmap = get_process_maps()
@@ -31066,8 +31071,13 @@ class GotCommand(GenericCommand):
         self.quiet = args.quiet
 
         # doit
-        self.print_plt_got()
+        self.parse_plt_got()
+        if len(self.out) > get_terminal_size()[0]:
+            gef_print("\n".join(self.out), less=not args.no_pager)
+        else:
+            gef_print("\n".join(self.out), less=False)
 
+        # clean up
         if tmp_filepath and os.path.exists(tmp_filepath):
             os.unlink(tmp_filepath)
         return
@@ -71033,7 +71043,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
         libc = process_lookup_path("libuClibc-")
         if libc is None:
             return None
-        ret = gdb.execute("got --quiet --file '{:s}' <malloc>".format(libc.path), to_string=True)
+        ret = gdb.execute("got --no-pager --quiet --file '{:s}' <malloc>".format(libc.path), to_string=True)
         if not ret:
             return None
         elem = Color.remove_color(ret).splitlines()[0].split()
