@@ -90,7 +90,16 @@
 
 ### rr cooperation
 * Usage
-    * It can be used just like normal GDB.
+    * Run first, `rr record /PATH/TO/BINARY`.
+    * Then, `rr replay` for time-travel debugging.
+* Note
+    * This is an experimental support.
+    * Some commands may not work.
+
+### wine cooperation
+* Usage
+    * Run `winedbg --gdb /PATH/TO/BINARY`.
+    * Or run `winedbg --gdb --no-start /PATH/TO/BINARY` and attach with `gdb -ex 'target remote localhost:<port>'`.
 * Note
     * This is an experimental support.
     * Some commands may not work.

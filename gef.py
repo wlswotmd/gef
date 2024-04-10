@@ -11030,6 +11030,7 @@ def only_if_specific_gdb_mode(mode=()):
                 "kgdb": is_kgdb,
                 "qiling": is_qiling,
                 "rr": is_rr,
+                "wine": is_wine,
             }
             for m in mode:
                 if dic.get(m, lambda: False)():
@@ -11056,6 +11057,7 @@ def exclude_specific_gdb_mode(mode=()):
                 "kgdb": is_kgdb,
                 "qiling": is_qiling,
                 "rr": is_rr,
+                "wine": is_wine,
             }
             for m in mode:
                 if dic.get(m, lambda: False)():
@@ -11410,6 +11412,11 @@ def is_rr():
     return get_pid_from_tcp_session(filepath="rr") is not None
 
 
+@cache_this_session
+def is_wine():
+    return get_pid_from_tcp_session(filepath="wineserver") is not None
+
+
 def get_tcp_sess(pid):
     # get inode information from opened file descriptor
     inodes = []
@@ -11469,6 +11476,39 @@ def get_pid_from_tcp_session(filepath=None):
     return None
 
 
+def get_pid_wine():
+    ws_pid = get_pid_from_tcp_session(filepath="wineserver")
+    if ws_pid is None:
+        return None
+
+    def get_external_pipe_inodes(pid):
+        inodes = set()
+        if not os.path.exists("/proc/{:d}/".format(pid)):
+            return inodes
+        # get inode information from opened file descriptor
+        for openfd in os.listdir("/proc/{:d}/fd".format(pid)):
+            try:
+                fdname = os.readlink("/proc/{:d}/fd/{:s}".format(pid, openfd))
+            except (FileNotFoundError, ProcessLookupError, OSError):
+                continue
+            if fdname.startswith("pipe:["):
+                inode = fdname[6:-1]
+                if inode in inodes:
+                    inodes.remove(inode)
+                else:
+                    inodes.add(inode)
+        return inodes
+
+    ws_inodes = get_external_pipe_inodes(ws_pid)
+
+    gdb_pid = os.getpid()
+    for candidate_pid in range(gdb_pid - 1, ws_pid, -1):
+        candidate_inodes = get_external_pipe_inodes(candidate_pid)
+        if candidate_inodes & ws_inodes:
+            return candidate_pid
+    return None
+
+
 # Under pin and qemu, it is necessary to parse the TCP information for obtaining the pid.
 # This operation is expensive, but once known, it never changes.
 # I decided to keep the cache until it is explicitly cleared.
@@ -11481,6 +11521,9 @@ def get_pid(remote=False):
 
     elif is_qemu_user() or is_qemu_system():
         return get_pid_from_tcp_session("qemu")
+
+    elif is_wine():
+        return get_pid_wine()
 
     elif remote is False and is_remote_debug():
         return None # gdbserver etc.
@@ -11574,18 +11617,19 @@ def get_process_maps_linux(pid, remote=False):
     if is_x86():
         tls_list = []
         orig_thread = gdb.selected_thread()
-        for thread in gdb.selected_inferior().threads():
-            thread.switch() # change thread
-            # note: for speed up, do not use current_arch.get_tls()
-            tls = get_register("$fs_base" if is_x86_64() else "$gs_base") # get tls address
-            tls_list.append([thread.num, tls, current_arch.sp])
-        orig_thread.switch() # revert thread
-        extra_info = sorted(tls_list)
+        if orig_thread: # orig_thread may be None if under winedbg
+            for thread in gdb.selected_inferior().threads():
+                thread.switch() # change thread
+                # note: for speed up, do not use current_arch.get_tls()
+                tls = get_register("$fs_base" if is_x86_64() else "$gs_base") # get tls address
+                tls_list.append([thread.num, tls, current_arch.sp])
+            orig_thread.switch() # revert thread
+            extra_info = sorted(tls_list)
 
-        # When using gdbserver, thread.num may start from 2 even though there is no thread.
-        # This is confusing, so if there is only the main thread, force it to 1.
-        if len(extra_info) == 1:
-            extra_info = [ [1] + extra_info[0][1:] ]
+            # When using gdbserver, thread.num may start from 2 even though there is no thread.
+            # This is confusing, so if there is only the main thread, force it to 1.
+            if len(extra_info) == 1:
+                extra_info = [ [1] + extra_info[0][1:] ]
 
     # parse
     maps = []
@@ -12013,6 +12057,12 @@ def get_process_maps(outer=False):
             return get_process_maps_linux(pid)
 
     elif is_qemu_system():
+        return []
+
+    elif is_wine():
+        pid = get_pid()
+        if pid:
+            return get_process_maps_linux(pid)
         return []
 
     elif is_remote_debug():
@@ -13148,7 +13198,7 @@ def gef_get_auxiliary_values(force_heuristic=False):
     Returns None if not running, or a dict() of values."""
     if not is_alive():
         return None
-    if is_qemu_system() or is_kgdb() or is_vmware():
+    if is_qemu_system() or is_kgdb() or is_vmware() or is_wine():
         return None
 
     def fast_path():
@@ -14403,7 +14453,7 @@ class BreakRelativeVirtualAddressCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     @parse_args
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -14413,6 +14463,9 @@ class BreakRelativeVirtualAddressCommand(GenericCommand):
             return
 
         elf = get_elf_headers(filepath)
+        if elf.is_valid():
+            return
+
         if not elf.is_pie():
             err("No-PIE elf is unsupported")
             return
@@ -14641,7 +14694,7 @@ class AuxvCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -14727,7 +14780,7 @@ class ArgvCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -14803,7 +14856,7 @@ class EnvpCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -15016,7 +15069,7 @@ class IouringDumpCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr", "wine"))
     @only_if_specific_arch(arch=("x86_64",))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -15925,7 +15978,7 @@ class CapabilityCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_target_local
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
         self.print_capability_from_pid(args.verbose)
@@ -16044,7 +16097,7 @@ class HijackFdCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr", "wine"))
     @exclude_specific_arch(arch=("CRIS",))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -16744,7 +16797,7 @@ class SearchMangledPtrCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @exclude_specific_arch(arch=("SPARC32", "XTENSA", "CRIS"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -16873,7 +16926,7 @@ class SearchCfiGadgetsCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -17214,7 +17267,7 @@ class MprotectCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr", "wine"))
     @exclude_specific_arch(arch=("CRIS",))
     @load_keystone
     def do_invoke(self, args):
@@ -17300,7 +17353,7 @@ class KillThreadsCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @exclude_specific_arch(arch=("CRIS",))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -17365,7 +17418,7 @@ class CallSyscallCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr", "wine"))
     @exclude_specific_arch(arch=("CRIS",))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -17435,7 +17488,7 @@ class MmapMemoryCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr", "wine"))
     @exclude_specific_arch(arch=("CRIS",))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -18229,7 +18282,7 @@ class UnicornEmulateCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @load_capstone
     @load_unicorn
     def do_invoke(self, args):
@@ -18776,7 +18829,7 @@ class GlibcHeapCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
         return
@@ -18796,7 +18849,7 @@ class GlibcHeapTopCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -18841,7 +18894,7 @@ class GlibcHeapArenasCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -19002,7 +19055,7 @@ class GlibcHeapArenaCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
         out = []
@@ -19053,7 +19106,7 @@ class GlibcHeapChunkCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -19189,7 +19242,7 @@ class GlibcHeapChunksCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -19251,7 +19304,7 @@ class GlibcHeapBinsCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -19386,7 +19439,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -19492,7 +19545,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -19598,7 +19651,7 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -19649,7 +19702,7 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -19706,7 +19759,7 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -20884,6 +20937,7 @@ class ArchInfoCommand(GenericCommand):
         gef_print("{:30s} {:s} {!s}".format("is_vmware()", RIGHT_ARROW, is_vmware()))
         gef_print("{:30s} {:s} {!s}".format("is_in_kernel()", RIGHT_ARROW, is_in_kernel()))
         gef_print("{:30s} {:s} {!s}".format("is_rr()", RIGHT_ARROW, is_rr()))
+        gef_print("{:30s} {:s} {!s}".format("is_wine()", RIGHT_ARROW, is_wine()))
 
         gef_print(titlify("GEF settings"))
         gef_print("{:30s} {:s} {!s}".format("current_arch.arch", RIGHT_ARROW, current_arch.arch))
@@ -21783,6 +21837,7 @@ class ChecksecCommand(GenericCommand):
     def print_security_properties(self, filename):
         elf = Elf(filename)
         if not elf.is_valid():
+            err("checksec is failed")
             return
 
         sec = elf.checksec()
@@ -24708,7 +24763,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
         return Section(*dic.values())
 
     @parse_args
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -24860,7 +24915,7 @@ class MainBreakCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -24930,7 +24985,7 @@ class EntryPointBreakCommand(GenericCommand):
         return
 
     # Need not @parse_args because argparse can't stop interpreting argument for start.
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, argv):
         self.dont_repeat()
 
@@ -27555,7 +27610,7 @@ class PatchSyscallCommand(PatchCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("rr",))
+    @exclude_specific_gdb_mode(mode=("rr", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -28112,7 +28167,7 @@ class ASLRCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_target_local
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -28963,6 +29018,7 @@ class SigreturnCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("wine",))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -29162,6 +29218,7 @@ class SropHintCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     @parse_args
+    @exclude_specific_gdb_mode(mode=("wine",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -29586,7 +29643,7 @@ class LinkMapCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -29889,7 +29946,7 @@ class DynamicCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -30520,7 +30577,7 @@ class DestructorDumpCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @exclude_specific_arch(arch=("SPARC32", "XTENSA", "CRIS"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -30946,7 +31003,7 @@ class GotCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -31127,6 +31184,7 @@ class FormatStringSearchCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     @parse_args
+    @exclude_specific_gdb_mode(mode=("wine",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -31514,7 +31572,7 @@ class HeapAnalysisCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -44731,6 +44789,7 @@ class SyscallArgsCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("wine",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -44923,7 +44982,7 @@ class HeapbaseCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -45259,6 +45318,7 @@ class MagicCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("wine",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -45494,7 +45554,7 @@ class OneGadgetCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_gdb_target_local
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -45524,7 +45584,7 @@ class SeccompCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_gdb_target_local
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -46390,6 +46450,7 @@ class ErrnoCommand(GenericCommand):
     }
 
     @parse_args
+    @exclude_specific_gdb_mode(mode=("wine",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -46457,6 +46518,7 @@ class ExtractHeapAddrCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("wine",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -46554,7 +46616,7 @@ class FindFakeFastCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -46720,7 +46782,7 @@ class VisualHeapCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -59737,6 +59799,7 @@ class GdtInfoCommand(GenericCommand):
         return
 
     @parse_args
+    @exclude_specific_gdb_mode(mode=("wine",))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "x86_16"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -59970,6 +60033,7 @@ class IdtInfoCommand(GenericCommand):
         return
 
     @parse_args
+    @exclude_specific_gdb_mode(mode=("wine",))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "x86_16"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -69464,7 +69528,7 @@ class TcmallocDumpCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @only_if_specific_arch(arch=("x86_64",))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -69493,7 +69557,7 @@ class V8Command(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -70295,7 +70359,7 @@ class PartitionAllocDumpCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -70792,6 +70856,7 @@ class MuslHeapDumpCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -71560,7 +71625,7 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -79835,6 +79900,7 @@ class ExecUntilSyscallCommand(ExecUntilCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("wine",))
     def do_invoke(self, args):
         self.print_insn = args.print_insn
         self.use_ni = args.use_ni
@@ -80010,7 +80076,7 @@ class ExecUntilUserCodeCommand(ExecUntilCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         if self.mode is None:
             self.usage()
@@ -80057,7 +80123,7 @@ class ExecUntilLibcCodeCommand(ExecUntilCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         if self.mode is None:
             self.usage()
@@ -84191,6 +84257,8 @@ class GefAvailableCommandListCommand(GenericCommand):
                     return '"qiling"' in line
                 if is_rr():
                     return '"rr"' in line
+                if is_wine():
+                    return '"wine"' in line
         return True
 
     def check_exclude_mode(self, decorators):
@@ -84208,6 +84276,8 @@ class GefAvailableCommandListCommand(GenericCommand):
                     return '"qiling"' in line
                 if is_rr():
                     return '"rr"' in line
+                if is_wine():
+                    return '"wine"' in line
         return False
 
     def get_arch_name(self):

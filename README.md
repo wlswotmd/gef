@@ -82,6 +82,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 * Connect to the gdb stub of `KGDB` (need gdb 12, via serial)
 * Connect to the gdb stub of `VMWare`
 * Record and replay debugging (`rr replay`)
+* Connect to the gdb stub of `wine`
 
 See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORTED-MODE.md) for detail.
 
