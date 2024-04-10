@@ -95,7 +95,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * `sysreg`: pretty prints system registers.
     * It is the result of `info registers` with filtering general registers.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/sysreg.png)
-* `pagewalk`: displays the page table from scanning physical memory.
+* `pagewalk`: scans physical memory, parses page tables, and displays memory maps.
     * x64 (Supported: 4-Level/5-Level Paging)
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-x64.png)
     * x86 (Supported: PAE/Non-PAE)
@@ -103,16 +103,16 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ARM64 (Supported: EL1&0-stage1/EL1&0-stage2/EL2&0-stage1/EL2-stage1/EL3-stage1)
         * ARM v8.7 base. 32bit mode is NOT supported.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64.png)
-        * Each level pagewalk sample from HITCON CTF 2018 `super_hexagon`. Parsing of stage2 translation table (`VTTBR_EL2`) is also supported.
+        * Here is a sample of each level pagewalk from HITCON CTF 2018 `super_hexagon`.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-el123.png)
-        * Secure memory scanning is supported, but you have to break in the secure world.
+        * Secure memory scanning is also supported, but you have to break in the secure world.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-secure.png)
-        * Pseudo page tables without detailed flags and permission can be output even in the normal world (when uses OP-TEE).
+        * Pseudo memory map without detailed flags and permission can be output even in the normal world (when uses OP-TEE).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-secure-pseudo.png)
-    * ARM (only Cortex-A, LPAE/Non-LPAE, PL0/PL1)
+    * ARM (Supported: only Cortex-A, LPAE/Non-LPAE, PL0/PL1)
         * ARM v7 base. PL2 is NOT supported.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm.png)
-        * Secure memory scanning is supported, you don't have to break in the secure world (use register with `_S` suffix).
+        * Secure memory scanning is also supported, and you don't have to break in the secure world (unlike ARM64).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm-secure.png)
 * `v2p`/`p2v`: displays transformation virtual address <-> physical address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/v2p-p2v.png)
@@ -145,8 +145,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 
 ### Qemu-system cooperation - Linux specific - Basic
 * `kbase`: displays the kernel base address.
-* `kversion`: displays the debugged kernel version.
-* `kcmdline`: displays the debugged kernel startup cmdline.
+* `kversion`: displays the kernel version.
+* `kcmdline`: displays the kernel cmdline used at boot time.
 * `kcurrent`: displays current task address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbase-kversion-kcmdline-kcurrent.png)
 
