@@ -27801,7 +27801,7 @@ def to_string_dereference_from(value, skip_idx=0, phys=False):
                 if s:
                     fa = format_address(addrs[-1], long_fmt=True)
                     if len(s) > nb_max_string_length:
-                        last_elem = "{:s} {:s}".format(fa, Color.colorify(repr(s[:nb_max_string_length]), string_color))
+                        last_elem = "{:s} {:s}...".format(fa, Color.colorify(repr(s[:nb_max_string_length]), string_color))
                     else:
                         last_elem = "{:s} {:s}".format(fa, Color.colorify(repr(s), string_color))
                     addrs = addrs[:-1]
