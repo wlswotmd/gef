@@ -25510,11 +25510,12 @@ class ContextCommand(GenericCommand):
             return []
         bp_locations = []
         for b in breakpoints:
-            if hasattr(b, "locations"):
+            if hasattr(b, "locations"): # gdb 13.1~
                 for bl in b.locations:
-                    bp_locations.append(bl.address)
+                    if bl and bl.address is not None:
+                        bp_locations.append(bl.address)
             else: # for old gdb
-                if b.location.startswith("*"):
+                if b.location and b.location.startswith("*"):
                     pos = b.location.lstrip("*")
                     try:
                         x = int(pos, 16)
