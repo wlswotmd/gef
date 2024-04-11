@@ -2878,7 +2878,10 @@ def search_for_mp_():
     offsetof_sbrk_base = MallocPar(0).sbrk_base_addr
     current = main_arena - MallocPar(0).sizeof
     for _ in range(0, 500):
-        x = read_int_from_memory(current)
+        try:
+            x = read_int_from_memory(current)
+        except gdb.MemoryError:
+            return None
         if x == heap_base:
             mp_ = current - offsetof_sbrk_base
             return mp_
@@ -3504,7 +3507,7 @@ class GlibcArena:
         chunks = []
         while fw != head:
             chunk = GlibcChunk(fw, from_base=True)
-            if chunk.address in chunks:
+            if chunk.chunk_base_address in chunks:
                 err("bins[{:d}] has a loop.".format(index))
                 break
             chunks.append(chunk.chunk_base_address)
@@ -19474,6 +19477,9 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
 
     @staticmethod
     def print_tcache(arena, verbose):
+        if get_libc_version() < (2, 26):
+            return
+
         # Get tcache_perthread_struct for this arena
         tcache_perthread_struct = arena.heap_base + 0x10
 
@@ -44978,7 +44984,9 @@ class HeapbaseCommand(GenericCommand):
                     __cached_heap_base__ = heap_base
                     return __cached_heap_base__
 
-        return None
+        # fall through
+        __cached_heap_base__ = get_section_base_address("[heap]")
+        return __cached_heap_base__
 
     @parse_args
     @only_if_gdb_running
