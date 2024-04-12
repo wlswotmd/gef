@@ -456,7 +456,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gdtinfo.png)
 * `idtinfo`: pretty prints IDT entries. If userland, show sample entries.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/idtinfo.png)
-* `tls`: pretty prints TLS area. Some architectures only support glibc.
+* `tls`: pretty prints TLS area. Requires glibc.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tls.png)
 * `fsbase`/`gsbase`: pretty prints `$fs_base`, `$gs_base`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/fsbase_gsbase.png)

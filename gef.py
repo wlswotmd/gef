@@ -59297,7 +59297,7 @@ class ExecSyscall(ExecAsm):
 
 @register_command
 class TlsCommand(GenericCommand):
-    """Display TLS base address. Some architectures only support glibc."""
+    """Display TLS base address. Rquires glibc."""
     _cmdline_ = "tls"
     _category_ = "02-b. Process Information - Base Address"
 
