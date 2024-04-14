@@ -26294,7 +26294,10 @@ class ContextCommand(GenericCommand):
                         addr = int(val.address)
                         val = to_string_dereference_from(addr)
                     elif val.type.code == gdb.TYPE_CODE_INT:
-                        val = hex(int(val))
+                        try:
+                            val = hex(int(val))
+                        except gdb.error:
+                            continue
                     else:
                         continue
 
