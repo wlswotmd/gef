@@ -98,6 +98,8 @@
 * Usage
     * Run first, `rr record /PATH/TO/BINARY`.
     * Then, `rr replay` for time-travel debugging.
+* Supported architectures
+    * x86 and x64.
 * Note
     * This is an experimental support. Some commands may not work.
 
@@ -105,6 +107,8 @@
 * Usage
     * Run `winedbg --gdb /PATH/TO/BINARY`.
     * Or run `winedbg --gdb --no-start /PATH/TO/BINARY` and attach with `gdb -ex 'target remote localhost:<port>'`.
+* Supported architectures
+    * x86 and x64.
 * Note
     * It needs to run `winedbg` on `localhost`.
     * This is an experimental support. Some commands may not work.

@@ -68,9 +68,10 @@ Yes, it probably works.
 
 The example of build commands are shown below.
 ```
+apt install -y libdebuginfod-dev
 git clone --depth 1 https://github.com/bminor/binutils-gdb && cd binutils-gdb
 ./configure --disable-binutils --disable-ld --disable-gold --disable-gas --disable-sim --disable-gprof --disable-gprofng \
---enable-targets=all --with-python=/usr/bin/python3 --with-system-zlib --with-system-readline
+--enable-targets=all --with-python=/usr/bin/python3 --with-debuginfod --with-system-zlib --with-system-readline
 make && make install
 ```
 
@@ -104,7 +105,26 @@ If you install with `install-minimal.sh`, you will not be able to use these comm
   * `one_gadget`: Required by `onegadget` command.
 
 ## How can I install GEF offline?
-Please refer to `install.sh` or `install-minimal.sh`, and set it up manually.
+Please refer to [`install.sh`](https://github.com/bata24/gef/blob/dev/install.sh) or [`install-minimal.sh`](https://github.com/bata24/gef/blob/dev/install-minimal.sh), and set it up manually.
+
+## When debugging with gdb, how can I display the source code of preinstalled libraries and commands?
+Although it is limited to Ubuntu 22.10 or later, it is recommended to use `debuginfod`.
+
+* Enable `debuginfod` (ubuntu 22.10~)
+    * `export DEBUGINFOD_URLS="https://debuginfod.ubuntu.com"`
+    * `echo "set debuginfod enabled on" >> ~/.gdbinit`
+
+However, for some reason `debuginfod` does not display the `glibc` source code, so you need to obtain and place the source code separately.
+I don't really understand the reason for this.
+
+* Get `glibc` source
+    * `sed -i -e "s/^# deb-src/deb-src/g" /etc/apt/sources.list`
+    * `cd /usr/lib/debug && apt update && apt source libc6`
+    * `echo "directory /usr/lib/debug/glibc-2.38" >> ~/.gdbinit`
+
+* Also add `glibc` symbols
+    * `apt install libc6-dbg`
+    * `echo "set debug-file-directory /usr/lib/debug" >> ~/.gdbinit`.
 
 
 # About the guest (debugged) environment
@@ -136,7 +156,7 @@ GEF will switch to and from 32-bit mode automatically.
 I have never tried it, so I don't know.
 
 I think it will work for userland debugging.
-However, Android does not use glibc, so the heap structure is different.
+However, Android does not use `glibc`, so the heap structure is different.
 Therefore, I think at least `heap` related commands will not work.
 
 Regarding kernel debugging, I haven't been able to confirm how much the structure is different.
@@ -247,7 +267,7 @@ However, with certain combinations of `binutils` and `glibc` versions, `objdump`
 The currently known combinations are as follows.
 * `binutils 2.38` (Ubuntu 22.04 default) + `glibc 2.37 or later`
 
-This problem occurs when you try to use newer glibc in an Ubuntu 22.04 environment using `patchelf` etc.
+This problem occurs when you try to use newer `glibc` in an Ubuntu 22.04 environment using `patchelf` etc.
 The workaround is to build and install new `binutils` from source code.
 
 ## Can I switch to a mode that references physical memory?
@@ -262,7 +282,7 @@ This is because libc symbols are not loaded.
 Unlike kernel symbols, userland symbols do not undergo heuristic detection (with some special exceptions).
 Therefore, missing symbols may not be detected by the `magic` command.
 
-If you're referring to system-wide glibc, you can resolve it with these steps:
+If you're referring to system-wide `glibc`, you can resolve it with these steps:
 1. Install the symbols with `apt install libc6-dbg`.
 2. Add `set debug-file-directory /usr/lib/debug` in `~/.gdbinit`.
 
@@ -379,7 +399,7 @@ Yes. However, it is becoming difficult to find new support targets.
 
 This is because three things are required:
 1. toolchain
-    * linux-headers, binutils, gcc, glibc (or uclibc) are needed.
+    * `linux-headers`, `binutils`, `gcc`, `glibc` (or `uClibc`) are needed.
     * Prebuilt tarball is prefer.
 2. qemu-user
     * It needs implementation of gdb-stub.
