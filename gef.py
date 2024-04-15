@@ -303,8 +303,27 @@ def _displayhook(o):
             if len(f) < width:
                 return f
             return "\n".join(["dict_values(["] + [I2() + dec2hex(x, idt + 1) + "," for x in o] + [I1() + "])"])
+        elif name == "dict_items":
+            f = "dict_items([" + ", ".join([dec2hex(k, idt + 1) + ": " + dec2hex(v, idt + 1) for k, v in o]) + "])"
+            if len(f) < width:
+                return f
+            return "\n".join(["dict_items(["] + [I2() + dec2hex(k, idt + 1) + ": " + dec2hex(v, idt + 1) + "," for k, v in o] + [I1() + "])"])
         elif name == "Zone":
             return re.sub(r"(zone_start=|zone_end=)(\d+)", lambda x:x.group(1) + hex(int(x.group(2))), str(o))
+        elif name == "Table":
+            f = "Table(arch={!s}, mode={!s}, table={{\n".format(repr(o.arch), repr(o.mode))
+            f += "\n".join([I2() + dec2hex(k, idt + 1) + ": " + dec2hex(v, idt + 1) + "," for k, v in o.table.items()])
+            f += "\n" + I1() + "})"
+            return f
+        elif name == "Entry":
+            f = "Entry(\n"
+            f += I2() + "name={!s},\n".format(repr(o.name))
+            f += I2() + "ret_regs={!s},\n".format(o.ret_regs)
+            f += I2() + "arg_regs={!s},\n".format(o.arg_regs)
+            f += I2() + "args_full={!s},\n".format(o.args_full)
+            f += I2() + "args={!s},\n".format(o.args)
+            f += I1() + ")"
+            return f
         return repr(o)
 
     __builtins__._ = o
