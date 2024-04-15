@@ -14444,6 +14444,10 @@ class DisplayTypeCommand(GenericCommand):
                 warn("The specified number of `*` characters were not found at the end of the type name. Skip removal.")
                 break
 
+        if "." in stripped_type and " " not in stripped_type:
+            # golang "runtime.mheap" -> "'runtime.mheap'"
+            stripped_type = "'{:s}'".format(stripped_type)
+
         try:
             if args.address is None:
                 ret = gdb.execute("ptype /ox {:s}".format(stripped_type), to_string=True)
