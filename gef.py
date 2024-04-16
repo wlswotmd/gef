@@ -69591,6 +69591,157 @@ class TcmallocDumpCommand(GenericCommand):
 
 
 @register_command
+class GoHeapDumpCommand(GenericCommand):
+    """go language v1.21.1 mheap dumper (only x64)."""
+    _cmdline_ = "goheap-dump"
+    _category_ = "06-b. Heap - Other"
+
+    # TODO: arena, central, mspan->next
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="display also empty slots.")
+    _syntax_ = parser.format_help()
+
+    class_to_size_dic = [
+        0x0,    0x8,    0x10,   0x18,
+        0x20,   0x30,   0x40,   0x50,
+        0x60,   0x70,   0x80,   0x90,
+        0xa0,   0xb0,   0xc0,   0xd0,
+        0xe0,   0xf0,   0x100,  0x120,
+        0x140,  0x160,  0x180,  0x1a0,
+        0x1c0,  0x1e0,  0x200,  0x240,
+        0x280,  0x2c0,  0x300,  0x380,
+        0x400,  0x480,  0x500,  0x580,
+        0x600,  0x700,  0x800,  0x900,
+        0xa80,  0xc00,  0xc80,  0xd80,
+        0x1000, 0x1300, 0x1500, 0x1800,
+        0x1980, 0x1a80, 0x1b00, 0x2000,
+        0x2500, 0x2600, 0x2800, 0x2a80,
+        0x3000, 0x3500, 0x3800, 0x4000,
+        0x4800, 0x4a80, 0x5000, 0x5500,
+        0x6000, 0x6a80, 0x7000, 0x8000,
+    ]
+
+    def __init__(self):
+        super().__init__()
+
+        """
+        00000000 runtime_mheap   struc ; (sizeof=0x16A78, align=0x8)
+        ...
+        00010148 allspans        []*mspan
+        ...
+        00010198 arenas          [1]*[4194304]*heapArena
+        ...
+        00010248 central         [136]struct{
+            mcentral mcentral
+        }
+        ...
+        00016A78 runtime_mheap   ends
+        """
+
+        self.PageShift = 13
+        self.PageSize = 1 << self.PageShift
+
+        self.offset_allspans = 0x10148
+
+        """
+        00000000 runtime_mspan   struc ; (sizeof=0xA8, align=0x8)
+        00000000 next            dq ?
+        00000008 prev            dq ?
+        00000010 list            dq ?
+        00000018 startAddr       dq ?
+        00000020 npages          dq ?
+        ...
+        0000006A spanclass       db ?
+        ...
+        000000A8 runtime_mspan   ends
+        """
+        self.offset_next = 0x0
+        self.offset_prev = 0x8
+        self.offset_startAddr = 0x18
+        self.offset_npages = 0x20
+        self.offset_nelems = 0x38
+        self.offset_spanclass = 0x6a
+        return
+
+    def get_mheap_(self):
+        try:
+            return parse_address("&'runtime.mheap_'")
+        except gdb.error:
+            return None
+
+    def dump_mspans(self, mspans):
+        chunk_size_color = get_gef_setting("theme.heap_chunk_size")
+        page_address_color = get_gef_setting("theme.heap_page_address")
+
+        for mspan in mspans:
+            chunk_size_str = Color.colorify("{:#x}".format(mspan.chunk_size), chunk_size_color)
+            range_addr_str = Color.colorify("{:#x}-{:#x}".format(mspan.start_addr, mspan.end_addr), page_address_color)
+            range_size = mspan.end_addr - mspan.start_addr
+            msg = "mspan @ {!s} [{:s} sz={:#x} chunk_size={:s} next={!s}, prev:{!s}]".format(
+                lookup_address(mspan.address), range_addr_str, range_size, chunk_size_str,
+                lookup_address(mspan.next), lookup_address(mspan.prev),
+            )
+            self.out.append(msg)
+        return
+
+    def dump_mheap(self, verbose):
+        mheap = self.get_mheap_()
+        if mheap is None:
+            err("Not found runtime.mheap_")
+            return
+        self.out.append(titlify("runtime.mheap_ @ {:#x}".format(mheap)))
+
+        Mspan = collections.namedtuple("Mspan", ["address", "next", "prev", "start_addr", "end_addr", "npages", "chunk_size"])
+        current = read_int_from_memory(mheap + self.offset_allspans)
+
+        mspans = []
+        while True:
+            mspan = read_int_from_memory(current)
+            if not mspan:
+                break
+
+            # read member
+            start_addr = read_int_from_memory(mspan + self.offset_startAddr)
+            if not verbose and start_addr == 0:
+                current += current_arch.ptrsize
+                continue
+            # spanclass = (sizeclass << 1) | (noscan bit)
+            spanclass = u8(read_memory(mspan + self.offset_spanclass, 1)) >> 1
+            chunk_size = self.class_to_size_dic[spanclass]
+            if not verbose and chunk_size == 0:
+                current += current_arch.ptrsize
+                continue
+            next_ = read_int_from_memory(mspan + self.offset_next)
+            prev_ = read_int_from_memory(mspan + self.offset_prev)
+            npages = read_int_from_memory(mspan + self.offset_npages)
+            end_addr = start_addr + npages * self.PageSize
+
+            mspan = Mspan(mspan, next_, prev_, start_addr, end_addr, npages, chunk_size)
+            mspans.append(mspan)
+
+            # goto next
+            current += current_arch.ptrsize
+
+        mspans = sorted(mspans, key=lambda m: (m.chunk_size, m.address))
+        self.dump_mspans(mspans)
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
+    @only_if_specific_arch(arch=("x86_64",))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        self.out = []
+        self.dump_mheap(args.verbose)
+        gef_print("\n".join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
 class V8Command(GenericCommand):
     """Print v8 tagged object, or load more commands from internet."""
     _cmdline_ = "v8"
