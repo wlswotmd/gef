@@ -10783,6 +10783,7 @@ def get_current_mmu_mode():
             return "phys"
         except gdb.MemoryError:
             return "virt"
+    return None
 
 
 def is_supported_physmode():
@@ -20969,7 +20970,14 @@ class ArchInfoCommand(GenericCommand):
         gef_print("{:30s} {:s} {!s}".format("is_rr()", RIGHT_ARROW, is_rr()))
         gef_print("{:30s} {:s} {!s}".format("is_wine()", RIGHT_ARROW, is_wine()))
 
-        gef_print(titlify("GEF settings"))
+        gef_print(titlify("Others"))
+        gef_print("{:30s} {:s} {!s}".format("is_alive()", RIGHT_ARROW, is_alive()))
+        gef_print("{:30s} {:s} {!s}".format("is_kvm_enabled()", RIGHT_ARROW, is_kvm_enabled()))
+        gef_print("{:30s} {:s} {!s}".format("is_supported_physmode()", RIGHT_ARROW, is_supported_physmode()))
+        if is_supported_physmode():
+            gef_print("{:30s} {:s} {!s}".format("get_current_mmu_mode()", RIGHT_ARROW, get_current_mmu_mode()))
+
+        gef_print(titlify("GEF architecture information"))
         gef_print("{:30s} {:s} {!s}".format("current_arch.arch", RIGHT_ARROW, current_arch.arch))
         gef_print("{:30s} {:s} {!s}".format("current_arch.mode", RIGHT_ARROW, current_arch.mode))
         gef_print("{:30s} {:s} {!s}".format("current_arch.ptrsize", RIGHT_ARROW, current_arch.ptrsize))
