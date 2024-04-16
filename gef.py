@@ -27963,6 +27963,38 @@ class DereferenceCommand(GenericCommand):
         return
 
     @staticmethod
+    @cache_until_next
+    def get_frame_pcs():
+        frames = []
+        try:
+            frame = gdb.newest_frame()
+            no_ret_addr = [0, 0xffffffff, 0xffffffffffffffff]
+            while frame:
+                pc = frame.pc()
+                if pc in no_ret_addr:
+                    break
+                if pc in frames:
+                    break
+                frames.append(pc)
+                frame = frame.older()
+        except gdb.error:
+            pass
+        return frames
+
+    @staticmethod
+    @cache_this_session
+    def get_target_registers():
+        regs = []
+        for reg in current_arch.all_registers:
+            # skip if not ggeneral registers
+            if current_arch.flag_register == reg:
+                continue
+            if current_arch.special_registers and reg in current_arch.special_registers:
+                continue
+            regs.append(reg)
+        return regs
+
+    @staticmethod
     def pprint_dereferenced(addr, idx, tag=None, phys=False):
         base_address_color = get_gef_setting("theme.dereference_base_address")
         registers_color = get_gef_setting("theme.dereference_register_value")
@@ -27991,48 +28023,25 @@ class DereferenceCommand(GenericCommand):
             line = f"{addr_colored}{VERTICAL_LINE}{offset:+#07x}{VERTICAL_LINE}{idx:+04d}: {link:{memalign * 2 + 2}s}"
 
         # add extra info (retaddr, canary, cookie, register)
-        if phys:
-            mem = read_physmem(current_address, current_arch.ptrsize)
-            unpack = u32 if current_arch.ptrsize == 4 else u64
-            current_address_value = unpack(mem)
-        else:
-            current_address_value = read_int_from_memory(current_address)
         extra = []
+        current_address_value = addrs[1]
 
         # retaddr info
-        def get_frame_pcs():
-            frames = []
-            try:
-                frame = gdb.newest_frame()
-                no_ret_addr = [0, 0xffffffff, 0xffffffffffffffff]
-                while frame:
-                    pc = frame.pc()
-                    if pc in no_ret_addr:
-                        break
-                    if pc in frames:
-                        break
-                    frames.append(pc)
-                    frame = frame.older()
-            except gdb.error:
-                pass
-            return frames
-
-        for i, frame_pc in enumerate(get_frame_pcs()):
+        for i, frame_pc in enumerate(DereferenceCommand.get_frame_pcs()):
             if current_address_value == frame_pc:
                 extra.append("retaddr[{:d}]".format(i))
                 break
 
-        if is_qemu_system() or is_vmware() or is_kgdb():
-            pass
-        else:
-            # canary info
+        # canary info
+        if not is_qemu_system() and not is_vmware() and not is_kgdb():
             res = gef_read_canary()
             if res:
                 canary, location = res
                 if current_address_value == canary:
                     extra.append("canary")
 
-            # mangle cookie
+        # mangle cookie
+        if not is_qemu_system() and not is_vmware() and not is_kgdb():
             res = PtrDemangleCommand.get_cookie()
             if res:
                 cookie = res
@@ -28040,12 +28049,15 @@ class DereferenceCommand(GenericCommand):
                     extra.append("PTR_MANGLE cookie")
 
         # register info
-        for regname in current_arch.all_registers:
-            regvalue = get_register_use_cache(regname)
-            if regvalue is None:
-                continue
-            if current_address == regvalue:
-                extra.append(regname)
+        if not phys: # for the physical address, 0x0 may be valid, which tends to clutter the result, so skip
+            if is_valid_addr(current_address_value):
+                for regname in DereferenceCommand.get_target_registers():
+                    # read the value
+                    regvalue = get_register_use_cache(regname)
+                    if regvalue is None:
+                        continue
+                    if current_address_value == regvalue:
+                        extra.append(regname)
 
         # add extra to end of line
         if extra:
