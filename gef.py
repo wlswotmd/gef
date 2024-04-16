@@ -28033,6 +28033,9 @@ class DereferenceCommand(GenericCommand):
         else:
             line = f"{addr_colored}{VERTICAL_LINE}{offset:+#07x}{VERTICAL_LINE}{idx:+04d}: {link:{memalign * 2 + 2}s}"
 
+        if len(addrs) == 1:
+            return line
+
         # add extra info (retaddr, canary, cookie, register)
         extra = []
         current_address_value = addrs[1]
