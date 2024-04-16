@@ -25283,6 +25283,7 @@ class ContextCommand(GenericCommand):
         self.add_setting("smart_cpp_function_name", False, "Print cpp function name without args if demangled")
         self.add_setting("use_native_x_command", False, "Use x/16i insted of gdb_disasembe/capstone")
         self.add_setting("use_capstone", False, "Use capstone as disassembler in the code pane (instead of GDB)")
+        self.add_setting("enable_auto_switch_for_i8086", True, "Enable auto architecture switching for i8086 <-> x86-32.")
 
         self.layout_mapping = {
             "legend" : self.show_legend,
@@ -25343,14 +25344,16 @@ class ContextCommand(GenericCommand):
         self.dont_repeat()
 
         if is_qemu_system() and get_arch() == "i8086":
-            # check whether protected mode or not.
-            # even if `CR0.PE=1`, it will not switch until `ljmp`, so it is better to judge whether `$cs=0x8` or not.
-            # https://wiki.osdev.org/Protected_Mode
-            cs = get_register("$cs")
-            if cs is None or cs == 8:
-                set_arch("x86")
-            else:
-                set_arch("i8086")
+            if self.get_setting("enable_auto_switch_for_i8086"):
+                # check whether protected mode or not.
+                # even if `CR0.PE=1`, it will not switch until `ljmp`.
+                # so it is better to judge whether `$cs=0x8` or not.
+                # https://wiki.osdev.org/Protected_Mode
+                cs = get_register("$cs")
+                if cs is None or cs == 8:
+                    set_arch("x86")
+                else:
+                    set_arch("i8086")
 
         if "on" in args.commands:
             gdb.execute("gef config context.enable True")
