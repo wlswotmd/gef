@@ -25346,67 +25346,6 @@ class ContextCommand(GenericCommand):
         __cached_context_legend__ = legend
         return
 
-    @parse_args
-    @only_if_gdb_running
-    def do_invoke(self, args):
-        self.dont_repeat()
-
-        if is_qemu_system() and get_arch() == "i8086":
-            if self.get_setting("enable_auto_switch_for_i8086"):
-                # check whether protected mode or not.
-                # even if `CR0.PE=1`, it will not switch until `ljmp`.
-                # so it is better to judge whether `$cs=0x8` or not.
-                # https://wiki.osdev.org/Protected_Mode
-                cs = get_register("$cs")
-                if cs is None or cs == 8:
-                    set_arch("x86")
-                else:
-                    set_arch("i8086")
-
-        if "on" in args.commands:
-            gdb.execute("gef config context.enable True")
-            return
-        elif "off" in args.commands:
-            gdb.execute("gef config context.enable False")
-            return
-
-        if not self.get_setting("enable") or __gef_context_hidden__:
-            return
-
-        if len(args.commands) > 0:
-            current_layout = args.commands
-        else:
-            current_layout = self.get_setting("layout").strip().split()
-
-        if not current_layout:
-            return
-
-        self.tty_rows, self.tty_columns = get_terminal_size()
-
-        if self.get_setting("clear_screen") and len(args.commands) == 0:
-            clear_screen()
-
-        for section in current_layout:
-            if not is_alive():
-                break
-            if section[0] == "-":
-                continue
-            try:
-                self.layout_mapping[section]()
-                ## debug code for profiling of context command
-                #from cProfile import Profile
-                #import pstats
-                #pr = Profile()
-                #pr.runcall(self.layout_mapping[section])
-                #stats = pstats.Stats(pr)
-                #stats.sort_stats("tottime")
-                #stats.print_stats(10)
-            except gdb.MemoryError as e:
-                # a MemoryError will happen when $pc is corrupted (invalid address)
-                err(str(e))
-        self.context_title("")
-        return
-
     def context_title(self, m):
         line_color = get_gef_setting("theme.context_title_line")
         msg_color = get_gef_setting("theme.context_title_message")
@@ -26580,6 +26519,67 @@ class ContextCommand(GenericCommand):
     def empty_extra_messages(self, _event):
         global __context_messages__
         __context_messages__ = []
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if is_qemu_system() and get_arch() == "i8086":
+            if self.get_setting("enable_auto_switch_for_i8086"):
+                # check whether protected mode or not.
+                # even if `CR0.PE=1`, it will not switch until `ljmp`.
+                # so it is better to judge whether `$cs=0x8` or not.
+                # https://wiki.osdev.org/Protected_Mode
+                cs = get_register("$cs")
+                if cs is None or cs == 8:
+                    set_arch("x86")
+                else:
+                    set_arch("i8086")
+
+        if "on" in args.commands:
+            gdb.execute("gef config context.enable True")
+            return
+        if "off" in args.commands:
+            gdb.execute("gef config context.enable False")
+            return
+
+        if not self.get_setting("enable") or __gef_context_hidden__:
+            return
+
+        if len(args.commands) > 0:
+            current_layout = args.commands
+        else:
+            current_layout = self.get_setting("layout").strip().split()
+
+        if not current_layout:
+            return
+
+        self.tty_rows, self.tty_columns = get_terminal_size()
+
+        if self.get_setting("clear_screen") and len(args.commands) == 0:
+            clear_screen()
+
+        for section in current_layout:
+            if not is_alive():
+                break
+            if section[0] == "-":
+                continue
+            try:
+                self.layout_mapping[section]()
+                ## debug code for profiling of context command
+                #from cProfile import Profile
+                #import pstats
+                #pr = Profile()
+                #pr.runcall(self.layout_mapping[section])
+                #stats = pstats.Stats(pr)
+                #stats.sort_stats("tottime")
+                #stats.print_stats(10)
+            except gdb.MemoryError as e:
+                # a MemoryError will happen when $pc is corrupted (invalid address)
+                err(str(e))
+        self.context_title("")
         return
 
 
