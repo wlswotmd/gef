@@ -19330,6 +19330,60 @@ class GlibcHeapBinsCommand(GenericCommand):
         super().__init__(prefix=True)
         return
 
+    @staticmethod
+    def pprint_bin(arena, index, bin_name, verbose=False):
+        fw, bk = arena.bin(index)
+
+        if bk == 0 and fw == 0:
+            warn("Invalid backward and forward bin pointers(fd==bk==NULL)")
+            return -1
+
+        bins_addr = arena.bins_addr(index)
+        head = bins_addr - current_arch.ptrsize * 2
+        if fw == head and not verbose:
+            return 0
+
+        bin_table = get_binsize_table()[bin_name]
+        if index not in bin_table:
+            return 0
+
+        bin_info = bin_table[index]
+        if "size" in bin_info:
+            size_str = "{:#x}".format(bin_info["size"])
+        elif "size_min" in bin_info and "size_max" in bin_info:
+            size_str = "{:#x}-{:#x}".format(bin_info["size_min"], bin_info["size_max"])
+        else:
+            size_str = "any"
+
+        m = []
+        bins_addr = lookup_address(bins_addr)
+        fw_ = lookup_address(fw)
+        bk_ = lookup_address(bk)
+        fmt = "{:s}[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}"
+        m.append(fmt.format(bin_name, index, size_str, bins_addr, fw_, bk_))
+        corrupted_msg_color = get_gef_setting("theme.heap_corrupted_msg")
+
+        seen = []
+        nb_chunk = 0
+        while fw != head:
+            chunk = GlibcChunk(fw, from_base=True)
+            if chunk.address in seen:
+                fmt = "{:s}{:#x} [loop detected]"
+                m.append(Color.colorify(fmt.format(RIGHT_ARROW, chunk.chunk_base_address), corrupted_msg_color))
+                break
+            seen.append(chunk.address)
+            try:
+                m.append("{:s}{:s}".format(RIGHT_ARROW, chunk.to_str(arena)))
+            except gdb.MemoryError:
+                fmt = "{:s}{:#x} [Corrupted chunk]"
+                m.append(Color.colorify(fmt.format(RIGHT_ARROW, chunk.chunk_base_address), corrupted_msg_color))
+                break
+            fw = chunk.fwd
+            nb_chunk += 1
+        if m:
+            gef_print("\n".join(m))
+        return nb_chunk
+
     @parse_args
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
@@ -19391,60 +19445,6 @@ class GlibcHeapBinsCommand(GenericCommand):
                     bins[i] = nb_chunk
             info("Found {:d} valid chunks in {:d} large bins.".format(sum(bins.values()), len(bins)))
         return
-
-    @staticmethod
-    def pprint_bin(arena, index, bin_name, verbose=False):
-        fw, bk = arena.bin(index)
-
-        if bk == 0 and fw == 0:
-            warn("Invalid backward and forward bin pointers(fd==bk==NULL)")
-            return -1
-
-        bins_addr = arena.bins_addr(index)
-        head = bins_addr - current_arch.ptrsize * 2
-        if fw == head and not verbose:
-            return 0
-
-        bin_table = get_binsize_table()[bin_name]
-        if index not in bin_table:
-            return 0
-
-        bin_info = bin_table[index]
-        if "size" in bin_info:
-            size_str = "{:#x}".format(bin_info["size"])
-        elif "size_min" in bin_info and "size_max" in bin_info:
-            size_str = "{:#x}-{:#x}".format(bin_info["size_min"], bin_info["size_max"])
-        else:
-            size_str = "any"
-
-        m = []
-        bins_addr = lookup_address(bins_addr)
-        fw_ = lookup_address(fw)
-        bk_ = lookup_address(bk)
-        fmt = "{:s}[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}"
-        m.append(fmt.format(bin_name, index, size_str, bins_addr, fw_, bk_))
-        corrupted_msg_color = get_gef_setting("theme.heap_corrupted_msg")
-
-        seen = []
-        nb_chunk = 0
-        while fw != head:
-            chunk = GlibcChunk(fw, from_base=True)
-            if chunk.address in seen:
-                fmt = "{:s}{:#x} [loop detected]"
-                m.append(Color.colorify(fmt.format(RIGHT_ARROW, chunk.chunk_base_address), corrupted_msg_color))
-                break
-            seen.append(chunk.address)
-            try:
-                m.append("{:s}{:s}".format(RIGHT_ARROW, chunk.to_str(arena)))
-            except gdb.MemoryError:
-                fmt = "{:s}{:#x} [Corrupted chunk]"
-                m.append(Color.colorify(fmt.format(RIGHT_ARROW, chunk.chunk_base_address), corrupted_msg_color))
-                break
-            fw = chunk.fwd
-            nb_chunk += 1
-        if m:
-            gef_print("\n".join(m))
-        return nb_chunk
 
 
 @register_command
