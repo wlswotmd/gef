@@ -83771,44 +83771,6 @@ class BincompareCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_FILENAME)
         return
 
-    @parse_args
-    @only_if_gdb_running
-    def do_invoke(self, args):
-        self.dont_repeat()
-
-        # file_data
-        if not os.path.isfile(args.filename):
-            err("specified file '{:s}' not exists".format(args.filename))
-            return
-        file_data = open(args.filename, "rb").read()
-        if args.file_offset:
-            file_data = file_data[args.file_offset:]
-        file_size = len(file_data)
-
-        # size
-        if args.size is None:
-            size = file_size
-        else:
-            if args.size > file_size:
-                err("file size is too short")
-                return
-            size = args.size
-            file_data = file_data[:size]
-
-        if size == 0:
-            err("comparing size is 0, nothing to do.")
-            return
-
-        # memory_data
-        try:
-            memory_data = read_memory(args.address, size)
-        except gdb.MemoryError:
-            err("cannot reach memory {:#x}".format(args.address))
-            return
-
-        self.compare(file_data, memory_data)
-        return
-
     def compare(self, file_data, memory_data):
         result_table = []
         badchars = ""
@@ -83868,6 +83830,44 @@ class BincompareCommand(GenericCommand):
 
         fmt = " {:s} |{:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s} {:s}| {:s}"
         gef_print(fmt.format(prefix, *line, label))
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        # file_data
+        if not os.path.isfile(args.filename):
+            err("specified file '{:s}' not exists".format(args.filename))
+            return
+        file_data = open(args.filename, "rb").read()
+        if args.file_offset:
+            file_data = file_data[args.file_offset:]
+        file_size = len(file_data)
+
+        # size
+        if args.size is None:
+            size = file_size
+        else:
+            if args.size > file_size:
+                err("file size is too short")
+                return
+            size = args.size
+            file_data = file_data[:size]
+
+        if size == 0:
+            err("comparing size is 0, nothing to do.")
+            return
+
+        # memory_data
+        try:
+            memory_data = read_memory(args.address, size)
+        except gdb.MemoryError:
+            err("cannot reach memory {:#x}".format(args.address))
+            return
+
+        self.compare(file_data, memory_data)
         return
 
 
