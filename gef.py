@@ -16028,38 +16028,6 @@ class SmartMemoryDumpCommand(GenericCommand):
     parser.add_argument("-c", "--commit", action="store_true", help="actually perform the dump.")
     _syntax_ = parser.format_help()
 
-    @parse_args
-    @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
-    def do_invoke(self, args):
-        self.dont_repeat()
-
-        self.filter = args.filter
-        self.exclude = args.exclude
-        self.commit = args.commit
-
-        if args.prefix is None:
-            pid = get_pid(remote=True)
-            if pid is None:
-                self.prefix = "{:05d}_".format(0)
-            else:
-                self.prefix = "{:05d}_".format(pid)
-        elif args.prefix == "":
-            self.prefix = args.prefix
-        else:
-            self.prefix = "{:s}_".format(args.prefix)
-
-        if args.suffix is None:
-            self.suffix = ""
-        else:
-            self.suffix = "_{:s}".format(args.suffix)
-
-        self.smart_memory_dump()
-
-        if not self.commit:
-            warn('This is dry run mode. No dump has been performed yet. To dump, please add "--commit".')
-        return
-
     def smart_memory_dump(self):
         maps = get_process_maps()
         if maps is None:
@@ -16102,6 +16070,38 @@ class SmartMemoryDumpCommand(GenericCommand):
                 info("Saved to {:s}".format(filepath))
             else:
                 info("It will be saved to {:s}".format(filepath))
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        self.filter = args.filter
+        self.exclude = args.exclude
+        self.commit = args.commit
+
+        if args.prefix is None:
+            pid = get_pid(remote=True)
+            if pid is None:
+                self.prefix = "{:05d}_".format(0)
+            else:
+                self.prefix = "{:05d}_".format(pid)
+        elif args.prefix == "":
+            self.prefix = args.prefix
+        else:
+            self.prefix = "{:s}_".format(args.prefix)
+
+        if args.suffix is None:
+            self.suffix = ""
+        else:
+            self.suffix = "_{:s}".format(args.suffix)
+
+        self.smart_memory_dump()
+
+        if not self.commit:
+            warn('This is dry run mode. No dump has been performed yet. To dump, please add "--commit".')
         return
 
 
