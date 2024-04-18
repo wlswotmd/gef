@@ -54394,10 +54394,11 @@ class KernelModuleCommand(GenericCommand):
 
                 self.out.append(titlify(""))
 
-        if len(self.out) > get_terminal_size()[0]:
-            gef_print("\n".join(self.out), less=not args.no_pager)
-        else:
-            gef_print("\n".join(self.out), less=False)
+        if self.out:
+            if len(self.out) > get_terminal_size()[0]:
+                gef_print("\n".join(self.out), less=not args.no_pager)
+            else:
+                gef_print("\n".join(self.out), less=False)
         return
 
 
@@ -57390,7 +57391,10 @@ class KernelClockSourceCommand(GenericCommand):
             current = read_int_from_memory(current)
 
         if self.out:
-            gef_print("\n".join(self.out), less=not args.no_pager)
+            if len(self.out) > get_terminal_size()[0]:
+                gef_print("\n".join(self.out), less=not args.no_pager)
+            else:
+                gef_print("\n".join(self.out), less=False)
         return
 
 
@@ -57829,8 +57833,12 @@ class KernelTimerCommand(GenericCommand):
         self.out = []
         self.dump_timer()
         self.dump_hrtimer()
+
         if self.out:
-            gef_print("\n".join(self.out), less=not args.no_pager)
+            if len(self.out) > get_terminal_size()[0]:
+                gef_print("\n".join(self.out), less=not args.no_pager)
+            else:
+                gef_print("\n".join(self.out), less=False)
         return
 
 
@@ -58312,8 +58320,12 @@ class KernelPciDeviceCommand(GenericCommand):
 
         self.out = []
         self.dump_pci()
+
         if self.out:
-            gef_print("\n".join(self.out), less=not args.no_pager)
+            if len(self.out) > get_terminal_size()[0]:
+                gef_print("\n".join(self.out), less=not args.no_pager)
+            else:
+                gef_print("\n".join(self.out), less=False)
         return
 
 
@@ -65679,7 +65691,11 @@ class KernelPipeCommand(GenericCommand):
         self.dump_pipe(pipe_files)
 
         # print
-        gef_print("\n".join(self.out), less=not args.no_pager)
+        if self.out:
+            if len(self.out) > get_terminal_size()[0]:
+                gef_print("\n".join(self.out), less=not args.no_pager)
+            else:
+                gef_print("\n".join(self.out), less=False)
         return
 
 
@@ -66167,7 +66183,11 @@ class KernelBpfCommand(GenericCommand):
             self.dump_bpf_maps(maps)
 
         # print
-        gef_print("\n".join(self.out), less=not args.no_pager)
+        if self.out:
+            if len(self.out) > get_terminal_size()[0]:
+                gef_print("\n".join(self.out), less=not args.no_pager)
+            else:
+                gef_print("\n".join(self.out), less=False)
         return
 
 
@@ -66623,8 +66643,11 @@ class KernelIpcsCommand(GenericCommand):
             self.dump_ipc_msg_ids(ipc_ns + self.offset_ids + self.sizeof_ipc_ids * 1)
             self.dump_ipc_shm_ids(ipc_ns + self.offset_ids + self.sizeof_ipc_ids * 2)
 
-        # print
-        gef_print("\n".join(self.out), less=not args.no_pager)
+        if self.out:
+            if len(self.out) > get_terminal_size()[0]:
+                gef_print("\n".join(self.out), less=not args.no_pager)
+            else:
+                gef_print("\n".join(self.out), less=False)
         return
 
 
@@ -66835,7 +66858,11 @@ class KernelDeviceIOCommand(GenericCommand):
                 out.append(fmt.format(addr, start, end, name, name_width, flags, self.get_flags_str(flags)))
 
         # print
-        gef_print("\n".join(out), less=not args.no_pager)
+        if self.out:
+            if len(self.out) > get_terminal_size()[0]:
+                gef_print("\n".join(self.out), less=not args.no_pager)
+            else:
+                gef_print("\n".join(self.out), less=False)
         return
 
 
@@ -67158,7 +67185,12 @@ class KernelDmaBufCommand(GenericCommand):
 
         self.out = []
         self.dump_db_list()
-        gef_print("\n".join(self.out), less=not args.no_pager)
+
+        if self.out:
+            if len(self.out) > get_terminal_size()[0]:
+                gef_print("\n".join(self.out), less=not args.no_pager)
+            else:
+                gef_print("\n".join(self.out), less=False)
         return
 
 
@@ -67587,8 +67619,12 @@ class KernelIrqCommand(GenericCommand):
 
         self.out = []
         self.dump_irq()
+
         if self.out:
-            gef_print("\n".join(self.out), less=not args.no_pager)
+            if len(self.out) > get_terminal_size()[0]:
+                gef_print("\n".join(self.out), less=not args.no_pager)
+            else:
+                gef_print("\n".join(self.out), less=False)
         return
 
 
@@ -67736,6 +67772,7 @@ class KernelNetDeviceCommand(GenericCommand):
 
         self.out = []
         self.dump_net()
+
         if self.out:
             if len(self.out) > get_terminal_size()[0]:
                 gef_print("\n".join(self.out), less=not args.no_pager)
