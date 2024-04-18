@@ -19465,41 +19465,6 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
-    @parse_args
-    @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
-    def do_invoke(self, args):
-        self.dont_repeat()
-
-        # Determine if we are using libc with tcache built in (2.26+)
-        if get_libc_version() < (2, 26):
-            info("No Tcache in this version of libc")
-            return
-
-        # parse arena
-        arena = get_arena(args.arena_addr)
-
-        if arena is None:
-            err("No valid arena")
-            return
-
-        if arena.heap_base is None or not is_valid_addr(arena.heap_base):
-            err("Heap is not initialized")
-            return
-
-        arenas = [arena]
-        if args.all:
-            while arena:
-                arena = arena.get_next()
-                if arena:
-                    arenas.append(arena)
-
-        # doit
-        for arena in arenas:
-            arena.reset_bins_info()
-            GlibcHeapTcachebinsCommand.print_tcache(arena, args.verbose)
-        return
-
     @staticmethod
     def print_tcache(arena, verbose):
         if get_libc_version() < (2, 26):
@@ -19553,6 +19518,41 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
                     gef_print("\n".join(m))
 
         info("Found {:d} valid chunks in tcache.".format(nb_chunk))
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        # Determine if we are using libc with tcache built in (2.26+)
+        if get_libc_version() < (2, 26):
+            info("No Tcache in this version of libc")
+            return
+
+        # parse arena
+        arena = get_arena(args.arena_addr)
+
+        if arena is None:
+            err("No valid arena")
+            return
+
+        if arena.heap_base is None or not is_valid_addr(arena.heap_base):
+            err("Heap is not initialized")
+            return
+
+        arenas = [arena]
+        if args.all:
+            while arena:
+                arena = arena.get_next()
+                if arena:
+                    arenas.append(arena)
+
+        # doit
+        for arena in arenas:
+            arena.reset_bins_info()
+            GlibcHeapTcachebinsCommand.print_tcache(arena, args.verbose)
         return
 
 
