@@ -4316,7 +4316,7 @@ def gdb_get_location(address):
     return name, offset
 
 
-@cache_until_next
+@cache_this_session
 def get_symbol_string(addr, nosymbol_string=""):
     try:
         if isinstance(addr, str):
