@@ -19574,36 +19574,6 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
-    @parse_args
-    @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
-    def do_invoke(self, args):
-        self.dont_repeat()
-
-        # parse arena
-        arena = get_arena(args.arena_addr)
-
-        if arena is None:
-            err("No valid arena")
-            return
-
-        if arena.heap_base is None or not is_valid_addr(arena.heap_base):
-            err("Heap is not initialized")
-            return
-
-        arenas = [arena]
-        if args.all:
-            while arena:
-                arena = arena.get_next()
-                if arena:
-                    arenas.append(arena)
-
-        # doit
-        for arena in arenas:
-            arena.reset_bins_info()
-            GlibcHeapFastbinsYCommand.print_fastbin(arena, args.verbose)
-        return
-
     @staticmethod
     def print_fastbin(arena, verbose):
         def fastbin_index(sz):
@@ -19659,6 +19629,36 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
                         gef_print("\n".join(m))
 
         info("Found {:d} valid chunks in fastbins.".format(nb_chunk))
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        # parse arena
+        arena = get_arena(args.arena_addr)
+
+        if arena is None:
+            err("No valid arena")
+            return
+
+        if arena.heap_base is None or not is_valid_addr(arena.heap_base):
+            err("Heap is not initialized")
+            return
+
+        arenas = [arena]
+        if args.all:
+            while arena:
+                arena = arena.get_next()
+                if arena:
+                    arenas.append(arena)
+
+        # doit
+        for arena in arenas:
+            arena.reset_bins_info()
+            GlibcHeapFastbinsYCommand.print_fastbin(arena, args.verbose)
         return
 
 
