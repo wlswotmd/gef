@@ -15229,22 +15229,6 @@ class ProcInfoCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
 
-    @parse_args
-    @only_if_gdb_running
-    @only_if_gdb_target_local
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr"))
-    def do_invoke(self, args):
-        self.dont_repeat()
-        self.show_info_proc()
-        self.show_info_proc_extra()
-        self.show_parent()
-        self.show_childs()
-        self.show_info_thread()
-        self.show_info_proc_ns()
-        self.show_fds()
-        self.show_connections()
-        return
-
     def get_state_of(self, pid):
         try:
             status = open("/proc/{}/status".format(pid), "r").read()
@@ -15571,6 +15555,22 @@ class ProcInfoCommand(GenericCommand):
                     conn_local = "{}:{}".format(local[0], local[1])
                     conn_remote = "{}:{}".format(remote[0], remote[1])
                     gef_print("{:32s} {} {} ({})".format(conn_local, RIGHT_ARROW, conn_remote, state_str))
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_gdb_target_local
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr"))
+    def do_invoke(self, args):
+        self.dont_repeat()
+        self.show_info_proc()
+        self.show_info_proc_extra()
+        self.show_parent()
+        self.show_childs()
+        self.show_info_thread()
+        self.show_info_proc_ns()
+        self.show_fds()
+        self.show_connections()
         return
 
 
