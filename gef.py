@@ -68229,7 +68229,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         """
         [Search policy]
         - kallsyms_token_table has unique sequences like "30 00 31 00 32 00 33 00 34 00 35 00 36 00 37 00 38 00 39 00".
-        - We search it from .rodata area, then go backwords to get the top by finding invalid cahracters.
+        - We search it from .rodata area, then search backwards for invalid characters to get the top.
 
         [Positional relationship]
         - ...

@@ -64,9 +64,10 @@
     * Host OS
         * Configure the serial port as a named pipe in your two (debugger/debuggee) virtual machine settings, such as VMware or VirtualBox.
     * Debuggee
-        * Build the kernel as `CONFIG_KGDB=y`. Ubuntu has supported it by default.
+        * Build the kernel with configurations such as `CONFIG_KGDB=y`. Ubuntu has supported it by default.
         * Edit `/etc/default/grub` and append `kgdboc=ttyS0,115200 kgdbwait` to the end of `GRUB_CMDLINE_LINUX_DEFAULT`.
         * Then `update-grub && reboot`.
+        * See [official documentation](https://www.kernel.org/doc/html/latest/dev-tools/kgdb.html) for more informations.
     * Debugger
         * Attach with `gdb-multiarch -ex 'target remote /dev/ttyS0'`.
 * Supported architectures

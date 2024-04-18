@@ -130,7 +130,7 @@ I don't really understand the reason for this.
 # About the guest (debugged) environment
 
 ## What Linux kernel versions does GEF support as guests in qemu-system?
-I have confirmed that most commands work on versions 3.x ~ 6.7.x.
+I have confirmed that most commands work on versions 3.x ~ 6.9.x.
 
 However, I have not verified every kernel version.
 For example, certain symbols in some versions may not be supported by heuristic symbol detection.
@@ -141,7 +141,7 @@ If you have any trouble, please report it on the issue page.
 ## Is there a way to get a pre-built kernel of each version?
 I use [https://kernel.ubuntu.com/](https://kernel.ubuntu.com/mainline).
 
-Download `linux-image-unsigned-*_amd64.deb`your preferred, and extract `/boot/vmlinuz-*`.
+Download `linux-image-unsigned-*_amd64.deb` your preferred, and extract `/boot/vmlinuz-*`.
 No filesystem image is provided. Please use the one created with `buildroot` or provided in past CTF challenges.
 
 ## Will each GEF command be more accurate if I have `vmlinux` with debug symbols?
