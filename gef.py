@@ -16305,31 +16305,6 @@ class ScanSectionCommand(GenericCommand):
     _example_ += "{:s} heap libc    # scan libc address from heap\n".format(_cmdline_)
     _example_ += "{:s} 0x0000555555772000-0x0000555555774000 libc".format(_cmdline_)
 
-    @parse_args
-    @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
-    def do_invoke(self, args):
-        self.dont_repeat()
-
-        haystack = args.haystack
-        needle = args.needle
-
-        info("Searching for addresses in '{:s}' that point to '{:s}'"
-             .format(Color.yellowify(haystack), Color.yellowify(needle)))
-
-        if haystack in ["binary", "bin"]:
-            haystack = get_filepath(append_proc_root_prefix=False)
-        if is_qemu_user() and haystack is None:
-            haystack = "[code]"
-
-        if needle in ["binary", "bin"]:
-            needle = get_filepath(append_proc_root_prefix=False)
-        if is_qemu_user() and needle is None:
-            needle = "[code]"
-
-        self.scan(haystack, needle)
-        return
-
     def scan(self, haystack, needle):
         needle_sections = []
         haystack_sections = []
@@ -16374,6 +16349,31 @@ class ScanSectionCommand(GenericCommand):
                         gef_print("{:s}: {:s}".format(name, deref))
                     else:
                         gef_print(" {:s}".format(deref))
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        haystack = args.haystack
+        needle = args.needle
+
+        info("Searching for addresses in '{:s}' that point to '{:s}'"
+             .format(Color.yellowify(haystack), Color.yellowify(needle)))
+
+        if haystack in ["binary", "bin"]:
+            haystack = get_filepath(append_proc_root_prefix=False)
+        if is_qemu_user() and haystack is None:
+            haystack = "[code]"
+
+        if needle in ["binary", "bin"]:
+            needle = get_filepath(append_proc_root_prefix=False)
+        if is_qemu_user() and needle is None:
+            needle = "[code]"
+
+        self.scan(haystack, needle)
         return
 
 
