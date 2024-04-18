@@ -14610,14 +14610,6 @@ class CanaryCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
 
-    @parse_args
-    @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
-    def do_invoke(self, args):
-        self.dont_repeat()
-        self.dump_canary()
-        return
-
     def dump_canary(self):
         res = gef_read_canary()
         if not res:
@@ -14659,6 +14651,14 @@ class CanaryCommand(GenericCommand):
                 else:
                     info("Found at {!s} in {!r}".format(lookup_address(addr), path))
                 prev_addr = addr
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    def do_invoke(self, args):
+        self.dont_repeat()
+        self.dump_canary()
         return
 
 
