@@ -56527,14 +56527,14 @@ class KernelSysctlCommand(GenericCommand):
                 # These must be traced from another root.
                 if (mode & 0o0120000) == 0o0120000: # symlink
                     if not self.skip_symlink:
+                        ctset = None
                         root = read_int_from_memory(ctl_table + current_arch.ptrsize)
-                        lookup = read_int_from_memory(root + self.OFFSET_lookup)
-                        if lookup == get_ksymaddr("net_ctl_header_lookup"): # net.*
-                            ctset = self.net_ctset
-                        elif lookup == get_ksymaddr("set_lookup"): # user.*
-                            ctset = self.user_ctset
-                        else:
-                            ctset = None
+                        if is_valid_addr(root + self.OFFSET_lookup):
+                            lookup = read_int_from_memory(root + self.OFFSET_lookup)
+                            if lookup == get_ksymaddr("net_ctl_header_lookup"): # net.*
+                                ctset = self.net_ctset
+                            elif lookup == get_ksymaddr("set_lookup"): # user.*
+                                ctset = self.user_ctset
                         if ctset:
                             symlink_rb_node = read_int_from_memory(ctset + current_arch.ptrsize + self.OFFSET_rb_node)
                             if ctset not in self.seen_ctset:
