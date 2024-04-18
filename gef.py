@@ -18308,50 +18308,6 @@ class UnicornEmulateCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
-    @parse_args
-    @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
-    @load_capstone
-    @load_unicorn
-    def do_invoke(self, args):
-        self.dont_repeat()
-
-        if current_arch.unicorn_support is False:
-            warn("This command cannot work under this architecture.")
-            return
-
-        start_insn = args.from_location
-        if start_insn is None:
-            start_insn = current_arch.pc
-
-        if (args.to_location, args.nb_insn, args.nb_gadget) == (None, None, None):
-            nb_gadget = 10
-        else:
-            nb_gadget = args.nb_gadget
-
-        end_insn = args.to_location
-        if args.nb_insn is not None:
-            end_insn = self.get_unicorn_end_addr(start_insn, args.nb_insn)
-
-        kwargs = {
-            "skip_emulation": args.skip_emulation,
-            "to_file": args.output_path,
-            "verbose": args.verbose,
-            "nb_gadget": nb_gadget,
-            "quiet": args.quiet,
-            "thumb_mode": is_arm32() and (start_insn & 1),
-            "add_sse": is_x86() and args.add_sse,
-            "only_insns": args.only_insns,
-        }
-
-        if end_insn is not None:
-            self.run_unicorn(start_insn, end_insn, **kwargs)
-        elif nb_gadget is not None:
-            self.run_unicorn(start_insn, 0, **kwargs)
-        else:
-            err("Invalid argumetns")
-        return
-
     def get_unicorn_end_addr(self, start_addr, nb):
         dis = list(gef_disassemble(start_addr, nb + 1))
         last_insn = dis[-1]
@@ -18710,6 +18666,50 @@ class UnicornEmulateCommand(GenericCommand):
 
         if not kwargs["to_file"]:
             os.unlink(tmp_filename)
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
+    @load_capstone
+    @load_unicorn
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if current_arch.unicorn_support is False:
+            warn("This command cannot work under this architecture.")
+            return
+
+        start_insn = args.from_location
+        if start_insn is None:
+            start_insn = current_arch.pc
+
+        if (args.to_location, args.nb_insn, args.nb_gadget) == (None, None, None):
+            nb_gadget = 10
+        else:
+            nb_gadget = args.nb_gadget
+
+        end_insn = args.to_location
+        if args.nb_insn is not None:
+            end_insn = self.get_unicorn_end_addr(start_insn, args.nb_insn)
+
+        kwargs = {
+            "skip_emulation": args.skip_emulation,
+            "to_file": args.output_path,
+            "verbose": args.verbose,
+            "nb_gadget": nb_gadget,
+            "quiet": args.quiet,
+            "thumb_mode": is_arm32() and (start_insn & 1),
+            "add_sse": is_x86() and args.add_sse,
+            "only_insns": args.only_insns,
+        }
+
+        if end_insn is not None:
+            self.run_unicorn(start_insn, end_insn, **kwargs)
+        elif nb_gadget is not None:
+            self.run_unicorn(start_insn, 0, **kwargs)
+        else:
+            err("Invalid argumetns")
         return
 
 
