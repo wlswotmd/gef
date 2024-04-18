@@ -17000,27 +17000,6 @@ class EditFlagsCommand(GenericCommand):
     _example_ += "{:s} sign~      # toggle SIGN flag\n".format(_cmdline_)
     _example_ += "{:s} -v         # verbose output".format(_cmdline_)
 
-    @parse_args
-    @only_if_gdb_running
-    def do_invoke(self, args):
-        self.dont_repeat()
-
-        if current_arch.flag_register is None:
-            warn("This command cannot work under this architecture.")
-            return
-
-        self.edit_flags(args.flagname)
-
-        gef_print(current_arch.flag_register_to_human())
-        if args.verbose:
-            if is_x86():
-                self.verbose_x86()
-            elif is_arm32():
-                self.verbose_arm32()
-            elif is_arm64():
-                self.verbose_arm64()
-        return
-
     def edit_flags(self, flag_names):
         for flag in flag_names:
             if len(flag) < 2:
@@ -17242,6 +17221,27 @@ class EditFlagsCommand(GenericCommand):
                 "+--------------------------------------- " + c("0x80000000 [N]     Negative condition flag"),
             ]
         gef_print("\n".join([" " * 2 + e for e in elements]))
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if current_arch.flag_register is None:
+            warn("This command cannot work under this architecture.")
+            return
+
+        self.edit_flags(args.flagname)
+
+        gef_print(current_arch.flag_register_to_human())
+        if args.verbose:
+            if is_x86():
+                self.verbose_x86()
+            elif is_arm32():
+                self.verbose_arm32()
+            elif is_arm64():
+                self.verbose_arm64()
         return
 
 
