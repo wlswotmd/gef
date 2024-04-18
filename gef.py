@@ -338,11 +338,11 @@ def _displayhook(o):
         return
 
     # unreachable
-    __builtins__._ # # avoid to be detected as unused # noqa: B018
-    hexon # avoid to be detected as unused # noqa: B018
-    hexoff # avoid to be detected as unused # noqa: B018
-    _displayhook # avoid to be detected as unused # noqa: B018
-    sys.displayhook # avoid to be detected as unused # noqa: B018
+    __builtins__._ # noqa: B018
+    hexon # noqa: B018
+    hexoff # noqa: B018
+    _displayhook # noqa: B018
+    sys.displayhook # noqa: B018
 
 
 def hexon():
@@ -981,11 +981,6 @@ class Color:
     @staticmethod
     def blueify(msg):
         return Color.colorify(msg, "blue")
-
-    @staticmethod
-    def magentaify(msg):
-        return Color.colorify(msg, "magenta")
-    magentaify # avoid to be detected as unused # noqa: B018
 
     @staticmethod
     def cyanify(msg):
@@ -23765,8 +23760,8 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
     DW_CFA_val_expression               = 0x16
     DW_CFA_low_user                     = 0x1c # noqa: F841
     DW_CFA_MIPS_advance_loc8            = 0x1d
-    DW_CFA_GNU_window_save              = 0x2d
-    DW_CFA_AARCH64_negate_ra_state      = 0x2d # noqa: F841 # dup
+    DW_CFA_GNU_window_save              = 0x2d # dup
+    DW_CFA_AARCH64_negate_ra_state      = 0x2d # noqa: F841
     DW_CFA_GNU_args_size                = 0x2e
     DW_CFA_GNU_negative_offset_extended = 0x2f # noqa: F841
     DW_CFA_high_user                    = 0x3f # noqa: F841
@@ -24170,7 +24165,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
     DW_OP_GNU_const_index      = 0xfc  #
     DW_OP_GNU_variable_value   = 0xfd  #
     DW_OP_lo_user              = 0xe0  # Implementation-defined range start
-    DW_OP_hi_user              = 0xff  # noqa: F841 # Implementation-defined range end
+    DW_OP_hi_user              = 0xff  # Implementation-defined range end # noqa: F841
 
     def dwarf_locexpr_opcode_string(self, code):
         DWARF_ONE_KNOWN_DW_OP = {
