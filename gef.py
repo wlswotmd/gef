@@ -69379,9 +69379,9 @@ class TcmallocDumpCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}\n".format(_cmdline_)
-    _example_ += "{:s} self              # (default) print freelist of thread cache for current thread\n".format(_cmdline_)
-    _example_ += "{:s} all               # print freelist of thread cache for all thread\n".format(_cmdline_)
-    _example_ += "{:s} central           # print freelist of central cache".format(_cmdline_)
+    _example_ += "{:s} self     # (default) print freelist of thread cache for current thread\n".format(_cmdline_)
+    _example_ += "{:s} all      # print freelist of thread cache for all thread\n".format(_cmdline_)
+    _example_ += "{:s} central  # print freelist of central cache".format(_cmdline_)
 
     def __init__(self):
         super().__init__()
