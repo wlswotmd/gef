@@ -17290,32 +17290,6 @@ class MprotectCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
 
-    # On the CRIS architecture, setting a value to a register using the gdb `set` command will cause strange behavior.
-    # So even if the shellcode is correct, it should not use this `mprotect` command.
-
-    @parse_args
-    @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr", "wine"))
-    @exclude_specific_arch(arch=("CRIS",))
-    @load_keystone
-    def do_invoke(self, args):
-        self.dont_repeat()
-
-        if re.match(r"[rwx_-]{3}", args.permission):
-            perm = Permission.NONE
-            if args.permission[0] == "r":
-                perm |= Permission.READ
-            if args.permission[1] == "w":
-                perm |= Permission.WRITE
-            if args.permission[2] == "x":
-                perm |= Permission.EXECUTE
-        else:
-            err("Invalid permission")
-            return
-
-        self.do_mprotect(args.location, perm, args.patch_only)
-        return
-
     def do_mprotect(self, location, perm, patch_only):
         sect = process_lookup_address(location)
         if sect is None:
@@ -17364,6 +17338,32 @@ class MprotectCommand(GenericCommand):
 
         info("Resuming execution")
         gdb.execute("continue")
+        return
+
+    # On the CRIS architecture, setting a value to a register using the gdb `set` command will cause strange behavior.
+    # So even if the shellcode is correct, it should not use this `mprotect` command.
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr", "wine"))
+    @exclude_specific_arch(arch=("CRIS",))
+    @load_keystone
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if re.match(r"[rwx_-]{3}", args.permission):
+            perm = Permission.NONE
+            if args.permission[0] == "r":
+                perm |= Permission.READ
+            if args.permission[1] == "w":
+                perm |= Permission.WRITE
+            if args.permission[2] == "x":
+                perm |= Permission.EXECUTE
+        else:
+            err("Invalid permission")
+            return
+
+        self.do_mprotect(args.location, perm, args.patch_only)
         return
 
 
