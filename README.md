@@ -153,8 +153,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 
 ### Qemu-system cooperation - Linux specific - Symbol
 * `ksymaddr-remote`: displays kallsyms information from scanning kernel memory.
-    * Supported kernel versions are not only before v6.1, but also after v6.2 (slightly changed structure in memory).
-    * Supported kernel after v6.4 (changed structure in memory again).
+    * Supported kernel versions: 3.x to 6.9.x.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote.png)
 * `ksymaddr-remote-apply`/`vmlinux-to-elf-apply`: applies kallsyms information obtained by `ksymaddr-remote` or `vmlinux-to-elf` to gdb.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote-apply.png)

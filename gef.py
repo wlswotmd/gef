@@ -68070,16 +68070,16 @@ class KsymaddrRemoteCommand(GenericCommand):
             return True
 
         """
-        Memory storage order of each table (-: not found yet, +: found already)
-        - kallsyms_offsets or kallsyms_addresses
-        - relative_base_address (when using kallsyms_offsets)
-        - kallsyms_num_syms
-        - kallsyms_names
-        - kallsyms_markers
-        - kallsyms_seqs_of_names (v6.2~)
-        - kallsyms_token_table
-        - kallsyms_token_index
+        [Search policy]
+        - kallsyms_token_table has unique sequences like "30 00 31 00 32 00 33 00 34 00 35 00 36 00 37 00 38 00 39 00".
+        - We search it from .rodata area, then go backwords to get the top by finding invalid cahracters.
 
+        [Positional relationship]
+        - ...
+        - kallsyms_token_table
+        - ...
+
+        [Sample values]
         kallsyms_token_table: 0xffffffff8b2b51b0
         gef> hexdump -n byte 0xffffffff8b2b51b0
         0xffffffff8b2b51b0:    65 75 00 77 5f 00 61 64 64 00 64 5f 5f 66 75 6e    |  eu.w_.add.d__fun  |
@@ -68172,16 +68172,17 @@ class KsymaddrRemoteCommand(GenericCommand):
             return True
 
         """
-        Memory storage order of each table (-: not found yet, +: found already)
-        - kallsyms_offsets or kallsyms_addresses
-        - relative_base_address (when using kallsyms_offsets)
-        - kallsyms_num_syms
-        - kallsyms_names
-        - kallsyms_markers
-        - kallsyms_seqs_of_names (v6.2~)
-        + kallsyms_token_table
-        - kallsyms_token_index
+        [Search policy]
+        - Find the index where the string appears in kallsyms_token_table.
+        - Find where that index is arranged like a table.
 
+        [Positional relationship]
+        - ...
+        - kallsyms_token_table
+        - kallsyms_token_index
+        - ...
+
+        [Sample values]
         kallsyms_token_index: 0xffffffff8b2b5540
         gef> hexdump -n word 0xffffffff8b2b5540
         0xffffffff8b2b5540:    0x0000 0x0003 0x0006 0x000a 0x0014 0x001c 0x001f 0x0022    |  ..............".  |
@@ -68230,38 +68231,48 @@ class KsymaddrRemoteCommand(GenericCommand):
         return True
 
     def find_kallsyms_markers(self):
-        if self.kernel_version >= (6, 2):
+        # determines the size of table elements depended on kernel version.
+        if self.kernel_version < (4, 20):
+            # kallsyms_markers is unsigned long[]
+            self.kallsyms_markers_table_element_size = current_arch.ptrsize
+        else:
+            # kallsyms_markers is unsigned int[]
+            self.kallsyms_markers_table_element_size = 4
+
+        if self.kernel_version >= (6, 2) and self.kernel_version < (6, 9):
             ret = self.get_saved_config([
                 "offset_kallsyms_token_markers",
-                "kallsyms_markers_table_element_size",
                 "offset_kallsyms_seqs_of_names",
             ])
             if ret:
                 self.verbose_info("kallsyms_markers: {:#x}".format(self.ro_base + self.offset_kallsyms_markers))
-                self.verbose_info("kallsyms_markers_table_element_size: {:#x}".format(self.kallsyms_markers_table_element_size))
                 self.verbose_info("kallsyms_seqs_of_names: {:#x}".format(self.ro_base + self.offset_kallsyms_seqs_of_names))
                 return True
         else:
             ret = self.get_saved_config([
                 "offset_kallsyms_token_markers",
-                "kallsyms_markers_table_element_size",
             ])
             if ret:
                 self.verbose_info("kallsyms_markers: {:#x}".format(self.ro_base + self.offset_kallsyms_markers))
-                self.verbose_info("kallsyms_markers_table_element_size: {:#x}".format(self.kallsyms_markers_table_element_size))
                 return True
 
         """
-        Memory storage order of each table (-: not found yet, +: found already)
-        - kallsyms_offsets or kallsyms_addresses
-        - relative_base_address (when using kallsyms_offsets)
-        - kallsyms_num_syms
-        - kallsyms_names
-        - kallsyms_markers
-        - kallsyms_seqs_of_names (v6.2~)
-        + kallsyms_token_table
-        + kallsyms_token_index
+        [Search policy]
+        - From kallsyms_token_table, search backwards for 0x00000000.
+        - For kernel v6.2~v6.8, there is kallsyms_seqs_of_names between kallsyms_markers and kallsyms_token_table,
+          so this should be skipped.
 
+        [Positional relationship]
+        ...
+        - kallsyms_markers
+        - kallsyms_seqs_of_names (v6.2~v6.8)
+        - kallsyms_token_table
+        - kallsyms_token_index
+        ...
+        - kallsyms_seqs_of_names (v6.9~)
+        ...
+
+        [Sample values]
         kallsyms_markers: 0xffffffff8b2b4b48
         gef> hexdump -n dword 0xffffffff8b2b4b48
         0xffffffff8b2b4b48:    0x00000000 0x00000ab0 0x000016d3 0x00002316    |  .............#..  | <- kallsyms_markers
@@ -68298,16 +68309,6 @@ class KsymaddrRemoteCommand(GenericCommand):
         0xc6e0e2f8:    0x0083dd00 0xd90004e9 0x85ef00ab 0x00bfdb00    |  ................  |
         """
 
-        # determines the size of table elements depended on kernel version.
-        if self.kernel_version < (4, 20):
-            # kallsyms_markers is unsigned long[]
-            self.kallsyms_markers_table_element_size = current_arch.ptrsize
-        else:
-            # kallsyms_markers is unsigned int[]
-            self.kallsyms_markers_table_element_size = 4
-        self.save_config("kallsyms_markers_table_element_size")
-        self.verbose_info("kallsyms_markers_table_element_size: {:#x}".format(self.kallsyms_markers_table_element_size))
-
         # kallsyms_markers[0] is 0.
         seq_to_find = b"\0" * self.kallsyms_markers_table_element_size
 
@@ -68332,7 +68333,7 @@ class KsymaddrRemoteCommand(GenericCommand):
 
         # kallsyms_seqs_of_names is introduced from kernel 6.2-rc1
         # in this case, it finds kallsyms_seqs_of_names instead of kallsyms_markers, so search back through memory again.
-        if self.kernel_version >= (6, 2):
+        if self.kernel_version >= (6, 2) and self.kernel_version < (6, 9):
             if u32(self.kernel_img[needle + 4:needle + 8]) & 0xfff00000: # false positive, search again
                 position = needle
                 # aligned search from memory
@@ -68352,7 +68353,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         self.verbose_info("kallsyms_markers: {:#x}".format(self.ro_base + self.offset_kallsyms_markers))
 
         # find kallsyms_seqs_of_names
-        if self.kernel_version >= (6, 2):
+        if self.kernel_version >= (6, 2) and self.kernel_version < (6, 9):
             # locate kallsyms_seqs_of_names to get the table size of kallsyms_markers (used after).
             position = self.offset_kallsyms_markers + 4
             while self.kernel_img[position + 3] == 0:
@@ -68373,16 +68374,22 @@ class KsymaddrRemoteCommand(GenericCommand):
             return True
 
         """
-        Memory storage order of each table (-: not found yet, +: found already)
-        - kallsyms_offsets or kallsyms_addresses
-        - relative_base_address (when using kallsyms_offsets)
-        - kallsyms_num_syms
-        - kallsyms_names
-        + kallsyms_markers
-        + kallsyms_seqs_of_names (v6.2~)
-        + kallsyms_token_table
-        + kallsyms_token_index
+        [Search policy]
+        - From kallsyms_markers, go back as far as we can definitively go back.
+        - This address is not accurate.
 
+        [Positional relationship]
+        ...
+        - kallsyms_names
+        - kallsyms_markers
+        - kallsyms_seqs_of_names (v6.2~v6.8)
+        - kallsyms_token_table
+        - kallsyms_token_index
+        ...
+        - kallsyms_seqs_of_names (v6.9~)
+        ...
+
+        [Sample values]
         kallsyms_names: 0xffffffff8b16e610
         gef> hexdump -n qword 0xffffffff8b16e610
         0xffffffff8b16e610:    0x0cf3ec0e78b6410a 0xf370ff4109fe61cb    |  .A.x.....a..A.p.  | <- kallsyms_names
@@ -68409,7 +68416,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         """
 
         # take the last element of kallsyms_marker
-        if hasattr(self, "offset_kallsyms_seqs_of_names"): # maybe 6.2-rc1~
+        if hasattr(self, "offset_kallsyms_seqs_of_names"): # maybe v6.2~v6.8
             kallsyms_markers_end = self.offset_kallsyms_seqs_of_names
         else:
             kallsyms_markers_end = self.offset_kallsyms_token_table
@@ -68445,16 +68452,23 @@ class KsymaddrRemoteCommand(GenericCommand):
             return True
 
         """
-        Memory storage order of each table (-: not found yet, +: found already)
-        - kallsyms_offsets or kallsyms_addresses
-        - relative_base_address (when using kallsyms_offsets)
-        - kallsyms_num_syms
-        + kallsyms_names
-        + kallsyms_markers
-        + kallsyms_seqs_of_names (v6.2~)
-        + kallsyms_token_table
-        + kallsyms_token_index
+        [Search policy]
+        - From candidate address of kallsyms_names, search backwards to the top of what can be correctly
+          interpreted as kallsyms_names.
 
+        [Positional relationship]
+        ...
+        - kallsyms_num_syms
+        - kallsyms_names
+        - kallsyms_markers
+        - kallsyms_seqs_of_names (v6.2~v6.8)
+        - kallsyms_token_table
+        - kallsyms_token_index
+        ...
+        - kallsyms_seqs_of_names (v6.9~)
+        ...
+
+        [Sample values]
         kallsyms_num_syms: 0xffffffff8b16e608
         gef> hexdump -n qword 0xffffffff8b16e608
         0xffffffff8b16e608:    0x000000000001982b 0x0cf3ec0e78b6410a    |  +........A.x....  |
@@ -68626,18 +68640,29 @@ class KsymaddrRemoteCommand(GenericCommand):
 
     def find_kallsyms_offsets(self):
         """
-        Memory storage order of each table (-: not found yet, +: found already)
-        - kallsyms_addresses (~v6.4, CONFIG_KALLSYMS_BASE_RELATIVE=n)
+        [Search policy]
+        - ~6.4
+          - From kallsyms_num_syms, go back by num_symbols element sizes.
+          - num_symbols offsets are stored, so get them.
+        - 6.4~
+          - From kallsyms_token_index + 0x200, num_symbols offsets are stored, so get them.
+
+        [Positional relationship]
+        - ...
         - kallsyms_offsets (v4.6~v6.4, CONFIG_KALLSYMS_BASE_RELATIVE=y)
-        - relative_base_address (v4.6~v6.4, CONFIG_KALLSYMS_BASE_RELATIVE=y)
-        + kallsyms_num_syms
-        + kallsyms_names
-        + kallsyms_markers
-        + kallsyms_seqs_of_names (v6.2~)
-        + kallsyms_token_table
-        + kallsyms_token_index
+        - kallsyms_relative_base (v4.6~v6.4, CONFIG_KALLSYMS_BASE_RELATIVE=y)
+        - kallsyms_num_syms
+        - kallsyms_names
+        - kallsyms_markers
+        - kallsyms_seqs_of_names (v6.2~v6.8)
+        - kallsyms_token_table
+        - kallsyms_token_index
         - kallsyms_offsets (v6.4~)
-        - relative_base_address (v6.4~)
+        - kallsyms_relative_base (v6.4~)
+        - kallsyms_seqs_of_names (v6.9~)
+        - ...
+
+        [Sample values]
 
         [pattern]
         CONFIG_KALLSYMS_BASE_RELATIVE=y && CONFIG_KALLSYMS_ABSOLUTE_PERCPU=n (v4.6~): use positive offset
@@ -68711,6 +68736,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         offset_byte_size = 4
         address_byte_size = current_arch.ptrsize
 
+        # get relative_base_address
         if self.kernel_version < (6, 4):
             # ignore the 0 immediately above offset_kallsyms_num_syms.
             position = self.offset_kallsyms_num_syms
@@ -68722,6 +68748,8 @@ class KsymaddrRemoteCommand(GenericCommand):
 
             # Go backward by num_symbols.
             position -= address_byte_size
+
+            # read from kallsyms_relative_base
             relative_base_address = int.from_bytes(self.kernel_img[position:position + address_byte_size], endian_str)
 
             if relative_base_address and (relative_base_address & gef_getpagesize_mask_low()) == 0:
@@ -68789,18 +68817,25 @@ class KsymaddrRemoteCommand(GenericCommand):
 
     def find_kallsyms_addresses(self):
         """
-        Memory storage order of each table (-: not found yet, +: found already)
+        [Search policy]
+        - From kallsyms_num_syms, go back by num_symbols element sizes.
+        - num_symbols addresses are stored, so get them.
+
+        [Positional relationship]
+        - ...
         - kallsyms_addresses (~v6.4, CONFIG_KALLSYMS_BASE_RELATIVE=n)
-        - kallsyms_offsets (v4.6~v6.4, CONFIG_KALLSYMS_BASE_RELATIVE=y)
-        - relative_base_address (v4.6~v6.4, CONFIG_KALLSYMS_BASE_RELATIVE=y)
-        + kallsyms_num_syms
-        + kallsyms_names
-        + kallsyms_markers
-        + kallsyms_seqs_of_names (v6.2~)
-        + kallsyms_token_table
-        + kallsyms_token_index
+        - kallsyms_num_syms
+        - kallsyms_names
+        - kallsyms_markers
+        - kallsyms_seqs_of_names (v6.2~v6.8)
+        - kallsyms_token_table
+        - kallsyms_token_index
         - kallsyms_offsets (v6.4~)
-        - relative_base_address (v6.4~)
+        - kallsyms_relative_base (v6.4~)
+        - kallsyms_seqs_of_names (v6.9~)
+        - ...
+
+        [Sample values]
 
         [pattern]
         CONFIG_KALLSYMS_BASE_RELATIVE=n: use absolute address
