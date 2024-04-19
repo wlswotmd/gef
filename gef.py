@@ -5105,9 +5105,18 @@ class Architecture:
     def get_aliased_registers_name_max(self):
         if self.__aliased_registers_max_len is not None:
             return self.__aliased_registers_max_len
-        maxlen = max([len(v) for k, v in self.get_aliased_registers().items()])
+        maxlen = max([len(v) for v in self.get_aliased_registers().values()])
         self.__aliased_registers_max_len = maxlen
         return self.__aliased_registers_max_len
+
+    __registers_max_len = None
+
+    def get_registers_name_max(self):
+        if self.__registers_max_len is not None:
+            return self.__registers_max_len
+        maxlen = max([len(v) for v in self.all_registers if v != self.flag_register])
+        self.__registers_max_len = maxlen
+        return self.__registers_max_len
 
 
 class RISCV(Architecture):
@@ -11281,12 +11290,6 @@ def get_register(regname, use_mbed_exec=False, use_monitor=False):
             return int(r.group(1), 16)
 
     return None
-
-
-# If you want to use cache, use this. An use_mbed_exec must not be supported.
-@cache_until_next
-def get_register_use_cache(regname):
-    return get_register(regname)
 
 
 def get_path_from_info_proc():
@@ -28002,6 +28005,17 @@ class DereferenceCommand(GenericCommand):
         return regs
 
     @staticmethod
+    @cache_until_next
+    def get_target_registers_value():
+        regs = []
+        for regname in DereferenceCommand.get_target_registers():
+            regvalue = get_register(regname)
+            if regvalue is None:
+                continue
+            regs.append((regname, regvalue))
+        return regs
+
+    @staticmethod
     def pprint_dereferenced(addr, idx, tag=None, phys=False):
         base_address_color = get_gef_setting("theme.dereference_base_address")
         registers_color = get_gef_setting("theme.dereference_register_value")
@@ -28063,11 +28077,7 @@ class DereferenceCommand(GenericCommand):
         # register info
         if not phys: # for the physical address, 0x0 may be valid, which tends to clutter the result, so skip
             if is_valid_addr(current_address_value):
-                for regname in DereferenceCommand.get_target_registers():
-                    # read the value
-                    regvalue = get_register_use_cache(regname)
-                    if regvalue is None:
-                        continue
+                for regname, regvalue in DereferenceCommand.get_target_registers_value():
                     if current_address_value == regvalue:
                         extra.append(regname)
 
@@ -28173,6 +28183,16 @@ class DereferenceCommand(GenericCommand):
                     line = DereferenceCommand.pprint_dereferenced(start_address, idx, tag=tag, phys=args.phys)
                 else:
                     line = DereferenceCommand.pprint_dereferenced(start_address, idx, phys=args.phys)
+
+                # register info
+                regs_info = []
+                for regname, regvalue in DereferenceCommand.get_target_registers_value():
+                    if start_address + idx * current_arch.ptrsize == regvalue:
+                        regs_info.append(regname)
+                regs_info_str = regs_info[0] if regs_info else ""
+                regs_info_ex = "+" if len(regs_info) > 1 else " "
+                line = "{:>{:d}s}{:s} {:s}".format(regs_info_str, current_arch.get_registers_name_max(), regs_info_ex, line)
+
                 out.append(line)
             except (RuntimeError, gdb.MemoryError):
                 # e.g.: nop DWORD PTR [rax+rax*1+0x0]
@@ -28200,7 +28220,7 @@ class DereferenceCommand(GenericCommand):
                 v = _read_int_from_memory(start_address + idx * current_arch.ptrsize)
                 if v % current_arch.ptrsize == 0 and is_valid_addr(v):
                     cmd = "dereference --depth {:d} --no-pager {:#x} {:#x}".format(args.depth - 1, v, args.nb_lines)
-                    ret = gdb.execute(cmd, to_string=True).strip()
+                    ret = gdb.execute(cmd, to_string=True)
                     for line in ret.splitlines():
                         out.append("    " + line)
 
