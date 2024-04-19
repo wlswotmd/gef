@@ -80172,6 +80172,7 @@ class ExecUntilCommand(GenericCommand):
         finally:
             self.revert_stdout_stderr() # anytime needed
             gef_on_stop_hook(hook_stop_handler) # anytime needed
+            reset_gef_caches()
             if self.err:
                 err(self.err)
             else:
