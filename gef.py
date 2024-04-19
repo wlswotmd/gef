@@ -22447,7 +22447,7 @@ class KernelChecksecCommand(GenericCommand):
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
             return
 
-        kfilesystems_ret = gdb.execute("kfilesystem --quiet --no-pager", to_string=True)
+        kfilesystems_ret = gdb.execute("kfilesystems --quiet --no-pager --skip-mount-path", to_string=True)
         if not kfilesystems_ret:
             additional = "smack_init: Found"
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, "Supported", additional))
@@ -56827,6 +56827,7 @@ class KernelFileSystemsCommand(GenericCommand):
     _aliases_ = ["kmounts"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-s", "--skip-mount-path", action="store_true", help="skip resolving path.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
@@ -57201,7 +57202,7 @@ class KernelFileSystemsCommand(GenericCommand):
         devname = read_cstring_from_memory(devname_p)
         return devname
 
-    def parse_file_systems(self):
+    def parse_file_systems(self, skip_mount_path):
         if not self.quiet:
             fmt = "{:18s} {:12s} {:18s} {:20s} {:6s} {:6s} {:18s} {:18s} {:s}"
             legend = ["file_system_type", "fsname", "super_block", "devname", "major", "minor", "s_mount", "(parsed) mount", "mount_point"]
@@ -57234,13 +57235,16 @@ class KernelFileSystemsCommand(GenericCommand):
                     mount = self.get_mount(s_mounts)
 
                     # mount points
-                    ret = self.get_mount_point(s_mounts)
-                    if ret is None:
+                    if skip_mount_path:
                         parsed_mount, mount_point = "-", "???"
                     else:
-                        parsed_mount, mount_point = ret
-                        if isinstance(parsed_mount, int):
-                            parsed_mount = "{:#018x}".format(parsed_mount)
+                        ret = self.get_mount_point(s_mounts)
+                        if ret is None:
+                            parsed_mount, mount_point = "-", "???"
+                        else:
+                            parsed_mount, mount_point = ret
+                            if isinstance(parsed_mount, int):
+                                parsed_mount = "{:#018x}".format(parsed_mount)
 
                     # devname
                     if devname == "???":
@@ -57276,9 +57280,13 @@ class KernelFileSystemsCommand(GenericCommand):
             return
 
         self.out = []
-        self.parse_file_systems()
+        self.parse_file_systems(args.skip_mount_path)
+
         if self.out:
-            gef_print("\n".join(self.out), less=not args.no_pager)
+            if len(self.out) > get_terminal_size()[0]:
+                gef_print("\n".join(self.out), less=not args.no_pager)
+            else:
+                gef_print("\n".join(self.out), less=False)
         return
 
 
