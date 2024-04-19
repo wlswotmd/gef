@@ -122,8 +122,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * `qemu-device-info`: dumps device information for qemu-escape (WIP).
 
 ### Qemu-system cooperation - Arch specific
-* `msr`: displays MSR (Model Specific Registers) values by embedding/executing dynamic assembly.
-    * Supported on only x64.
+* `msr`: reads/writes MSR (Model Specific Registers) value by embedding/executing dynamic assembly.
+    * Supported on only x64 and x86.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/msr.png)
 * `uefi-ovmf-info`: dumps addresses of some important structures in each boot phase of UEFI when OVMF is used.
     * Supported on only x64.

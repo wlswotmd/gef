@@ -73874,70 +73874,84 @@ class CpuidCommand(GenericCommand):
 
 @register_command
 class MsrCommand(GenericCommand):
-    """Get MSR value."""
+    """Read or write MSR value."""
     _cmdline_ = "msr"
     _category_ = "04-a. Register - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("msr_target", metavar="MSR_VALUE|MSR_NAME", nargs="?", help="the msr constant or name you want to know the value.")
-    group.add_argument("-l", "--list", action="store_true", help="list up frequently used MSRs.")
+    parser.add_argument("msr_target", metavar="MSR_NAME|MSR_CONST", nargs="?", help="the MSR name or constant to know the value.")
+    parser.add_argument("msr_value", metavar="MSR_VALUE", nargs="?", type=parse_address, help="the MSR value to update.")
     parser.add_argument("-q", "--quiet", action="store_true", help="quiet mode.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} 0xc0000080              # rcx value\n".format(_cmdline_)
-    _example_ += "{:s} MSR_EFER                # another valid format".format(_cmdline_)
+    _example_ = "{:s}                   # show frequently used MSRs\n".format(_cmdline_)
+    _example_ += "{:s} 0xc0000080        # read msr\n".format(_cmdline_)
+    _example_ += "{:s} MSR_EFER          # another valid format\n".format(_cmdline_)
+    _example_ += "{:s} 0xc0000080 0xd01  # write msr".format(_cmdline_)
 
     _note_ = "Disable`-enable-kvm` option for qemu-system."
 
     msr_table = [
-        ["MSR_EFER",             0xc0000080, "Extended feature register"],
-        ["MSR_STAR",             0xc0000081, "Legacy mode SYSCALL target"],
-        ["MSR_LSTAR",            0xc0000082, "Long mode SYSCALL target"],
-        ["MSR_CSTAR",            0xc0000083, "Compat mode SYSCALL target"],
-        ["MSR_SYSCALL_MASK",     0xc0000084, "EFLAGS mask for syscall"],
-        ["MSR_FS_BASE",          0xc0000100, "64bit FS base"],
-        ["MSR_GS_BASE",          0xc0000101, "64bit GS base"],
-        ["MSR_KERNEL_GS_BASE",   0xc0000102, "SwapGS GS shadow"],
-        ["MSR_TSC_AUX",          0xc0000103, "Auxiliary TSC"],
-        ["MSR_IA32_U_CET",       0x000006a0, "User mode CET"],
-        ["MSR_IA32_S_CET",       0x000006a2, "Kernel mode CET"],
-        ["MSR_IA32_PL0_SSP",     0x000006a4, "Ring-0 shadow stack pointer"],
-        ["MSR_IA32_PL1_SSP",     0x000006a5, "Ring-1 shadow stack pointer"],
-        ["MSR_IA32_PL2_SSP",     0x000006a6, "Ring-2 shadow stack pointer"],
-        ["MSR_IA32_PL3_SSP",     0x000006a7, "Ring-3 shadow stack pointer"],
-        ["MSR_IA32_INT_SSP_TAB", 0x000006a8, "Exception shadow stack table"],
+        # frequently used x86-64 MSRs
+        ["MSR_EFER",              0xc0000080, "Extended feature register"],
+        ["MSR_STAR",              0xc0000081, "Legacy mode SYSCALL target"],
+        ["MSR_LSTAR",             0xc0000082, "Long mode SYSCALL target"],
+        ["MSR_CSTAR",             0xc0000083, "Compat mode SYSCALL target"],
+        ["MSR_SYSCALL_MASK",      0xc0000084, "EFLAGS mask for syscall"],
+        ["MSR_FS_BASE",           0xc0000100, "64bit FS base"],
+        ["MSR_GS_BASE",           0xc0000101, "64bit GS base"],
+        ["MSR_KERNEL_GS_BASE",    0xc0000102, "SwapGS GS shadow"],
+        ["MSR_TSC_AUX",           0xc0000103, "Auxiliary TSC"],
+        # x86-32 and x86-64
+        ["MSR_IA32_SYSENTER_CS",  0x00000174, "Sysenter CS"],
+        ["MSR_IA32_SYSENTER_ESP", 0x00000175, "Sysenter ESP"],
+        ["MSR_IA32_SYSENTER_EIP", 0x00000176, "Sysenter EIP"],
+        ["MSR_IA32_U_CET",        0x000006a0, "User mode CET"],
+        ["MSR_IA32_S_CET",        0x000006a2, "Kernel mode CET"],
+        ["MSR_IA32_PL0_SSP",      0x000006a4, "Ring-0 shadow stack pointer"],
+        ["MSR_IA32_PL1_SSP",      0x000006a5, "Ring-1 shadow stack pointer"],
+        ["MSR_IA32_PL2_SSP",      0x000006a6, "Ring-2 shadow stack pointer"],
+        ["MSR_IA32_PL3_SSP",      0x000006a7, "Ring-3 shadow stack pointer"],
+        ["MSR_IA32_INT_SSP_TAB",  0x000006a8, "Exception shadow stack table"],
     ]
 
-    def lookup_name2val(self, target_name):
-        for name, val, _desc in self.msr_table:
+    def lookup_name2const(self, target_name):
+        for name, const, _desc in self.msr_table:
             if name == target_name:
-                return val
-        return None
+                return const
+        try:
+            return int(target_name, 0)
+        except ValueError:
+            return None
 
-    def lookup_val2name(self, target_val):
-        for name, val, _desc in self.msr_table:
-            if val == target_val:
+    def lookup_const2name(self, target_const):
+        for name, const, _desc in self.msr_table:
+            if const == target_const:
                 return name
         return "Unknown"
 
     def print_const_table(self):
         gef_print(titlify("MSR table (Only frequently used)"))
-        fmt = "{:34s}: {:10s} : {:s}"
-        legend = ["Name", "Value", "Description"]
+        fmt = "{:30s}  {:10s}  {:30s}  {:s}"
+        legend = ["Name", "Const", "Description", "Value"]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
-        for name, val, desc in self.msr_table:
-            gef_print("{:34s}: {:#010x} : {:s}".format(name, val, desc))
-            continue
+
+        for name, const, desc in self.msr_table:
+            value = self.read_msr(const)
+            sym = ""
+            if is_valid_addr(value):
+                sym = get_symbol_string(value)
+            gef_print("{:30s}  {:#010x}  {:30s}  {:s}{:s}".format(name, const, desc, format_address(value), sym))
+
         info("See more info: https://elixir.bootlin.com/linux/latest/source/arch/x86/include/asm/msr-index.h")
         return
 
-    def read_msr(self, num):
+    def read_msr(self, const):
         codes = [b"\x0f\x32"] # rdmsr
         if is_x86_64():
-            regs = {"$rcx": num}
+            regs = {"$rcx": const}
         else:
-            regs = {"$ecx": num}
+            regs = {"$ecx": const}
         ret = ExecAsm(codes, regs=regs).exec_code()
 
         if ret is None:
@@ -73951,6 +73965,15 @@ class MsrCommand(GenericCommand):
             eax = ret["reg"]["$eax"]
         return ((edx << 32) | eax) & 0xffffffffffffffff
 
+    def write_msr(self, const, value):
+        codes = [b"\x0f\x30"] # wrmsr
+        if is_x86_64():
+            regs = {"$rcx": const, "$rdx": value >> 32, "$rax": value & 0xffffffff}
+        else:
+            regs = {"$ecx": const, "$edx": value >> 32, "$eax": value & 0xffffffff}
+        ret = ExecAsm(codes, regs=regs).exec_code()
+        return bool(ret)
+
     @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
@@ -73959,29 +73982,36 @@ class MsrCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        if args.list:
+        # list up
+        if args.msr_target is None and args.msr_value is None:
             self.print_const_table()
             return
 
         # search const table
-        num = self.lookup_name2val(args.msr_target)
-        if num is None:
-            try:
-                num = int(args.msr_target, 0)
-            except ValueError:
-                self.usage()
-                return
-
-        # exec rdmsr
-        val = self.read_msr(num)
-        if val is None:
+        const = self.lookup_name2const(args.msr_target)
+        if const is None:
+            self.usage()
             return
 
-        name = self.lookup_val2name(num)
-        if args.quiet:
-            gef_print("{:#x}".format(val))
+        if args.msr_value is None:
+            # exec rdmsr
+            value = self.read_msr(const)
+            if value is None:
+                err("Failed to read")
+                return
+            name = self.lookup_const2name(const)
+            if args.quiet:
+                gef_print("{:s}".format(format_address(value)))
+            else:
+                gef_print("{:s} ({:#x}): {:s}".format(name, const, format_address(value)))
+
         else:
-            gef_print("{:s} ({:#x}): {:#x}".format(name, num, val))
+            # exec wrmsr
+            ret = self.write_msr(const, args.msr_value)
+            if ret:
+                info("Success to write")
+            else:
+                err("Failed to write")
         return
 
 
