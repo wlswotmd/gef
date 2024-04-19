@@ -1841,10 +1841,10 @@ class Elf:
         Canary, NX, PIE, RELRO, Fortify, Static, Symbol, Debuginfo, CET,
         RPATH/RUNPATH, and Clang CFI/SafeStack."""
 
-        def exists_sym(dymstr, strtab, keywords):
-            if dymstr:
+        def exists_sym(dynstr, strtab, keywords):
+            if dynstr:
                 for kw in keywords:
-                    if kw in dymstr:
+                    if kw in dynstr:
                         return True
             if strtab:
                 for kw in keywords:
@@ -4296,7 +4296,7 @@ def gdb_get_location(address):
     if address is None:
         return None
 
-    # Do not use gdb.format_adderss available from gdb 13.x,
+    # Do not use gdb.format_address available from gdb 13.x,
     # because symbols added with add-symbol-temporary may not be recognized.
 
     # slow path uses `info symbol` command
@@ -28022,7 +28022,7 @@ class DereferenceCommand(GenericCommand):
         # create address link list
         link = to_string_dereference_from(current_address, skip_idx=1, phys=phys)
 
-        # craete line of one entry
+        # create line of one entry
         addr_colored = Color.colorify(format_address(addrs[0], memalign_size=memalign_size), base_address_color)
         if tag:
             line = f"{addr_colored}{VERTICAL_LINE}{offset:+#07x}{VERTICAL_LINE}{idx:+04d}: {tag:s}: {link:{memalign * 2 + 2}s}"
@@ -28038,6 +28038,8 @@ class DereferenceCommand(GenericCommand):
 
         # retaddr info
         for i, frame_pc in enumerate(DereferenceCommand.get_frame_pcs()):
+            if not is_valid_addr(frame_pc):
+                continue
             if current_address_value == frame_pc:
                 extra.append("retaddr[{:d}]".format(i))
                 break
