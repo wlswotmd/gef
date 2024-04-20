@@ -89,13 +89,6 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 ## Added / improved features
 
 ### Qemu-system cooperation - General
-* `qreg`: displays the register values from qemu-monitor (allows to get like `$cs` even under qemu 2.x).
-    * It is shortcut for `monitor info registers`.
-    * It also prints the details of the each bit of the system register when x64/x86.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/qreg.png)
-* `sysreg`: pretty prints system registers.
-    * It is the result of `info registers` with filtering general registers.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/sysreg.png)
 * `pagewalk`: scans physical memory, parses page tables, and displays memory maps.
     * x64 (Supported: 4-Level/5-Level Paging)
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-x64.png)
@@ -119,6 +112,13 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/v2p-p2v.png)
 * `xp`: is a shortcut for physical memory dump.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xp.png)
+* `qreg`: displays the register values from qemu-monitor (allows to get like `$cs` even under qemu 2.x).
+    * It is shortcut for `monitor info registers`.
+    * It also prints the details of the each bit of the system register when x64/x86.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/qreg.png)
+* `sysreg`: pretty prints system registers.
+    * It is the result of `info registers` with filtering general registers.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/sysreg.png)
 * `qemu-device-info`: dumps device information for qemu-escape (WIP).
 
 ### Qemu-system cooperation - Arch specific
@@ -281,6 +281,20 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * If you want to use native `c`, use the full form `continue`.
 
 ### Heap dump features
+* Glibc heap commands are improved.
+    * It changes the color.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-bins.png)
+    * They print bins information if the chunk is in free-list.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-if-in-freelist.png)
+    * Thread arena is supported for all `heap` commands.
+        * Use `-a` option.
+    * It supports new modes `heap arenas` and `heap top`.
+    * `find-fake-fast`: searches for a memory with a size-like value that can be linked to the fastbin free-list.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/find-fake-fast.png)
+    * `visual-heap`: is colorized heap viewer.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/visual-heap.png)
+    * `extract-heap-addr`: analyzes tcache-protected-fd introduced from glibc-2.32.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/extract-heap-addr.png)
 * `partition-alloc-dump`: dumps partition-alloc free-list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/partition-alloc-dump.png)
     * This command is reserved for the implementation of latest version of chromium.
@@ -325,20 +339,6 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * It is redirected to `pagewalk` when connecting to gdb stub of qemu-system.
     * It supports detection and coloring of `Writable`, `ReadOnly`, `None` and `RWX` regions.
     * It shows the area each register points to.
-* Glibc heap commands are improved.
-    * It changes the color.
-        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-bins.png)
-    * They print bins information if the chunk is in free-list.
-        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-if-in-freelist.png)
-    * Thread arena is supported for all `heap` commands.
-        * Use `-a` option.
-    * It supports new modes `heap arenas` and `heap top`.
-    * `find-fake-fast`: searches for a memory with a size-like value that can be linked to the fastbin free-list.
-        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/find-fake-fast.png)
-    * `visual-heap`: is colorized heap viewer.
-        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/visual-heap.png)
-    * `extract-heap-addr`: analyzes tcache-protected-fd introduced from glibc-2.32.
-        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/extract-heap-addr.png)
 * `registers`: is improved.
     * It also shows raw values of flag register, current ring, exception level, secure state, etc.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/registers-x64.png)
@@ -434,8 +434,6 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * Supports many colors.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/theme.png)
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/theme-colors-sample.png)
-* `up`/`down`: are the wrapper for native `up`/`down`.
-    * It shows also backtrace.
 
 ### Added features
 * `pid`/`tid`: prints pid and tid.
@@ -545,6 +543,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/time.png)
 * `multi-line`: executes multiple GDB commands in sequence.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/multi-line.png)
+* `up`/`down`: are the wrapper for native `up`/`down`.
+    * It shows also backtrace.
 * `cpuid`: shows the result of cpuid(eax=0,1,2...).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/cpuid.png)
 * `capability`: shows the capabilities of the debugging process.
