@@ -14409,60 +14409,76 @@ class DownCommand(GenericCommand):
 
 @register_command
 class DisplayTypeCommand(GenericCommand):
-    """A wrapper for `ptype /ox TYPE` and `p ((TYPE*) ADDRESS)[0]`."""
+    """Makes it easier to use `ptype /ox TYPE` and `p ((TYPE*) ADDRESS)[0]`."""
     _cmdline_ = "dt"
     _category_ = "09-h. Misc - Type"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("type", metavar="TYPE", help="the type name.")
     parser.add_argument("address", metavar="ADDRESS", nargs="?", type=parse_address, help="the address to apply the type.")
-    parser.add_argument("-r", action="count", default=0, help="remove '*' from type name.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     _example_ = '{:s} "struct malloc_state"        # shortcut for `ptype /ox struct malloc_state`\n'.format(_cmdline_)
     _example_ += '{:s} "struct malloc_state" $rsp   # shortcut for `p ((struct malloc_state*) $rsp)[0]`\n'.format(_cmdline_)
-    _example_ += "{:s} -r mstate $rsp               # mstate is typedef of `struct malloc_state*`, so need remove `*` once".format(_cmdline_)
 
-    _note_ = "You can remove any number of `*` by specifying multiple `-r` options."
+    _note_ = "This command is designed for several purposes.\n"
+    _note_ += "1. When displaying very large struct, you may want to go through a pager because the results will not fit on one screen.\n"
+    _note_ += "   However, using a pager, the color information disappears. This command calls the pager with preserving colors.\n"
+    _note_ += "2. When `ptype /ox TYPE`, interpreting member type recursively often result is too long and difficult to read.\n"
+    _note_ += "   This command keeps result compact by displaying only top-level members.\n"
+    _note_ += "3. When `p ((TYPE*) ADDRESS)[0]` for large struct, `max-value-size` of the setting is too small to display.\n"
+    _note_ += "   This command adjusts it automatically.\n"
+    _note_ += "4. When displaying binary written in the golang, the offset information of the type is not displayed.\n"
+    _note_ += "   This command also displays the offset.\n"
+    _note_ += "5. When displaying a binary written in the golang, the `p ((TYPE*) ADDRESS)[0]` command will be broken.\n"
+    _note_ += "   Because the golang helper script is automatically loaded and overwrites the behavior of `p` command.\n"
+    _note_ += "   This command creates the display results on the python side, so we can display it without any problems."
 
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
         self.dont_repeat()
 
-        stripped_type = cached_lookup_type(args.type) # un-typedef
-        if stripped_type is None:
+        tp = cached_lookup_type(args.type) or cached_lookup_type("struct {:s}".format(args.type))
+        if tp is None:
             err("Not found {:s}".format(args.type))
             return
-        stripped_type = str(stripped_type)
 
-        for _ in range(args.r):
-            if stripped_type.endswith("*"):
-                stripped_type = stripped_type[:-1].strip()
-            else:
-                warn("The specified number of `*` characters were not found at the end of the type name. Skip removal.")
-                break
+        while str(tp).endswith("*"):
+            tp = tp.target()
 
-        if "." in stripped_type and " " not in stripped_type:
-            # golang "runtime.mheap" -> "'runtime.mheap'"
-            stripped_type = "'{:s}'".format(stripped_type)
-
-        try:
-            if args.address is None:
-                ret = gdb.execute("ptype /ox {:s}".format(stripped_type), to_string=True)
-                ret = re.sub("([a-zA-Z_][a-zA-Z0-9_]*)(\[\d+\])?;", "\033[36m\\1\033[0m\\2;", ret)
-                ret = re.sub("([a-zA-Z_][a-zA-Z0-9_]*) : (\d+);", "\033[36m\\1\033[0m : \\2;", ret)
-                ret = re.sub("(/\* XXX\s+\d+-(bit|byte) (hole|padding)\s+\*/)", "\033[31m\\1\033[0m", ret)
-            else:
-                ret = gdb.execute("p (({:s}*) {:#x})[0]".format(stripped_type, args.address), to_string=True)
-                ret = re.sub("  ([a-zA-Z_][a-zA-Z0-9_]*) =", "  \033[36m\\1\033[0m =", ret)
-                ret = re.sub(" = (0x[0-9a-f]+)", " = \033[34m\\1\033[0m", ret)
-        except gdb.error as e:
-            err(e)
+        if tp.code not in [gdb.TYPE_CODE_STRUCT, gdb.TYPE_CODE_UNION]:
+            err("{:s} is not struct or union".format(tp.name or args.type))
             return
 
-        gef_print(ret.rstrip(), less=not args.no_pager)
+        if args.address is None:
+            if tp.code == gdb.TYPE_CODE_STRUCT:
+                type_prefix = "struct"
+            else:
+                type_prefix = "union"
+            out = [
+                "{:s} {:s} {{".format(type_prefix, tp.name or args.type),
+                "    /* offset | size   */",
+            ]
+            for name, field in tp.items():
+                offsz_str = "/* {:#06x} | {:#06x} */".format(field.bitpos // 8, field.type.sizeof)
+                name_str = Color.cyanify(name)
+                msg = "    {:s}    {} {:s};".format(offsz_str, field.type, name_str)
+                out.append(msg)
+            out.append("}} // total: {:#x} bytes".format(tp.sizeof))
+            gef_print("\n".join(out), less=not args.no_pager)
+
+        else:
+            if not is_valid_addr(args.address):
+                err("Memory access error")
+                return
+            if tp.sizeof > 2200: # 2200 is default value of max-value-size
+                gdb.execute("set max-value-size {:#x}".format(tp.sizeof))
+            v = gdb.Value(args.address)
+            s = v.cast(tp.pointer()).dereference()
+            out = s.format_string(styling=True)
+            gef_print(out, less=not args.no_pager)
         return
 
 

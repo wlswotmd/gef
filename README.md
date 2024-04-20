@@ -604,8 +604,20 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * `gef pyobj-list`: displays defined global python object.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-pyobj-list.png)
 * `gef avail-comm-list`: displays a list of commands available for the current architecture and gdb execution mode.
-* `dt`: is wrapper for `ptype /ox TYPE` and `p ((TYPE*) ADDRESS)[0]`.
+* `dt`: makes it easier to use `ptype /ox TYPE` and `p ((TYPE*) ADDRESS)[0]`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dt.png)
+    * This command is designed for several purposes.
+        1. When displaying very large struct, you may want to go through a pager because the results will not fit on one screen.
+           However, using a pager, the color information disappears. This command calls the pager with preserving colors.
+        2. When `ptype /ox TYPE`, interpreting member type recursively often result is too long and difficult to read.
+           This command keeps result compact by displaying only top-level members.
+        3. When `p ((TYPE*) ADDRESS)[0]` for large struct, `max-value-size` of the setting is too small to display.
+           This command adjusts it automatically.
+        4. When displaying binary written in the golang, the offset information of the type is not displayed.
+           This command also displays the offset.
+        5. When displaying a binary written in the golang, the `p ((TYPE*) ADDRESS)[0]` command will be broken.
+           Because the golang helper script is automatically loaded and overwrites the behavior of `p` command.
+           This command creates the display results on the python side, so we can display it without any problems.
 * `mte-tags`: displays the MTE tags for the specified address.
     * Supported on only ARM64.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/mte-tags.png)
