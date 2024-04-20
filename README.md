@@ -309,6 +309,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
         * Add `/PATH/TO/x86_64-buildroot-linux-uclibc/bin` to `$PATH`, then `x86_64-linux-gcc test.c`.
         * Fix interpreter by `patchelf --set-interpreter /PATH/TO/x86_64-buildroot-linux-uclibc/sysroot/lib/ld64-uClibc.so.0 a.out`.
 * `uclibc-ng-visual-heap`: is colorized heap viewer for uClibc-ng.
+* `goheap-dump`: go language v1.21.1 mheap dumper (only x64).
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/goheap-dump.png)
 * `optee-bget-dump`: dumps bget allocator of OPTEE-Trusted-App.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-bget-dump.png)
 

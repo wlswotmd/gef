@@ -69836,6 +69836,9 @@ class GoHeapDumpCommand(GenericCommand):
     # TODO: arena, central, mspan->next
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("--mheap", type=parse_address, help="the address of runtime.mheap_.")
+    parser.add_argument("--mspan", type=parse_address, help="the address of the target mspan.")
+    parser.add_argument("-d", "--dump", action="store_true", help="with hexdump.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="display also empty slots.")
     _syntax_ = parser.format_help()
@@ -69881,6 +69884,7 @@ class GoHeapDumpCommand(GenericCommand):
         self.PageSize = 1 << self.PageShift
 
         self.offset_allspans = 0x10148
+        self.sizeof_mheap = 0x16a78
 
         """
         00000000 runtime_mspan   struc ; (sizeof=0xA8, align=0x8)
@@ -69889,6 +69893,10 @@ class GoHeapDumpCommand(GenericCommand):
         00000010 list            dq ?
         00000018 startAddr       dq ?
         00000020 npages          dq ?
+        ...
+        00000038 nelems          dq ?
+        ...
+        00000048 allocBits       dq ?
         ...
         0000006A spanclass       db ?
         ...
@@ -69899,20 +69907,114 @@ class GoHeapDumpCommand(GenericCommand):
         self.offset_startAddr = 0x18
         self.offset_npages = 0x20
         self.offset_nelems = 0x38
+        self.offset_allocBits = 0x48
         self.offset_spanclass = 0x6a
         return
 
     def get_mheap_(self):
+        # use symbol
         try:
             return parse_address("&'runtime.mheap_'")
         except gdb.error:
-            return None
+            pass
 
-    def dump_mspans(self, mspans):
+        # use heuristic search (TODO: Check if it is always correct)
+        elf = get_elf_headers()
+        bss = elf.get_shdr(".bss")
+        mheap = bss.sh_addr + bss.sh_size - self.sizeof_mheap
+        if is_valid_addr(mheap):
+            return mheap
+        return None
+
+    def parse_mheap(self, mheap, verbose):
+        self.out.append(titlify("runtime.mheap_ @ {:#x}".format(mheap)))
+
+        current = read_int_from_memory(mheap + self.offset_allspans)
+        mspans = []
+        while True:
+            mspan_addr = read_int_from_memory(current)
+            if not mspan_addr:
+                break
+            mspan = self.parse_mspan(mspan_addr, verbose)
+            if mspan:
+                mspans.append(mspan)
+            current += current_arch.ptrsize
+
+        mspans = sorted(mspans, key=lambda m: (m.chunk_size, m.address))
+        return mspans
+
+    def parse_mspan(self, mspan, verbose):
+        # read member
+        start_addr = read_int_from_memory(mspan + self.offset_startAddr)
+        if not verbose and start_addr == 0:
+            return None
+        # spanclass = (sizeclass << 1) | (noscan bit)
+        spanclass = u8(read_memory(mspan + self.offset_spanclass, 1)) >> 1
+        chunk_size = self.class_to_size_dic[spanclass]
+        if not verbose and chunk_size == 0:
+            return None
+        next_ = read_int_from_memory(mspan + self.offset_next)
+        prev_ = read_int_from_memory(mspan + self.offset_prev)
+        npages = read_int_from_memory(mspan + self.offset_npages)
+        end_addr = start_addr + npages * self.PageSize
+
+        aligned_nelems = nelems = read_int_from_memory(mspan + self.offset_nelems)
+        while aligned_nelems % 8:
+            aligned_nelems += 1
+        allocBits_addr = read_int_from_memory(mspan + self.offset_allocBits)
+        allocBits_data = read_memory(allocBits_addr, aligned_nelems)
+        allocBits_array = [((b >> i) & 1) for b in allocBits_data for i in range(8)]
+
+        Mspan = collections.namedtuple("Mspan", [
+            "address", "next", "prev", "start_addr", "end_addr", "npages", "chunk_size", "nelems", "alloc_bits",
+        ])
+        mspan = Mspan(mspan, next_, prev_, start_addr, end_addr, npages, chunk_size, nelems, allocBits_array[:nelems])
+        return mspan
+
+    def dump_mspan_data(self, mspan):
+        chunk_data = read_memory(mspan.start_addr, mspan.end_addr - mspan.start_addr)
+        chunk_hexdump = hexdump(chunk_data, base=mspan.start_addr, color=False, unit=8)
+        lines = chunk_hexdump.splitlines()
+
+        color_dic = {
+            # (b, idx % 2): color name
+            (0, 0): "bright_yellow",
+            (0, 1): "yellow",
+            (1, 0): "graphite",
+            (1, 1): "bright_black",
+        }
+
+        # coloring
+        for i in range(len(lines)):
+            line = lines[i]
+
+            offset1 = i * 0x10
+            idx1 = offset1 // mspan.chunk_size
+            if idx1 >= mspan.nelems:
+                color1 = ""
+            else:
+                b1 = mspan.alloc_bits[idx1]
+                color1 = color_dic[b1, idx1 % 2]
+
+            offset2 = i * 0x10 + 8
+            idx2 = offset2 // mspan.chunk_size
+            if idx2 >= mspan.nelems:
+                color2 = ""
+            else:
+                b2 = mspan.alloc_bits[idx2]
+                color2 = color_dic[b2, idx2 % 2]
+
+            lines[i] = line[:19] + Color.colorify(line[19:37], color1) + line[37:38] + Color.colorify(line[38:56], color2) + line[56:]
+
+        self.out.extend(lines)
+        return
+
+    def dump_mspans(self, mspans, do_dump):
         chunk_size_color = get_gef_setting("theme.heap_chunk_size")
         page_address_color = get_gef_setting("theme.heap_page_address")
 
         for mspan in mspans:
+            # meta data
             chunk_size_str = Color.colorify("{:#x}".format(mspan.chunk_size), chunk_size_color)
             range_addr_str = Color.colorify("{:#x}-{:#x}".format(mspan.start_addr, mspan.end_addr), page_address_color)
             range_size = mspan.end_addr - mspan.start_addr
@@ -69921,48 +70023,8 @@ class GoHeapDumpCommand(GenericCommand):
                 lookup_address(mspan.next), lookup_address(mspan.prev),
             )
             self.out.append(msg)
-        return
-
-    def dump_mheap(self, verbose):
-        mheap = self.get_mheap_()
-        if mheap is None:
-            err("Not found runtime.mheap_")
-            return
-        self.out.append(titlify("runtime.mheap_ @ {:#x}".format(mheap)))
-
-        Mspan = collections.namedtuple("Mspan", ["address", "next", "prev", "start_addr", "end_addr", "npages", "chunk_size"])
-        current = read_int_from_memory(mheap + self.offset_allspans)
-
-        mspans = []
-        while True:
-            mspan = read_int_from_memory(current)
-            if not mspan:
-                break
-
-            # read member
-            start_addr = read_int_from_memory(mspan + self.offset_startAddr)
-            if not verbose and start_addr == 0:
-                current += current_arch.ptrsize
-                continue
-            # spanclass = (sizeclass << 1) | (noscan bit)
-            spanclass = u8(read_memory(mspan + self.offset_spanclass, 1)) >> 1
-            chunk_size = self.class_to_size_dic[spanclass]
-            if not verbose and chunk_size == 0:
-                current += current_arch.ptrsize
-                continue
-            next_ = read_int_from_memory(mspan + self.offset_next)
-            prev_ = read_int_from_memory(mspan + self.offset_prev)
-            npages = read_int_from_memory(mspan + self.offset_npages)
-            end_addr = start_addr + npages * self.PageSize
-
-            mspan = Mspan(mspan, next_, prev_, start_addr, end_addr, npages, chunk_size)
-            mspans.append(mspan)
-
-            # goto next
-            current += current_arch.ptrsize
-
-        mspans = sorted(mspans, key=lambda m: (m.chunk_size, m.address))
-        self.dump_mspans(mspans)
+            if do_dump:
+                self.dump_mspan_data(mspan)
         return
 
     @parse_args
@@ -69973,7 +70035,19 @@ class GoHeapDumpCommand(GenericCommand):
         self.dont_repeat()
 
         self.out = []
-        self.dump_mheap(args.verbose)
+
+        if args.mspan is not None:
+            mspans = [self.parse_mspan(args.mspan, args.verbose)]
+        elif args.mheap:
+            mspans = self.parse_mheap(args.mheap, args.verbose)
+        else:
+            mheap = self.get_mheap_()
+            if mheap is None:
+                err("Not found runtime.mheap_")
+                return
+            mspans = self.parse_mheap(mheap, args.verbose)
+
+        self.dump_mspans(mspans, args.dump)
         gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
