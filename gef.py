@@ -4184,14 +4184,8 @@ def style_byte(b, color=True):
     return sbyte
 
 
-def hexdump(source, length=0x10, separator=".", show_raw=False, show_symbol=True, base=0x00, unit=1):
-    """Return the hexdump of `src` argument.
-    @param source *MUST* be of type bytes or bytearray
-    @param length is the length of items per line
-    @param separator is the default character to use if one byte is not printable
-    @param show_raw if True, do not add the line nor the text translation
-    @param base is the start address of the block being hexdump
-    @return a string with the hexdump"""
+def hexdump(source, length=0x10, separator=".", color=True, show_symbol=True, base=0x00, unit=1):
+    """Return the hexdump of `src` argument."""
 
     align = get_format_address_width()
 
@@ -4216,10 +4210,10 @@ def hexdump(source, length=0x10, separator=".", show_raw=False, show_symbol=True
             if len(chunk) % unit:
                 padlen += ((unit - len(chunk) % unit) * 2)
 
-        hexa = [style_byte(b, color=not show_raw) for b in chunk]
+        hexa = [style_byte(b, color=color) for b in chunk]
         if unit > 1:
             hexa = ["0x" + "".join(x[::-1]) for x in slicer(hexa, unit)]
-        if not show_raw and unit == 1:
+        if unit == 1:
             hexa[min(len(hexa), 8) - 1] += " " # double the blank at the 8th byte
         hexa = " ".join(hexa)
         padded_hexa = hexa + " " * padlen
@@ -4231,13 +4225,9 @@ def hexdump(source, length=0x10, separator=".", show_raw=False, show_symbol=True
         tmp.append([addr, sym, hexa, padded_hexa, padded_text])
 
     result = []
-    if show_raw:
-        for _, _, hexa, _, _ in tmp:
-            result.append(hexa)
-    else:
-        for addr, sym, _, data, text in tmp:
-            fmt = "{addr:#0{aw}x}:{sym:<{sym_width}}    {data}    |  {text}  |"
-            result.append(fmt.format(aw=align, addr=addr, sym=sym, sym_width=max_sym_width, data=data, text=text))
+    for addr, sym, _, data, text in tmp:
+        fmt = "{addr:#0{aw}x}:{sym:<{sym_width}}    {data}    |  {text}  |"
+        result.append(fmt.format(aw=align, addr=addr, sym=sym, sym_width=max_sym_width, data=data, text=text))
     return "\n".join(result)
 
 
@@ -21420,7 +21410,7 @@ class ElfInfoCommand(GenericCommand):
         elif elf.addr is not None:
             filename = "{:#x}".format(elf.addr)
 
-        magic_hex = hexdump(struct.pack(">I", elf.e_magic), show_raw=True)
+        magic_hex = " ".join(slicer(struct.pack(">I", elf.e_magic).hex(), 2))
         if is_big_endian():
             magic_str = repr(p32(elf.e_magic).decode())
         else:
