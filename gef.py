@@ -84051,6 +84051,75 @@ class SymbolsCommand(GenericCommand):
 
 
 @register_command
+class TypesCommand(GenericCommand):
+    """List up all types (shortcut for `info types`) with coloring and compaction."""
+    _cmdline_ = "types"
+    _category_ = "02-g. Process Information - Symbol"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-E", "--no-enum", action="store_true", help="without enum.")
+    parser.add_argument("-S", "--no-struct", action="store_true", help="without struct.")
+    parser.add_argument("-T", "--no-typedef", action="store_true", help="without typedef.")
+    parser.add_argument("-U", "--no-union", action="store_true", help="without union.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="with the output of `dt` command.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        basic_types = [
+            "char", "unsigned char", "signed char",
+            "int", "unsigned int", "signed int",
+            "short", "unsigned short", "signed short",
+            "long", "unsigned long", "signed long",
+            "long long", "unsigned long long", "signed long long",
+            "float",
+            "double", "long double",
+        ]
+
+        ret = gdb.execute("info types", to_string=True).strip()
+        out = []
+        for line in ret.splitlines():
+            if line == "All defined types:":
+                continue
+            if line == "":
+                continue
+            if line.startswith("File "):
+                continue
+
+            line = re.sub("^\d+:|;$", "", line).strip()
+            if line in basic_types:
+                continue
+            if args.no_enum and line.startswith("enum "):
+                continue
+            if args.no_struct and line.startswith("struct "):
+                continue
+            if args.no_typedef and line.startswith("typedef "):
+                continue
+            if args.no_union and line.startswith("union "):
+                continue
+            out.append(line)
+
+        out = sorted(set(out))
+
+        if args.verbose:
+            new_out = []
+            for type_name in out:
+                ret = gdb.execute('dt -n "{:s}"'.format(type_name), to_string=True)
+                if not ret or (" is not struct or union" in ret) or ("Not found " in ret):
+                    new_out.append(type_name)
+                    continue
+                new_out.append(ret)
+            out = new_out
+
+        gef_print("\n".join(out), less=not args.no_pager)
+        return
+
+
+@register_command
 class GefCommand(GenericCommand):
     """The base command of GEF maintenance."""
     _cmdline_ = "gef"

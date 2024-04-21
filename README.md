@@ -593,8 +593,9 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * `search-cfi-gadgets`: searches CFI-valid (for CET IBT) and controllable generally gadgets from executable area.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-cfi-gadgets.png)
 * `symbols`: lists up all symbols with coloring.
-    * It is shortcut for `maintenance print msymbols`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/symbols.png)
+* `types`: lists up all types with coloring and compaction.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/types.png)
 * `saveo`/`diffo`: saves and diffs the command outputs.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/saveo-diffo.png)
 * `seq-length`: detects consecutive length of the same sequence.
