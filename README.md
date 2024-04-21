@@ -594,7 +594,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-cfi-gadgets.png)
 * `symbols`: lists up all symbols with coloring.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/symbols.png)
-* `types`: lists up all types with coloring and compaction.
+* `types`: lists up all types with compaction.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/types.png)
 * `saveo`/`diffo`: saves and diffs the command outputs.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/saveo-diffo.png)
@@ -612,7 +612,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
            However, using a pager, the color information disappears. This command calls the pager with preserving colors.
         2. When `ptype /ox TYPE`, interpreting member type recursively often result is too long and difficult to read.
            This command keeps result compact by displaying only top-level members.
-        3. When `p ((TYPE*) ADDRESS)[0]` for large struct, `max-value-size` of the setting is too small to display.
+        3. When `p ((TYPE*) ADDRESS)[0]` for large struct, the setting of `max-value-size` is too small to display.
            This command adjusts it automatically.
         4. When displaying binary written in the golang, the offset information of the type is not displayed.
            This command also displays the offset.

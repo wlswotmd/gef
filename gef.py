@@ -14417,7 +14417,7 @@ class DisplayTypeCommand(GenericCommand):
     _note_ += "   However, using a pager, the color information disappears. This command calls the pager with preserving colors.\n"
     _note_ += "2. When `ptype /ox TYPE`, interpreting member type recursively often result is too long and difficult to read.\n"
     _note_ += "   This command keeps result compact by displaying only top-level members.\n"
-    _note_ += "3. When `p ((TYPE*) ADDRESS)[0]` for large struct, `max-value-size` of the setting is too small to display.\n"
+    _note_ += "3. When `p ((TYPE*) ADDRESS)[0]` for large struct, the setting of `max-value-size` is too small to display.\n"
     _note_ += "   This command adjusts it automatically.\n"
     _note_ += "4. When displaying binary written in the golang, the offset information of the type is not displayed.\n"
     _note_ += "   This command also displays the offset.\n"
@@ -84052,7 +84052,7 @@ class SymbolsCommand(GenericCommand):
 
 @register_command
 class TypesCommand(GenericCommand):
-    """List up all types (shortcut for `info types`) with coloring and compaction."""
+    """List up all types (shortcut for `info types`) with compaction."""
     _cmdline_ = "types"
     _category_ = "02-g. Process Information - Symbol"
 
