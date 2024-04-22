@@ -24913,6 +24913,7 @@ class MainBreakCommand(GenericCommand):
             pass
 
         ret = gdb.execute("got --no-pager --quiet __libc_start_main", to_string=True)
+        ret = ret.strip()
         if not ret:
             err("Failed to resolve __libc_start_main")
             return None
