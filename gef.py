@@ -26743,8 +26743,8 @@ class HexdumpCommand(GenericCommand):
     _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("format", choices=["byte", "word", "dword", "qword"], nargs="?", default="byte",
-                        help="dump mode. (default: %(default)s)")
+    parser.add_argument("format", choices=["byte", "word", "dword", "qword", "b", "w", "d", "q"], nargs="?", default="byte",
+                        help="dump mode. It also works if you specify the first character. (default: %(default)s)")
     parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to dump.")
     parser.add_argument("count", metavar="COUNT", nargs="?", type=lambda x: int(x, 0), default=0x100,
                         help="the count of displayed units. (default: %(default)s)")
@@ -26846,7 +26846,7 @@ class HexdumpCommand(GenericCommand):
             err("cannot access memory")
             return
 
-        unit = {"byte": 1, "word": 2, "dword": 4, "qword": 8}[args.format]
+        unit = {"byte": 1, "word": 2, "dword": 4, "qword": 8, "b": 1, "w": 2, "d": 4, "q": 8}[args.format]
         lines = hexdump(mem, show_symbol=args.symbol, base=read_from, unit=unit).splitlines()
 
         if not args.full:
