@@ -59526,6 +59526,8 @@ class TlsCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-a", "--all", action="store_true", help="show all TLS address.")
+    parser.add_argument("-v", "--verbose", action="count", default=1, help="show more entries.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     def print_all_tls(self):
@@ -59570,16 +59572,27 @@ class TlsCommand(GenericCommand):
             err("Failed to get TLS address")
             return
 
-        gef_print("$tls = {:#x}".format(tls))
-        gdb.execute("p $tls = {:#x}".format(tls), to_string=True)
         if not is_valid_addr(tls):
             err("Cannot access memory at address {:#x}".format(tls))
             return
 
-        gef_print(titlify("TLS-{:#x}".format(current_arch.ptrsize * 16)))
-        gdb.execute("dereference $tls-{:#x} 16 --no-pager".format(current_arch.ptrsize * 16))
-        gef_print(titlify("TLS"))
-        gdb.execute("dereference $tls 16 --no-pager")
+        self.out = []
+        self.out.append("$tls = {:#x}".format(tls))
+        gdb.execute("p $tls = {:#x}".format(tls), to_string=True)
+
+        n_entries = 16 * args.verbose
+        self.out.append(titlify("TLS-{:#x}".format(current_arch.ptrsize * n_entries)))
+        r = gdb.execute("dereference $tls-{:#x} {:d} --no-pager".format(current_arch.ptrsize * n_entries, n_entries), to_string=True)
+        self.out.extend(r.rstrip().splitlines())
+        self.out.append(titlify("TLS"))
+        r = gdb.execute("dereference $tls {:d} --no-pager".format(n_entries), to_string=True)
+        self.out.extend(r.rstrip().splitlines())
+
+        if self.out:
+            if len(self.out) > get_terminal_size()[0]:
+                gef_print("\n".join(self.out), less=not args.no_pager)
+            else:
+                gef_print("\n".join(self.out), less=False)
         return
 
 
