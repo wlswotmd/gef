@@ -70220,7 +70220,9 @@ class PartitionAllocDumpCommand(GenericCommand):
         self.out.append(msg)
         return
 
-    def get_roots_heuristic(self):
+    @staticmethod
+    @cache_this_session
+    def get_roots_heuristic():
         """searches for fast_malloc_root, array_buffer_root_ and buffer_root_"""
         # the pointers to each root are in the RW area.
         # first, we list up the RW area.
@@ -70350,7 +70352,7 @@ class PartitionAllocDumpCommand(GenericCommand):
         # maybe no symbols, try heuristic
         if len(roots) == 0:
             info("Use heuristic search.")
-            roots = self.get_roots_heuristic()
+            roots = PartitionAllocDumpCommand.get_roots_heuristic()
         # retry checking
         if len(roots) == 0:
             info("Symbol is not found.")
