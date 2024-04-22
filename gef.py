@@ -25034,8 +25034,10 @@ class EntryPointBreakCommand(GenericCommand):
         self.dont_repeat()
 
         if is_alive():
-            warn("gdb is already running")
-            return
+            if is_remote_debug():
+                err("Unsupported gdb mode")
+                return
+            gdb.execute("kill", to_string=True)
 
         fpath = get_filepath()
         if fpath is None:
