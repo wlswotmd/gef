@@ -84078,6 +84078,8 @@ class TypesCommand(GenericCommand):
             "long long", "unsigned long long", "signed long long",
             "float",
             "double", "long double",
+            "void",
+            "bool",
         ]
 
         ret = gdb.execute("info types", to_string=True).strip()
