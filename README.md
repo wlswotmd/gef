@@ -94,7 +94,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-x64.png)
     * x86 (Supported: PAE/Non-PAE)
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-x86.png)
-    * ARM64 (Supported: EL1&0-stage1/EL1&0-stage2/EL2&0-stage1/EL2-stage1/EL3-stage1)
+    * ARM64 (Supported: only Cortex-A, EL1&0-stage1/EL1&0-stage2/EL2&0-stage1/EL2-stage1/EL3-stage1)
         * ARM v8.7 base. 32bit mode is NOT supported.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64.png)
         * Here is a sample of each level pagewalk from HITCON CTF 2018 `super_hexagon`.
@@ -509,6 +509,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hexdump-flexible.png)
 * `hash-memory`: calculates various hashes/CRCs.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hash-memory.png)
+* `saveo`/`diffo`: saves and diffs the command outputs.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/saveo-diffo.png)
 * `memcmp`: compares the contents of the address A and B, whether virtual or physical.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/memcmp.png)
 * `memset`: sets the value to the memory range, whether virtual or physical.
@@ -518,6 +520,12 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/meminsert.png)
 * `is-mem-zero`: checks the contents of address range is all 0x00 or 0xff or not.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/is-mem-zero.png)
+* `seq-length`: detects consecutive length of the same sequence.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/seq-length.png)
+* `strings`: searches ASCII string from specific location.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/strings.png)
+* `xs`: dumps string like `x/s` command, but with hex-string style.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xs.png)
 * `ii`: is a shortcut for `x/50i $pc` with opcode bytes.
     * It prints the value if it is memory access operation.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ii.png)
@@ -539,14 +547,16 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/constgrep.png)
 * `proc-dump`: dumps each file under `/proc/PID/`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/proc-dump.png)
+* `up`/`down`: are the wrapper for native `up`/`down`.
+    * It shows also backtrace.
 * `time`: measures the time of the GDB command.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/time.png)
 * `multi-line`: executes multiple GDB commands in sequence.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/multi-line.png)
-* `up`/`down`: are the wrapper for native `up`/`down`.
-    * It shows also backtrace.
 * `cpuid`: shows the result of cpuid(eax=0,1,2...).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/cpuid.png)
+* `read-system-register`: reads system register for old `qemu-system-arm`.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/read-system-register.png)
 * `capability`: shows the capabilities of the debugging process.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/capability.png)
 * `dasm`: disassembles the code by capstone.
@@ -556,6 +566,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * This command uses x86data.js from https://github.com/asmjit/asmdb
 * `syscall-search`: searches system call by regex.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/syscall-search.png)
+* `syscall-sample`: shows the syscall calling sample for specified architecture.
 * `dwarf-exception-handler`: dumps the DWARF exception handler informations.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dwarf-exception-handler.png)
 * `magic`: displays useful addresses in glibc etc.
@@ -571,14 +582,6 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ptr-mangle-demangle.png)
 * `search-mangled-ptr`: searches the mangled value from RW memory.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-mangled-ptr.png)
-* `strings`: searches ASCII string from specific location.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/strings.png)
-* `read-system-register`: reads system register for old `qemu-system-arm`.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/read-system-register.png)
-* `v8`: displays v8 tagged object.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/v8.png)
-    * It also loads more commands from latest gdbinit for v8.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/v8-load.png)
 * `follow`: changes `follow-fork-mode` setting.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/follow.png)
 * `smart-cpp-function-name`: toggles `context.smart_cpp_function_name` setting.
@@ -596,15 +599,6 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/symbols.png)
 * `types`: lists up all types with compaction.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/types.png)
-* `saveo`/`diffo`: saves and diffs the command outputs.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/saveo-diffo.png)
-* `seq-length`: detects consecutive length of the same sequence.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/seq-length.png)
-* `gef arch-list`: displays defined architecture information.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-arch-list.png)
-* `gef pyobj-list`: displays defined global python object.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-pyobj-list.png)
-* `gef avail-comm-list`: displays a list of commands available for the current architecture and gdb execution mode.
 * `dt`: makes it easier to use `ptype /ox TYPE` and `p ((TYPE*) ADDRESS)[0]`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dt.png)
     * This command is designed for several purposes.
@@ -619,16 +613,22 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
         5. When displaying a binary written in the golang, the `p ((TYPE*) ADDRESS)[0]` command will be broken.
            Because the golang helper script is automatically loaded and overwrites the behavior of `p` command.
            This command creates the display results on the python side, so we can display it without any problems.
+* `v8`: displays v8 tagged object.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/v8.png)
+    * It also loads more commands from latest gdbinit for v8.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/v8-load.png)
 * `mte-tags`: displays the MTE tags for the specified address.
     * Supported on only ARM64.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/mte-tags.png)
-* `xs`: dumps string like `x/s` command, but with hex-string style.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xs.png)
-* `syscall-sample`: shows the syscall calling sample for specified architecture.
 * `iouring-dump`: dumps the area of iouring (only x64).
     * This area is mapped to userland, but cannot be accessed from gdb.
     * Therefore, it executes the assembly code and retrieve the contents.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/iouring-dump.png)
+* `gef arch-list`: displays defined architecture information.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-arch-list.png)
+* `gef pyobj-list`: displays defined global python object.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-pyobj-list.png)
+* `gef avail-comm-list`: displays a list of commands available for the current architecture and gdb execution mode.
 
 ### Other
 * The category is introduced in `gef help`.

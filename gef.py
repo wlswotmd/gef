@@ -76822,7 +76822,7 @@ class PagewalkArmCommand(PagewalkCommand):
 
 @register_command
 class PagewalkArm64Command(PagewalkCommand):
-    """Dump pagetable for ARM64 using qemu-monitor (for ARMv8.7)."""
+    """Dump pagetable for ARM64 (only Cortex-A; ARM v8.7 base) using qemu-monitor."""
     _cmdline_ = "pagewalk arm64"
     _category_ = "08-a. Qemu-system Cooperation - General"
     _aliases_ = []
