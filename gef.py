@@ -12198,7 +12198,7 @@ def continue_handler(_event):
     return
 
 
-def hook_stop_handler(_event):
+def hook_stop_handler(event):
     """GDB event handler for stop cases."""
     reset_gef_caches()
 
@@ -12212,14 +12212,9 @@ def hook_stop_handler(_event):
                     bp.delete()
         __gef_check_disabled_bp__ = False
 
+    # when kdb, assume x86-64 or ARM
     global __gef_check_once__
     if __gef_check_once__:
-        # Ubuntu 20.04 and earlier seem to have a bug (?) in libpython that mishandles SIGINT with no destination.
-        # To work around this issue, override the c command again with native `continue` command if neither qemu-user nor Intel Pin.
-        if not (is_qemu_user() or is_pin()):
-            gdb.execute("define c\ncontinue\nend")
-
-        # when kdb, assume x86-64 or ARM
         if is_kgdb():
             dev = gdb.selected_inferior().connection.details
             if dev.startswith("/dev/ttyS"):
@@ -12230,27 +12225,35 @@ def hook_stop_handler(_event):
                 raise
             reset_gef_caches()
 
-        # resolve codebase, libc
-        if not (is_qemu_system() or is_kgdb() or is_vmware()):
-            gdb.execute("codebase", to_string=True)
-            gdb.execute("heapbase", to_string=True)
-            gdb.execute("libc", to_string=True)
-            gdb.execute("ld", to_string=True)
+    # set `c`, `ni` and `si` command hooks for qemu-user and pin
+    if __gef_check_once__:
+        if is_qemu_user() or is_pin():
+            gdb.execute("define c\ncontinue-for-qemu-user\nend")
+            if is_or1k() or is_cris():
+                gdb.execute("define si\nstepi-for-qemu-user\nend")
+                gdb.execute("define ni\nnexti-for-qemu-user\nend")
 
+    # GEF will resolve the architecture if it is unknown.
     if current_arch is None:
         set_arch(get_arch())
-    gdb.execute("context")
 
+    # If the silent command is specified for a breakpoint, skip `context` command.
+    context_flag = True
+    if type(event) == gdb.BreakpointEvent:
+        if event.breakpoint.is_valid() and event.breakpoint.enabled:
+            if event.breakpoint.commands:
+                if event.breakpoint.commands.startswith("silent"):
+                    context_flag = False
+    if context_flag:
+        gdb.execute("context")
+
+    # Message if file not loaded.
     if __gef_check_once__:
-        # Message if file not loaded.
         if not (is_qemu_system() or is_kgdb() or is_vmware()):
-            response = gdb.execute("info files", to_string=True)
-            if "Symbols from" not in response:
+            if not gdb.current_progspace().filename:
                 err("Missing info about architecture. Please set: `file /path/to/target_binary`")
                 err("Some architectures may not be automatically recognized. Please set: `set architecture YOUR_ARCH`.")
-
         __gef_check_once__ = False
-
     return
 
 
@@ -14082,13 +14085,16 @@ class NiCommand(GenericCommand):
     """`ni` wrapper for specific arch.
     or1k: branch operations don't work well, so use breakpoints to simulate.
     cris: si/ni commands don't work well. so use breakpoints to simulate."""
-    _cmdline_ = "ni"
+    _cmdline_ = "nexti-for-qemu-user"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("args", metavar="ARGS", nargs="*",
                         help="An array of arguments to pass as is to the nexti command. (default: %(default)s)")
     _syntax_ = parser.format_help()
+
+    _note_ = "Only when qemu-user with specific arch, the `ni` command is redirected to `nexti-for-qemu-user`.\n"
+    _note_ += "This setting is done only once, when hook_stop_handler is called for the first time."
 
     def ni_set_bp_for_branch(self):
         target = None
@@ -14160,13 +14166,16 @@ class SiCommand(GenericCommand):
     """`si` wrapper for specific arch.
     or1k: branch operations don't work well, so use breakpoints to simulate.
     cris: si/ni commands don't work well. so use breakpoints to simulate."""
-    _cmdline_ = "si"
+    _cmdline_ = "stepi-for-qemu-user"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("args", metavar="ARGS", nargs="*",
                         help="An array of arguments to pass as is to the stepi command. (default: %(default)s)")
     _syntax_ = parser.format_help()
+
+    _note_ = "Only when qemu-user with specific arch, the `si` command is redirected to `stepi-for-qemu-user`.\n"
+    _note_ += "This setting is done only once, when hook_stop_handler is called for the first time."
 
     def si_set_bp_for_branch(self):
         target = None
@@ -14236,13 +14245,22 @@ class SiCommand(GenericCommand):
 @register_command
 class ContCommand(GenericCommand):
     """`c` wrapper to solve the problem that Ctrl+C cannot interrupt when using gdb stub of qemu-user or Intel Pin."""
-    _cmdline_ = "c"
+    _cmdline_ = "continue-for-qemu-user"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("args", metavar="ARGS", nargs="*",
                         help="An array of arguments to pass as is to the continue command. (default: %(default)s)")
     _syntax_ = parser.format_help()
+
+    _note_ = "Only when qemu-user or pin, the `c` command is redirected to `continue-for-qemu-user`.\n"
+    _note_ += "This setting is done only once, when hook_stop_handler is called for the first time.\n"
+    _note_ += "Nested `c` command causes a problem, so in that case gef executes the original continue command instead."
+
+    def __init__(self):
+        super().__init__()
+        self.nest_count = 0
+        return
 
     def continue_for_qemu(self):
         import signal
@@ -14286,10 +14304,13 @@ class ContCommand(GenericCommand):
     def do_invoke(self, args):
         if is_qemu_user() or is_pin():
             if get_pid():
-                self.continue_for_qemu()
-                return
+                if self.nest_count == 0:
+                    self.nest_count += 1
+                    self.continue_for_qemu()
+                    self.nest_count -= 1
+                    return
 
-        # Maybe unused, since `c` command is re-override if neither qemu-system nor Intel Pin.
+        # fall back to original continue command
         try:
             cmd = "continue " + " ".join(args.args)
             gdb.execute(cmd.rstrip())
@@ -24940,7 +24961,7 @@ class MainBreakCommand(GenericCommand):
                 entry += codebase
             EntryBreakBreakpoint("*{:#x}".format(entry))
             hide_context()
-            gdb.execute("c")
+            gdb.execute("c") # use c wrapper
             unhide_context()
             libc_start_main = self.get_libc_start_main()
 
@@ -24950,7 +24971,7 @@ class MainBreakCommand(GenericCommand):
 
         EntryBreakBreakpoint("*{:#x}".format(libc_start_main))
         hide_context()
-        gdb.execute("c")
+        gdb.execute("c") # use c wrapper
         unhide_context()
 
         # get first arg when break at __libc_start_main
@@ -24975,7 +24996,7 @@ class MainBreakCommand(GenericCommand):
         EntryBreakBreakpoint("*{:#x}".format(main_address))
         hide_context()
         try:
-            gdb.execute("c")
+            gdb.execute("c") # use c wrapper
         except gdb.error as e:
             err(str(e))
             unhide_context()
@@ -26533,6 +26554,9 @@ class ContextCommand(GenericCommand):
     @only_if_gdb_running
     def do_invoke(self, args):
         self.dont_repeat()
+
+        if gdb.selected_thread().is_running():
+            return
 
         if is_qemu_system() and get_arch() == "i8086":
             if self.get_setting("enable_auto_switch_for_i8086"):
@@ -81320,7 +81344,7 @@ class KmallocTracerCommand(GenericCommand):
 
         # doit
         info("Setup is complete. continueing...")
-        gdb.execute("c")
+        gdb.execute("continue")
 
         # clean up
         info("kmalloc-tracer is complete, cleaning up...")
@@ -82588,7 +82612,7 @@ class KmallocAllocatedByCommand(GenericCommand):
             self.setup_syscall(syscall_name, args)
             for bp in breakpoints:
                 bp.enabled = True
-            gdb.execute("c")
+            gdb.execute("continue")
 
             # here, stop at hw breakpoint
             ret = get_register(current_arch.return_register)
@@ -82675,7 +82699,7 @@ class KmallocAllocatedByCommand(GenericCommand):
         # wait to stop at userland `sleep` process
         gdb.execute("context off")
         info("Setup is complete. continueing...")
-        gdb.execute("c")
+        gdb.execute("continue")
 
         # here, stop in userland `sleep` process
         if current_arch.sp != rsp_of_sleep:
@@ -82694,7 +82718,7 @@ class KmallocAllocatedByCommand(GenericCommand):
             bp.delete()
         gdb.execute("context on")
         info("Exiting `sleep` process... (Please issue Ctrl+C)")
-        gdb.execute("c")
+        gdb.execute("continue")
         return
 
 
