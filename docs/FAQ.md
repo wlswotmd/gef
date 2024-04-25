@@ -83,11 +83,10 @@ If you install with `install-minimal.sh`, you will not be able to use these comm
 * `apt` packages
     * `gdb-multiarch`: `gdb` is also good, but of course one is required.
     * `binutils`: Required by following commands.
-        * `got` uses `readelf` and `objdump`.
-        * `rp --kernel` uses `nm`.
-        * `qemu-device-info` uses `nm`.
-        * `add-symbol-temporary` uses `objcopy`.
-        * `ksymaddr-remote-apply` uses `objcopy`.
+        * `objdump`: Required by `got` command.
+        * `readelf`: Required by `got` command.
+        * `nm`: Required by `rp --kernel` and `qemu-device-info` commands.
+        * `objcopy`: Required by `add-symbol-temporary` and `ksymaddr-remote-apply` commands.
     * `python3-pip`: Required to install some python3 packages and `vmlinux-to-elf`.
     * `git`: Required to install `vmlinux-to-elf`. Required by `diffo` command.
     * `ruby-dev`: Required to install `one_gadget` and `seccomp-tools`.
