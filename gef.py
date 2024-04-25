@@ -55968,7 +55968,10 @@ class KernelCharacterDevicesCommand(GenericCommand):
                                        m["cdev"], m["parent"], m["parent_name"], m["ops"], m["ops_sym"]))
 
         if self.out:
-            gef_print("\n".join(self.out), less=not args.no_pager)
+            if len(self.out) > get_terminal_size()[0]:
+                gef_print("\n".join(self.out), less=not args.no_pager)
+            else:
+                gef_print("\n".join(self.out), less=False)
         return
 
 
