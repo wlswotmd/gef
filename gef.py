@@ -14422,7 +14422,7 @@ class DownCommand(GenericCommand):
 class DisplayTypeCommand(GenericCommand):
     """Makes it easier to use `ptype /ox TYPE` and `p ((TYPE*) ADDRESS)[0]`."""
     _cmdline_ = "dt"
-    _category_ = "09-h. Misc - Type"
+    _category_ = "02-h. Process Information - Type"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("type", metavar="TYPE", help="the type name.")
@@ -74180,7 +74180,7 @@ class MsrCommand(GenericCommand):
 class MteTagsCommand(GenericCommand):
     """Display the MTE tag for the specified address (only ARM64)."""
     _cmdline_ = "mte-tags"
-    _category_ = "02-d. Process Information - Trivial Information"
+    _category_ = "02-f. Process Information - Security"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("address", metavar="ADDRESS", type=parse_address,
@@ -84104,7 +84104,7 @@ class SymbolsCommand(GenericCommand):
 class TypesCommand(GenericCommand):
     """List up all types (shortcut for `info types`) with compaction."""
     _cmdline_ = "types"
-    _category_ = "02-g. Process Information - Symbol"
+    _category_ = "02-h. Process Information - Type"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-E", "--no-enum", action="store_true", help="without enum.")
