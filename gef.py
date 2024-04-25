@@ -66881,7 +66881,7 @@ class KernelDeviceIOCommand(GenericCommand):
         if not self.quiet:
             info("Wait for memory scan")
 
-        out = []
+        self.out = []
 
         # ioport
         ioport_resource = KernelAddressHeuristicFinder.get_ioport_resource()
@@ -66897,14 +66897,14 @@ class KernelDeviceIOCommand(GenericCommand):
             else:
                 name_width = 4
 
-            out.append(titlify("I/O-port"))
+            self.out.append(titlify("I/O-port"))
             fmt = "{:18s} {:17s} {:{:d}s} {:s}"
             legend = ["resource", "I/O address", "name", name_width, "flags"]
-            out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+            self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
             for addr, start, end, name, flags in sorted(resources, key=lambda x: x[1]):
                 fmt = "{:#018x} {:#08x}-{:#08x} {:{:d}s} {:#010x} ({:s})"
-                out.append(fmt.format(addr, start, end, name, name_width, flags, self.get_flags_str(flags)))
+                self.out.append(fmt.format(addr, start, end, name, name_width, flags, self.get_flags_str(flags)))
 
         # iomem
         iomem_resource = KernelAddressHeuristicFinder.get_iomem_resource()
@@ -66920,14 +66920,14 @@ class KernelDeviceIOCommand(GenericCommand):
             else:
                 name_width = 4
 
-            out.append(titlify("I/O-memory"))
+            self.out.append(titlify("I/O-memory"))
             fmt = "{:18s} {:37s} {:{:d}s} {:s}"
             legend = ["resource", "Physical address", "name", name_width, "flags"]
-            out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+            self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
             for addr, start, end, name, flags in sorted(resources, key=lambda x: x[1]):
                 fmt = "{:#018x} {:#018x}-{:#018x} {:{:d}s} {:#010x} ({:s})"
-                out.append(fmt.format(addr, start, end, name, name_width, flags, self.get_flags_str(flags)))
+                self.out.append(fmt.format(addr, start, end, name, name_width, flags, self.get_flags_str(flags)))
 
         # print
         if self.out:
