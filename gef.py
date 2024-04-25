@@ -14475,7 +14475,10 @@ class DisplayTypeCommand(GenericCommand):
             for name, field in tp.items():
                 offsz_str = "/* {:#06x} | {:#06x} */".format(field.bitpos // 8, field.type.sizeof)
                 name_str = Color.cyanify(name)
-                msg = "    {:s}    {} {:s};".format(offsz_str, field.type, name_str)
+                if field.bitsize == 0:
+                    msg = "    {:s}    {} {:s};".format(offsz_str, field.type, name_str)
+                else:
+                    msg = "    {:s}    {} {:s} : {:d};".format(offsz_str, field.type, name_str, field.bitsize)
                 out.append(msg)
             out.append("}} // total: {:#x} bytes".format(tp.sizeof))
             gef_print("\n".join(out), less=not args.no_pager)
