@@ -67277,6 +67277,7 @@ class KernelIrqCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     _syntax_ = parser.format_help()
 
@@ -67633,7 +67634,7 @@ class KernelIrqCommand(GenericCommand):
 
         return True
 
-    def dump_irq(self):
+    def dump_irq(self, verbose):
         kversion = KernelVersionCommand.kernel_version()
 
         if kversion < "6.5":
@@ -67666,7 +67667,8 @@ class KernelIrqCommand(GenericCommand):
                 else:
                     self.out.append("{:3d} {:#018x} {:18s} {:20s} {:18s}".format(i, desc, "unused", "-", "-"))
             else:
-                self.out.append("{:3d} {:18s} {:18s} {:20s} {:18s}".format(i, "unused", "unused", "-", "-"))
+                if verbose:
+                    self.out.append("{:3d} {:18s} {:18s} {:20s} {:18s}".format(i, "unused", "unused", "-", "-"))
         return
 
     @parse_args
@@ -67693,7 +67695,7 @@ class KernelIrqCommand(GenericCommand):
             return
 
         self.out = []
-        self.dump_irq()
+        self.dump_irq(args.verbose)
 
         if self.out:
             if len(self.out) > get_terminal_size()[0]:
