@@ -55977,7 +55977,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
 
 @register_command
 class KernelOperationsCommand(GenericCommand):
-    """Display the members of the function table (like struct file_operations) in the kernel."""
+    """Display the members of commonly used function table (like struct file_operations) in the kernel."""
     _cmdline_ = "kops"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -56473,7 +56473,10 @@ class KernelOperationsCommand(GenericCommand):
                 self.out.append("{:<5d} {:10s} {:20s}".format(idx, type, name))
 
         if self.out:
-            gef_print("\n".join(self.out), less=not args.no_pager)
+            if len(self.out) > get_terminal_size()[0]:
+                gef_print("\n".join(self.out), less=not args.no_pager)
+            else:
+                gef_print("\n".join(self.out), less=False)
         return
 
 
