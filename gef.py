@@ -44920,7 +44920,7 @@ def __get_syscall_table(arch, mode):
     #   syscall_table.table[0].args_full: ['unsigned int fd', ...]
     #   syscall_table.table[0].args: ['fd', ...]
     for nr, name, args_full in sorted(syscall_list, key=lambda x: x[0]):
-        args = [re.split(" |\*", p)[-1] for p in args_full]
+        args = [re.split(r" |\*", p)[-1] for p in args_full]
         if (arch, mode) == ("X86", "16"):
             entry = Entry(name, return_register[nr], args_register[nr], args_full, args)
         else:
@@ -48190,7 +48190,7 @@ class KernelAddressHeuristicFinder:
 
         # plan2 (from ktask)
         res = gdb.execute("ktask --filter swapper/0 --no-pager", to_string=True)
-        m = re.search("offsetof\(task_struct, cred\): (0x\w+)", res)
+        m = re.search(r"offsetof\(task_struct, cred\): (0x\w+)", res)
         if m:
             cred_offset = int(m.group(1), 16)
             line = res.strip().splitlines()[-1]
@@ -48201,7 +48201,7 @@ class KernelAddressHeuristicFinder:
 
         # plan3 (from ktask, not swapper/0, just swapper)
         res = gdb.execute("ktask --filter swapper --no-pager", to_string=True)
-        m = re.search("offsetof\(task_struct, cred\): (0x\w+)", res)
+        m = re.search(r"offsetof\(task_struct, cred\): (0x\w+)", res)
         if m:
             cred_offset = int(m.group(1), 16)
             line = res.strip().splitlines()[-1]
@@ -68433,7 +68433,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         0xffffffff8b2b5540:    0x0000 0x0003 0x0006 0x000a 0x0014 0x001c 0x001f 0x0022    |  ..............".  |
         0xffffffff8b2b5550:    0x0025 0x0028 0x002c 0x002f 0x0033 0x0037 0x003a 0x003d    |  %.(.,./.3.7.:.=.  |
         0xffffffff8b2b5560:    0x0040 0x0044 0x0048 0x004b 0x004e 0x0052 0x0055 0x0058    |  @.D.H.K.N.R.U.X.  |
-        0xffffffff8b2b5570:    0x005c 0x0061 0x0065 0x006a 0x006d 0x007a 0x0081 0x0086    |  \.a.e.j.m.z.....  |
+        0xffffffff8b2b5570:    0x005c 0x0061 0x0065 0x006a 0x006d 0x007a 0x0081 0x0086    |  ..a.e.j.m.z.....  |
         0xffffffff8b2b5580:    0x008a 0x0090 0x0094 0x0097 0x009f 0x00a2 0x00a8 0x00ab    |  ................  |
         0xffffffff8b2b5590:    0x00af 0x00b5 0x00b9 0x00bd 0x00c0 0x00c5 0x00ca 0x00cc    |  ................  |
         0xffffffff8b2b55a0:    0x00d0 0x00d2 0x00d4 0x00d6 0x00d8 0x00da 0x00dc 0x00de    |  ................  |
@@ -68443,7 +68443,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         gef> hexdump -n word 0xc6e59274
         0xc6e59274:    0x0000 0x000a 0x0012 0x0017 0x001b 0x001f 0x0022 0x0029    |  ............".).  |
         0xc6e59284:    0x002c 0x0030 0x0034 0x0037 0x003b 0x0040 0x0043 0x0046    |  ,.0.4.7.;.@.C.F.  |
-        0xc6e59294:    0x0049 0x004f 0x0052 0x0055 0x0058 0x005c 0x005f 0x0063    |  I.O.R.U.X.\._.c.  |
+        0xc6e59294:    0x0049 0x004f 0x0052 0x0055 0x0058 0x005c 0x005f 0x0063    |  I.O.R.U.X..._.c.  |
         0xc6e592a4:    0x0067 0x006a 0x0078 0x007b 0x007f 0x0082 0x0085 0x0088    |  g.j.x.{.........  |
         0xc6e592b4:    0x008d 0x0091 0x0095 0x0098 0x009f 0x00a2 0x00a6 0x00aa    |  ................  |
         0xc6e592c4:    0x00af 0x00b4 0x00b8 0x00bb 0x00bf 0x00c2 0x00c6 0x00c8    |  ................  |
@@ -68649,8 +68649,8 @@ class KsymaddrRemoteCommand(GenericCommand):
 
         kallsyms_names: 0xc6cbce58
         gef> hexdump -n qword 0xc6cbce58
-        0xc6cbce58:    0x335fd57472fb5c08 0x54039974f9540432    |  .\.rt._32.T.t..T  | <- kallsyms_names
-        0xc6cbce68:    0x63ff72fb5c0799a6 0xd57472fb5c0a30a1    |  ...\.r.c.0.\.rt.  |
+        0xc6cbce58:    0x335fd57472fb5c08 0x54039974f9540432    |  ...rt._32.T.t..T  | <- kallsyms_names
+        0xc6cbce68:    0x63ff72fb5c0799a6 0xd57472fb5c0a30a1    |  .....r.c.0...rt.  |
         0xc6cbce78:    0x177407b6f932335f 0xa0ca0aa1f3796669    |  _32...t.ify.....  |
         0xc6cbce88:    0xd7f49b2d63ecc37f 0x2d63ecc37fa0ca0a    |  ...c-.........c-  |
         ...
@@ -68723,8 +68723,8 @@ class KsymaddrRemoteCommand(GenericCommand):
 
         kallsyms_num_syms: 0xc6cbce54
         gef> hexdump -n dword 0xc6cbce54
-        0xc6cbce54:    0x00018eb8 0x72fb5c08 0x335fd574 0xf9540432    |  .....\.rt._32.T.  |
-        0xc6cbce64:    0x54039974 0x5c0799a6 0x63ff72fb 0x5c0a30a1    |  t..T...\.r.c.0.\  |
+        0xc6cbce54:    0x00018eb8 0x72fb5c08 0x335fd574 0xf9540432    |  .......rt._32.T.  |
+        0xc6cbce64:    0x54039974 0x5c0799a6 0x63ff72fb 0x5c0a30a1    |  t..T.....r.c.0..  |
         0xc6cbce74:    0xd57472fb 0xf932335f 0x177407b6 0xf3796669    |  .rt._32...t.ify.  |
         """
 
@@ -71702,7 +71702,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
             regname = None
             for line in lines.splitlines():
                 if base is None:
-                    m = re.search("^\s*(0x\w+).+:\s+add\s+(\S+),\s*(0x\w+)", line)
+                    m = re.search(r"^\s*(0x\w+).+:\s+add\s+(\S+),\s*(0x\w+)", line)
                     if m:
                         base = int(m.group(1), 16) + int(m.group(3), 16)
                         regname = m.group(2)
@@ -84145,7 +84145,7 @@ class TypesCommand(GenericCommand):
             if line.startswith("File "):
                 continue
 
-            line = re.sub("^\d+:|;$", "", line).strip()
+            line = re.sub(r"^\d+:|;$", "", line).strip()
             if line in basic_types:
                 continue
             if args.no_enum and line.startswith("enum "):
