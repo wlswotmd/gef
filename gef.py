@@ -15622,6 +15622,9 @@ class ProcDumpCommand(GenericCommand):
 
         out = []
         for root, dirs, files in os.walk("/proc/{:d}/".format(pid)):
+            dirs = sorted(dirs)
+            files = sorted(files)
+
             if "task" in dirs:
                 dirs.remove("task")
 
