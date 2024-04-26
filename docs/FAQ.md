@@ -52,26 +52,25 @@ I have used it on debian. Also it seems to be working fine on WSL2 (ubuntu) so f
 Some users are running it on Arch Linux.
 However, I have not confirmed that all commands work correctly.
 
-## GDB will not load GEF.
-This is probably because gdb does not support cooperation with python3.
-
-Consider building gdb from source with `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`.
-
 ## Will this GEF work as a plugin for `hugsy/gef`?
 No, it doesn't work. It replaces `hugsy/gef`.
 
 The compatibility with `hugsy/gef` has already been lost.
 Think of it as a completely different product.
 
-## Does GEF work with the latest version of gdb?
+## GDB will not load GEF.
+This is probably because gdb does not support cooperation with python3.
+
+Consider building gdb from [latest source](https://ftp.gnu.org/gnu/gdb/) with `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`.
+
+## Does GEF work with the latest version of binutils-gdb?
 Yes, it probably works.
 
 The example of build commands are shown below.
 ```
-apt install -y libdebuginfod-dev
+apt install -y libdebuginfod-dev libreadline-dev
 git clone --depth 1 https://github.com/bminor/binutils-gdb && cd binutils-gdb
-./configure --disable-binutils --disable-ld --disable-gold --disable-gas --disable-sim --disable-gprof --disable-gprofng \
---enable-targets=all --with-python=/usr/bin/python3 --with-debuginfod --with-system-zlib --with-system-readline
+./configure --disable-{binutils,ld,gold,gas,sim,gprof,gprofng} --enable-targets=all --with-python=/usr/bin/python3 --with-debuginfod --with-system-{zlib,readline}
 make && make install
 ```
 

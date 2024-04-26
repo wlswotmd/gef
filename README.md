@@ -1,8 +1,8 @@
 ## Table of Contents
 * [What is this?](#what-is-this)
 * [Setup](#setup)
-    * [Install (Ubuntu 22.04 or before)](#install-ubuntu-2204-or-before)
     * [Install (Ubuntu 23.04 or after)](#install-ubuntu-2304-or-after)
+    * [Install (Ubuntu 22.04 or before)](#install-ubuntu-2204-or-before)
     * [Upgrade](#upgrade)
     * [Uninstall](#uninstall)
     * [Dependency](#dependency)
@@ -34,9 +34,10 @@ Many other commands have been added and improved. Enjoy!
 
 ## Setup
 
-### Install (Ubuntu 22.04 or before)
+### Install (Ubuntu 23.04 or after)
 ```bash
-wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sh
+# Ubuntu 23.04 restricts global installation with pip3, so you need --break-system-packages option.
+wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sed -e 's/\(pip3 install\)/\1 --break-system-packages/g' | sh
 ```
 
 * To simplify the installation script, GEF (`gef.py`) is installed to a fixed path (`/root/.gdbinit-gef.py`).
@@ -44,10 +45,9 @@ wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sh
 * If you want to change the location, please modify both yourself.
     * NOTE: Do not include a tilde (`~`) when describing the GEF path in `.gdbinit`. See [docs/FAQ.md](https://github.com/bata24/gef/blob/dev/docs/FAQ.md#the-command-to-get-the-source-eg-ptr-mangle---source-doesnt-work) to get more informations.
 
-### Install (Ubuntu 23.04 or after)
+### Install (Ubuntu 22.04 or before)
 ```bash
-# Ubuntu 23.04 restricts global installation with pip3, so you need --break-system-packages option.
-wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sed -e 's/\(pip3 install\)/\1 --break-system-packages/g' | sh
+wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sh
 ```
 
 ### Upgrade
@@ -66,8 +66,8 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 [install-minimal.sh](https://github.com/bata24/gef/blob/dev/install-minimal.sh).
 
 ## Supported environment
-- Tested on ubuntu 23.10.
-- It may work under ubuntu 20.04, 22.04, 23.04, debian 10.x or after.
+- Tested on ubuntu 24.04.
+- It may work under ubuntu 20.04 - 23.10, debian 10.x or after.
 
 ## Supported mode
 * Normal debugging

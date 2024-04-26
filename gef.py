@@ -411,7 +411,7 @@ def reset_gef_caches(function=None, all=False):
     if function:
         for v in __gef_global_cache__.values():
             try:
-                v[function.__name__, id(function)] = {}
+                del v[function.__name__, id(function)]
             except KeyError:
                 pass
         return
@@ -7709,6 +7709,7 @@ class SH4(Architecture):
         "SH4-NOFPU",
         "SH4A",
         "SH4A-NOFPU",
+        "SH2A-OR-SH4",
     ]
 
     # https://www.renesas.com/us/en/document/man/705261
@@ -12033,6 +12034,8 @@ def get_process_maps_heuristic():
         try:
             res = gdb.execute("info proc mappings", to_string=True)
             if "warning" in res:
+                __gef_use_info_proc_mappings__ = False
+            elif "Perms" not in res: # xtensa-linux-gdb
                 __gef_use_info_proc_mappings__ = False
             else:
                 __gef_use_info_proc_mappings__ = True
@@ -16706,7 +16709,10 @@ class PtrDemangleCommand(GenericCommand):
         # generic
         try:
             auxv = gef_get_auxiliary_values()
-            if "AT_RANDOM" in auxv:
+            if auxv is None:
+                reset_gef_caches(function=gef_get_auxiliary_values)
+                auxv = gef_get_auxiliary_values()
+            if auxv and "AT_RANDOM" in auxv:
                 if is_s390x():
                     cookie = read_int_from_memory(auxv["AT_RANDOM"]) & 0x00ffffffffffffff
                 else:
