@@ -14484,7 +14484,10 @@ class DisplayTypeCommand(GenericCommand):
                     msg = "    {:s}    {} {:s} : {:d};".format(offsz_str, field.type, name_str, field.bitsize)
                 out.append(msg)
             out.append("}} // total: {:#x} bytes".format(tp.sizeof))
-            gef_print("\n".join(out), less=not args.no_pager)
+            if len(out) > get_terminal_size()[0]:
+                gef_print("\n".join(out), less=not args.no_pager)
+            else:
+                gef_print("\n".join(out), less=False)
 
         else:
             if not is_valid_addr(args.address):
