@@ -69904,7 +69904,7 @@ class TcmallocDumpCommand(GenericCommand):
 @register_command
 class GoHeapDumpCommand(GenericCommand):
     """go language v1.21.1 mheap dumper (only x64)."""
-    _cmdline_ = "goheap-dump"
+    _cmdline_ = "go-heap-dump"
     _category_ = "06-b. Heap - Other"
 
     # TODO: arena, central, mspan->next
