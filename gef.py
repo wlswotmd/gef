@@ -70129,6 +70129,201 @@ class GoHeapDumpCommand(GenericCommand):
 
 
 @register_command
+class TlsfHeapDumpCommand(GenericCommand):
+    """TLSF (Two-Level Segregated Fit) v2.4.6 heap dumper (only x64)."""
+    _cmdline_ = "tlsf-heap-dump"
+    _category_ = "06-b. Heap - Other"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("--pool", type=parse_address, help="the address of memory pool.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="display also empty slots.")
+    _syntax_ = parser.format_help()
+
+    def __init__(self):
+        super().__init__()
+
+        self.REAL_FLI = 24
+        self.MAX_SLI = 32
+
+        self.size_dic = {}
+        for i in range(1, 8):
+            self.size_dic[0, i * 4] = (0x10 * i, 0x10 * (i + 1))
+        for i in range(8):
+            self.size_dic[1, i * 4] = (0x80 + 0x10 * i, 0x80 + 0x10 * (i + 1))
+        for i in range(16):
+            self.size_dic[2, i * 2] = (0x100 + 0x10 * i, 0x100 + 0x10 * (i + 1))
+        for fl in range(3, self.REAL_FLI):
+            base = 0x200 * (2 ** (fl - 3))
+            step = 0x10 * (2 ** (fl - 3))
+            for i in range(self.MAX_SLI):
+                self.size_dic[fl, i] = (base + step * i, base + step * (i + 1))
+        return
+
+    def get_pool(self):
+        try:
+            mp = parse_address("&mp")
+        except gdb.error:
+            return None
+
+        if not is_valid_addr(mp):
+            return None
+
+        pool = read_int_from_memory(mp)
+        if not is_valid_addr(pool):
+            return None
+
+        if u32(read_memory(pool, 4)) == 0x2A59FA59: # TLSF_SIGNATURE
+            return pool
+        return None
+
+    def parse_pool(self, pool):
+        """
+        typedef struct TLSF_struct {
+            u32_t tlsf_signature;
+
+        #if TLSF_USE_LOCKS
+            pthread_mutex_t lock;
+        #endif
+
+        #if TLSF_STATISTIC
+            size_t used_size;
+            size_t max_size;
+        #endif
+
+            area_info_t *area_head;
+            u32_t fl_bitmap;
+            u32_t sl_bitmap[REAL_FLI];
+            bhdr_t *matrix[REAL_FLI][MAX_SLI];
+        } tlsf_t;
+        """
+        sig = u32(read_memory(pool, 4))
+        if sig != 0x2A59FA59:
+            return None
+
+        area_head = None
+        if area_head is None:
+            # !TLSF_USE_LOCKS && !TLSF_STATISTIC
+            x = read_int_from_memory(pool + current_arch.ptrsize)
+            if is_valid_addr(x):
+                area_head = x
+                offset_area_head = current_arch.ptrsize
+        if area_head is None:
+            # !TLSF_USE_LOCKS && TLSF_STATISTIC
+            x = read_int_from_memory(pool + current_arch.ptrsize * 3)
+            if is_valid_addr(x):
+                area_head = x
+                offset_area_head = current_arch.ptrsize * 3
+        if area_head is None:
+            # TLSF_USE_LOCKS && !TLSF_STATISTIC
+            x = read_int_from_memory(pool + current_arch.ptrsize * 6)
+            if is_valid_addr(x):
+                area_head = x
+                offset_area_head = current_arch.ptrsize * 6
+        if area_head is None:
+            # TLSF_USE_LOCKS && TLSF_STATISTIC
+            x = read_int_from_memory(pool + current_arch.ptrsize * 8)
+            if is_valid_addr(x):
+                area_head = x
+                offset_area_head = current_arch.ptrsize * 8
+        if area_head is None:
+            return None
+
+        offset_fl_bitmap = offset_area_head + current_arch.ptrsize
+        fl_bitmap = u32(read_memory(pool + offset_fl_bitmap, 4))
+
+        offset_sl_bitmap = offset_fl_bitmap + 4
+        sl_bitmap = read_memory(pool + offset_sl_bitmap, 4 * self.REAL_FLI)
+        sl_bitmap = slice_unpack(sl_bitmap, 4)
+
+        offset_matrix = align_address_to_size(offset_sl_bitmap + 4 * self.REAL_FLI, current_arch.ptrsize)
+        matrix = read_memory(pool + offset_matrix, current_arch.ptrsize * self.REAL_FLI * self.MAX_SLI)
+        matrix = slice_unpack(matrix, current_arch.ptrsize)
+        matrix = slicer(matrix, self.MAX_SLI)
+
+        matrix_addr = [pool + offset_matrix + current_arch.ptrsize * i for i in range(self.REAL_FLI * self.MAX_SLI)]
+        matrix_addr = slicer(matrix_addr, self.MAX_SLI)
+
+        Pool = collections.namedtuple("Pool", ["addr", "sig", "area_head", "fl_bitmap", "sl_bitmap", "matrix", "matrix_addr"])
+        return Pool(pool, sig, area_head, fl_bitmap, sl_bitmap, matrix, matrix_addr)
+
+    def dump_pool(self, pool, verbose):
+        freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
+        corrupted_msg_color = get_gef_setting("theme.heap_corrupted_msg")
+        chunk_size_color = get_gef_setting("theme.heap_chunk_size")
+
+        self.out.append("pool: {:#x}".format(pool.addr))
+        self.out.append("pool->area_head: {:#x}".format(pool.area_head))
+        for i, j in itertools.product(range(self.REAL_FLI), range(self.MAX_SLI)):
+            if verbose or pool.matrix[i][j]:
+                matrix_addr = pool.matrix_addr[i][j]
+                min_size, max_size = self.size_dic.get((i, j), (0, 0))
+                if min_size == max_size == 0:
+                    title = "pool->matrix[{:2d}][{:2d}] @{:#x} (chunk_size=???-???)".format(i, j, matrix_addr)
+                else:
+                    title = "pool->matrix[{:2d}][{:2d}] @{:#x} (chunk_size={:#x}-{:#x})".format(i, j, matrix_addr, min_size, max_size)
+                self.out.append(titlify(title))
+
+                current = pool.matrix[i][j]
+                seen = []
+                while True:
+                    if not is_valid_addr(current):
+                        if current == 0:
+                            msg = " -> {:s}".format(Color.colorify_hex(current, freed_address_color))
+                        else:
+                            msg = " -> {:s} (corrupted)".format(Color.colorify_hex(current, corrupted_msg_color))
+                        self.out.append(msg)
+                        break
+
+                    if current in seen:
+                        msg = " -> {:s} (loop detected)".format(Color.colorify_hex(current, corrupted_msg_color))
+                        self.out.append(msg)
+                        break
+
+                    seen.append(current)
+
+                    prev_hdr = read_int_from_memory(current + current_arch.ptrsize * 0)
+                    size = read_int_from_memory(current + current_arch.ptrsize * 1)
+                    prev_ = read_int_from_memory(current + current_arch.ptrsize * 2)
+                    next_ = read_int_from_memory(current + current_arch.ptrsize * 3)
+
+                    msg = " -> {:s} (prev_hdr={:#x}, size={:s}, prev={!s}, next={!s})".format(
+                        Color.colorify_hex(current, freed_address_color),
+                        prev_hdr,
+                        Color.colorify_hex(size & ~0xf, chunk_size_color),
+                        lookup_address(prev_), lookup_address(next_),
+                    )
+                    self.out.append(msg)
+                    current = next_
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
+    @only_if_specific_arch(arch=("x86_64",))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if args.pool:
+            pool_addr = args.pool
+        else:
+            pool_addr = self.get_pool()
+            if pool_addr is None:
+                err("Not found pool")
+                return
+
+        pool = self.parse_pool(pool_addr)
+        if pool is None:
+            err("Failed to parse pool.")
+            return
+
+        self.out = []
+        self.dump_pool(pool, args.verbose)
+        gef_print("\n".join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
 class V8Command(GenericCommand):
     """Print v8 tagged object, or load more commands from internet."""
     _cmdline_ = "v8"
