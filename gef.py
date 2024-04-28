@@ -1009,6 +1009,11 @@ class Color:
         return "".join(msg)
 
     @staticmethod
+    def colorify_hex(value, attrs):
+        text = "{:#x}".format(value)
+        return Color.colorify(text, attrs)
+
+    @staticmethod
     def remove_color(text):
         return re.sub(r"\x1B\[([0-9]{1,2}(;[0-9]{1,3})*)?m", "", text)
 
@@ -3839,8 +3844,8 @@ class GlibcChunk:
 
     def to_str(self, arena):
         chunk_c = Color.colorify("Chunk", get_gef_setting("theme.heap_chunk_label"))
-        size_c = Color.colorify("{:#x}".format(self.get_chunk_size()), get_gef_setting("theme.heap_chunk_size"))
-        addr_c = Color.colorify("{:#x}".format(self.chunk_base_address), get_gef_setting("theme.heap_chunk_address_freed"))
+        size_c = Color.colorify_hex(self.get_chunk_size(), get_gef_setting("theme.heap_chunk_size"))
+        addr_c = Color.colorify_hex(self.chunk_base_address, get_gef_setting("theme.heap_chunk_address_freed"))
         flags = self.flags_as_string()
 
         # large bins
@@ -3883,7 +3888,7 @@ class GlibcChunk:
 
         # used chunk
         else:
-            addr_c = Color.colorify("{:#x}".format(self.chunk_base_address), get_gef_setting("theme.heap_chunk_address_used"))
+            addr_c = Color.colorify_hex(self.chunk_base_address, get_gef_setting("theme.heap_chunk_address_used"))
             fmt = "{:s}(addr={:s}, size={:s}, flags={:s})"
             msg = fmt.format(chunk_c, addr_c, size_c, flags)
         return msg
@@ -23041,9 +23046,9 @@ class KernelChecksecCommand(GenericCommand):
 
         val = read_int_from_memory(mmap_min_addr)
         if val:
-            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("{:#x}".format(val), "bold green")))
+            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify_hex(val, "bold green")))
         else:
-            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("{:#x}".format(val), "bold red")))
+            gef_print("{:<40s}: {:s}".format(cfg, Color.colorify_hex(val, "bold red")))
         return
 
     def check_supported_syscall(self):
@@ -62377,7 +62382,7 @@ class SlubDumpCommand(GenericCommand):
         if page["virt_addr"] is None:
             self.out.append("        virutal address: ???")
         else:
-            colored_virt_addr = Color.colorify("{:#x}".format(page["virt_addr"]), heap_page_color)
+            colored_virt_addr = Color.colorify_hex(page["virt_addr"], heap_page_color)
             self.out.append("        virtual address: {:s}".format(colored_virt_addr))
 
         # print info
@@ -62402,7 +62407,7 @@ class SlubDumpCommand(GenericCommand):
                         next_msg = "next: {:s}".format(next_chunk)
                     else:
                         next_msg = "next: {:#x}".format(next_chunk)
-                    chunk_s = Color.colorify("{:#x}".format(chunk), freed_address_color)
+                    chunk_s = Color.colorify_hex(chunk, freed_address_color)
                 elif chunk in freelist[:-1]:
                     next_chunk = freelist[freelist.index(chunk) + 1]
                     if isinstance(next_chunk, str):
@@ -62411,13 +62416,13 @@ class SlubDumpCommand(GenericCommand):
                         next_msg = "next: {:#x}".format(next_chunk)
                     if tag == "active":
                         next_msg += " (slow path)"
-                    chunk_s = Color.colorify("{:#x}".format(chunk), freed_address_color)
+                    chunk_s = Color.colorify_hex(chunk, freed_address_color)
                 else:
                     if page["objects"] <= idx:
                         next_msg = "never-used"
                     else:
                         next_msg = "in-use"
-                    chunk_s = Color.colorify("{:#x}".format(chunk), used_address_color)
+                    chunk_s = Color.colorify_hex(chunk, used_address_color)
                 layout_msg = "layout:" if idx == 0 else ""
                 self.out.append("        {:7s}   {:#05x} {:s} ({:s})".format(layout_msg, idx, chunk_s, next_msg))
 
@@ -62461,13 +62466,13 @@ class SlubDumpCommand(GenericCommand):
                             chunk_idx = ""
                         else:
                             chunk_idx = "{:#05x}".format(chunk_idx)
-                        msg = Color.colorify("{:#x}".format(chunk_addr), freed_address_color)
+                        msg = Color.colorify_hex(chunk_addr, freed_address_color)
                     self.out.append("                  {:5s} {:s}".format(chunk_idx, msg))
                 else:
                     if isinstance(chunk_addr, str):
                         msg = chunk_addr
                     else:
-                        msg = Color.colorify("{:#x}".format(chunk_addr), freed_address_color)
+                        msg = Color.colorify_hex(chunk_addr, freed_address_color)
                     self.out.append("                        {:s}".format(msg))
             return
 
@@ -62503,7 +62508,7 @@ class SlubDumpCommand(GenericCommand):
             self.out.append("  kmem_cache: {:#x}".format(kmem_cache["address"]))
             self.out.append("    name: {:s}".format(Color.colorify(kmem_cache["name"], chunk_label_color)))
             self.out.append("    flags: {:#x} ({:s})".format(kmem_cache["flags"], kmem_cache["flags_str"]))
-            object_size_s = Color.colorify("{:#x}".format(kmem_cache["object_size"]), chunk_size_color)
+            object_size_s = Color.colorify_hex(kmem_cache["object_size"], chunk_size_color)
             self.out.append("    object size: {:s} (chunk size: {:#x})".format(object_size_s, kmem_cache["size"]))
             self.out.append("    offset (next pointer in chunk): {:#x}".format(kmem_cache["offset"]))
             if self.kmem_cache_offset_random is not None:
@@ -63117,7 +63122,7 @@ class SlubTinyDumpCommand(GenericCommand):
         if page["virt_addr"] is None:
             self.out.append("        virutal address: ???")
         else:
-            colored_virt_addr = Color.colorify("{:#x}".format(page["virt_addr"]), heap_page_color)
+            colored_virt_addr = Color.colorify_hex(page["virt_addr"], heap_page_color)
             self.out.append("        virtual address: {:s}".format(colored_virt_addr))
 
         # print info
@@ -63141,13 +63146,13 @@ class SlubTinyDumpCommand(GenericCommand):
                         next_msg = "next: {:s}".format(next_chunk)
                     else:
                         next_msg = "next: {:#x}".format(next_chunk)
-                    chunk_s = Color.colorify("{:#x}".format(chunk), freed_address_color)
+                    chunk_s = Color.colorify_hex(chunk, freed_address_color)
                 else:
                     if page["objects"] <= idx:
                         next_msg = "never-used"
                     else:
                         next_msg = "in-use"
-                    chunk_s = Color.colorify("{:#x}".format(chunk), used_address_color)
+                    chunk_s = Color.colorify_hex(chunk, used_address_color)
                 layout_msg = "layout:" if idx == 0 else ""
                 self.out.append("        {:7s}   {:#05x} {:s} ({:s})".format(layout_msg, idx, chunk_s, next_msg))
         else:
@@ -63170,14 +63175,14 @@ class SlubTinyDumpCommand(GenericCommand):
                             chunk_idx = ""
                         else:
                             chunk_idx = "{:#05x}".format(chunk_idx)
-                        msg = Color.colorify("{:#x}".format(chunk_addr), freed_address_color)
+                        msg = Color.colorify_hex(chunk_addr, freed_address_color)
                     freelist_msg = "freelist:" if idx == 0 else ""
                     self.out.append("        {:9s} {:5s} {:s}".format(freelist_msg, chunk_idx, msg))
                 else:
                     if isinstance(chunk_addr, str):
                         msg = chunk_addr
                     else:
-                        msg = Color.colorify("{:#x}".format(chunk_addr), freed_address_color)
+                        msg = Color.colorify_hex(chunk_addr, freed_address_color)
                     freelist_msg = "freelist:" if idx == 0 else ""
                     self.out.append("        {:9s}       {:s}".format(freelist_msg, msg))
         return
@@ -63195,7 +63200,7 @@ class SlubTinyDumpCommand(GenericCommand):
             self.out.append("  kmem_cache: {:#x}".format(kmem_cache["address"]))
             self.out.append("    name: {:s}".format(Color.colorify(kmem_cache["name"], chunk_label_color)))
             self.out.append("    flags: {:#x} ({:s})".format(kmem_cache["flags"], kmem_cache["flags_str"]))
-            object_size_s = Color.colorify("{:#x}".format(kmem_cache["object_size"]), chunk_size_color)
+            object_size_s = Color.colorify_hex(kmem_cache["object_size"], chunk_size_color)
             self.out.append("    object size: {:s} (chunk size: {:#x})".format(object_size_s, kmem_cache["size"]))
             self.out.append("    offset (next pointer in chunk): {:#x}".format(kmem_cache["offset"]))
 
@@ -63920,7 +63925,7 @@ class SlabDumpCommand(GenericCommand):
             return
 
         # print virtual address
-        colored_s_mem = Color.colorify("{:#x}".format(page["s_mem"]), heap_page_color)
+        colored_s_mem = Color.colorify_hex(page["s_mem"], heap_page_color)
         self.out.append("        virtual address (s_mem): {:s}".format(colored_s_mem))
 
         # print info
@@ -63937,16 +63942,16 @@ class SlabDumpCommand(GenericCommand):
                 else:
                     next_idx = freelist[idxidx + 1]
                     next_msg = "next: {:#x}".format(next_idx)
-                chunk_s = Color.colorify("{:#x}".format(chunk), freed_address_color)
+                chunk_s = Color.colorify_hex(chunk, freed_address_color)
             elif "array_cache" in kmem_cache and chunk in kmem_cache["array_cache"]["freelist"]:
                 next_msg = "in-use (array_cache)"
-                chunk_s = Color.colorify("{:#x}".format(chunk), freed_address_color)
+                chunk_s = Color.colorify_hex(chunk, freed_address_color)
             else:
                 if kmem_cache["objperslab"] <= idx:
                     next_msg = "never-used"
                 else:
                     next_msg = "in-use"
-                chunk_s = Color.colorify("{:#x}".format(chunk), used_address_color)
+                chunk_s = Color.colorify_hex(chunk, used_address_color)
             self.out.append("        {:7s}   {:#04x} {:s} ({:s})".format("layout:" if idx == 0 else "", idx, chunk_s, next_msg))
 
             # dump chunks
@@ -63978,7 +63983,7 @@ class SlabDumpCommand(GenericCommand):
         else:
             for i, idx in enumerate(freelist):
                 chunk = page["s_mem"] + kmem_cache["size"] * idx
-                msg = Color.colorify("{:#x}".format(chunk), freed_address_color)
+                msg = Color.colorify_hex(chunk, freed_address_color)
                 self.out.append("        {:9s} {:#04x} {:s}".format("freelist:" if i == 0 else "", idx, msg))
         return
 
@@ -64001,7 +64006,7 @@ class SlabDumpCommand(GenericCommand):
             for idx, f in enumerate(freelist):
                 if not is_valid_addr(f):
                     break
-                msg = Color.colorify("{:#x}".format(f), freed_address_color)
+                msg = Color.colorify_hex(f, freed_address_color)
                 self.out.append("        {:6s} {:s}".format("entry:" if idx == 0 else "", msg))
         return
 
@@ -64018,7 +64023,7 @@ class SlabDumpCommand(GenericCommand):
             self.out.append("  kmem_cache: {:#x}".format(kmem_cache["address"]))
             self.out.append("    name: {:s}".format(Color.colorify(kmem_cache["name"], chunk_label_color)))
             self.out.append("    flags: {:#x} ({:s})".format(kmem_cache["flags"], kmem_cache["flags_str"]))
-            object_size_s = Color.colorify("{:#x}".format(kmem_cache["object_size"]), chunk_size_color)
+            object_size_s = Color.colorify_hex(kmem_cache["object_size"], chunk_size_color)
             self.out.append("    object size: {:s} (chunk size: {:#x})".format(object_size_s, kmem_cache["size"]))
             self.out.append("    object per slab: {:#x}".format(kmem_cache["objperslab"]))
             self.out.append("    pages per slab: {:#x}".format(kmem_cache["pagesperslab"]))
@@ -64464,13 +64469,13 @@ class SlobDumpCommand(GenericCommand):
 
         for page in page_freelist:
             self.out.append("  {:s}: {:#x}".format(Color.colorify("page", label_active_color), page["address"]))
-            colored_virt_addr = Color.colorify("{:#x}".format(page["virt_addr"]), heap_page_color)
+            colored_virt_addr = Color.colorify_hex(page["virt_addr"], heap_page_color)
             self.out.append("    virtual address: {:s}".format(colored_virt_addr))
             self.out.append("    num pages: {:d}".format(page["num_pages"]))
             self.out.append("    total units: {:#x}".format(page["units"]))
             for i, (chunk, units) in enumerate(page["freelist"]):
-                msg = Color.colorify("{:#x}".format(chunk), freed_address_color)
-                msg_sz = Color.colorify("{:#x}".format(units * 2), chunk_size_color)
+                msg = Color.colorify_hex(chunk, freed_address_color)
+                msg_sz = Color.colorify_hex(units * 2, chunk_size_color)
                 self.out.append("    {:9s} {:s} (units: {:#x}, size: {:s})".format("freelist:" if i == 0 else "", msg, units, msg_sz))
             self.out.append("    next: {:#x}".format(page["next"]))
             self.out.append("")
@@ -64489,7 +64494,7 @@ class SlobDumpCommand(GenericCommand):
                 colored_name = Color.colorify(kmem_cache["name"], chunk_label_color)
                 self.out.append("    name: {:s}".format(colored_name))
                 self.out.append("    flags: {:#x} ({:s})".format(kmem_cache["flags"], kmem_cache["flags_str"]))
-                object_size_s = Color.colorify("{:#x}".format(kmem_cache["object_size"]), chunk_size_color)
+                object_size_s = Color.colorify_hex(kmem_cache["object_size"], chunk_size_color)
                 self.out.append("    object size: {:s} (chunk size: {:#x})".format(object_size_s, kmem_cache["size"]))
                 self.out.append("    next: {:#x}".format(kmem_cache["next"]))
                 self.out.append("")
@@ -65234,7 +65239,7 @@ class BuddyDumpCommand(GenericCommand):
         chunk_size_color = get_gef_setting("theme.heap_chunk_size")
 
         size = 0x1000 * (2 ** order)
-        size_str = Color.colorify("{:#x}".format(size), chunk_size_color)
+        size_str = Color.colorify_hex(size, chunk_size_color)
         self.add_msg("order: {:d} ({:s} bytes)".format(order, size_str))
 
         sizeof_list_head = current_arch.ptrsize * 2
@@ -65747,7 +65752,7 @@ class KernelPipeCommand(GenericCommand):
 
                 out = "    {:s} {:s} {:s} [{:02d}] page: {:#x}, ".format(head_marker, tail_marker, status, idx, page)
                 if virt:
-                    colored_virt = Color.colorify("{:#x}".format(virt), heap_page_color)
+                    colored_virt = Color.colorify_hex(virt, heap_page_color)
                     out += "(virt: {:s}), ".format(colored_virt)
                 out += "offset: {:#x}, len: {:#x}, flags: {:#x} ({:s})".format(offset, len_, flags, self.get_flags_str(flags))
                 self.out.append(out)
@@ -69736,14 +69741,14 @@ class TcmallocDumpCommand(GenericCommand):
                 seen.append(chunk)
                 if (real_length % 8) == 1:
                     chunklist_string += "\n"
-                chunklist_string += " -> " + Color.colorify("{:#x}".format(chunk), freed_address_color)
+                chunklist_string += " -> " + Color.colorify_hex(chunk, freed_address_color)
                 # corrupted memory check
                 try:
                     chunk = read_int_from_memory(chunk)
                 except gdb.MemoryError:
                     if chunklist_string.endswith(" -> ..."):
-                        chunklist_string += " -> " + Color.colorify("{:#x}".format(seen[-2]), freed_address_color)
-                        chunklist_string += " -> " + Color.colorify("{:#x}".format(chunk), corrupted_msg_color)
+                        chunklist_string += " -> " + Color.colorify_hex(seen[-2], freed_address_color)
+                        chunklist_string += " -> " + Color.colorify_hex(chunk, corrupted_msg_color)
                     chunklist_string += " (corrupted)"
                     error = True
                     break
@@ -69751,7 +69756,7 @@ class TcmallocDumpCommand(GenericCommand):
                 chunk ^= self.get_heap_key()
                 # loop check
                 if chunk in seen:
-                    chunklist_string += " -> " + Color.colorify("{:#x}".format(chunk), corrupted_msg_color) + " (loop)"
+                    chunklist_string += " -> " + Color.colorify_hex(chunk, corrupted_msg_color) + " (loop)"
                     error = True
                     break
             # corrupted length check
@@ -69764,7 +69769,7 @@ class TcmallocDumpCommand(GenericCommand):
             if chunksize is None:
                 chunksize = Color.colorify("unknown", chunk_size_color)
             else:
-                chunksize = Color.colorify("{:#x}".format(chunksize), chunk_size_color)
+                chunksize = Color.colorify_hex(chunksize, chunk_size_color)
             fmt = "freelist[idx={:d}, size={:s}, len={:d}] @ {:s}{:s}"
             self.out.append(fmt.format(idx, chunksize, length, colored_freelist_addr, chunklist_string))
         return
@@ -69824,21 +69829,21 @@ class TcmallocDumpCommand(GenericCommand):
                 seen.append(chunk)
                 if (real_length % 8) == 1:
                     chunklist_string += "\n"
-                chunklist_string += " -> " + Color.colorify("{:#x}".format(chunk), freed_address_color)
+                chunklist_string += " -> " + Color.colorify_hex(chunk, freed_address_color)
                 # corrupted memory check
                 try:
                     chunk = read_int_from_memory(chunk)
                 except gdb.MemoryError:
                     if chunklist_string.endswith(" -> ..."):
-                        chunklist_string += " -> " + Color.colorify("{:#x}".format(seen[-2]), freed_address_color)
-                        chunklist_string += " -> " + Color.colorify("{:#x}".format(chunk), corrupted_msg_color)
+                        chunklist_string += " -> " + Color.colorify_hex(seen[-2], freed_address_color)
+                        chunklist_string += " -> " + Color.colorify_hex(chunk, corrupted_msg_color)
                     chunklist_string += " (corrupted)"
                     break
                 # heap key decode
                 chunk ^= self.get_heap_key()
                 # loop check
                 if chunk in seen:
-                    chunklist_string += " -> " + Color.colorify("{:#x}".format(chunk), corrupted_msg_color) + " (loop)"
+                    chunklist_string += " -> " + Color.colorify_hex(chunk, corrupted_msg_color) + " (loop)"
                     break
             # print
             colored_freelist_addr = str(lookup_address(freelist))
@@ -70084,8 +70089,10 @@ class GoHeapDumpCommand(GenericCommand):
 
         for mspan in mspans:
             # meta data
-            chunk_size_str = Color.colorify("{:#x}".format(mspan.chunk_size), chunk_size_color)
-            range_addr_str = Color.colorify("{:#x}-{:#x}".format(mspan.start_addr, mspan.end_addr), page_address_color)
+            chunk_size_str = Color.colorify_hex(mspan.chunk_size, chunk_size_color)
+            range_addr_str = Color.colorify_hex(mspan.start_addr, page_address_color)
+            range_addr_str += "-"
+            range_addr_str += Color.colorify_hex(mspan.end_addr, page_address_color)
             range_size = mspan.end_addr - mspan.start_addr
             msg = "mspan @ {!s} [{:s} sz={:#x} chunk_size={:s} next={!s}, prev:{!s}]".format(
                 lookup_address(mspan.address), range_addr_str, range_size, chunk_size_str,
@@ -70728,7 +70735,7 @@ class PartitionAllocDumpCommand(GenericCommand):
         while current:
             extent, _ = self.read_extent(current)
             if extent.super_page_base <= address < extent.super_page_end:
-                return Color.colorify("{:#x}".format(address), management_color)
+                return Color.colorify_hex(address, management_color)
             current = extent.next
         if is_valid_addr(address):
             return str(lookup_address(address))
@@ -70736,7 +70743,7 @@ class PartitionAllocDumpCommand(GenericCommand):
 
     def P(self, address):
         page_address_color = get_gef_setting("theme.heap_page_address")
-        return Color.colorify("{:#x}".format(address), page_address_color)
+        return Color.colorify_hex(address, page_address_color)
 
     def dump_root(self, root):
         self.out.append(titlify("*{} @ {:#x}".format(root.name, root.addr)))
@@ -70925,7 +70932,7 @@ class PartitionAllocDumpCommand(GenericCommand):
                 text += Color.colorify("-> {:#x} (corrupted) ".format(chunk), corrupted_msg_color)
                 break
 
-            text += "-> " + Color.colorify("{:#x} ".format(chunk), freed_address_color)
+            text += "-> " + Color.colorify_hex(chunk, freed_address_color) + " "
             cnt += 1
             seen.append(chunk)
             chunk = next_chunk
@@ -71406,12 +71413,12 @@ class MuslHeapDumpCommand(GenericCommand):
             seen = []
             while current not in seen:
                 meta = self.read_meta(current)
-                self.out.append("meta @ {:s}".format(Color.colorify("{:#x}".format(meta.addr), management_color)))
+                self.out.append("meta @ {:s}".format(Color.colorify_hex(meta.addr, management_color)))
                 text = "  "
-                colored_prev = Color.colorify("{:#x}".format(meta.prev), management_color)
-                colored_next = Color.colorify("{:#x}".format(meta.next), management_color)
+                colored_prev = Color.colorify_hex(meta.prev, management_color)
+                colored_next = Color.colorify_hex(meta.next, management_color)
                 text += "prev:{:s} next:{:s} ".format(colored_prev, colored_next)
-                colored_mem = Color.colorify("{:#x}".format(meta.mem), management_color)
+                colored_mem = Color.colorify_hex(meta.mem, management_color)
                 text += "meta:{:s} ".format(colored_mem)
                 text += "avail_mask:{:#x} freed_mask:{:#x} ".format(meta.avail_mask, meta.freed_mask)
                 text += "last_idx:{:#x} freeable:{:#x} ".format(meta.last_idx, meta.freeable)
@@ -71522,8 +71529,8 @@ class uClibcChunk:
 
     def to_str(self, is_fastbin=False):
         chunk_c = Color.colorify("Chunk", get_gef_setting("theme.heap_chunk_label"))
-        size_c = Color.colorify("{:#x}".format(self.get_chunk_size()), get_gef_setting("theme.heap_chunk_size"))
-        addr_c = Color.colorify("{:#x}".format(self.chunk_base_address), get_gef_setting("theme.heap_chunk_address_freed"))
+        size_c = Color.colorify_hex(self.get_chunk_size(), get_gef_setting("theme.heap_chunk_size"))
+        addr_c = Color.colorify_hex(self.chunk_base_address, get_gef_setting("theme.heap_chunk_address_freed"))
         flags = self.flags_as_string()
 
         if is_fastbin:
@@ -71908,7 +71915,9 @@ class UclibcNgHeapDumpCommand(GenericCommand):
             addr, n, p, size = malloc_state.smallbins[i]
             if (n and addr - current_arch.ptrsize * 2 != n) or self.verbose:
                 if isinstance(size, tuple):
-                    colored_size = Color.colorify("{:#x}-{:#x}".format(*size), chunk_size_color)
+                    colored_size = Color.colorify_hex(size[0], chunk_size_color)
+                    colored_size += "-"
+                    colored_size += Color.colorify_hex(size[1], chunk_size_color)
                 else:
                     colored_size = Color.colorify(size, chunk_size_color)
                 if i == 1:
@@ -71930,7 +71939,9 @@ class UclibcNgHeapDumpCommand(GenericCommand):
             addr, n, p, size = malloc_state.largebins[i]
             if addr - current_arch.ptrsize * 2 != n or self.verbose:
                 if isinstance(size, tuple):
-                    colored_size = Color.colorify("{:#x}-{:#x}".format(*size), chunk_size_color)
+                    colored_size = Color.colorify_hex(size[0], chunk_size_color)
+                    colored_size += "-"
+                    colored_size += Color.colorify_hex(size[1], chunk_size_color)
                 else:
                     colored_size = Color.colorify(size, chunk_size_color)
                 fmt = "large_bins[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}"
@@ -74285,7 +74296,7 @@ class PrintBitInfo:
 
     def print_value(self, regval, split=False):
         regname = Color.colorify(self.name, "bold red")
-        value_str = Color.colorify("{:#x}".format(regval), "bold yellow")
+        value_str = Color.colorify_hex(regval, "bold yellow")
         if split:
             value_str += Color.colorify(" (={:s})".format(self.bits_split(regval)), "bold yellow")
         self.out.append("{:s} = {:s}".format(regname, value_str))
@@ -81007,7 +81018,7 @@ class KmallocRetBreakpoint(gdb.FinishBreakpoint):
             loc = int(self.return_value)
         else:
             loc = parse_address(current_arch.return_register)
-        loc_s = Color.colorify("{:#x}".format(loc), get_gef_setting("theme.heap_chunk_address_used"))
+        loc_s = Color.colorify_hex(loc, get_gef_setting("theme.heap_chunk_address_used"))
 
         if self.extra:
             ret = KmallocTracerCommand.virt2name_and_size(self.extra, loc)
@@ -81057,7 +81068,7 @@ class KfreeBreakpoint(gdb.Breakpoint):
             return False
         task_prefix = Color.boldify("[task:{:#018x} {:16s}]".format(task_addr, task_name))
 
-        loc_s = Color.colorify("{:#x}".format(loc), get_gef_setting("theme.heap_chunk_address_freed"))
+        loc_s = Color.colorify_hex(loc, get_gef_setting("theme.heap_chunk_address_freed"))
 
         if self.extra:
             ret = KmallocTracerCommand.virt2name_and_size(self.extra, loc)
