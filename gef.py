@@ -68217,7 +68217,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             length = self.kernel_img[position]
             position += 1
 
-            # check if big symbol (v6.1~)
+            # check if big symbol (6.1~)
             if self.may_use_big_symbol:
                 if length & 0x80:
                     low = length & 0x7f
@@ -68341,9 +68341,8 @@ class KsymaddrRemoteCommand(GenericCommand):
         - kallsyms_token_table
         - ...
 
-        [Sample values]
-        kallsyms_token_table: 0xffffffff8b2b51b0
-        gef> hexdump -n byte 0xffffffff8b2b51b0
+        [Sample values for 64bit]
+        gef> hexdump -n byte kallsyms_token_table
         0xffffffff8b2b51b0:    65 75 00 77 5f 00 61 64 64 00 64 5f 5f 66 75 6e    |  eu.w_.add.d__fun  |
         0xffffffff8b2b51c0:    63 5f 5f 00 74 70 5f 66 75 6e 63 00 33 32 00 6e    |  c__.tp_func.32.n  |
         0xffffffff8b2b51d0:    61 00 66 66 00 69 70 00 78 65 6e 00 70 72 00 73    |  a.ff.ip.xen.pr.s  |
@@ -68361,8 +68360,8 @@ class KsymaddrRemoteCommand(GenericCommand):
         0xffffffff8b2b5290:    38 00 39 00 72 63 00 77 61 00 63 61 6c 00 75 70    |  8.9.rc.wa.cal.up  |
         0xffffffff8b2b52a0:    5f 00 45 5f 00 67 65 5f 00 6d 61 70 00 41 00 42    |  _.E_.ge_.map.A.B  |
 
-        kallsyms_token_table: 0xc6e58efc
-        gef> hexdump -n byte 0xc6e58efc
+        [Sample values for 32bit]
+        gef> hexdump -n byte kallsyms_token_table
         0xc6e58efc:    54 52 41 43 45 5f 53 59 53 00 41 43 45 5f 53 59    |  TRACE_SYS.ACE_SY  |
         0xc6e58f0c:    53 00 5f 53 59 53 00 54 45 4d 00 41 43 45 00 69    |  S._SYS.TEM.ACE.i  |
         0xc6e58f1c:    67 00 70 6f 69 6e 74 5f 00 62 75 00 75 74 5f 00    |  g.point_.bu.ut_.  |
@@ -68444,9 +68443,8 @@ class KsymaddrRemoteCommand(GenericCommand):
         - kallsyms_token_index
         - ...
 
-        [Sample values]
-        kallsyms_token_index: 0xffffffff8b2b5540
-        gef> hexdump -n word 0xffffffff8b2b5540
+        [Sample values for 64bit]
+        gef> hexdump -n word kallsyms_token_index
         0xffffffff8b2b5540:    0x0000 0x0003 0x0006 0x000a 0x0014 0x001c 0x001f 0x0022    |  ..............".  |
         0xffffffff8b2b5550:    0x0025 0x0028 0x002c 0x002f 0x0033 0x0037 0x003a 0x003d    |  %.(.,./.3.7.:.=.  |
         0xffffffff8b2b5560:    0x0040 0x0044 0x0048 0x004b 0x004e 0x0052 0x0055 0x0058    |  @.D.H.K.N.R.U.X.  |
@@ -68456,8 +68454,8 @@ class KsymaddrRemoteCommand(GenericCommand):
         0xffffffff8b2b55a0:    0x00d0 0x00d2 0x00d4 0x00d6 0x00d8 0x00da 0x00dc 0x00de    |  ................  |
         0xffffffff8b2b55b0:    0x00e0 0x00e2 0x00e4 0x00e7 0x00ea 0x00ee 0x00f2 0x00f5    |  ................  |
 
-        kallsyms_token_index: 0xc6e59274
-        gef> hexdump -n word 0xc6e59274
+        [Sample values for 32bit]
+        gef> hexdump -n word kallsyms_token_index
         0xc6e59274:    0x0000 0x000a 0x0012 0x0017 0x001b 0x001f 0x0022 0x0029    |  ............".).  |
         0xc6e59284:    0x002c 0x0030 0x0034 0x0037 0x003b 0x0040 0x0043 0x0046    |  ,.0.4.7.;.@.C.F.  |
         0xc6e59294:    0x0049 0x004f 0x0052 0x0055 0x0058 0x005c 0x005f 0x0063    |  I.O.R.U.X..._.c.  |
@@ -68521,22 +68519,21 @@ class KsymaddrRemoteCommand(GenericCommand):
         """
         [Search policy]
         - From kallsyms_token_table, search backwards for 0x00000000.
-        - For kernel v6.2~v6.8, there is kallsyms_seqs_of_names between kallsyms_markers and kallsyms_token_table,
+        - For kernel 6.2~6.8, there is kallsyms_seqs_of_names between kallsyms_markers and kallsyms_token_table,
           so this should be skipped.
 
         [Positional relationship]
         ...
         - kallsyms_markers
-        - kallsyms_seqs_of_names (v6.2~v6.8)
+        - kallsyms_seqs_of_names (6.2~6.8)
         - kallsyms_token_table
         - kallsyms_token_index
         ...
-        - kallsyms_seqs_of_names (v6.9~)
+        - kallsyms_seqs_of_names (6.9~)
         ...
 
-        [Sample values]
-        kallsyms_markers: 0xffffffff8b2b4b48
-        gef> hexdump -n dword 0xffffffff8b2b4b48
+        [Sample values for 64bit ~6.2]
+        gef> hexdump -n dword kallsyms_markers
         0xffffffff8b2b4b48:    0x00000000 0x00000ab0 0x000016d3 0x00002316    |  .............#..  | <- kallsyms_markers
         0xffffffff8b2b4b58:    0x00002f38 0x00003cf8 0x00004c4c 0x000059c8    |  8/...<..LL...Y..  |
         0xffffffff8b2b4b68:    0x0000664b 0x00007316 0x00008119 0x00008f2e    |  Kf...s..........  |
@@ -68547,7 +68544,8 @@ class KsymaddrRemoteCommand(GenericCommand):
         0xffffffff8b2b51a0:    0x00144e55 0x001458d8 0x00146338 0x00000000    |  UN...X..8c......  |
         0xffffffff8b2b51b0:    0x77007565 0x6461005f 0x5f640064 0x6e75665f    |  eu.w_.add.d__fun  | <- kallsyms_token_table
 
-        kallsyms_seqs_of_names is introduced from kernel 6.2-rc1
+        [Sample values for 64bit 6.2~]
+        gef> hexdump -n dword kallsyms_markers
         0xffffffff8d5fcde0:    0x00000000 0x00000b55 0x000017bb 0x000024c3    |  ....U........$..  | <- kallsyms_markers
         0xffffffff8d5fcdf0:    0x000030c1 0x00003dca 0x00004983 0x000058aa    |  .0...=...I...X..  |
         0xffffffff8d5fce00:    0x00006785 0x0000760e 0x0000828d 0x00009160    |  .g...v......`...  |
@@ -68558,8 +68556,8 @@ class KsymaddrRemoteCommand(GenericCommand):
         0xffffffff8d5fd7b0:    0xa400291c 0x10a50024 0x0154a500 0xaa0116aa    |  .)..$.....T.....  |
         0xffffffff8d5fd7c0:    0x87610214 0x01274902 0xb201cbaf 0xbbbc01c9    |  ..a..I'.........  |
 
-        kallsyms_seqs_of_names is introduced from kernel 6.2-rc1
-        gef> hexdump -n dword 0xc6e0dc98
+        [Sample values for 32bit 6.2~]
+        gef> hexdump -n dword kallsyms_markers
         0xc6e0dc98:    0x00000000 0x00000c61 0x0000188f 0x00002641    |  ....a.......A&..  | <- kallsyms_markers
         0xc6e0dca8:    0x00003492 0x000041a7 0x00004e6b 0x00005ace    |  .4...A..kN...Z..  |
         0xc6e0dcb8:    0x0000691b 0x00007703 0x00008411 0x00008fc1    |  .i...w..........  |
@@ -68593,7 +68591,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 break
             position = needle + self.kallsyms_markers_table_element_size - align_diff
 
-        # kallsyms_seqs_of_names is introduced from kernel 6.2-rc1
+        # kallsyms_seqs_of_names is introduced from kernel 6.2
         # in this case, it finds kallsyms_seqs_of_names instead of kallsyms_markers, so search back through memory again.
         if self.kernel_version >= (6, 2) and self.kernel_version < (6, 9):
             if u32(self.kernel_img[needle + 4:needle + 8]) & 0xfff00000: # false positive, search again
@@ -68644,16 +68642,15 @@ class KsymaddrRemoteCommand(GenericCommand):
         ...
         - kallsyms_names
         - kallsyms_markers
-        - kallsyms_seqs_of_names (v6.2~v6.8)
+        - kallsyms_seqs_of_names (6.2~6.8)
         - kallsyms_token_table
         - kallsyms_token_index
         ...
-        - kallsyms_seqs_of_names (v6.9~)
+        - kallsyms_seqs_of_names (6.9~)
         ...
 
-        [Sample values]
-        kallsyms_names: 0xffffffff8b16e610
-        gef> hexdump -n qword 0xffffffff8b16e610
+        [Sample values for 64bit]
+        gef> hexdump -n qword kallsyms_names
         0xffffffff8b16e610:    0x0cf3ec0e78b6410a 0xf370ff4109fe61cb    |  .A.x.....a..A.p.  | <- kallsyms_names
         0xffffffff8b16e620:    0x0c410774722cbdeb 0xa8410df67ef4285f    |  ..,rt.A._(.~..A.  |
         0xffffffff8b16e630:    0x936bed62d8632c71 0x925f0c4107f67ef4    |  q,c.b.k..~..A._.  |
@@ -68664,8 +68661,8 @@ class KsymaddrRemoteCommand(GenericCommand):
         0xffffffff8b2b4b40:    0x000064ee5fbfe872 0x00000ab000000000    |  r.._.d..........  | <- kallsyms_markers
         0xffffffff8b2b4b50:    0x00002316000016d3 0x00003cf800002f38    |  .....#..8/...<..  |
 
-        kallsyms_names: 0xc6cbce58
-        gef> hexdump -n qword 0xc6cbce58
+        [Sample values for 32bit]
+        gef> hexdump -n qword kallsyms_names
         0xc6cbce58:    0x335fd57472fb5c08 0x54039974f9540432    |  ...rt._32.T.t..T  | <- kallsyms_names
         0xc6cbce68:    0x63ff72fb5c0799a6 0xd57472fb5c0a30a1    |  .....r.c.0...rt.  |
         0xc6cbce78:    0x177407b6f932335f 0xa0ca0aa1f3796669    |  _32...t.ify.....  |
@@ -68678,7 +68675,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         """
 
         # take the last element of kallsyms_marker
-        if hasattr(self, "offset_kallsyms_seqs_of_names"): # maybe v6.2~v6.8
+        if hasattr(self, "offset_kallsyms_seqs_of_names"): # maybe 6.2~6.8
             kallsyms_markers_end = self.offset_kallsyms_seqs_of_names
         else:
             kallsyms_markers_end = self.offset_kallsyms_token_table
@@ -68723,23 +68720,22 @@ class KsymaddrRemoteCommand(GenericCommand):
         - kallsyms_num_syms
         - kallsyms_names
         - kallsyms_markers
-        - kallsyms_seqs_of_names (v6.2~v6.8)
+        - kallsyms_seqs_of_names (6.2~6.8)
         - kallsyms_token_table
         - kallsyms_token_index
         ...
-        - kallsyms_seqs_of_names (v6.9~)
+        - kallsyms_seqs_of_names (6.9~)
         ...
 
-        [Sample values]
-        kallsyms_num_syms: 0xffffffff8b16e608
-        gef> hexdump -n qword 0xffffffff8b16e608
+        [Sample values for 64bit]
+        gef> hexdump -n qword kallsyms_num_syms
         0xffffffff8b16e608:    0x000000000001982b 0x0cf3ec0e78b6410a    |  +........A.x....  |
         0xffffffff8b16e618:    0xf370ff4109fe61cb 0x0c410774722cbdeb    |  .a..A.p...,rt.A.  |
         0xffffffff8b16e628:    0xa8410df67ef4285f 0x936bed62d8632c71    |  _(.~..A.q,c.b.k.  |
         0xffffffff8b16e638:    0x925f0c4107f67ef4 0xfb646741067772f1    |  .~..A._..rw.Agd.  |
 
-        kallsyms_num_syms: 0xc6cbce54
-        gef> hexdump -n dword 0xc6cbce54
+        [Sample values for 32bit]
+        gef> hexdump -n dword kallsyms_num_syms
         0xc6cbce54:    0x00018eb8 0x72fb5c08 0x335fd574 0xf9540432    |  .......rt._32.T.  |
         0xc6cbce64:    0x54039974 0x5c0799a6 0x63ff72fb 0x5c0a30a1    |  t..T.....r.c.0..  |
         0xc6cbce74:    0xd57472fb 0xf932335f 0x177407b6 0xf3796669    |  .rt._32...t.ify.  |
@@ -68819,7 +68815,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 symbol_size = self.kernel_img[pos]
                 is_big_symbol = False # default
 
-                # check if big symbol (v6.1~)
+                # check if big symbol (6.1~)
                 if self.may_use_big_symbol:
                     if symbol_size & 0x80:
                         low = symbol_size & 0x7f
@@ -68911,58 +68907,49 @@ class KsymaddrRemoteCommand(GenericCommand):
 
         [Positional relationship]
         - ...
-        - kallsyms_offsets (v4.6~v6.4, CONFIG_KALLSYMS_BASE_RELATIVE=y)
-        - kallsyms_relative_base (v4.6~v6.4, CONFIG_KALLSYMS_BASE_RELATIVE=y)
+        - kallsyms_offsets (4.6~6.3, CONFIG_KALLSYMS_BASE_RELATIVE=y)
+        - kallsyms_relative_base (4.6~6.3, CONFIG_KALLSYMS_BASE_RELATIVE=y)
         - kallsyms_num_syms
         - kallsyms_names
         - kallsyms_markers
-        - kallsyms_seqs_of_names (v6.2~v6.8)
+        - kallsyms_seqs_of_names (6.2~6.8)
         - kallsyms_token_table
         - kallsyms_token_index
-        - kallsyms_offsets (v6.4~)
-        - kallsyms_relative_base (v6.4~)
-        - kallsyms_seqs_of_names (v6.9~)
+        - kallsyms_offsets (6.4~, CONFIG_KALLSYMS_BASE_RELATIVE=y)
+        - kallsyms_relative_base (6.4~, CONFIG_KALLSYMS_BASE_RELATIVE=y)
+        - kallsyms_seqs_of_names (6.9~)
         - ...
 
-        [Sample values]
-
-        [pattern]
-        CONFIG_KALLSYMS_BASE_RELATIVE=y && CONFIG_KALLSYMS_ABSOLUTE_PERCPU=n (v4.6~): use positive offset
-        CONFIG_KALLSYMS_BASE_RELATIVE=y && CONFIG_KALLSYMS_ABSOLUTE_PERCPU=y (v4.6~): use negative offset
-
-        [~v6.4]
-        kallsyms_offsets: 0xffffffff8b108550 (CONFIG_KALLSYMS_BASE_RELATIVE=y, CONFIG_KALLSYMS_ABSOLUTE_PERCPU=n, 64bit)
-        gef> hexdump -n dword 0xffffffff8b108550
+        [Sample values for 64bit ~6.3, CONFIG_KALLSYMS_ABSOLUTE_PERCPU=n (use positive offset)]
+        gef> hexdump -n dword kallsyms_offsets
         0xffffffff8b108550:    0x00000000 0x00000000 0x00001000 0x00002000    |  ............. ..  |
         0xffffffff8b108560:    0x00006000 0x0000b000 0x0000c000 0x00018000    |  .`..............  |
         0xffffffff8b108570:    0x00019000 0x00019008 0x00019010 0x00019020    |  ............ ...  |
         0xffffffff8b108580:    0x00019420 0x00019440 0x00019448 0x00019450    |   ...@...H...P...  |
 
-        kallsyms_offsets: 0xffffffffa72854b0 (CONFIG_KALLSYMS_BASE_RELATIVE=y, CONFIG_KALLSYMS_ABSOLUTE_PERCPU=y, 64bit)
-        gef> hexdump -n dword 0xffffffffa72854b0
+        [Sample values for 64bit ~6.3, CONFIG_KALLSYMS_ABSOLUTE_PERCPU=y (use negative offset)]
+        gef> hexdump -n dword kallsyms_offsets
         0xffffffffa72854b0:    0xffffffff 0xffffffff 0xffffffff 0xffffffbf    |  ................  |
         0xffffffffa72854c0:    0xffffffba 0xfffffeef 0xfffffdef 0xfffffddf    |  ................  |
         0xffffffffa72854d0:    0xfffffdcf 0xfffffa1f 0xfffff9cf 0xfffff9bf    |  ................  |
         0xffffffffa72854e0:    0xfffff99f 0xfffff8ff 0xfffff76f 0xfffff73f    |  ........o...?...  |
 
-        kallsyms_offsets: 0xc6c59370 (CONFIG_KALLSYMS_BASE_RELATIVE=y, CONFIG_KALLSYMS_ABSOLUTE_PERCPU=n, 32bit)
-        gef> hexdump -n dword 0xc6c59370
+        [Sample values for 32bit ~6.3, CONFIG_KALLSYMS_ABSOLUTE_PERCPU=n (use positive offset)]
+        gef> hexdump -n dword kallsyms_offsets
         0xc6c59370:    0x00000000 0x00000000 0x00000000 0x00000070    |  ............p...  |
         0xc6c59380:    0x00000080 0x000001d8 0x000002e0 0x00000320    |  ............ ...  |
         0xc6c59390:    0x00000360 0x000003a8 0x000003e8 0x000004a8    |  `...............  |
         0xc6c593a0:    0x000005a8 0x0000066c 0x0000073c 0x000007ac    |  ....l...<.......  |
 
-        [v6.4~]
-        kallsyms_token_index: 0xffffffff844fa178
-        gef> hexdump -n word 0xffffffff844fa178
+        [Sample values for 64bit 6.4~, CONFIG_KALLSYMS_ABSOLUTE_PERCPU=n (use positive offset)]
+        gef> hexdump -n word kallsyms_token_index
         0xffffffff844fa178:    0x0000 0x0003 0x0006 0x000a 0x0010 0x0013 0x0016 0x0019    |  ................  |
         0xffffffff844fa188:    0x001d 0x0029 0x002d 0x0030 0x0034 0x0037 0x003b 0x003e    |  ..).-.0.4.7.;.>.  |
         0xffffffff844fa198:    0x0041 0x0056 0x005a 0x005e 0x0061 0x0064 0x0067 0x006a    |  A.V.Z.^.a.d.g.j.  |
         ...
         0xffffffff844fa358:    0x0386 0x0389 0x038c 0x038f 0x0392 0x0395 0x0398 0x039b    |  ................  |
         0xffffffff844fa368:    0x039e 0x03a1 0x03a5 0x03a8 0x03ab 0x03ae 0x03b1 0x03b4    |  ................  |
-        kallsyms_offset: 0xffffffff844fa378
-        gef> hexdump -n dword 0xffffffff844fa378
+        gef> hexdump -n dword kallsyms_offset
         0xffffffff844fa378:    0x00000000 0x00000000 0x00001000 0x00002000    |  ............. ..  |
         0xffffffff844fa388:    0x00006000 0x0000b000 0x0000c000 0x00014000    |  .`...........@..  |
         ...
@@ -68970,16 +68957,15 @@ class KsymaddrRemoteCommand(GenericCommand):
         0xffffffff8461e45c:    0x00000000 0x81000000 0xffffffff 0x02fa0e02    |  ................  |
         relative_base_address: 0xffffffff81000000
 
-        kallsyms_token_index: 0xffffffff86744a38
-        gef> hexdump -n word 0xffffffff86744a38
+        [Sample values for 64bit 6.4~, CONFIG_KALLSYMS_ABSOLUTE_PERCPU=y (use negative offset)]
+        gef> hexdump -n word kallsyms_token_index
         0xffffffff86744a38:    0x0000 0x0004 0x000c 0x0010 0x0014 0x0017 0x001b 0x0020    |  .............. .  |
         0xffffffff86744a48:    0x002d 0x0034 0x0039 0x003d 0x0042 0x0045 0x0048 0x004b    |  -.4.9.=.B.E.H.K.  |
         0xffffffff86744a58:    0x004f 0x0053 0x005d 0x0060 0x0064 0x0067 0x006b 0x0072    |  O.S.].`.d.g.k.r.  |
         ...
         0xffffffff86744c18:    0x0338 0x033b 0x033e 0x0341 0x0349 0x034c 0x034f 0x0357    |  8.;.>.A.I.L.O.W.  |
         0xffffffff86744c28:    0x035a 0x035d 0x0360 0x0363 0x0369 0x036e 0x0372 0x0375    |  Z.].`.c.i.n.r.u.  |
-        kallsyms_offset: 0xffffffff86744c38
-        gef> hexdump -n dword 0xffffffff86744c38
+        gef> hexdump -n dword kallsyms_offset
         0xffffffff86744c38:    0xffffffff 0xffffffff 0xffffffff 0xffffffaf    |  ................  |
         0xffffffff86744c48:    0xffffffaa 0xfffffe9f 0xfffffe8f 0xfffffd8f    |  ................  |
         ...
@@ -69085,34 +69071,27 @@ class KsymaddrRemoteCommand(GenericCommand):
 
         [Positional relationship]
         - ...
-        - kallsyms_addresses (~v6.4, CONFIG_KALLSYMS_BASE_RELATIVE=n)
+        - kallsyms_addresses (~6.3, CONFIG_KALLSYMS_BASE_RELATIVE=n)
         - kallsyms_num_syms
         - kallsyms_names
         - kallsyms_markers
-        - kallsyms_seqs_of_names (v6.2~v6.8)
+        - kallsyms_seqs_of_names (6.2~6.8)
         - kallsyms_token_table
         - kallsyms_token_index
-        - kallsyms_offsets (v6.4~)
-        - kallsyms_relative_base (v6.4~)
-        - kallsyms_seqs_of_names (v6.9~)
+        - kallsyms_addresses (6.4~?, CONFIG_KALLSYMS_BASE_RELATIVE=n) # unimplemented yet because I have never seen this pattern.
+        - kallsyms_seqs_of_names (6.9~)
         - ...
 
-        [Sample values]
-
-        [pattern]
-        CONFIG_KALLSYMS_BASE_RELATIVE=n: use absolute address
-
-        [~v6.4]
-        kallsyms_addresses: 0xffffffff81ae3cb8 (CONFIG_KALLSYMS_BASE_RELATIVE=n, 64bit)
-        gef> hexdump -n qword 0xffffffff81ae3cb8
+        [Sample values for 64bit ~6.3]
+        gef> hexdump -n qword kallsyms_addresses
         0xffffffff81ae3cb8:    0x0000000000000000 0x0000000000000000    |  ................  |
         0xffffffff81ae3cc8:    0x0000000000004000 0x0000000000009000    |  .@..............  |
         ...
         0xffffffff81ae4588:    0xffffffff81000000 0xffffffff81000000    |  ................  |
         0xffffffff81ae4598:    0xffffffff81000110 0xffffffff810001a9    |  ................  |
 
-        kallsyms_addresses: 0xc1940888 (CONFIG_KALLSYMS_BASE_RELATIVE=n, 32bit)
-        gef> hexdump -n dword 0xc1940888
+        [Sample values for 32bit ~6.3]
+        gef> hexdump -n dword kallsyms_addresses
         0xc1940888:    0xc1000000 0xc1000000 0xc10000bc 0xc10000cc    |  ................  |
         0xc1940898:    0xc10000ed 0xc1000165 0xc10001e7 0xc1000239    |  ....e.......9...  |
         0xc19408a8:    0xc1000283 0xc10002c1 0xc10002d0 0xc1000302    |  ................  |
