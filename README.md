@@ -12,13 +12,7 @@
 * [Supported environment](#supported-environment)
 * [Supported mode](#supported-mode)
 * [Added / improved features](#added--improved-features)
-    * [Qemu-system cooperation - General](#qemu-system-cooperation---general)
-    * [Qemu-system cooperation - Arch specific](#qemu-system-cooperation---arch-specific)
-    * [Qemu-system cooperation - Linux specific - Basic](#qemu-system-cooperation---linux-specific---basic)
-    * [Qemu-system cooperation - Linux specific - Symbol](#qemu-system-cooperation---linux-specific---symbol)
-    * [Qemu-system cooperation - Linux specific - Allocator](#qemu-system-cooperation---linux-specific---allocator)
-    * [Qemu-system cooperation - Linux specific - Advanced](#qemu-system-cooperation---linux-specific---advanced)
-    * [Qemu-system cooperation - Linux specific - Other](#qemu-system-cooperation---linux-specific---other)
+    * [Qemu-system cooperation](#qemu-system-cooperation)
     * [Qemu-user cooperation](#qemu-user-cooperation)
     * [Heap dump features](#heap-dump-features)
     * [Improved features](#improved-features)
@@ -46,7 +40,7 @@ wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sed -e
 * To simplify the installation script, GEF (`gef.py`) is installed to a fixed path (`/root/.gdbinit-gef.py`).
 * Also, it registers the GEF path to `/root/.gdbinit`.
 * If you want to change the location, please modify both yourself.
-    * NOTE: Do not include a tilde (`~`) when describing the GEF path in `.gdbinit`. See [docs/FAQ.md](https://github.com/bata24/gef/blob/dev/docs/FAQ.md#the-command-to-get-the-source-eg-ptr-mangle---source-doesnt-work) to get more informations.
+    * NOTE: Do not include a tilde (`~`) when describing the GEF path in `.gdbinit`. See [docs/FAQ.md](https://github.com/bata24/gef/blob/dev/docs/FAQ.md#the-command-to-get-the-source-eg-ptr-mangle---source-doesnt-work) for the reason.
 
 ### Install (Ubuntu 22.04 or before)
 ```bash
@@ -82,16 +76,16 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 * Connect to the gdb stub of `Intel Pin`
 * Connect to the gdb stub of `Intel SDE`
 * Connect to the gdb stub of `qiling framework`
-* Connect to the gdb stub of `KGDB` (need gdb 12)
+* Connect to the gdb stub of `KGDB` (need gdb 12~)
 * Connect to the gdb stub of `VMWare`
-* Record and replay debugging (`rr replay`)
 * Connect to the gdb stub of `wine`
+* Record and replay debugging (`rr replay`)
 
 See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORTED-MODE.md) for detail.
 
 ## Added / improved features
 
-### Qemu-system cooperation - General
+### Qemu-system cooperation
 * `pagewalk`: scans physical memory, parses page tables, and displays memory maps.
     * x64 (Supported: 4-Level/5-Level Paging)
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-x64.png)
@@ -123,8 +117,6 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * It is the result of `info registers` with filtering general registers.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/sysreg.png)
 * `qemu-device-info`: dumps device information for qemu-escape (WIP).
-
-### Qemu-system cooperation - Arch specific
 * `msr`: reads/writes MSR (Model Specific Registers) value by embedding/executing dynamic assembly.
     * Supported on only x64 and x86.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/msr.png)
@@ -146,15 +138,11 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * `pac-keys`: pretty prints ARM64 PAC keys.
     * Supported on only ARM64.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pac-keys.png)
-
-### Qemu-system cooperation - Linux specific - Basic
 * `kbase`: displays the kernel base address.
 * `kversion`: displays the kernel version.
 * `kcmdline`: displays the kernel cmdline used at boot time.
 * `kcurrent`: displays current task address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbase-kversion-kcmdline-kcurrent.png)
-
-### Qemu-system cooperation - Linux specific - Symbol
 * `ksymaddr-remote`: displays kallsyms information from scanning kernel memory.
     * Supported kernel versions: 3.x to 6.9.x.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote.png)
@@ -165,8 +153,6 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * `vmlinux-to-elf-apply` and `ksymaddr-remote-apply` provide almost the same functionality.
         * `vmlinux-to-elf-apply`: Requires installation of external tools. Create `vmlinux` with symbols.
         * `ksymaddr-remote-apply`: Requires no external tools. Create an blank ELF with only embedded symbols.
-
-### Qemu-system cooperation - Linux specific - Allocator
 * `slub-dump`: dumps slub free-list.
     * Supported on x64/x86/ARM64/ARM + SLUB + no-symbol + kASLR.
     * Supported on both `CONFIG_SLAB_FREELIST_HARDENED` is `y` or `n`.
@@ -197,8 +183,6 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-tracer.png)
 * `kmalloc-allocated-by`: calls a predefined set of system calls and prints structures allocated by kmalloc or freed by kfree.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-allocated-by.png)
-
-### Qemu-system cooperation - Linux specific - Advanced
 * `kmagic`: displays useful addresses in kernel.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmagic.png)
 * `kchecksec`: checks kernel security.
@@ -259,8 +243,6 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kirq.png)
 * `knetdev`: displays net devices.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/knetdev.png)
-
-### Qemu-system cooperation - Linux specific - Other
 * `ksearch-code-ptr`: searches the code pointer in kernel data area.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksearch-code-ptr.png)
 * `pagewalk-with-hints`: prints pagetables with description.
@@ -272,11 +254,11 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/usermodehelper-tracer.png)
 
 ### Qemu-user cooperation
-* `si`/`ni`: are the wrapper for native `si`/`ni`.
+* `si`/`ni`: are the wrapper for native `si`/`ni` if OpenRISC or cris.
     * On OpenRISC architecture, branch operations don't work well, so use breakpoints to simulate.
-    * On Cris architecture, `stepi`/`nexti` commands don't work well, so use breakpoints to simulate.
+    * On cris architecture, `stepi`/`nexti` commands don't work well, so use breakpoints to simulate.
     * If you want to use native `si`/`ni`, use the full form `stepi`/`nexti`.
-* `c`: is the wrapper for native `c`.
+* `c`: is the wrapper for native `c` if gdb is connected to qemu-user or intel pin.
     * When connecting to gdb stub of qemu-user or Intel Pin, gdb does not trap SIGINT during `continue`.
     * If you want to trap, you need to issue SIGINT on the qemu-user or pin side, but switching screens is troublesome.
     * This command realizes a pseudo SIGINT trap by trapping SIGINT on the python side and throwing SIGINT back to qemu-user or Intel Pin.

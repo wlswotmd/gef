@@ -117,8 +117,10 @@ I don't really understand the reason for this.
 
 * Get `glibc` source
     * `sed -i -e "s/^# deb-src/deb-src/g" /etc/apt/sources.list`
+        * This is invalid on ubuntu 24.04. See [here](https://askubuntu.com/questions/1512042/).
     * `cd /usr/lib/debug && apt update && apt source libc6`
     * `echo "directory /usr/lib/debug/glibc-2.38" >> ~/.gdbinit`
+        * Need to fix version for your enviroment.
 
 * Also add `glibc` symbols
     * `apt install libc6-dbg`
