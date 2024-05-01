@@ -235,7 +235,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kpcidev.png)
 * `kipcs`: dumps IPCs information (System V semaphore, message queue and shared memory).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kipcs.png)
-* `kdevio`: dumps I/O-port and I/O-memory informations.
+* `kdevio`: dumps I/O-port and I/O-memory information.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kdevio.png)
 * `kdmabuf`: dumps DMA-BUF information.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kdmabuf.png)
@@ -348,7 +348,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * It also shows the symbol if available.
     * It supports some new options: `--is-addr`, `--is-not-addr`, `--uniq`, `--depth`, `--slab-contains`, `--slab-contains-unaligned`, `--phys` and `--tag`.
 * `proc-info`: is improved.
-    * It displays some additional informations.
+    * It displays some additional information.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/proc-info.png)
 * `elf-info`: is improved.
     * It displays Program Header and Section Header.
@@ -360,7 +360,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * It also supports kernel debugging.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xinfo.png)
 * `checksec`: is improved.
-    * It shows additional informations.
+    * It shows additional information.
         * Static or Dynamic or Static-PIE
         * Stripped or not
         * Debuginfo or not
@@ -554,7 +554,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * `syscall-search`: searches system call by regex.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/syscall-search.png)
 * `syscall-sample`: shows the syscall calling sample for specified architecture.
-* `dwarf-exception-handler`: dumps the DWARF exception handler informations.
+* `dwarf-exception-handler`: dumps the DWARF exception handler information.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dwarf-exception-handler.png)
 * `magic`: displays useful addresses in glibc etc.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/magic.png)
@@ -620,7 +620,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 ### Other
 * The category is introduced in `gef help`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-help.png)
-* Combined into one file (from gef-extra). The followings are moved from gef-extras.
+* Combined into one file (from gef-extra). The following are moved from gef-extras.
     * `peek-pointers`, `current-stack-frame`, `xref-telescope`, `bytearray`, and `bincompare`.
     * This is because a single file is more attractive than ease of maintenance.
 * The system-call table used by `syscall-args` is moved from gef-extras.

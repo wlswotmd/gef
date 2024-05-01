@@ -166,7 +166,7 @@ However, currently the build fails or crashes when executed, so it is unable to 
         * `export CFLAGS="-Wno-error"`
         * `./configure --target-list=cskyv1-linux-user,cskyv1eb-linux-user,cskyv2-linux-user,cskyv2eb-linux-user --disable-bpf && make && cp build/qemu-cskyv{1,2}{,eb} /usr/local/bin`
         * It needs `-cpu` option like `qemu-cskyv2 -cpu ck810 -g 1234 ./a.out`.
-        * When the binary is executed, an assertion error is occured.
+        * When the binary is executed, an assertion error is occurred.
     * gdb: build from latest. See [docs/FAQ](https://github.com/bata24/gef/blob/dev/docs/FAQ.md#gdb-will-not-load-gef).
 
 

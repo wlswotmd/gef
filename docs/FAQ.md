@@ -75,7 +75,7 @@ make && make install
 ```
 
 ## If I use `install-minimal.sh`, which commands will no longer be available?
-Followings are the breakdown. It may not be comprehensive.
+Following are the breakdown. It may not be comprehensive.
 
 If you install with `install-minimal.sh`, you will not be able to use these commands unless you install the required packages and tools.
 
@@ -120,7 +120,7 @@ I don't really understand the reason for this.
         * This is invalid on ubuntu 24.04. See [here](https://askubuntu.com/questions/1512042/).
     * `cd /usr/lib/debug && apt update && apt source libc6`
     * `echo "directory /usr/lib/debug/glibc-2.38" >> ~/.gdbinit`
-        * Need to fix version for your enviroment.
+        * Need to fix version for your environment.
 
 * Also add `glibc` symbols
     * `apt install libc6-dbg`
@@ -151,7 +151,7 @@ GEF always uses its own resolved address with `ksymaddr-remote`.
 It also performs its own heuristic structure member detection in each command.
 
 ## Does GEF support i386 16-bit mode (real mode)?
-Yes, GEF suuports real mode experimentally.
+Yes, GEF supports real mode experimentally.
 
 `qemu-system-x86_64` cannot be used, use `qemu-system-i386`.
 Explicitly specify the i8086 architecture before connecting: `gdb -ex 'set architecture i8086' -ex 'target remote localhost:1234'`.
@@ -306,8 +306,8 @@ I modified it to `source /root/.gdbinit-gef.py`, then it worked.
 ## How does GEF implement kernel analysis related commands without symbols?
 Internally, it consists of several steps.
 
-1. Enumerate memory map informations from the page table structure.
-2. Detect `.rodata` area of kernel from memory map informations.
+1. Enumerate memory map information from the page table structure.
+2. Detect `.rodata` area of kernel from memory map information.
 3. Scan `.rodata` to identify the kernel version.
 4. Parse the structure of `kallsyms` in `.rodata` and get all "symbol and address" pairs.
 5. If global variable symbols are available at this point, use it. (= `CONFIG_KALLSYMS_ALL=y`).
@@ -368,7 +368,7 @@ If you want the complete list, run `gef pyobj-list`.
 ## I want to add a command, how do I get started?
 Copy and paste the `TemplateCommand` class and edit it as you like.
 
-Followings are some notes.
+Following are some notes.
 * Class name
     * Rename the newly added command class to any name you like.
     * Make sure to end it with `...Command`.

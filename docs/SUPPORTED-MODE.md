@@ -14,7 +14,7 @@
     * It works with any version qemu-system, but latest version is recommended.
     * It is preferable to run qemu-system on `localhost`.
         * If you run qemu-system on remotely (another host), you can not handle SecureWorld's memory.
-    * See [docs/FAQ.md](https://github.com/bata24/gef/blob/dev/docs/FAQ.md) for more informations.
+    * See [docs/FAQ.md](https://github.com/bata24/gef/blob/dev/docs/FAQ.md) for more information.
 
 ## With qemu-user
 * Usage
@@ -67,7 +67,7 @@
         * Build the kernel with configurations such as `CONFIG_KGDB=y`. Ubuntu has supported it by default.
         * Edit `/etc/default/grub` and append `kgdboc=ttyS0,115200 kgdbwait` to the end of `GRUB_CMDLINE_LINUX_DEFAULT`.
         * Then `update-grub && reboot`.
-        * See [official documentation](https://www.kernel.org/doc/html/latest/dev-tools/kgdb.html) for more informations.
+        * See [official documentation](https://www.kernel.org/doc/html/latest/dev-tools/kgdb.html) for more information.
     * Debugger
         * Attach with `gdb-multiarch -ex 'target remote /dev/ttyS0'`.
 * Supported architectures

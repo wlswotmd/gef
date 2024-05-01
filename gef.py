@@ -82,6 +82,10 @@
 # E731: do not assign a lambda expression, use a def
 #   -> It can be written more cleanly using lambdas.
 #
+#######################################################################################
+# Use this command when check by codespell
+# codespell gef.py
+#
 
 
 print("Loading GEF...")
@@ -12255,7 +12259,7 @@ def hook_stop_handler(event):
     if context_flag:
         gdb.execute("context")
 
-    # Message if file not loaded.
+    # Message if file is not loaded.
     if __gef_check_once__:
         if not (is_qemu_system() or is_kgdb() or is_vmware()):
             if not gdb.current_progspace().filename:
@@ -12311,7 +12315,7 @@ def load_libc_args():
 
     path = get_gef_setting("context.libc_args_path")
     if path is None:
-        warn("Config `context.libc_args_path` not set but `context.libc_args` is True. Make sure you have `gef-extras` installed")
+        warn("Config `context.libc_args_path` is not set but `context.libc_args` is True. Make sure you have `gef-extras` installed")
         return
 
     path = os.path.realpath(os.path.expanduser(path))
@@ -17036,7 +17040,7 @@ class EditFlagsCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("flagname", metavar="[FLAGNAME(+|-|~) ...]", nargs="*", help="the flag name you want to edit.")
-    parser.add_argument("-v", "--verbose", action="store_true", help="show the bit informations of the flag register.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="show the bit information of the flag register.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}            # show the flag register\n".format(_cmdline_)
@@ -18754,7 +18758,7 @@ class UnicornEmulateCommand(GenericCommand):
         elif nb_gadget is not None:
             self.run_unicorn(start_insn, 0, **kwargs)
         else:
-            err("Invalid argumetns")
+            err("Invalid arguments")
         return
 
 
@@ -23160,7 +23164,7 @@ class KernelChecksecCommand(GenericCommand):
 
 @register_command
 class DwarfExceptionHandlerInfoCommand(GenericCommand):
-    """Dump the DWARF exception handler informations with the byte code itself."""
+    """Dump the DWARF exception handler information with the byte code itself."""
     _cmdline_ = "dwarf-exception-handler"
     _category_ = "02-e. Process Information - Complex Structure Information"
 
@@ -25338,7 +25342,7 @@ class ContextCommand(GenericCommand):
         self.add_setting("libc_args", False, "Show libc function call args description")
         self.add_setting("libc_args_path", "", "Path to libc function call args json files, provided via gef-extras")
         self.add_setting("smart_cpp_function_name", False, "Print cpp function name without args if demangled")
-        self.add_setting("use_native_x_command", False, "Use x/16i insted of gdb_disasembe/capstone")
+        self.add_setting("use_native_x_command", False, "Use x/16i instead of gdb_disassemble/capstone")
         self.add_setting("use_capstone", False, "Use capstone as disassembler in the code pane (instead of GDB)")
         self.add_setting("enable_auto_switch_for_i8086", True, "Enable auto architecture switching for i8086 <-> x86-32.")
 
@@ -28008,7 +28012,7 @@ class DereferenceCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}                             # dereference $sp 64\n".format(_cmdline_)
-    _example_ += "{:s} $sp 20                      # specifiy location and number of elements to display\n".format(_cmdline_)
+    _example_ += "{:s} $sp 20                      # specify location and number of elements to display\n".format(_cmdline_)
     _example_ += "{:s} $sp -20                     # display memory backwards\n".format(_cmdline_)
     _example_ += "{:s} --reverse $sp 20            # display reverse order\n".format(_cmdline_)
     _example_ += "{:s} --depth 2 $sp 20            # display recursively if valid aligned address\n".format(_cmdline_)
@@ -30108,7 +30112,7 @@ class DynamicCommand(GenericCommand):
                 return
 
             if get_section_base_address(filename) is None:
-                err("{:s} is not loeaded.".format(filename))
+                err("{:s} is not loaded.".format(filename))
                 return
 
             try:
@@ -45857,7 +45861,7 @@ class SeccompCommand(GenericCommand):
 
 @register_command
 class SysregCommand(GenericCommand):
-    """Pretty-print system registers (not general parpose) from `info regiser`."""
+    """Pretty-print system registers (not general parpose) from `info register`."""
     _cmdline_ = "sysreg"
     _category_ = "04-a. Register - View"
 
@@ -46468,7 +46472,7 @@ class FpuCommand(GenericCommand):
         bit_info = [
             [12, "X", "Infinity Control"],
             [[10, 11], "RC", "Rounding Control", "00: Round To Nearest, 01: Round Negative, 10: Round Positive, 11: Round To Zero"],
-            [[8, 9], "PC", "Precision Control", "00: Signle Precison, 01: Reserved, 10: Double Precision, 11: Double-Extended Precision"],
+            [[8, 9], "PC", "Precision Control", "00: Single Precision, 01: Reserved, 10: Double Precision, 11: Double-Extended Precision"],
             [5, "PM", "Precision Exception Mask"],
             [4, "UM", "Underflow Exception Mask"],
             [3, "OM", "Overflow Exception Mask"],
@@ -49725,7 +49729,7 @@ class KernelAddressHeuristicFinder:
             elif is_x86_32():
                 addr = get_ksymaddr("arch_setup_additional_pages")
                 if addr:
-                    # pattren 1
+                    # pattern 1
                     res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                     g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "eax", read_valid=True)
                     for x in g:
@@ -58314,12 +58318,12 @@ class KernelPciDeviceCommand(GenericCommand):
             self.out.append(fmt.format(dev, dev_name, base_class, sub_class, prgif, vendor, device, sub_vendor, sub_device, revision, desc))
 
             if self.verbose:
-                # parse resouce
+                # parse resource
                 i = 0
                 while True:
                     resource_i = dev + self.offset_pci_dev_resource + self.sizeof_resource * i
 
-                    # parse resouce name
+                    # parse resource name
                     resource_i_name = read_int_from_memory(resource_i + 8 * 2)
                     if not is_valid_addr(resource_i_name):
                         break
@@ -59329,7 +59333,7 @@ class SyscallTableViewCommand(GenericCommand):
 
 
 class ExecAsm:
-    """Execute embeded asm. e.g.: ExecAsm(asm_op_list).exec_code().
+    """Execute embedded asm. e.g.: ExecAsm(asm_op_list).exec_code().
     WARNING: Disable `-enable-kvm` option for qemu-system; If set, this code will crash the guest OS."""
     def __init__(self, _codes, regs=None, step=None, debug=False):
         self.stdout = 1
@@ -59476,7 +59480,7 @@ class ExecAsm:
 
 
 class ExecSyscall(ExecAsm):
-    """Execute embeded asm for syscall. e.g.: ExecSyscall(nr, args).exec_code().
+    """Execute embedded asm for syscall. e.g.: ExecSyscall(nr, args).exec_code().
     WARNING: Disable `-enable-kvm` option for qemu-system; If set, this code will crash the guest OS."""
     def __init__(self, nr, args, debug=False):
         self.stdout = 1
@@ -59572,7 +59576,7 @@ class ExecSyscall(ExecAsm):
 
 @register_command
 class TlsCommand(GenericCommand):
-    """Display TLS base address. Rquires glibc."""
+    """Display TLS base address. Requires glibc."""
     _cmdline_ = "tls"
     _category_ = "02-b. Process Information - Base Address"
 
@@ -60760,7 +60764,7 @@ class MemoryInsertCommand(GenericCommand):
 
 @register_command
 class HashMemoryCommand(GenericCommand):
-    """Caluculate memory hash and CRC."""
+    """Calculate memory hash and CRC."""
     _cmdline_ = "hash-memory"
     _category_ = "03-d. Memory - Calculation"
 
@@ -61450,7 +61454,7 @@ class IiCommand(GenericCommand):
     _category_ = "01-e. Debugging Support - Assemble"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address, help="the dump start adress.")
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address, help="the dump start address.")
     parser.add_argument("-l", "--length", type=parse_address, default=50, help="the dump instruction length.")
     _syntax_ = parser.format_help()
 
@@ -61602,11 +61606,11 @@ class SlubDumpCommand(GenericCommand):
                         help="telescope `unused (freed) chunks` if layout is resolved.")
     parser.add_argument("--skip-page2virt", action="store_true", help="used internally in gef, please don't use it.")
     parser.add_argument("--no-xor", action="store_true",
-                        help="skip xor to chunk->next. it is used when `kmem_cache.random` is falsely detected (for developper).")
+                        help="skip xor to chunk->next. it is used when `kmem_cache.random` is falsely detected (for developer).")
     parser.add_argument("--offset-random", type=lambda x: int(x, 16),
-                        help="specified offsetof(kmem_cache, random). it is used when `kmem_cache.random` is falsely detected (for developper).")
+                        help="specified offsetof(kmem_cache, random). it is used when `kmem_cache.random` is falsely detected (for developer).")
     parser.add_argument("--no-byte-swap", action="store_true", default=None,
-                        help="skip byteswap to chunk->next. it is used when `kmem_cache.random` is falsely detected (for developper).")
+                        help="skip byteswap to chunk->next. it is used when `kmem_cache.random` is falsely detected (for developer).")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", "--partial", action="store_true", help="dump partial pages")
     parser.add_argument("-vv", "--vverbose", "--node", action="store_true", help="dump partial pages and node pages.")
@@ -61934,11 +61938,11 @@ class SlubDumpCommand(GenericCommand):
                     if len(seen) < 10:
                         found = False
 
-                    # Ocurrences of non-negative small integers are stochastically rare.
+                    # Occurrences of non-negative small integers are stochastically rare.
                     elif sum([0 < x < 0x100000 for x in seen]) >= 3:
                         found = False
 
-                    # Ocurrences of big integers are stochastically rare.
+                    # Occurrences of big integers are stochastically rare.
                     elif sum([0xffff000000000000 < x <= 0xffffffffffffffff for x in seen]) >= 3:
                         found = False
 
@@ -62380,7 +62384,7 @@ class SlubDumpCommand(GenericCommand):
 
         # print virtual address
         if page["virt_addr"] is None:
-            self.out.append("        virutal address: ???")
+            self.out.append("        virtual address: ???")
         else:
             colored_virt_addr = Color.colorify_hex(page["virt_addr"], heap_page_color)
             self.out.append("        virtual address: {:s}".format(colored_virt_addr))
@@ -63120,7 +63124,7 @@ class SlubTinyDumpCommand(GenericCommand):
 
         # print virtual address
         if page["virt_addr"] is None:
-            self.out.append("        virutal address: ???")
+            self.out.append("        virtual address: ???")
         else:
             colored_virt_addr = Color.colorify_hex(page["virt_addr"], heap_page_color)
             self.out.append("        virtual address: {:s}".format(colored_virt_addr))
@@ -64778,7 +64782,7 @@ class BuddyDumpCommand(GenericCommand):
     parser.add_argument("-m", "--mtype", action="append", type=int, help="filter by specified mtype.")
     parser.add_argument("--sort", action="store_true",
                         help="sort by page address instead of link list order of each size. filter options are ignored.")
-    parser.add_argument("--sort-verbose", action="store_true", help="enable --sort and add informations of used area.")
+    parser.add_argument("--sort-verbose", action="store_true", help="enable --sort and add information of used area.")
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
@@ -66751,7 +66755,7 @@ class KernelIpcsCommand(GenericCommand):
 
 @register_command
 class KernelDeviceIOCommand(GenericCommand):
-    """Dump I/O-port and I/O-memory informations."""
+    """Dump I/O-port and I/O-memory information."""
     _cmdline_ = "kdevio"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -66966,7 +66970,7 @@ class KernelDeviceIOCommand(GenericCommand):
 
 @register_command
 class KernelDmaBufCommand(GenericCommand):
-    """Dump DMA-BUF informations."""
+    """Dump DMA-BUF information."""
     _cmdline_ = "kdmabuf"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -67294,7 +67298,7 @@ class KernelDmaBufCommand(GenericCommand):
 
 @register_command
 class KernelIrqCommand(GenericCommand):
-    """Dump IRQ (interrupt request) informations."""
+    """Dump IRQ (interrupt request) information."""
     _cmdline_ = "kirq"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -67730,7 +67734,7 @@ class KernelIrqCommand(GenericCommand):
 
 @register_command
 class KernelNetDeviceCommand(GenericCommand):
-    """Dump net device informations."""
+    """Dump net device information."""
     _cmdline_ = "knetdev"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -68761,9 +68765,9 @@ class KsymaddrRemoteCommand(GenericCommand):
 
             # 2: check the table (kallsyms_names) entirely.
             # Each element of kallsyms_names consists of {number of tokens, tokens[number of tokens]}.
-            # tokens[0][0] is symbole type.
+            # tokens[0][0] is symbol type.
             #
-            # The following is an example of last elemnts of kallsyms_names.
+            # The following is an example of last elements of kallsyms_names.
             # gef> x/24xb 0xffffffffb46b4b48-0x10
             # 0xffffffffb46b4b38: 0xf5   0x0c*  0x44   0xff   0xf5   0x8d   0x73   0x63 (*: start of last valid elements)
             # 0xffffffffb46b4b40: 0x72   0xe8   0xbf   0x5f   0xee   0x64*  0x00** 0x00 (*: end of last valid elements, **: end marker)
@@ -69740,7 +69744,7 @@ class TcmallocDumpCommand(GenericCommand):
                     break
             # corrupted length check
             if length != real_length and error is False:
-                chunklist_string += " (length currupted)"
+                chunklist_string += " (length corrupted)"
                 error = True
             # print
             chunksize = self.index_to_size(freelist, idx)
@@ -70475,8 +70479,8 @@ class PartitionAllocDumpCommand(GenericCommand):
         roots = []
         for maps in chromium_rw_maps:
             # explode to each qword (if 64 bit arch) or dword (if 32 bit arch)
-            datas = slice_unpack(read_memory(maps.page_start, maps.size), current_arch.ptrsize)
-            addrs = list(range(maps.page_start, maps.page_end, current_arch.ptrsize))
+            data_list = slice_unpack(read_memory(maps.page_start, maps.size), current_arch.ptrsize)
+            addr_list = list(range(maps.page_start, maps.page_end, current_arch.ptrsize))
 
             """
             https://source.chromium.org/chromium/chromium/src/+/main:third_party/blink/renderer/platform/wtf/allocator/partitions.cc
@@ -70496,7 +70500,7 @@ class PartitionAllocDumpCommand(GenericCommand):
             0x646ce5804b00 <WTF::Partitions::InitializeArrayBufferPartition()::array_buffer_allocator>:     0x0000000000000001
             """
             # check consecutive quadruples
-            for addr, data in zip(n_gram(addrs, 4), n_gram(datas, 4)):
+            for addr, data in zip(n_gram(addr_list, 4), n_gram(data_list, 4)):
                 # root pointer address and root address are close (see above example)
                 if data[0] != 0 and (addr[0] & mask) != (data[0] & mask):
                     # fast_malloc_root_ may be zero. but if non-zero, it holds address close to itself
@@ -72457,11 +72461,11 @@ class XStringCommand(GenericCommand):
             size = gef_getpagesize() - (address & gef_getpagesize_mask_low())
             s = b""
             while True:
-                # check accessiblity
+                # check accessibility
                 if not is_valid_addr(current):
                     break
 
-                # read stirng
+                # read string
                 s += read_memory(current, size)
                 pos = s.find(b"\0")
                 if pos != -1:
@@ -73593,7 +73597,7 @@ class CpuidCommand(GenericCommand):
             self.out.append(c(ebx,  8, 1,          "        EBX     8: BMI2 (Bit Manipulation Instructions 2)"))
             self.out.append(c(ebx,  9, 1,          "        EBX     9: ERMS (Enhanced REP MOVSB/STOSB)"))
             self.out.append(c(ebx, 10, 1,          "        EBX    10: INVPCID (INVPCID instruction)"))
-            self.out.append(c(ebx, 11, 1,          "        EBX    11: RTM (Restricted Transactional Memor)"))
+            self.out.append(c(ebx, 11, 1,          "        EBX    11: RTM (Restricted Transactional Memory)"))
             self.out.append(c(ebx, 12, 1,          "        EBX    12: PQM (Platform QoS Monitoring)"))
             self.out.append(c(ebx, 13, 1,          "        EBX    13: x87 FPU CS and DS deprecated"))
             self.out.append(c(ebx, 14, 1,          "        EBX    14: MPX (Memory Protection eXtensions)"))
@@ -73904,7 +73908,7 @@ class CpuidCommand(GenericCommand):
             self.out.append(c(eax,  0, 1,          "        EAX     0: SVM (Shared Virtual Memory)"))
             self.out.append(c(eax,  1, 0x7fffffff, "        EAX 31- 1: Reserved"))
         elif id == 0x40000009:
-            self.out.append("Nested hypervisor feature indentification")
+            self.out.append("Nested hypervisor feature identification")
             self.out.append(c(eax,  0, 1,          "        EAX     0: Reserved"))
             self.out.append(c(eax,  1, 1,          "        EAX     1: Reserved"))
             self.out.append(c(eax,  2, 1,          "        EAX     2: Synthetic Timer"))
@@ -73923,7 +73927,7 @@ class CpuidCommand(GenericCommand):
             self.out.append(c(edx, 17, 1,          "        EDX    17: Soft interrupt polling mode available"))
             self.out.append(c(edx, 18, 0x3fff,     "        EDX 31-18: Reserved"))
         elif id == 0x4000000a:
-            self.out.append("Nested hypervisor feature indentification")
+            self.out.append("Nested hypervisor feature identification")
             self.out.append(c(eax,  0, 0x1ffff,    "        EAX 16- 0: Reserved"))
             self.out.append(c(eax, 17, 1,          "        EAX    17: Direct virtual flush hypercalls"))
             self.out.append(c(eax, 18, 1,          "        EAX    18: Flush GPA space and list hypercalls"))
@@ -74442,7 +74446,7 @@ class PacKeysCommand(GenericCommand):
 
 
 class PrintBitInfo:
-    """Printing various bit informations of the register"""
+    """Printing various bit information of the register"""
 
     def __init__(self, name, register_bit=None, bit_info=(), desc=None):
         self.name = name
@@ -74579,7 +74583,7 @@ class PrintBitInfo:
 
 @register_command
 class QemuRegistersCommand(GenericCommand):
-    """Get regisers via qemu-monitor and shows the detail of x64/x86 system registers."""
+    """Get registers via qemu-monitor and shows the detail of x64/x86 system registers."""
     _cmdline_ = "qreg"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -74682,7 +74686,7 @@ class QemuRegistersCommand(GenericCommand):
 
         # XCR0
         self.out.append(titlify("XCR0 (Extended Control Register 0)"))
-        desc = "Contain taks priority level"
+        desc = "Contain task priority level"
         bit_info = [
             [19, "APX", "Extended GPRs (R16 through R31)"],
             [18, "AMX_TILEDATA", "Advanced Matrix Extensions Tile Data"],
@@ -74729,7 +74733,7 @@ class QemuRegistersCommand(GenericCommand):
         self.out.append(titlify("DR6 (Debug Status Register 6)"))
         desc = "It permits the debugger to determine which debug conditions have occurred"
         bit_info = [
-            [16, "RTM", "restricted transactional memory", "If 0, the debug exception or breakpoint exception occured inside an RTM region"],
+            [16, "RTM", "restricted transactional memory", "If 0, the debug exception or breakpoint exception occurred inside an RTM region"],
             [15, "BT", "task switch", "If 1, the debug instruction resulted from a task switch where TSS.T of target task was set"],
             [14, "BS", "single step", "If 1, the debug exception was triggered by the single-step execution mode (enabled with EFLAGS.TF)"],
             [13, "BD", "debug register access detected", "If 1, the next instruction accesses one of the debug registers"],
@@ -79019,7 +79023,7 @@ class PagewalkWithHintsCommand(GenericCommand):
                 prev_key, prev_r = key, r
                 continue
 
-            # not macth, so append
+            # not match, so append
             if prev_r.addr_end != r.addr_start:
                 new_regions[prev_key] = prev_r
                 prev_key, prev_r = key, r
@@ -79242,7 +79246,7 @@ class PagewalkWithHintsCommand(GenericCommand):
                 continue
             if region.perm != "rw-":
                 continue
-            if region.size >= 0x200000: # heuristic threashold
+            if region.size >= 0x200000: # heuristic threshold
                 continue
             current = region.addr_start
             while current < region.addr_end:
@@ -80169,7 +80173,7 @@ class Phys2PageCommand(GenericCommand):
 
 @register_command
 class QemuDeviceInfoCommand(GenericCommand):
-    """Dump device inforamtion for qemu-escape."""
+    """Dump device information for qemu-escape."""
     _cmdline_ = "qemu-device-info"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -80775,8 +80779,8 @@ class ExecUntilKeywordReCommand(ExecUntilCommand):
     _syntax_ = parser.format_help()
 
     _example_ = '{:s} "call +r[ab]x"                        # execute until specified keyword\n'.format(_cmdline_)
-    _example_ += '{:s} "(push|pop) +(r[a-d]x|r[ds]i|r[sb]p)" # another exsample\n'.format(_cmdline_)
-    _example_ += '{:s} "mov +rax, QWORD PTR \\\\["             # another exsample (need double escape)'.format(_cmdline_)
+    _example_ += '{:s} "(push|pop) +(r[a-d]x|r[ds]i|r[sb]p)" # another example\n'.format(_cmdline_)
+    _example_ += '{:s} "mov +rax, QWORD PTR \\\\["             # another example (need double escape)'.format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=False)
@@ -80808,7 +80812,7 @@ class ExecUntilCondCommand(ExecUntilCommand):
     parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
     parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
     parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
-    parser.add_argument("condition", metavar="CONDITION", help="filter by codition.")
+    parser.add_argument("condition", metavar="CONDITION", help="filter by condition.")
     _syntax_ = parser.format_help()
 
     _example_ = '{:s} "$rax==0xdead && $rbx==0xcafe"    # execute until specified condition is filled\n'.format(_cmdline_)
@@ -81551,7 +81555,7 @@ class KmallocTracerCommand(GenericCommand):
             bp.enabled = True
 
         # doit
-        info("Setup is complete. continueing...")
+        info("Setup is complete. continuing...")
         gdb.execute("continue")
 
         # clean up
@@ -82906,7 +82910,7 @@ class KmallocAllocatedByCommand(GenericCommand):
 
         # wait to stop at userland `sleep` process
         gdb.execute("context off")
-        info("Setup is complete. continueing...")
+        info("Setup is complete. continuing...")
         gdb.execute("continue")
 
         # here, stop in userland `sleep` process
@@ -83414,7 +83418,7 @@ class UefiOvmfInfoCommand(GenericCommand):
         gef_print("Unimplemented")
         gef_print(titlify("PEI (Pre EFI Initialization) phase variables"))
         self.dump_gPs()
-        gef_print(titlify("DXE (Driver Exectuion Environment) phase variables"))
+        gef_print(titlify("DXE (Driver Execution Environment) phase variables"))
         self.dump_mBootServices()
         self.dump_mDxeServices()
         self.dump_mEfiSystemTable()
@@ -83732,7 +83736,7 @@ class WalkLinkListCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-o", dest="next_offset", type=parse_address, default=0,
-                        help="offset of the next(or prev) poiter in the target structure.")
+                        help="offset of the next(or prev) pointer in the target structure.")
     parser.add_argument("-A", dest="dump_bytes_after", type=parse_address, default=0,
                         help="dump bytes after link-list location.")
     parser.add_argument("-B", dest="dump_bytes_before", type=parse_address, default=0,
@@ -84155,9 +84159,9 @@ class BincompareCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("filename", metavar="FILENAME", help="specifies the binary file to be compared")
-    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="sepecifies the memory address.")
-    parser.add_argument("size", metavar="SIZE", nargs="?", type=parse_address, help="sepecifies the size.")
-    parser.add_argument("--file-offset", type=parse_address, help="sepecifies the file offset.")
+    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="specifies the memory address.")
+    parser.add_argument("size", metavar="SIZE", nargs="?", type=parse_address, help="specifies the size.")
+    parser.add_argument("--file-offset", type=parse_address, help="specifies the file offset.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
