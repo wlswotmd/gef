@@ -72063,6 +72063,13 @@ class UclibcNgHeapDumpCommand(GenericCommand):
         _malloc_state["max_total_mem"] = read_int_from_memory(current)
         current += current_arch.ptrsize
 
+        try:
+            top_sz = read_int_from_memory(_malloc_state["top"] + current_arch.ptrsize) & ~0b11
+            heap_end = _malloc_state["top"] + top_sz
+            _malloc_state["heap_base"] = heap_end - _malloc_state["sbrked_mem"]
+        except gdb.MemoryError:
+            _malloc_state["heap_base"] = 0
+
         MallocState = collections.namedtuple("MallocState", _malloc_state.keys())
         return MallocState(*_malloc_state.values())
 
@@ -72152,6 +72159,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
         self.verbose_print("max_sbrked_mem:      {:#x}".format(malloc_state.max_sbrked_mem))
         self.verbose_print("max_mmaped_mem:      {:#x}".format(malloc_state.max_mmaped_mem))
         self.verbose_print("max_total_mem:       {:#x}".format(malloc_state.max_total_mem))
+        self.verbose_print("(heap_base):         {:#x}".format(malloc_state.heap_base))
         return
 
     @parse_args
@@ -72303,7 +72311,7 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
             d1, d2 = unpack(blk[:current_arch.ptrsize]), unpack(blk[current_arch.ptrsize:])
             dascii = "".join([chr(x) if 0x20 <= x < 0x7f else "." for x in blk])
 
-            fmt = "{:#x}: {:#0{:d}x} {:#0{:d}x} | {:s} | {:s}"
+            fmt = "{:#x}|{:+#08x}|{:+#08x}: {:#0{:d}x} {:#0{:d}x} | {:s} | {:s}"
             if self.full or repeat_count < group_line_threshold:
                 # non-collapsed line
                 for _ in range(repeat_count):
@@ -72318,7 +72326,9 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
                         if chunk.address == addr and "fastbins" in prev_sub_info:
                             d1 = chunk.get_fwd_ptr(True)
 
-                    out_tmp.append(fmt.format(addr, d1, width, d2, width, dascii, sub_info))
+                    offset1 = addr - chunk.chunk_base_address
+                    offset2 = addr - malloc_state.heap_base
+                    out_tmp.append(fmt.format(addr, offset1, offset2, d1, width, d2, width, dascii, sub_info))
                     addr += current_arch.ptrsize * 2
                     prev_sub_info = sub_info
 
@@ -72333,7 +72343,10 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
                     has_subinfo = True
                 else:
                     sub_info = ""
-                out_tmp.append(fmt.format(addr, d1, width, d2, width, dascii, sub_info))
+
+                offset1 = addr - chunk.chunk_base_address
+                offset2 = addr - malloc_state.heap_base
+                out_tmp.append(fmt.format(addr, offset1, offset2, d1, width, d2, width, dascii, sub_info))
                 addr += current_arch.ptrsize * 2 * repeat_count
                 out_tmp.append("* {:#d} lines, {:#x} bytes".format(repeat_count - 1, (repeat_count - 1) * current_arch.ptrsize * 2))
 
@@ -72370,6 +72383,10 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
         while addr < end:
             chunk = GlibcChunk(addr + current_arch.ptrsize * 2)
             # corrupt check
+            if chunk.size == 0:
+                msg = "{} Corrupted (chunk.size == 0)".format(Color.colorify("[!]", "bold red"))
+                self.out.append(msg)
+                break
             if addr != malloc_state.top and addr + chunk.size > malloc_state.top:
                 msg = "{} Corrupted (addr + chunk.size > malloc_state.top)".format(Color.colorify("[!]", "bold red"))
                 self.out.append(msg)
@@ -72410,14 +72427,14 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
            err("malloc_state is not found")
            return
 
+        if malloc_state.heap_base is None or not is_valid_addr(malloc_state.heap_base):
+            err("Not found heap base")
+            return
+
         bins_info = self.init_bins_info(malloc_state)
 
         if args.location is None:
-            heap_base = process_lookup_path("[heap]")
-            if heap_base is None or not is_valid_addr(heap_base.page_start):
-                err("Not found heap base")
-                return
-            dump_start = heap_base.page_start
+            dump_start = malloc_state.heap_base
         else:
             dump_start = args.location
 
