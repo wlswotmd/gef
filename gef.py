@@ -70243,6 +70243,8 @@ class TlsfHeapDumpCommand(GenericCommand):
                 min_size, max_size = self.size_dic.get((i, j), (0, 0))
                 if min_size == max_size == 0:
                     title = "pool->matrix[{:2d}][{:2d}] @{:#x} (chunk_size=???-???)".format(i, j, matrix_addr)
+                elif min_size + 0x10 == max_size:
+                    title = "pool->matrix[{:2d}][{:2d}] @{:#x} (chunk_size={:#x})".format(i, j, matrix_addr, min_size)
                 else:
                     title = "pool->matrix[{:2d}][{:2d}] @{:#x} (chunk_size={:#x}-{:#x})".format(i, j, matrix_addr, min_size, max_size)
                 self.out.append(titlify(title))
@@ -72093,9 +72095,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
             addr, n, p, size = malloc_state.smallbins[i]
             if (n and addr - current_arch.ptrsize * 2 != n) or self.verbose:
                 if isinstance(size, tuple):
-                    colored_size = Color.colorify_hex(size[0], chunk_size_color)
-                    colored_size += "-"
-                    colored_size += Color.colorify_hex(size[1], chunk_size_color)
+                    colored_size = Color.colorify("{:#x}-{:#x}".format(*size), chunk_size_color)
                 else:
                     colored_size = Color.colorify(size, chunk_size_color)
                 if i == 1:
@@ -72117,9 +72117,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
             addr, n, p, size = malloc_state.largebins[i]
             if addr - current_arch.ptrsize * 2 != n or self.verbose:
                 if isinstance(size, tuple):
-                    colored_size = Color.colorify_hex(size[0], chunk_size_color)
-                    colored_size += "-"
-                    colored_size += Color.colorify_hex(size[1], chunk_size_color)
+                    colored_size = Color.colorify("{:#x}-{:#x}".format(*size), chunk_size_color)
                 else:
                     colored_size = Color.colorify(size, chunk_size_color)
                 fmt = "large_bins[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}"
