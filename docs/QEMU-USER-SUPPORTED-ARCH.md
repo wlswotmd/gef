@@ -133,8 +133,8 @@ I also list the tools I used in my Ubuntu 24.04 environment.
 
 
 # Architectures under re-reviewing
-It worked before, so GEF supports them.
-However, currently the build fails or crashes when executed, so it is unable to confirm whether it works correctly.
+It worked before (at Ubuntu 23.10), so GEF supports them.
+However currently the build fails or crashes when executed (at Ubuntu 24.10), so it is unable to confirm whether it works correctly.
 
 * arc32 (HS58; ARCv3)
     * toolchain: [arc_gnu_2023.09_prebuilt_arc32_uclibc_linux_install.tar.bz2](https://github.com/foss-for-synopsys-dwc-arc-processors/toolchain/releases/download/arc-2023.09-release/arc_gnu_2023.09_prebuilt_arc32_uclibc_linux_install.tar.bz2)
@@ -143,9 +143,10 @@ However, currently the build fails or crashes when executed, so it is unable to 
         * `export CFLAGS="-Wno-error=enum-int-mismatch"`
         * `./configure --target-list=arc-linux-user && make && cp build/qemu-arc /usr/local/bin`
         * It needs `-cpu` option like `qemu-arc -cpu hs5x -g 1234 ./a.out`.
-    * gdb: [arc-2023.12-release.tar.gz](https://github.com/foss-for-synopsys-dwc-arc-processors/binutils-gdb/archive/refs/tags/arc-2023.12-release.tar.gz)
+    * gdb: [arc-2023.09-release.tar.gz](https://github.com/foss-for-synopsys-dwc-arc-processors/binutils-gdb/archive/refs/tags/arc-2023.09-release.tar.gz)
         * `./configure --disable-{binutils,ld,gold,gas,sim,gprof,gprofng} --target=arc64-snps-linux-gnu --with-python=/usr/bin/python3 && make && cp gdb/gdb /usr/local/bin/gdb-arc`
-        * I don't know the cause, but it crashes on Ubuntu 24.04.
+        * In the `2023.12` version, `arc64:32` and `arc64:64` architectures are no longer possible. So use the `2023.09` version.
+        * I don't know the cause, but it crashes on Ubuntu 24.04 when it calls `gdb.parse_and_eval()`.
 * arc64 (HS68; ARCv3)
     * toolchain: [arc_gnu_2023.09_prebuilt_arc64_glibc_linux_install.tar.bz2](https://github.com/foss-for-synopsys-dwc-arc-processors/toolchain/releases/download/arc-2023.09-release/arc_gnu_2023.09_prebuilt_arc64_glibc_linux_install.tar.bz2)
     * qemu: https://github.com/foss-for-synopsys-dwc-arc-processors/qemu
@@ -153,9 +154,10 @@ However, currently the build fails or crashes when executed, so it is unable to 
         * `export CFLAGS="-Wno-error=enum-int-mismatch"`
         * `./configure --target-list=arc64-linux-user && make && cp build/qemu-arc64 /usr/local/bin`
         * It needs `-cpu` option like `qemu-arc64 -cpu hs6x -g 1234 ./a.out`.
-    * gdb: [arc-2023.12-release.tar.gz](https://github.com/foss-for-synopsys-dwc-arc-processors/binutils-gdb/archive/refs/tags/arc-2023.12-release.tar.gz)
+    * gdb: [arc-2023.09-release.tar.gz](https://github.com/foss-for-synopsys-dwc-arc-processors/binutils-gdb/archive/refs/tags/arc-2023.09-release.tar.gz)
         * `./configure --disable-{binutils,ld,gold,gas,sim,gprof,gprofng} --target=arc64-snps-linux-gnu --with-python=/usr/bin/python3 && make && cp gdb/gdb /usr/local/bin/gdb-arc`
-        * I don't know the cause, but it failed to communicate with qemu-user (`Remote 'g' packet reply is too long` error).
+        * In the `2023.12` version, `arc64:32` and `arc64:64` architectures are no longer possible. So use the `2023.09` version.
+        * I don't know the cause, but it crashes on Ubuntu 24.04 when it calls `gdb.parse_and_eval()`.
 * csky
     * toolchain: https://github.com/c-sky/toolchain-build
         * `apt -y install autoconf automake autotools-dev curl python3 libmpc-dev libmpfr-dev libgmp-dev gawk build-essential bison flex texinfo gperf libtool patchutils bc zlib1g-dev libexpat-dev`
