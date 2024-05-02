@@ -46952,7 +46952,7 @@ class VisualHeapCommand(GenericCommand):
             d1, d2 = unpack(blk[:current_arch.ptrsize]), unpack(blk[current_arch.ptrsize:])
             dascii = "".join([chr(x) if 0x20 <= x < 0x7f else "." for x in blk])
 
-            fmt = "{:#x}: {:#0{:d}x} {:#0{:d}x} | {:s} | {:s}"
+            fmt = "{:#x}|{:+#08x}|{:+#08x}: {:#0{:d}x} {:#0{:d}x} | {:s} | {:s}"
             if self.full or repeat_count < group_line_threshold:
                 # non-collapsed line
                 for _ in range(repeat_count):
@@ -46967,7 +46967,9 @@ class VisualHeapCommand(GenericCommand):
                         if chunk.address == addr and ("tcache" in sub_info or "fastbins" in sub_info):
                             d1 = chunk.get_fwd_ptr(True)
 
-                    out_tmp.append(fmt.format(addr, d1, width, d2, width, dascii, sub_info))
+                    offset1 = addr - chunk.chunk_base_address
+                    offset2 = addr - arena.heap_base
+                    out_tmp.append(fmt.format(addr, offset1, offset2, d1, width, d2, width, dascii, sub_info))
                     addr += current_arch.ptrsize * 2
 
                     if addr > arena.top + current_arch.ptrsize * 4:
@@ -46981,7 +46983,10 @@ class VisualHeapCommand(GenericCommand):
                     has_subinfo = True
                 else:
                     sub_info = ""
-                out_tmp.append(fmt.format(addr, d1, width, d2, width, dascii, sub_info))
+
+                offset1 = addr - chunk.chunk_base_address
+                offset2 = addr - arena.heap_base
+                out_tmp.append(fmt.format(addr, offset1, offset2, d1, width, d2, width, dascii, sub_info))
                 addr += current_arch.ptrsize * 2 * repeat_count
                 out_tmp.append("* {:#d} lines, {:#x} bytes".format(repeat_count - 1, (repeat_count - 1) * current_arch.ptrsize * 2))
 
