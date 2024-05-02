@@ -14485,13 +14485,21 @@ class DisplayTypeCommand(GenericCommand):
                 "    /* offset | size   */",
             ]
             for name, field in tp.items():
-                offsz_str = "/* {:#06x} | {:#06x} */".format(field.bitpos // 8, field.type.sizeof)
+                if hasattr(field, "bitpos") and hasattr(field.type, "sizeof"):
+                    offsz_str = "/* {:#06x} | {:#06x} */".format(field.bitpos // 8, field.type.sizeof)
+                elif hasattr(field.type, "sizeof"):
+                    offsz_str = "/*        | {:#06x} */".format(field.type.sizeof)
+                elif hasattr(field, "bitpos"):
+                    offsz_str = "/* {:#06x} |        */".format(field.bitpos // 8)
+                else:
+                    offsz_str = "/*        |        */"
                 name_str = Color.cyanify(name)
                 if field.bitsize == 0:
                     msg = "    {:s}    {} {:s};".format(offsz_str, field.type, name_str)
                 else:
                     msg = "    {:s}    {} {:s} : {:d};".format(offsz_str, field.type, name_str, field.bitsize)
                 out.append(msg)
+
             out.append("}} // total: {:#x} bytes".format(tp.sizeof))
             if len(out) > get_terminal_size()[0]:
                 gef_print("\n".join(out), less=not args.no_pager)
@@ -84356,6 +84364,11 @@ class TypesCommand(GenericCommand):
             "bool",
         ]
 
+        try:
+            from tqdm import tqdm
+        except ImportError:
+            tqdm = lambda x, leave: x # noqa: F841
+
         ret = gdb.execute("info types", to_string=True).strip()
         out = []
         for line in ret.splitlines():
@@ -84383,7 +84396,7 @@ class TypesCommand(GenericCommand):
 
         if args.verbose:
             new_out = []
-            for type_name in out:
+            for type_name in tqdm(out, leave=False):
                 ret = gdb.execute('dt -n "{:s}"'.format(type_name), to_string=True)
                 if not ret or (" is not struct or union" in ret) or ("Not found " in ret):
                     new_out.append(type_name)
