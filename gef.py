@@ -70322,6 +70322,157 @@ class TlsfHeapDumpCommand(GenericCommand):
 
 
 @register_command
+class HoardHeapDumpCommand(GenericCommand):
+    """Hoard heap freelist dumper (only x64)."""
+    _cmdline_ = "hoard-heap-dump"
+    _category_ = "06-b. Heap - Other"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-b", "--superblock", type=parse_address, action="append", help="the address of superblock.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    _syntax_ = parser.format_help()
+
+    def get_super_blocks(self):
+        super_blocks = []
+        for m in get_process_maps():
+            if m.path.startswith(("/", "[")):
+                continue
+            if m.permission != Permission.READ | Permission.WRITE:
+                continue
+            for p in range(m.page_start, m.page_end, gef_getpagesize()):
+                v = read_int_from_memory(p)
+                # vtable check
+                if not is_valid_addr(v):
+                    continue
+                # magic check
+                m = read_int_from_memory(p + current_arch.ptrsize)
+                if p ^ m != 0xcafed00d:
+                    continue
+                super_blocks.append(p)
+        return super_blocks
+
+    @staticmethod
+    @cache_until_next
+    def get_all_freelist_head_from_tls():
+        selected_thread = gdb.selected_thread()
+        threads = gdb.selected_inferior().threads()
+        if not threads:
+            return
+
+        offset_of_freelist_from_tls = -0x90
+        heads = []
+        for thread in threads:
+            try:
+                thread.switch()
+            except gdb.error:
+                continue
+            tls = current_arch.get_tls()
+
+            head = read_int_from_memory(tls + offset_of_freelist_from_tls)
+            if is_valid_addr(head):
+                heads.append(head)
+        selected_thread.switch() # revert
+        return heads
+
+    def get_freelist_start(self, sb):
+        # pattern1: HoardSuperblockHeaderHelper holds it
+        head = read_int_from_memory(sb + current_arch.ptrsize * 11)
+        if head:
+            return head
+
+        # thread variable holds it
+        chunk_sz = read_int_from_memory(sb + current_arch.ptrsize * 2)
+        chunk_num = u32(read_memory(sb + current_arch.ptrsize * 3 + 4, 4))
+
+        sizeof_super_block_header = 0x70
+        sb_start = sb + sizeof_super_block_header
+        sb_end = sb_start + chunk_sz * chunk_num
+
+        heads = HoardHeapDumpCommand.get_all_freelist_head_from_tls()
+        candidates = list(filter(lambda f: sb_start <= f < sb_end, heads))
+        if len(candidates) == 1:
+            return candidates[0]
+        return None
+
+    def dump_super_block(self, sb):
+        """
+        struct Hoard::HoardSuperblockHeaderHelper<...> {
+            /* offset | size   */
+            /* 0x0000 | 0x0008 */    int (**)(void) _vptr.HoardSuperblockHeaderHelper;
+            /* 0x0008 | 0x0008 */    const size_t _magicNumber;
+            /* 0x0010 | 0x0008 */    const size_t _objectSize;
+            /* 0x0018 | 0x0001 */    const bool _objectSizeIsPowerOfTwo;
+            /* 0x001c | 0x0004 */    const unsigned int _totalObjects;
+            /* 0x0020 | 0x0001 */    class HL::SpinLockType _theLock;
+            /* 0x0028 | 0x0008 */    class Hoard::SmallHeap * _owner;
+            /* 0x0030 | 0x0008 */    Hoard::HoardSuperblockHeaderHelper<...>::BlockType * _prev;
+            /* 0x0038 | 0x0008 */    Hoard::HoardSuperblockHeaderHelper<...>::BlockType * _next;
+            /* 0x0040 | 0x0004 */    unsigned int _reapableObjects;
+            /* 0x0044 | 0x0004 */    unsigned int _objectsFree;
+            /* 0x0048 | 0x0008 */    const char * _start;
+            /* 0x0050 | 0x0008 */    char * _position;
+            /* 0x0058 | 0x0008 */    class FreeSLList _freeList; // or TLS-0x90
+        } // total: 0x60 bytes (+ 0x10 bytes padding)
+
+        struct FreeSLList::Entry {
+            /* offset | size   */
+            /* 0x0000 | 0x0008 */    class FreeSLList::Entry * next;
+        } // total: 0x8 bytes
+        """
+
+        freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
+        corrupted_msg_color = get_gef_setting("theme.heap_corrupted_msg")
+
+        current = head = self.get_freelist_start(sb)
+        if head is None:
+            return
+
+        sz = read_int_from_memory(sb + current_arch.ptrsize * 2)
+        self.out.append(titlify("superblock @{:#x} (chunk_size={:#x})".format(sb, sz)))
+
+        reap_count = u32(read_memory(sb + current_arch.ptrsize * 8, 4))
+        if reap_count > 0:
+            self.out.append("Before allocating from freelist, you must use up all unused blocks.")
+            self.out.append("There are {:s} unused blocks left.".format(Color.colorify_hex(reap_count, "bold")))
+
+        self.out.append("freelist:")
+        seen = []
+        while True:
+            if current in seen:
+                self.out.append(Color.colorify("  -> {:#x} (loop) ".format(current), corrupted_msg_color))
+                break
+            if current and not is_valid_addr(current):
+                self.out.append(Color.colorify("  -> {:#x} (corrupted) ".format(current), corrupted_msg_color))
+                break
+            self.out.append(" -> {:s}".format(Color.colorify_hex(current, freed_address_color)))
+            if current == 0:
+                break
+            current = read_int_from_memory(current)
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
+    @only_if_specific_arch(arch=("x86_64",))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if args.superblock:
+            super_blocks = args.superblock
+        else:
+            super_blocks = self.get_super_blocks()
+            if super_blocks is None:
+                err("Not found superblock")
+                return
+
+        self.out = []
+        for super_block in super_blocks:
+            self.dump_super_block(super_block)
+        gef_print("\n".join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
 class V8Command(GenericCommand):
     """Print v8 tagged object, or load more commands from internet."""
     _cmdline_ = "v8"

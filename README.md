@@ -313,6 +313,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/go-heap-dump.png)
 * `tlsf-heap-dump`: dumps TLSF (Two-Level Segregated Fit) v2.4.6 free-list (only x64).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tlsf-heap-dump.png)
+* `hoead-heap-dump`: dumps Hoard freelist (only x64).
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hoard-heap-dump.png)
 * `optee-bget-dump`: dumps bget allocator of OPTEE-Trusted-App.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-bget-dump.png)
 
