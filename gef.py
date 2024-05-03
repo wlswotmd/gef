@@ -47271,12 +47271,14 @@ class ConvertCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("value", metavar="VALUE", help="the value or string you want to convert.")
+    parser.add_argument("--hex", action="store_true", help="interpret VALUE as hex. invalid character is ignored.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0xdeadbeef\n".format(_cmdline_)
-    _example_ += '{:s} "\\\\x41\\\\x42\\\\x43\\\\x44"'.format(_cmdline_)
+    _example_ += '{:s} "\\\\x41\\\\x42\\\\x43\\\\x44" -v\n'.format(_cmdline_)
+    _example_ += '{:s} --hex "41 42 43 44" -v'.format(_cmdline_)
 
     def pack(self, value):
         try:
@@ -47436,6 +47438,40 @@ class ConvertCommand(GenericCommand):
             pass
         return
 
+    def unhex_rol_for_each_byte(self, value):
+        try:
+            if value.startswith("0x"):
+                value = binascii.unhexlify(value[2:])
+            else:
+                value = binascii.unhexlify(value)
+            self.out.append(titlify("unhex - ROL (for each byte)"))
+            for i in range(9):
+                rored = b"".join(bytes([((x << i) | x >> (8 - i)) & 0xff]) for x in value)
+                self.out.append("rol-{:02X}:         {!s}".format(i, rored))
+        except binascii.Error:
+            pass
+        return
+
+    def unhex_rol_whole(self, value):
+        try:
+            if value.startswith("0x"):
+                value = binascii.unhexlify(value[2:])
+            else:
+                value = binascii.unhexlify(value)
+            self.out.append(titlify("unhex - ROL (whole)"))
+            bits = []
+            for v in value:
+                for i in range(8):
+                    bits.append(str((v >> (7 - i)) & 1))
+            for i in range(9):
+                rored = bits[i:] + bits[:i]
+                rored = [int("".join(x), 2) for x in slicer(rored, 8)]
+                rored = bytes(rored)
+                self.out.append("rol-{:02X}:         {!s}".format(i, rored))
+        except ValueError:
+            pass
+        return
+
     def unhex_caesar(self, value):
         try:
             if value.startswith("0x"):
@@ -47486,6 +47522,34 @@ class ConvertCommand(GenericCommand):
                     self.out.append("add-{:02X}({:s}):      {!s}".format(i, chr(i), added))
                 else:
                     self.out.append("add-{:02X}:         {!s}".format(i, added))
+        except ValueError:
+            pass
+        return
+
+    def string_rol_for_each_byte(self, value):
+        try:
+            value = codecs.escape_decode(value)[0]
+            self.out.append(titlify("str - ROL (for each byte)"))
+            for i in range(9):
+                rored = b"".join(bytes([((x << i) | x >> (8 - i)) & 0xff]) for x in value)
+                self.out.append("rol-{:02X}:         {!s}".format(i, rored))
+        except ValueError:
+            pass
+        return
+
+    def string_rol_whole(self, value):
+        try:
+            value = codecs.escape_decode(value)[0]
+            self.out.append(titlify("str - ROL (whole)"))
+            bits = []
+            for v in value:
+                for i in range(8):
+                    bits.append(str((v >> (7 - i)) & 1))
+            for i in range(9):
+                rored = bits[i:] + bits[:i]
+                rored = [int("".join(x), 2) for x in slicer(rored, 8)]
+                rored = bytes(rored)
+                self.out.append("rol-{:02X}:         {!s}".format(i, rored))
         except ValueError:
             pass
         return
@@ -47579,24 +47643,40 @@ class ConvertCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
+        value = args.value
+
+        if args.hex: # "41414141" -> "\x41\x41\x41\x41"
+            _value = ""
+            for c in args.value.lower():
+                if c in "0123456789abcdef":
+                    _value += c
+            if len(_value) % 2 != 0:
+                err("hex value length is odd")
+                return
+            value = "".join(["\\x" + _value[i:i + 2] for i in range(0, len(_value), 2)])
+
         self.out = []
-        self.pack(args.value)
-        self.unpack(args.value)
-        self.tohex(args.value)
-        self.unhex(args.value)
-        self.byteswap(args.value)
-        self.integer(args.value)
-        self.signed(args.value)
-        self.string(args.value)
+        self.pack(value)
+        self.unpack(value)
+        self.tohex(value)
+        self.unhex(value)
+        self.byteswap(value)
+        self.integer(value)
+        self.signed(value)
+        self.string(value)
 
         if args.verbose:
-            self.unhex_xor(args.value)
-            self.unhex_add(args.value)
-            self.unhex_caesar(args.value)
-            self.string_xor(args.value)
-            self.string_add(args.value)
-            self.string_caesar(args.value)
-            self.morse(args.value)
+            self.unhex_xor(value)
+            self.unhex_add(value)
+            self.unhex_rol_for_each_byte(value)
+            self.unhex_rol_whole(value)
+            self.unhex_caesar(value)
+            self.string_xor(value)
+            self.string_add(value)
+            self.string_rol_for_each_byte(value)
+            self.string_rol_whole(value)
+            self.string_caesar(value)
+            self.morse(value)
 
         gef_print("\n".join(self.out), less=not args.no_pager)
         return
