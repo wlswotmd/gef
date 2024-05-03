@@ -309,9 +309,9 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
         * Fix interpreter by `patchelf --set-interpreter /PATH/TO/x86_64-buildroot-linux-uclibc/sysroot/lib/ld64-uClibc.so.0 a.out`.
 * `uclibc-ng-visual-heap`: is colorized heap viewer for uClibc-ng.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uclibc-ng-visual-heap.png)
-* `go-heap-dump`: go language v1.21.1 mheap dumper (only x64).
+* `go-heap-dump`: dumps go language v1.21.1 mheap (only x64).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/go-heap-dump.png)
-* `tlsf-heap-dump`: TLSF (Two-Level Segregated Fit) v2.4.6 heap dumper (only x64).
+* `tlsf-heap-dump`: dumps TLSF (Two-Level Segregated Fit) v2.4.6 free-list (only x64).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tlsf-heap-dump.png)
 * `optee-bget-dump`: dumps bget allocator of OPTEE-Trusted-App.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-bget-dump.png)

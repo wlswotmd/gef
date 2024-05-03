@@ -44,6 +44,7 @@ int main(void) {
         pthread_create(&th[i], NULL, func, NULL);
     }
     func(NULL);
+
     return 0;
 }
 

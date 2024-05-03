@@ -70126,7 +70126,7 @@ class GoHeapDumpCommand(GenericCommand):
 
 @register_command
 class TlsfHeapDumpCommand(GenericCommand):
-    """TLSF (Two-Level Segregated Fit) v2.4.6 heap dumper (only x64)."""
+    """TLSF (Two-Level Segregated Fit) v2.4.6 freelist dumper (only x64)."""
     _cmdline_ = "tlsf-heap-dump"
     _category_ = "06-b. Heap - Other"
 
