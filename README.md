@@ -157,7 +157,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * Supported on x64/x86/ARM64/ARM + SLUB + no-symbol + kASLR.
     * Supported on both `CONFIG_SLAB_FREELIST_HARDENED` is `y` or `n`.
     * It supports to dump partial pages (`-v`) and NUMA node pages (`-vv`).
-    * Since `page_to_virt` is difficult to implement, it will heuristically determine the virtual address from the freelist.
+    * Since `page_to_virt` is difficult to implement, it will heuristically determine the virtual address from the free-list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-dump.png)
 * `slab-dump`: dumps slab free-list.
     * Supported on x64/x86/ARM64/ARM + SLAB + no-symbol + kASLR.
@@ -172,7 +172,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slab-contains.png)
     * For `SLUB/SLUB-TINY`, if all chunks belonging to a certain `page` are in use, they will not be displayed by `slub-dump/slub-tiny-dump` command.
     * Even with such an address (object), this command may be able to resolve `kmem_cache`.
-* `buddy-dump`: dumps zone of page allocator (buddy allocator) freelist.
+* `buddy-dump`: dumps zone of page allocator (buddy allocator) free-list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/buddy-dump.png)
 * `vmalloc-dump`: dumps vmalloc used list and freed list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmalloc-dump.png)
@@ -313,7 +313,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/go-heap-dump.png)
 * `tlsf-heap-dump`: dumps TLSF (Two-Level Segregated Fit) v2.4.6 free-list (only x64).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tlsf-heap-dump.png)
-* `hoead-heap-dump`: dumps Hoard freelist (only x64).
+* `hoard-heap-dump`: dumps Hoard free-list (only x64).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hoard-heap-dump.png)
 * `optee-bget-dump`: dumps bget allocator of OPTEE-Trusted-App.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-bget-dump.png)

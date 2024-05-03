@@ -61680,7 +61680,7 @@ class ConstGrepCommand(GenericCommand):
 
 @register_command
 class SlubDumpCommand(GenericCommand):
-    """Dump slub freelist."""
+    """Dump slub free-list."""
     _cmdline_ = "slub-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
 
@@ -62739,7 +62739,7 @@ class SlubDumpCommand(GenericCommand):
 
 @register_command
 class SlubTinyDumpCommand(GenericCommand):
-    """Dump slub-tiny freelist."""
+    """Dump slub-tiny free-list."""
     _cmdline_ = "slub-tiny-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
 
@@ -63384,7 +63384,7 @@ class SlubTinyDumpCommand(GenericCommand):
 
 @register_command
 class SlabDumpCommand(GenericCommand):
-    """Dump slab freelist."""
+    """Dump slab free-list."""
     _cmdline_ = "slab-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
 
@@ -64239,7 +64239,7 @@ class SlabDumpCommand(GenericCommand):
 
 @register_command
 class SlobDumpCommand(GenericCommand):
-    """Dump slob freelist."""
+    """Dump slob free-list."""
     _cmdline_ = "slob-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
 
@@ -64863,7 +64863,7 @@ class SlabContainsCommand(GenericCommand):
 
 @register_command
 class BuddyDumpCommand(GenericCommand):
-    """Dump zone of page allocator (buddy allocator) freelist."""
+    """Dump zone of page allocator (buddy allocator) free-list."""
     _cmdline_ = "buddy-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
     _aliases_ = ["zone-dump"]
@@ -69550,7 +69550,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
 
 @register_command
 class TcmallocDumpCommand(GenericCommand):
-    """tcmalloc (google-perftools-2.9.1) freelist viewer (only x64)."""
+    """tcmalloc (google-perftools-2.9.1) free-list viewer (only x64)."""
     _cmdline_ = "tcmalloc-dump"
     _category_ = "06-b. Heap - Other"
 
@@ -70206,7 +70206,7 @@ class GoHeapDumpCommand(GenericCommand):
 
 @register_command
 class TlsfHeapDumpCommand(GenericCommand):
-    """TLSF (Two-Level Segregated Fit) v2.4.6 freelist dumper (only x64)."""
+    """TLSF (Two-Level Segregated Fit) v2.4.6 free-list viewer (only x64)."""
     _cmdline_ = "tlsf-heap-dump"
     _category_ = "06-b. Heap - Other"
 
@@ -70403,7 +70403,7 @@ class TlsfHeapDumpCommand(GenericCommand):
 
 @register_command
 class HoardHeapDumpCommand(GenericCommand):
-    """Hoard heap freelist dumper (only x64)."""
+    """Hoard heap free-list viewer (only x64)."""
     _cmdline_ = "hoard-heap-dump"
     _category_ = "06-b. Heap - Other"
 
@@ -70602,7 +70602,7 @@ class V8Command(GenericCommand):
 
 @register_command
 class PartitionAllocDumpCommand(GenericCommand):
-    """PartitionAlloc freelist viewer for chromium stable."""
+    """PartitionAlloc free-list viewer for chromium stable."""
     _cmdline_ = "partition-alloc-dump"
     _category_ = "06-b. Heap - Other"
 
