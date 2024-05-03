@@ -133,8 +133,8 @@ I also list the tools I used in my Ubuntu 24.04 environment.
 
 
 # Architectures under re-reviewing
-It worked before (at Ubuntu 23.10), so GEF supports them.
-However currently the build fails or crashes when executed (at Ubuntu 24.10), so it is unable to confirm whether it works correctly.
+It works at Ubuntu 23.10, so GEF supports them.
+However currently the build fails or crashes when executed at Ubuntu 24.04, so it is unable to confirm whether it works correctly.
 
 * arc32 (HS58; ARCv3)
     * toolchain: [arc_gnu_2023.09_prebuilt_arc32_uclibc_linux_install.tar.bz2](https://github.com/foss-for-synopsys-dwc-arc-processors/toolchain/releases/download/arc-2023.09-release/arc_gnu_2023.09_prebuilt_arc32_uclibc_linux_install.tar.bz2)
