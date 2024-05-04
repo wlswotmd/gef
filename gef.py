@@ -14304,7 +14304,7 @@ class ContCommand(GenericCommand):
             # do not use get_pid() in this func.
             # get_pid() uses `maintenance packet` command internally,
             # but it cannot be used when the non-static program is running.
-            os.kill(pid, signal.SIGINT)
+            os.kill(pid, signal.SIGTRAP)
             return
 
         th = threading.Thread(target=continue_thread, daemon=True)

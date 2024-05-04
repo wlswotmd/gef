@@ -260,8 +260,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * If you want to use native `si`/`ni`, use the full form `stepi`/`nexti`.
 * `c`: is the wrapper for native `c` if gdb is connected to qemu-user or intel pin.
     * When connecting to gdb stub of qemu-user or Intel Pin, gdb does not trap SIGINT during `continue`.
-    * If you want to trap, you need to issue SIGINT on the qemu-user or pin side, but switching screens is troublesome.
-    * This command realizes a pseudo SIGINT trap by trapping SIGINT on the python side and throwing SIGINT back to qemu-user or Intel Pin.
+    * If you want to trap, you need to issue SIGTRAP on the qemu-user or pin side, but switching screens is troublesome.
+    * This command realizes a pseudo SIGTRAP trap by trapping SIGINT on the python side and throwing SIGTRAP back to qemu-user or Intel Pin.
     * It works only local qemu-user or Intel Pin.
     * If you want to use native `c`, use the full form `continue`.
 
