@@ -1198,8 +1198,9 @@ class Section:
         return
 
     def __repr__(self):
-        return '<{:s}.{:s} object at {:#x}, page_start={:#x}, perm="{}", path="{:s}">'.format(
-            self.__module__, self.__class__.__name__, id(self), self.page_start, self.permission, self.path,
+        return '<{:s}.{:s} object at {:#x}, page_start={:#x}, page_end={:#x}, perm="{}", path="{:s}">'.format(
+            self.__module__, self.__class__.__name__, id(self), self.page_start, self.page_end,
+            self.permission, self.path,
         )
 
     def is_readable(self):
@@ -11984,7 +11985,12 @@ def get_explored_regions():
         # add regions
         new_regions = []
         for addr in merged_queue:
-            new_regions += make_regions(addr, "<explored>")
+            skip = False
+            for rg in new_regions:
+                if rg.page_start <= addr < rg.page_end:
+                    skip = True
+            if not skip:
+                new_regions += make_regions(addr, "<explored>")
         return new_regions
 
     regions = []
@@ -12000,6 +12006,7 @@ def get_explored_regions():
 
     # ok
     regions = sorted(regions, key=lambda x: x.page_start)
+
     return regions
 
 
