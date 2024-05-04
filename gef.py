@@ -14549,7 +14549,8 @@ class BreakRelativeVirtualAddressCommand(GenericCommand):
             return
 
         elf = get_elf_headers(filepath)
-        if elf.is_valid():
+        if not elf.is_valid():
+            err("Invalid elf")
             return
 
         if not elf.is_pie():
