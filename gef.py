@@ -192,9 +192,6 @@ __heap_allocated_list__         = [] # for heap-analysis-helper command
 __heap_freed_list__             = [] # for heap-analysis-helper command
 __heap_uaf_watchpoints__        = [] # for heap-analysis-helper command
 __patch_history__               = [] # keep patched information
-__cached_kernel_info__          = None # for caching
-__cached_kernel_version__       = None # for caching
-__cached_kernel_cmdline__       = None # for caching
 __cached_context_legend__       = None # for caching
 __cached_heap_base__            = None # for caching
 __cached_main_arena__           = None # for caching
@@ -425,12 +422,6 @@ def reset_gef_caches(function=None, all=False):
     if all:
         __gef_global_cache__["this_session"] = {}
 
-        global __cached_kernel_info__
-        __cached_kernel_info__ = None
-        global __cached_kernel_version__
-        __cached_kernel_version__ = None
-        global __cached_kernel_cmdline__
-        __cached_kernel_cmdline__ = None
         global __cached_context_legend__
         __cached_context_legend__ = None
         global __cached_heap_base__
@@ -13576,7 +13567,7 @@ class GenericCommand(gdb.Command):
 
 @register_command
 class ResetCacheCommand(GenericCommand):
-    """Reset cache of all stored data for debugging and test purposes."""
+    """Reset all caches (both cache_until_next and cache_this_session)."""
     _cmdline_ = "reset-cache"
     _category_ = "99. GEF Maintenance Command"
 
@@ -51067,11 +51058,8 @@ class KernelbaseCommand(GenericCommand):
             return maps
 
     @staticmethod
+    @cache_this_session
     def get_kernel_base():
-        global __cached_kernel_info__
-        if __cached_kernel_info__ is not None:
-            return __cached_kernel_info__
-
         dic = {
             "maps": KernelbaseCommand.get_maps(),
             "text_base": None,
@@ -51241,8 +51229,7 @@ class KernelbaseCommand(GenericCommand):
                                 break
 
         dic["has_none"] = None in dic.values()
-        __cached_kernel_info__ = Kinfo(*dic.values())
-        return __cached_kernel_info__
+        return Kinfo(*dic.values())
 
     @parse_args
     @only_if_gdb_running
@@ -51253,9 +51240,7 @@ class KernelbaseCommand(GenericCommand):
         self.dont_repeat()
 
         if args.reparse:
-            global __cached_kernel_info__
-            __cached_kernel_info__ = None
-            reset_gef_caches()
+            reset_gef_caches(all=True)
 
         # resolve text_base, ro_base
         if not args.quiet:
@@ -51331,11 +51316,8 @@ class KernelVersionCommand(GenericCommand):
             return "{:d}.{:d}.{:d}".format(*self.version_tuple)
 
     @staticmethod
+    @cache_this_session
     def kernel_version():
-        global __cached_kernel_version__
-        if __cached_kernel_version__ is not None:
-            return __cached_kernel_version__
-
         # fast path
         linux_banner = get_ksymaddr("linux_banner")
         if linux_banner and is_valid_addr(linux_banner):
@@ -51343,8 +51325,7 @@ class KernelVersionCommand(GenericCommand):
             r = re.search(r"Linux version (\d)\.(\d+)\.(\d+)", version_string)
             if r:
                 major, minor, patch = int(r.group(1)), int(r.group(2)), int(r.group(3))
-                __cached_kernel_version__ = KernelVersionCommand.KernelVersion(linux_banner, version_string, major, minor, patch)
-                return __cached_kernel_version__
+                return KernelVersionCommand.KernelVersion(linux_banner, version_string, major, minor, patch)
 
         # slow path
         kinfo = KernelbaseCommand.get_kernel_base()
@@ -51375,8 +51356,7 @@ class KernelVersionCommand(GenericCommand):
             r = re.search(r"Linux version (\d)\.(\d+)\.(\d+)", version_string)
             major, minor, patch = int(r.group(1)), int(r.group(2)), int(r.group(3))
 
-            __cached_kernel_version__ = KernelVersionCommand.KernelVersion(address, version_string, major, minor, patch)
-            return __cached_kernel_version__
+            return KernelVersionCommand.KernelVersion(address, version_string, major, minor, patch)
 
         return None
 
@@ -51389,9 +51369,7 @@ class KernelVersionCommand(GenericCommand):
         self.dont_repeat()
 
         if args.reparse:
-            global __cached_kernel_version__
-            __cached_kernel_version__ = None
-            reset_gef_caches()
+            reset_gef_caches(all=True)
 
         if not args.quiet:
             info("Wait for memory scan")
@@ -51420,11 +51398,8 @@ class KernelCmdlineCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     @staticmethod
+    @cache_this_session
     def kernel_cmdline():
-        global __cached_kernel_cmdline__
-        if __cached_kernel_cmdline__ is not None:
-            return __cached_kernel_cmdline__
-
         saved_command_line = KernelAddressHeuristicFinder.get_saved_command_line()
         if saved_command_line is None:
             return None
@@ -51432,8 +51407,7 @@ class KernelCmdlineCommand(GenericCommand):
             ptr = read_int_from_memory(saved_command_line)
             cmdline = read_cstring_from_memory(ptr, max_length=0x1000)
             Kcmdline = collections.namedtuple("Kcmdline", ["address", "cmdline"])
-            __cached_kernel_cmdline__ = Kcmdline(ptr, cmdline)
-            return __cached_kernel_cmdline__
+            return Kcmdline(ptr, cmdline)
         except Exception:
             return None
 
@@ -51446,9 +51420,7 @@ class KernelCmdlineCommand(GenericCommand):
         self.dont_repeat()
 
         if args.reparse:
-            global __cached_kernel_cmdline__
-            __cached_kernel_cmdline__ = None
-            reset_gef_caches()
+            reset_gef_caches(all=True)
 
         if not args.quiet:
             info("Wait for memory scan")
