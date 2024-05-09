@@ -315,6 +315,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tlsf-heap-dump.png)
 * `hoard-heap-dump`: dumps Hoard free-list (only x64).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hoard-heap-dump.png)
+* `mimalloc-heap-dump`: dumps mimalloc free-list (only x64).
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/mimalloc-heap-dump.png)
 * `optee-bget-dump`: dumps bget allocator of OPTEE-Trusted-App.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-bget-dump.png)
 

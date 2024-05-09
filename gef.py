@@ -70545,6 +70545,198 @@ class HoardHeapDumpCommand(GenericCommand):
 
 
 @register_command
+class MimallocHeapDumpCommand(GenericCommand):
+    """mimalloc heap free-list viewer (only x64)."""
+    _cmdline_ = "mimalloc-heap-dump"
+    _category_ = "06-b. Heap - Other"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-m", "--mi-heap-main", type=parse_address, help="the address of _mi_heap_main.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    _syntax_ = parser.format_help()
+
+    def __init__(self):
+        super().__init__()
+
+        """
+        typedef struct mi_heap_s {
+            mi_tld_t* tld;
+            _Atomic(mi_block_t*) thread_delayed_free;
+            mi_threadid_t thread_id;
+            mi_arena_id_t arena_id;
+            uintptr_t cookie;
+            uintptr_t keys[2];
+            mi_random_ctx_t random; // 0x88 bytes
+            size_t page_count;
+            size_t page_retired_min;
+            size_t page_retired_max;
+            mi_heap_t* next;
+            bool no_reclaim;
+            mi_page_t* pages_free_direct[MI_PAGES_DIRECT]; // 0x81
+            mi_page_queue_t pages[MI_BIN_FULL + 1];
+        } mi_heap_t;
+        """
+        self.offset_next = 0xd8
+        self.offset_pages_free_direct = 0xe8
+        self.MI_PAGES_DIRECT = 0x81
+
+        """
+        typedef struct mi_page_s {
+            uint8_t segment_idx;
+            uint8_t segment_in_use:1;
+            uint8_t is_committed:1;
+            uint8_t is_zero_init:1;
+            uint8_t is_huge:1;
+
+            uint16_t capacity;
+            uint16_t reserved;
+            mi_page_flags_t flags; // 8 or 16
+            uint8_t free_is_zero:1;
+            uint8_t retire_expire:7;
+
+            mi_block_t* free;
+            mi_block_t* local_free;
+            uint16_t used;
+            uint8_t block_size_shift;
+
+            size_t block_size;
+            uint8_t* page_start;
+
+        #if (MI_ENCODE_FREELIST || MI_PADDING)
+            uintptr_t keys[2];
+        #endif
+
+            _Atomic(mi_thread_free_t) xthread_free;
+            _Atomic(uintptr_t) xheap;
+
+            struct mi_page_s* next;
+            struct mi_page_s* prev;
+
+        #if MI_INTPTR_SIZE==4 // pad to 12 words on 32-bit
+            void* padding[1];
+        #endif
+        } mi_page_t;
+        """
+        self.offset_capacity = 0x02
+        self.offset_free = 0x08
+        self.offset_local_free = 0x10
+        self.offset_used = 0x18
+        self.offset_block_size = 0x20
+        self.offset_page_start = 0x28
+        return
+
+    def get_mi_heap_main(self):
+        try:
+            return parse_address("&_mi_heap_main")
+        except gdb.error:
+            return None
+
+        tls = current_arch.get_tls()
+        if is_valid_addr(tls - 0x10):
+            mi_heap_main = read_int_from_memory(tls - 0x10)
+            if is_valid_addr(mi_heap_main):
+                tld_main = read_int_from_memory(mi_heap_main)
+                if is_valid_addr(tld_main):
+                    return mi_heap_main
+        return None
+
+    def dump_page(self, mi_page):
+        bs = read_int_from_memory(mi_page + self.offset_block_size)
+        cap = u16(read_memory(mi_page + self.offset_capacity, 2))
+        used = u16(read_memory(mi_page + self.offset_used, 2))
+        self.out.append(titlify("mi_page_t @{:#x} (block_size={:#x}, capacity={:#x}, used={:#x})".format(mi_page, bs, cap, used)))
+
+        corrupted_msg_color = get_gef_setting("theme.heap_corrupted_msg")
+        freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
+
+        # freelist
+        freelist_addr = mi_page + self.offset_free
+        self.out.append("freelist @{:#x}:".format(freelist_addr))
+
+        current = read_int_from_memory(freelist_addr)
+        seen = []
+        while True:
+            if current in seen:
+                self.out.append(Color.colorify("-> {:#x} (loop) ".format(current), corrupted_msg_color))
+                break
+            seen.append(current)
+            if current and not is_valid_addr(current):
+                self.out.append(Color.colorify("-> {:#x} (corrupted) ".format(current), corrupted_msg_color))
+                break
+            self.out.append(" -> {:s}".format(Color.colorify_hex(current, freed_address_color)))
+            if current == 0:
+                break
+            current = read_int_from_memory(current)
+
+        # local freelist
+        local_freelist_addr = mi_page + self.offset_local_free
+        self.out.append("local_freelist @{:#x}:".format(local_freelist_addr))
+
+        current = read_int_from_memory(local_freelist_addr)
+        seen = []
+        while True:
+            if current in seen:
+                self.out.append(Color.colorify("-> {:#x} (loop) ".format(current), corrupted_msg_color))
+                break
+            seen.append(current)
+            if current and not is_valid_addr(current):
+                self.out.append(Color.colorify("-> {:#x} (corrupted) ".format(current), corrupted_msg_color))
+                break
+            self.out.append(" -> {:s}".format(Color.colorify_hex(current, freed_address_color)))
+            if current == 0:
+                break
+            current = read_int_from_memory(current)
+        return
+
+    def dump_heap(self, mi_heap):
+        seen = []
+        for i in range(self.MI_PAGES_DIRECT):
+            mi_page_t = read_int_from_memory(mi_heap + self.offset_pages_free_direct + current_arch.ptrsize * i)
+            if not is_valid_addr(mi_page_t):
+                continue
+            x = read_int_from_memory(mi_page_t)
+            if x == 0:
+                """
+                0x7ffff7e72448|+0x00e8|+029: 0x00007ffff7e6be80 <_mi_page_empty>  ->  0x0000000000000000
+                0x7ffff7e72450|+0x00f0|+030: 0x00007ffff7e6be80 <_mi_page_empty>  ->  0x0000000000000000
+                0x7ffff7e72458|+0x00f8|+031: 0x0000040203400088  ->  0x01000eb001000700  <-  $rcx
+                0x7ffff7e72460|+0x0100|+032: 0x00007ffff7e6be80 <_mi_page_empty>  ->  0x0000000000000000
+                0x7ffff7e72468|+0x0108|+033: 0x00007ffff7e6be80 <_mi_page_empty>  ->  0x0000000000000000
+                """
+                continue
+            if mi_page_t in seen:
+                continue
+            self.dump_page(mi_page_t)
+            seen.append(mi_page_t)
+        return None
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
+    @only_if_specific_arch(arch=("x86_64",))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if args.mi_heap_main:
+            mi_heap_main = args.mi_heap_main
+        else:
+            mi_heap_main = self.get_mi_heap_main()
+            if mi_heap_main is None:
+                err("Not found _mi_heap_main")
+                return
+
+        self.out = []
+        while mi_heap_main:
+            if not is_valid_addr(mi_heap_main):
+                continue
+            self.dump_heap(mi_heap_main)
+            mi_heap_main = read_int_from_memory(mi_heap_main + self.offset_next)
+
+        gef_print("\n".join(self.out), less=not args.no_pager)
+        return
+
+
+@register_command
 class V8Command(GenericCommand):
     """Print v8 tagged object, or load more commands from internet."""
     _cmdline_ = "v8"
