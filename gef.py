@@ -13896,6 +13896,16 @@ class VersionCommand(GenericCommand):
         res = gef_execute_external([one_gadget_command, "--version"], as_list=True)
         return res[0]
 
+    def rp_version(self):
+        try:
+            rp_lin_command = which("rp-lin")
+        except FileNotFoundError:
+            return "Not found"
+        res = gef_execute_external([rp_lin_command, "--version", "--file", "a"], as_list=True)
+        if "You are currently using " in res[0]:
+            return res[0].replace("You are currently using ", "")
+        return "Not found"
+
     def show_compact_info(self):
         gef_print("gdb:     {:s}".format(self.gdb_version()))
         gef_print("python:  {:s}".format(self.python_version()))
@@ -13927,6 +13937,7 @@ class VersionCommand(GenericCommand):
         gef_print("objdump:                {:s}".format(self.objdump_version()))
         gef_print("seccomp-tools:          {:s}".format(self.seccomp_tools_version()))
         gef_print("one_gadget:             {:s}".format(self.one_gadget_version()))
+        gef_print("rp:                     {:s}".format(self.rp_version()))
 
         gef_print(titlify("gdb build config"))
         gdb.execute("show configuration")
