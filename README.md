@@ -618,7 +618,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-arch-list.png)
 * `gef pyobj-list`: displays defined global python object.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-pyobj-list.png)
-* `gef avail-comm-list`: displays a list of commands available for the current architecture and gdb execution mode.
+* `gef avail-comm-list`: displays a list of commands which are available or not for the current architecture and gdb execution mode.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-avail-comm-list.png)
 
 ### Other
 * The category is introduced in `gef help`.

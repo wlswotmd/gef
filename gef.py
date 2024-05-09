@@ -85370,7 +85370,7 @@ class GefAvailableCommandListCommand(GenericCommand):
     _category_ = "99. GEF Maintenance Command"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-u", "--unavailable", action="store_true", help="show unavailable commands.")
+    parser.add_argument("-s", "--sort", action="store_true", help="sort by command name.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
@@ -85391,6 +85391,7 @@ class GefAvailableCommandListCommand(GenericCommand):
                     return '"rr"' in line
                 if is_wine():
                     return '"wine"' in line
+                return False
         return True
 
     def check_exclude_mode(self, decorators):
@@ -85410,6 +85411,7 @@ class GefAvailableCommandListCommand(GenericCommand):
                     return '"rr"' in line
                 if is_wine():
                     return '"wine"' in line
+                return False
         return False
 
     def get_arch_name(self):
@@ -85440,28 +85442,26 @@ class GefAvailableCommandListCommand(GenericCommand):
 
         arch_name = self.get_arch_name()
 
-        avail_comms = []
+        out = []
         for cmdline, (cmd_class, _) in __gef__.loaded_commands.items():
             s = get_source(cmd_class.do_invoke)
             decorators = [line for line in s.splitlines() if line.lstrip().startswith("@")]
             if not self.check_include_mode(decorators):
+                out.append("{:<30s}: {:s} ({:s})".format(cmdline, Color.colorify("Unavailable", "red bold"), "Unsupported gdb mode"))
                 continue
             if self.check_exclude_mode(decorators):
+                out.append("{:<30s}: {:s} ({:s})".format(cmdline, Color.colorify("Unavailable", "red bold"), "Unsupported gdb mode"))
                 continue
             if not self.check_include_arch(decorators, arch_name):
+                out.append("{:<30s}: {:s} ({:s})".format(cmdline, Color.colorify("Unavailable", "red bold"), "Unsupported arch"))
                 continue
             if self.check_exclude_arch(decorators, arch_name):
+                out.append("{:<30s}: {:s} ({:s})".format(cmdline, Color.colorify("Unavailable", "red bold"), "Unsupported arch"))
                 continue
-            avail_comms.append(cmdline)
+            out.append("{:<30s}: {:s}".format(cmdline, Color.colorify("Available", "green bold")))
 
-        if args.unavailable:
-            unavail_comms = []
-            for cmdline in __gef__.loaded_commands.keys():
-                if cmdline not in avail_comms:
-                    unavail_comms.append(cmdline)
-            out = unavail_comms
-        else:
-            out = avail_comms
+        if args.sort:
+            out = sorted(out)
 
         gef_print("\n".join(out), less=not args.no_pager)
         return
