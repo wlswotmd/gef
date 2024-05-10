@@ -81,26 +81,26 @@ If you install with `install-minimal.sh`, you will not be able to use these comm
 
 * `apt` packages
     * `gdb-multiarch`: `gdb` is also good, but of course one is required.
-    * `binutils`: Required by following commands.
-        * `objdump`: Required by `got` command.
-        * `readelf`: Required by `got` command.
-        * `nm`: Required by `rp --kernel` and `qemu-device-info` commands.
-        * `objcopy`: Required by `add-symbol-temporary` and `ksymaddr-remote-apply` commands.
-    * `python3-pip`: Required to install some python3 packages and `vmlinux-to-elf`.
-    * `git`: Required to install `vmlinux-to-elf`. Required by `diffo` command.
-    * `ruby-dev`: Required to install `one_gadget` and `seccomp-tools`.
+    * `binutils`: required by following commands.
+        * `objdump`: required by `got` command.
+        * `readelf`: required by `got` command.
+        * `nm`: required by `rp --kernel` and `qemu-device-info` commands.
+        * `objcopy`: required by `add-symbol-temporary` and `ksymaddr-remote-apply` commands.
+    * `python3-pip`: required to install some python3 packages and `vmlinux-to-elf`.
+    * `git`: required to install `vmlinux-to-elf`. Also required by `diffo` command.
+    * `ruby-dev`: required to install `one_gadget` and `seccomp-tools`.
 * `python3` packages
-    * `crccheck`: Required by `uefi-ovmf-info` and `hash-memory -v` commands.
-    * `unicorn`: Required by `unicorn-emulate` command.
-    * `capstone`: Required by `unicorn-emulate`, `capstone-disassemble`, `dasm` and `asm-list` commands. Also required by `i8086` mode.
-    * `ropper`: Required by `ropper` command.
-    * `keystone-engine`: Required by `mprotect` and `asm` commands.
+    * `crccheck`: required by `uefi-ovmf-info` and `hash-memory -v` commands.
+    * `unicorn`: required by `unicorn-emulate` command.
+    * `capstone`: required by `unicorn-emulate`, `capstone-disassemble`, `dasm` and `asm-list` commands. Also required by `i8086` mode.
+    * `ropper`: required by `ropper` command.
+    * `keystone-engine`: required by `mprotect` and `asm` commands.
     * `tqdm`: It just makes it look better, so GEF will work without it.
 * Others
-  * `vmlinux-to-elf`: Required by `vmlinux-to-elf-apply` command.
-  * `rp++`: Required by `rp` command.
-  * `seccomp-tools`: Required by `seccomp-tools` command.
-  * `one_gadget`: Required by `onegadget` command.
+  * `vmlinux-to-elf`: required by `vmlinux-to-elf-apply` command.
+  * `rp++`: required by `rp` command.
+  * `seccomp-tools`: required by `seccomp-tools` command.
+  * `one_gadget`: required by `onegadget` command.
 
 ## How can I install GEF offline?
 Please refer to [`install.sh`](https://github.com/bata24/gef/blob/dev/install.sh) or [`install-minimal.sh`](https://github.com/bata24/gef/blob/dev/install-minimal.sh), and set it up manually.
@@ -153,7 +153,7 @@ It also performs its own heuristic structure member detection in each command.
 ## Does GEF support i386 16-bit mode (real mode)?
 Yes, GEF supports real mode experimentally.
 
-`qemu-system-x86_64` cannot be used, use `qemu-system-i386`.
+Use `qemu-system-i386`, and do NOT use `qemu-system-x86_64`.
 Explicitly specify the i8086 architecture before connecting: `gdb -ex 'set architecture i8086' -ex 'target remote localhost:1234'`.
 
 GEF will switch to and from 32-bit mode automatically.
