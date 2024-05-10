@@ -48138,6 +48138,8 @@ class KernelAddressHeuristicFinder:
                 elif is_x86_32():
                     g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, skip_msb_check=True)
                 for x in g:
+                    if x < 0x100:
+                        continue
                     return x
 
         # plan 3 (available v2.5.33 or later)
