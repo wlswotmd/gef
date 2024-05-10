@@ -52528,7 +52528,7 @@ class KernelTaskCommand(GenericCommand):
 
             # ____cacheline_aligned_in_smp attribute, spinlock_t and lockdep_map_p can be different size
             # in each environment or situation, so search heuristically.
-            for i in range(0x10):
+            for i in range(0x20):
                 x = read_int_from_memory(mm + current_arch.ptrsize * i)
                 """
                 [x64 v6.4.2]
