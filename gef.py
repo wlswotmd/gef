@@ -45446,18 +45446,20 @@ class MagicCommand(GenericCommand):
             perm = addr.section.permission
             if is_ascii_string(addr.value):
                 val = read_cstring_from_memory(addr.value, ascii_only=True)
-                fmt = "{:42s} {!s} [{!s}] (+{:#010x}) -> {:s}"
+                fmt = "{:45s} {!s} [{!s}] (+{:#010x}) -> {:s}"
                 gef_print(fmt.format(sym, addr, perm, addr.value - base, val))
             else:
                 val = lookup_address(read_int_from_memory(addr.value))
                 val_sym = get_symbol_string(val.value)
-                fmt = "{:42s} {!s} [{!s}] (+{:#010x}) -> {:s}{:s}"
+                fmt = "{:45s} {!s} [{!s}] (+{:#010x}) -> {:s}{:s}"
                 gef_print(fmt.format(sym, addr, perm, addr.value - base, val.long_fmt(), val_sym))
         except Exception:
-            gef_print("{:42s} {:>{:d}s}".format(sym, "Not found", width))
+            gef_print("{:45s} {:>{:d}s}".format(sym, "Not found", width))
         return
 
-    def print_file_jumps_func(self, sym):
+    def resolve_and_print_fj(self, sym, base):
+        self.resolve_and_print(sym, base)
+
         if not self.should_be_print(sym):
             return
 
@@ -45481,7 +45483,7 @@ class MagicCommand(GenericCommand):
             return
 
         gef_print(titlify("Legend"))
-        fmt = "{:42s} {:{:d}s} {:5s} (+{:10s}) -> {:{:d}s}"
+        fmt = "{:45s} {:{:d}s} {:5s} (+{:10s}) -> {:{:d}s}"
         width = get_format_address_width()
         legend = ["symbol", "addr", width, "perm", "offset", "val", width]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
@@ -45505,46 +45507,45 @@ class MagicCommand(GenericCommand):
         self.resolve_and_print("*stdout", libc)
         self.resolve_and_print("*stderr", libc)
         self.resolve_and_print("_IO_list_all", libc)
-        self.resolve_and_print("_IO_file_jumps", libc)
-        self.print_file_jumps_func("_IO_file_jumps")
-        self.resolve_and_print("_IO_file_jumps_mmap", libc)
-        self.print_file_jumps_func("_IO_file_jumps_mmap")
-        self.resolve_and_print("_IO_file_jumps_maybe_mmap", libc)
-        self.print_file_jumps_func("_IO_file_jumps_maybe_mmap")
-        self.resolve_and_print("_IO_wfile_jumps", libc)
-        self.print_file_jumps_func("_IO_wfile_jumps")
-        self.resolve_and_print("_IO_wfile_jumps_mmap", libc)
-        self.print_file_jumps_func("_IO_wfile_jumps_mmap")
-        self.resolve_and_print("_IO_wfile_jumps_maybe_mmap", libc)
-        self.print_file_jumps_func("_IO_wfile_jumps_maybe_mmap")
-        self.resolve_and_print("_IO_old_file_jumps", libc)
-        self.print_file_jumps_func("_IO_old_file_jumps")
-        self.resolve_and_print("_IO_mem_jumps", libc)
-        self.print_file_jumps_func("_IO_mem_jumps")
-        self.resolve_and_print("_IO_wmem_jumps", libc)
-        self.print_file_jumps_func("_IO_wmem_jumps")
-        self.resolve_and_print("_IO_str_jumps", libc)
-        self.print_file_jumps_func("_IO_str_jumps")
-        self.resolve_and_print("_IO_strn_jumps", libc)
-        self.print_file_jumps_func("_IO_strn_jumps")
-        self.resolve_and_print("_IO_str_chk_jumps", libc)
-        self.print_file_jumps_func("_IO_str_chk_jumps")
-        self.resolve_and_print("_IO_wstr_jumps", libc)
-        self.print_file_jumps_func("_IO_wstr_jumps")
-        self.resolve_and_print("_IO_wstrn_jumps", libc)
-        self.print_file_jumps_func("_IO_wstrn_jumps")
-        self.resolve_and_print("_IO_streambuf_jumps", libc)
-        self.print_file_jumps_func("_IO_streambuf_jumps")
-        self.resolve_and_print("_IO_proc_jumps", libc)
-        self.print_file_jumps_func("_IO_proc_jumps")
-        self.resolve_and_print("_IO_old_proc_jumps", libc)
-        self.print_file_jumps_func("_IO_old_proc_jumps")
-        self.resolve_and_print("_IO_helper_jumps", libc)
-        self.print_file_jumps_func("_IO_helper_jumps")
-        self.resolve_and_print("_IO_cookie_jumps", libc)
-        self.print_file_jumps_func("_IO_cookie_jumps")
-        self.resolve_and_print("_IO_obstack_jumps", libc)
-        self.print_file_jumps_func("_IO_obstack_jumps")
+        if get_libc_version() < (2, 38):
+            self.resolve_and_print_fj("_IO_file_jumps", libc)
+            self.resolve_and_print_fj("_IO_file_jumps_mmap", libc)
+            self.resolve_and_print_fj("_IO_file_jumps_maybe_mmap", libc)
+            self.resolve_and_print_fj("_IO_wfile_jumps", libc)
+            self.resolve_and_print_fj("_IO_wfile_jumps_mmap", libc)
+            self.resolve_and_print_fj("_IO_wfile_jumps_maybe_mmap", libc)
+            self.resolve_and_print_fj("_IO_old_file_jumps", libc)
+            self.resolve_and_print_fj("_IO_mem_jumps", libc)
+            self.resolve_and_print_fj("_IO_wmem_jumps", libc)
+            self.resolve_and_print_fj("_IO_str_jumps", libc)
+            self.resolve_and_print_fj("_IO_strn_jumps", libc)
+            self.resolve_and_print_fj("_IO_str_chk_jumps", libc)
+            self.resolve_and_print_fj("_IO_wstr_jumps", libc)
+            self.resolve_and_print_fj("_IO_wstrn_jumps", libc)
+            self.resolve_and_print_fj("_IO_streambuf_jumps", libc)
+            self.resolve_and_print_fj("_IO_proc_jumps", libc)
+            self.resolve_and_print_fj("_IO_old_proc_jumps", libc)
+            self.resolve_and_print_fj("_IO_helper_jumps", libc)
+            self.resolve_and_print_fj("_IO_cookie_jumps", libc)
+            self.resolve_and_print_fj("_IO_obstack_jumps", libc)
+        else:
+            self.resolve_and_print_fj("__io_vtables[IO_STR_JUMPS]", libc)
+            self.resolve_and_print_fj("__io_vtables[IO_WSTR_JUMPS]", libc)
+            self.resolve_and_print_fj("__io_vtables[IO_FILE_JUMPS]", libc)
+            self.resolve_and_print_fj("__io_vtables[IO_FILE_JUMPS_MMAP]", libc)
+            self.resolve_and_print_fj("__io_vtables[IO_FILE_JUMPS_MAYBE_MMAP]", libc)
+            self.resolve_and_print_fj("__io_vtables[IO_WFILE_JUMPS]", libc)
+            self.resolve_and_print_fj("__io_vtables[IO_WFILE_JUMPS_MMAP]", libc)
+            self.resolve_and_print_fj("__io_vtables[IO_WFILE_JUMPS_MAYBE_MMAP]", libc)
+            self.resolve_and_print_fj("__io_vtables[IO_COOKIE_JUMPS]", libc)
+            self.resolve_and_print_fj("__io_vtables[IO_PROC_JUMPS]", libc)
+            self.resolve_and_print_fj("__io_vtables[IO_MEM_JUMPS]", libc)
+            self.resolve_and_print_fj("__io_vtables[IO_WMEM_JUMPS]", libc)
+            self.resolve_and_print_fj("__io_vtables[IO_PRINTF_BUFFER_AS_FILE_JUMPS]", libc)
+            self.resolve_and_print_fj("__io_vtables[IO_WPRINTF_BUFFER_AS_FILE_JUMPS]", libc)
+            self.resolve_and_print_fj("__io_vtables[IO_OLD_FILE_JUMPS]", libc)
+            self.resolve_and_print_fj("__io_vtables[IO_OLD_PROC_JUMPS]", libc)
+            self.resolve_and_print_fj("__io_vtables[IO_OLD_COOKIED_JUMPS]", libc)
         self.resolve_and_print("open", libc)
         self.resolve_and_print("read", libc)
         self.resolve_and_print("write", libc)
