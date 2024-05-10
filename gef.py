@@ -58982,7 +58982,10 @@ class KernelDmesgCommand(GenericCommand):
                 raise
             size = seq_based_info["text_len"]
             src += current_arch.ptrsize
-            entry = bytes2str(read_memory(src, size))
+            if size:
+                entry = bytes2str(read_memory(src, size))
+            else:
+                entry = ""
 
             # timestamp
             sec = seq_based_info["ts_nsec"] // 1000 // 1000 // 1000
