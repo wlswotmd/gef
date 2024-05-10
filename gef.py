@@ -65665,6 +65665,9 @@ class KernelPipeCommand(GenericCommand):
             # bufs is valid addr
             if v < 0x10000 or not is_valid_addr(v):
                 continue
+            # bufs is not self
+            if v == pipe_inode_info:
+                continue
             # skip invalid chunk
             ret = gdb.execute("slab-contains {:#x}".format(v), to_string=True)
             if "unaligned?" in ret:
