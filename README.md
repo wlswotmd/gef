@@ -430,6 +430,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 ### Added features
 * `pid`/`tid`: prints pid and tid.
 * `filename`: prints filename.
+* `fds`: shows opensed file descriptors.
 * `auxv`: pretty prints ELF auxiliary vector.
     * Supported also under qemu-user.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/auxv.png)

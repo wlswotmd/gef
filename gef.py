@@ -15636,6 +15636,37 @@ class ProcInfoCommand(GenericCommand):
 
 
 @register_command
+class FileDescriptorsCommand(GenericCommand):
+    """Show opened file descriptors."""
+    _cmdline_ = "fds"
+    _category_ = "02-a. Process Information - General"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_gdb_target_local
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        pid = get_pid()
+        path = "/proc/{:d}/fd".format(pid)
+
+        items = os.listdir(path)
+        if not items:
+            gef_print("No FD opened")
+            return
+
+        for fname in items:
+            fullpath = os.path.join(path, fname)
+            if os.path.islink(fullpath):
+                gef_print("{:32s} {:s} {:s}".format(fullpath, RIGHT_ARROW, os.readlink(fullpath)))
+        return
+
+
+@register_command
 class ProcDumpCommand(GenericCommand):
     """Dump each file under `/proc/PID`."""
     _cmdline_ = "proc-dump"
