@@ -48098,7 +48098,7 @@ class KernelAddressHeuristicFinder:
         if kversion and kversion >= "2.6.28":
             addr = get_ksymaddr("cmdline_proc_show")
             if addr:
-                res = gdb.execute("x/10i {:#x}".format(addr), to_string=True)
+                res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
                     g = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res)
                 elif is_x86_32():
