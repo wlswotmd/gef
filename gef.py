@@ -57063,6 +57063,8 @@ class KernelFileSystemsCommand(GenericCommand):
     def __init__(self):
         super().__init__()
         self.initialized = False
+        self.offset_d_iname = None
+        self.offset_d_parent = None
         return
 
     def initialize(self):
@@ -57102,7 +57104,7 @@ class KernelFileSystemsCommand(GenericCommand):
         # file_system_type->name
         self.offset_name = 0
         if not self.quiet:
-            info("offsetof(file_systems, name): {:#x}".format(self.offset_name))
+            info("offsetof(file_system_type, name): {:#x}".format(self.offset_name))
 
         # file_system_type->next
         for i in range(10):
@@ -57139,11 +57141,11 @@ class KernelFileSystemsCommand(GenericCommand):
                 err("Not found file_system_type->next")
             return False
         if not self.quiet:
-            info("offsetof(file_systems, next): {:#x}".format(self.offset_next))
+            info("offsetof(file_system_type, next): {:#x}".format(self.offset_next))
 
         self.offset_fs_supers = self.offset_next + current_arch.ptrsize
         if not self.quiet:
-            info("offsetof(file_systems, fs_supers): {:#x}".format(self.offset_fs_supers))
+            info("offsetof(file_system_type, fs_supers): {:#x}".format(self.offset_fs_supers))
 
         """
         struct super_block {
@@ -57292,6 +57294,9 @@ class KernelFileSystemsCommand(GenericCommand):
         return major, minor, name
 
     def get_offset_d_iname(self, dentry):
+        if self.offset_d_iname:
+            return self.offset_d_iname
+
         """
         struct dentry {
             unsigned int d_flags;
@@ -57319,15 +57324,22 @@ class KernelFileSystemsCommand(GenericCommand):
                 offset_d_iname = name - dentry
                 break
             current += current_arch.ptrsize
+
+        self.offset_d_iname = offset_d_iname
         return offset_d_iname
 
     def get_offset_d_parent(self, dentry, offset_d_iname):
+        if self.offset_d_parent:
+            return self.offset_d_parent
+
         offset_dname_name = offset_d_iname - current_arch.ptrsize * 2
         if read_int_from_memory(dentry + offset_dname_name) == 0: # skip if padding
             offset_dname_name -= current_arch.ptrsize
         offset_d_parent = offset_dname_name - 0x8 - current_arch.ptrsize
         if read_int_from_memory(dentry + offset_d_parent) == 0: # skip if padding
             offset_d_parent -= current_arch.ptrsize
+
+        self.offset_d_parent = offset_d_parent
         return offset_d_parent
 
     def get_mount(self, mnt_instance):
