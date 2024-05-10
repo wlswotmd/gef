@@ -70512,6 +70512,7 @@ class HoardHeapDumpCommand(GenericCommand):
             if current in seen:
                 self.out.append(Color.colorify("  -> {:#x} (loop) ".format(current), corrupted_msg_color))
                 break
+            seen.append(current)
             if current and not is_valid_addr(current):
                 self.out.append(Color.colorify("  -> {:#x} (corrupted) ".format(current), corrupted_msg_color))
                 break
