@@ -67799,7 +67799,7 @@ class KernelIrqCommand(GenericCommand):
                 name = read_cstring_from_memory(name_ptr, ascii_only=True)
                 entries[irq] = [desc, action, handler, name]
 
-        fmt = "{:3s} {:18s} {:18s} {:20s} {:18s}"
+        fmt = "{:3s} {:18s} {:18s} {:24s} {:18s}"
         legend = ["irq", "irq_desc", "action", "name", "handler"]
         self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
@@ -67808,12 +67808,12 @@ class KernelIrqCommand(GenericCommand):
                 desc, action, handler, name = entries[i]
                 if action:
                     symbol = get_symbol_string(handler, nosymbol_string=" <NO_SYMBOL>")
-                    self.out.append("{:3d} {:#018x} {:#018x} {:20s} {:#018x}{:s}".format(i, desc, action, name, handler, symbol))
+                    self.out.append("{:3d} {:#018x} {:#018x} {:24s} {:#018x}{:s}".format(i, desc, action, name, handler, symbol))
                 else:
-                    self.out.append("{:3d} {:#018x} {:18s} {:20s} {:18s}".format(i, desc, "unused", "-", "-"))
+                    self.out.append("{:3d} {:#018x} {:18s} {:24s} {:18s}".format(i, desc, "unused", "-", "-"))
             else:
                 if verbose:
-                    self.out.append("{:3d} {:18s} {:18s} {:20s} {:18s}".format(i, "unused", "unused", "-", "-"))
+                    self.out.append("{:3d} {:18s} {:18s} {:24s} {:18s}".format(i, "unused", "unused", "-", "-"))
         return
 
     @parse_args
