@@ -51521,7 +51521,7 @@ class KernelCurrentCommand(GenericCommand):
             0xc6a27440|+0x0000|+000: 0x2d849000 -> inaccessible
             0xc6a27444|+0x0004|+001: 0x00000000
             """
-            if off <= 0x10:
+            if (off <= 0x10) or (off & 0xf):
                 break
             if len(cpu_offset) >= 1 and off == cpu_offset[-1]:
                 cpu_offset.pop() # remove last one
