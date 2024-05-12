@@ -49162,7 +49162,7 @@ class KernelAddressHeuristicFinder:
 
         # plan 5 (from slob-dump)
         if allocator == "SLOB":
-            ret = gdb.execute("slob-dump --large --no-pager --quiet", to_string=True)
+            ret = gdb.execute("slob-dump --simple --large --no-pager --quiet", to_string=True)
             r = re.findall(r"page: (0x\S+)", Color.remove_color(ret))
             min_page = get_min_page(r)
             if min_page is not None:
@@ -64382,6 +64382,7 @@ class SlobDumpCommand(GenericCommand):
                         help="filter by specific slob cache name (need -v option).")
     parser.add_argument("--list", action="store_true", help="list up all slob cache names.")
     parser.add_argument("--meta", action="store_true", help="display offset information.")
+    parser.add_argument("-s", "--simple", action="store_true", help="skip showing freelist.")
     parser.add_argument("--large", action="store_true", help="display only free_slob_large.")
     parser.add_argument("--medium", action="store_true", help="display only free_slob_medium.")
     parser.add_argument("--small", action="store_true", help="display only free_slob_small.")
@@ -64420,6 +64421,16 @@ class SlobDumpCommand(GenericCommand):
     def __init__(self, *args, **kwargs):
         super().__init__()
         self.initialized = False
+        return
+
+    def quiet_err(self, msg):
+        if not self.args.quiet:
+            err(msg)
+        return
+
+    def quiet_info(self, msg):
+        if not self.args.quiet:
+            info(msg)
         return
 
     """
@@ -64466,47 +64477,39 @@ class SlobDumpCommand(GenericCommand):
     };
     """
 
-    def init_offset(self, force=False):
-        if not force and self.initialized:
+    def initialize(self):
+        if not self.args.meta and self.initialized:
             return True
 
         # resolve slab_caches
         self.slab_caches = KernelAddressHeuristicFinder.get_slab_caches()
         if self.slab_caches is None:
-            if not self.quiet:
-                err("Failed to resolve `slab_caches`")
+            self.quiet_err("Failed to resolve `slab_caches`")
             return False
         else:
-            if not self.quiet:
-                info("slab_caches: {:#x}".format(self.slab_caches))
+            self.quiet_info("slab_caches: {:#x}".format(self.slab_caches))
 
         # resolve global freelists
         self.free_slob_large = get_ksymaddr("free_slob_large")
         if self.free_slob_large is None:
-            if not self.quiet:
-                err("Failed to resolve `free_slob_large`")
+            self.quiet_err("Failed to resolve `free_slob_large`")
             return False
         else:
-            if not self.quiet:
-                info("free_slob_large: {:#x}".format(self.free_slob_large))
+            self.quiet_info("free_slob_large: {:#x}".format(self.free_slob_large))
 
         self.free_slob_medium = get_ksymaddr("free_slob_medium")
         if self.free_slob_medium is None:
-            if not self.quiet:
-                err("Failed to resolve `free_slob_medium`")
+            self.quiet_err("Failed to resolve `free_slob_medium`")
             return False
         else:
-            if not self.quiet:
-                info("free_slob_medium: {:#x}".format(self.free_slob_medium))
+            self.quiet_info("free_slob_medium: {:#x}".format(self.free_slob_medium))
 
         self.free_slob_small = get_ksymaddr("free_slob_small")
         if self.free_slob_small is None:
-            if not self.quiet:
-                err("Failed to resolve `free_slob_small`")
+            self.quiet_err("Failed to resolve `free_slob_small`")
             return False
         else:
-            if not self.quiet:
-                info("free_slob_small: {:#x}".format(self.free_slob_small))
+            self.quiet_info("free_slob_small: {:#x}".format(self.free_slob_small))
 
         # offsetof(kmem_cache, list)
         kversion = KernelVersionCommand.kernel_version()
@@ -64514,28 +64517,23 @@ class SlobDumpCommand(GenericCommand):
             self.kmem_cache_offset_list = current_arch.ptrsize * 3 + 4 * 4
         else:
             self.kmem_cache_offset_list = current_arch.ptrsize * 3 + 4 * 6
-        if not self.quiet:
-            info("offsetof(kmem_cache, list): {:#x}".format(self.kmem_cache_offset_list))
+        self.quiet_info("offsetof(kmem_cache, list): {:#x}".format(self.kmem_cache_offset_list))
 
         # offsetof(kmem_cache, name)
         self.kmem_cache_offset_name = self.kmem_cache_offset_list - current_arch.ptrsize * 3
-        if not self.quiet:
-            info("offsetof(kmem_cache, name): {:#x}".format(self.kmem_cache_offset_name))
+        self.quiet_info("offsetof(kmem_cache, name): {:#x}".format(self.kmem_cache_offset_name))
 
         # offsetof(kmem_cache, object_size)
         self.kmem_cache_offset_object_size = 0
-        if not self.quiet:
-            info("offsetof(kmem_cache, object_size): {:#x}".format(self.kmem_cache_offset_object_size))
+        self.quiet_info("offsetof(kmem_cache, object_size): {:#x}".format(self.kmem_cache_offset_object_size))
 
         # offsetof(kmem_cache, size)
         self.kmem_cache_offset_size = 4
-        if not self.quiet:
-            info("offsetof(kmem_cache, size): {:#x}".format(self.kmem_cache_offset_size))
+        self.quiet_info("offsetof(kmem_cache, size): {:#x}".format(self.kmem_cache_offset_size))
 
         # offsetof(kmem_cache, flags)
         self.kmem_cache_offset_flags = 4 * 3
-        if not self.quiet:
-            info("offsetof(kmem_cache, flags): {:#x}".format(self.kmem_cache_offset_flags))
+        self.quiet_info("offsetof(kmem_cache, flags): {:#x}".format(self.kmem_cache_offset_flags))
 
         # offsetof(page, next)
         kversion = KernelVersionCommand.kernel_version()
@@ -64547,8 +64545,7 @@ class SlobDumpCommand(GenericCommand):
             self.page_offset_next = current_arch.ptrsize
         else:
             self.page_offset_next = current_arch.ptrsize
-        if not self.quiet:
-            info("offsetof(page, next): {:#x}".format(self.page_offset_next))
+        self.quiet_info("offsetof(page, next): {:#x}".format(self.page_offset_next))
 
         # offsetof(page, freelist)
         if kversion < "4.18":
@@ -64557,8 +64554,7 @@ class SlobDumpCommand(GenericCommand):
             self.page_offset_freelist = current_arch.ptrsize * 4
         else:
             self.page_offset_freelist = current_arch.ptrsize * 4
-        if not self.quiet:
-            info("offsetof(page, freelist): {:#x}".format(self.page_offset_freelist))
+        self.quiet_info("offsetof(page, freelist): {:#x}".format(self.page_offset_freelist))
 
         # offsetof(page, units)
         if kversion < "4.18":
@@ -64567,8 +64563,7 @@ class SlobDumpCommand(GenericCommand):
             self.page_offset_freelist = current_arch.ptrsize * 6
         else:
             self.page_offset_freelist = current_arch.ptrsize * 5
-        if not self.quiet:
-            info("offsetof(page, units): {:#x}".format(self.page_offset_units))
+        self.quiet_info("offsetof(page, units): {:#x}".format(self.page_offset_units))
 
         self.initialized = True
         return True
@@ -64620,6 +64615,9 @@ class SlobDumpCommand(GenericCommand):
         return read_cstring_from_memory(name_addr)
 
     def walk_freelist(self, head, page):
+        if self.args.simple:
+            return []
+
         freelist = []
         current = head
         while True:
@@ -64677,7 +64675,7 @@ class SlobDumpCommand(GenericCommand):
             # goto next
             current_kmem_cache = kmem_cache["next"]
 
-        if self.listup:
+        if self.args.list:
             return parsed_caches, None
 
         parsed_freelist = {}
@@ -64716,7 +64714,7 @@ class SlobDumpCommand(GenericCommand):
         chunk_label_color = get_gef_setting("theme.heap_chunk_label")
         chunk_size_color = get_gef_setting("theme.heap_chunk_size")
 
-        if self.verbose:
+        if self.args.verbose:
             self.out.append(titlify("{:s} @ {:#x}".format("slab_caches", self.slab_caches)))
             for kmem_cache in parsed_caches[1:]:
                 if target_names != [] and kmem_cache["name"] not in target_names:
@@ -64739,7 +64737,7 @@ class SlobDumpCommand(GenericCommand):
         return
 
     def dump_names(self, parsed_caches):
-        if not self.quiet:
+        if not self.args.quiet:
             fmt = "{:<16s} {:<16s} {:30s} {:20s}"
             legend = ["Object Size", "Chunk Size", "Name", "kmem_cache"]
             self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
@@ -64752,15 +64750,14 @@ class SlobDumpCommand(GenericCommand):
         return
 
     def slobwalk(self, target_names):
-        if self.init_offset(force=self.meta) is False:
-            if not self.quiet:
-                err("Initialize failed")
+        if self.initialize() is False:
+            self.quiet_err("Initialize failed")
             return
 
-        if self.meta:
+        if self.args.meta:
             return
 
-        if self.listup:
+        if self.args.list:
             parsed_caches, _ = self.walk_caches(target_names)
             self.dump_names(parsed_caches)
             return
@@ -64777,10 +64774,14 @@ class SlobDumpCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        self.listup = args.list
-        self.meta = args.meta
-        self.quiet = args.quiet
-        self.verbose = args.verbose
+        if not args.quiet:
+            info("Wait for memory scan")
+
+        allocator = KernelChecksecCommand.get_slab_type()
+        if allocator != "SLOB":
+            if not args.quiet:
+                err("Unsupported SLUB, SLAB, SLUB_TINY")
+            return
 
         if (args.large, args.medium, args.small) == (False, False, False):
             self.large = True
@@ -64791,15 +64792,7 @@ class SlobDumpCommand(GenericCommand):
             self.medium = args.medium
             self.small = args.small
 
-        if not self.quiet:
-            info("Wait for memory scan")
-
-        allocator = KernelChecksecCommand.get_slab_type()
-        if allocator != "SLOB":
-            if not self.quiet:
-                err("Unsupported SLUB, SLAB, SLUB_TINY")
-            return
-
+        self.args = args
         self.maps = None
         self.out = []
         self.slobwalk(args.cache_name)
@@ -80265,7 +80258,7 @@ class PageCommand(GenericCommand):
 
         elif allocator == "SLOB":
             # get valid page and vaddr pair
-            ret = gdb.execute("slob-dump --large --no-pager --quiet", to_string=True)
+            ret = gdb.execute("slob-dump --simple --large --no-pager --quiet", to_string=True)
             r1 = re.search(r"page: (0x\S+)", Color.remove_color(ret))
             r2 = re.search(r"virtual address: (0x\S+)", Color.remove_color(ret))
             if not r1 or not r2:
