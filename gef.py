@@ -49154,7 +49154,7 @@ class KernelAddressHeuristicFinder:
 
         # plan 4 (from slab-dump)
         if allocator == "SLAB":
-            ret = gdb.execute("slab-dump --no-pager --quiet kmalloc-256", to_string=True)
+            ret = gdb.execute("slab-dump --simple --no-pager --quiet kmalloc-256", to_string=True)
             r = re.findall(r"node\[\d+\]\.slabs_(?:partial|full): (0x\S+)", Color.remove_color(ret))
             min_page = get_min_page(r)
             if min_page is not None:
@@ -63523,16 +63523,17 @@ class SlabDumpCommand(GenericCommand):
     parser.add_argument("--cpu", type=int, help="filter by specific cpu.")
     parser.add_argument("--list", action="store_true", help="list up all slab cache names.")
     parser.add_argument("--meta", action="store_true", help="display offset information.")
+    parser.add_argument("-s", "--simple", action="store_true", help="skip displaying layout and freelist.")
     parser.add_argument("--skip-partial", action="store_true", help="skip displaying slabs_partial.")
     parser.add_argument("--skip-full", action="store_true", help="skip displaying slabs_full.")
     parser.add_argument("--skip-free", action="store_true", help="skip displaying slabs_free.")
-    parser.add_argument("--hexdump-used", type=lambda x: int(x, 16), default=0,
+    parser.add_argument("--hexdump-used", metavar="SIZE", type=lambda x: int(x, 16), default=0,
                         help="hexdump `used chunks` if layout is resolved.")
-    parser.add_argument("--hexdump-freed", type=lambda x: int(x, 16), default=0,
+    parser.add_argument("--hexdump-freed", metavar="SIZE", type=lambda x: int(x, 16), default=0,
                         help="hexdump `unused (freed) chunks` if layout is resolved.")
-    parser.add_argument("--telescope-used", type=lambda x: int(x, 16), default=0,
+    parser.add_argument("--telescope-used", metavar="SIZE", type=lambda x: int(x, 16), default=0,
                         help="telescope `used chunks` if layout is resolved.")
-    parser.add_argument("--telescope-freed", type=lambda x: int(x, 16), default=0,
+    parser.add_argument("--telescope-freed", metavar="SIZE", type=lambda x: int(x, 16), default=0,
                         help="telescope `unused (freed) chunks` if layout is resolved.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
@@ -63582,6 +63583,16 @@ class SlabDumpCommand(GenericCommand):
     def __init__(self, *args, **kwargs):
         super().__init__()
         self.initialized = False
+        return
+
+    def quiet_err(self, msg):
+        if not self.args.quiet:
+            err(msg)
+        return
+
+    def quiet_info(self, msg):
+        if not self.args.quiet:
+            info(msg)
         return
 
     """
@@ -63694,19 +63705,17 @@ class SlabDumpCommand(GenericCommand):
     };
     """
 
-    def init_offset(self, force=False):
-        if not force and self.initialized:
+    def initialize(self):
+        if not self.args.meta and self.initialized:
             return True
 
         # resolve slab_caches
         self.slab_caches = KernelAddressHeuristicFinder.get_slab_caches()
         if self.slab_caches is None:
-            if not self.quiet:
-                err("Failed to resolve `slab_caches`")
+            self.quiet_err("Failed to resolve `slab_caches`")
             return False
         else:
-            if not self.quiet:
-                info("slab_caches: {:#x}".format(self.slab_caches))
+            self.quiet_info("slab_caches: {:#x}".format(self.slab_caches))
 
         seen = [self.slab_caches]
         current = self.slab_caches
@@ -63720,13 +63729,13 @@ class SlabDumpCommand(GenericCommand):
         # resolve __per_cpu_offset
         __per_cpu_offset = KernelAddressHeuristicFinder.get_per_cpu_offset()
         if __per_cpu_offset is None:
-            if not self.quiet:
-                info("__per_cpu_offset: Not found")
+            self.quiet_info("__per_cpu_offset: Not found")
             self.cpu_offset = []
+            self.ncpus = 1
         else:
-            if not self.quiet:
-                info("__per_cpu_offset: {:#x}".format(__per_cpu_offset))
+            self.quiet_info("__per_cpu_offset: {:#x}".format(__per_cpu_offset))
             self.cpu_offset = KernelCurrentCommand.get_each_cpu_offset(__per_cpu_offset)
+            self.ncpus = len(self.cpu_offset)
 
         # offsetof(kmem_cache, list)
         kversion = KernelVersionCommand.kernel_version()
@@ -63736,47 +63745,39 @@ class SlabDumpCommand(GenericCommand):
             self.kmem_cache_offset_list = current_arch.ptrsize * 7 + 4 * 10
         else:
             self.kmem_cache_offset_list = current_arch.ptrsize * 4 + 4 * 12
-        if not self.quiet:
-            info("offsetof(kmem_cache, list): {:#x}".format(self.kmem_cache_offset_list))
+        self.quiet_info("offsetof(kmem_cache, list): {:#x}".format(self.kmem_cache_offset_list))
 
         # offsetof(kmem_cache, name)
         self.kmem_cache_offset_name = self.kmem_cache_offset_list - current_arch.ptrsize
-        if not self.quiet:
-            info("offsetof(kmem_cache, name): {:#x}".format(self.kmem_cache_offset_name))
+        self.quiet_info("offsetof(kmem_cache, name): {:#x}".format(self.kmem_cache_offset_name))
 
         # offsetof(kmem_cache, size)
         if kversion >= "3.18":
             self.kmem_cache_offset_size = current_arch.ptrsize + 4 * 3
         else:
             self.kmem_cache_offset_size = 4 * 3
-        if not self.quiet:
-            info("offsetof(kmem_cache, size): {:#x}".format(self.kmem_cache_offset_size))
+        self.quiet_info("offsetof(kmem_cache, size): {:#x}".format(self.kmem_cache_offset_size))
 
         # offsetof(kmem_cache, flags)
         self.kmem_cache_offset_flags = self.kmem_cache_offset_size + 4 * 3
-        if not self.quiet:
-            info("offsetof(kmem_cache, flags): {:#x}".format(self.kmem_cache_offset_flags))
+        self.quiet_info("offsetof(kmem_cache, flags): {:#x}".format(self.kmem_cache_offset_flags))
 
         # offsetof(kmem_cache, num)
         self.kmem_cache_offset_num = self.kmem_cache_offset_flags + 4
-        if not self.quiet:
-            info("offsetof(kmem_cache, num): {:#x}".format(self.kmem_cache_offset_num))
+        self.quiet_info("offsetof(kmem_cache, num): {:#x}".format(self.kmem_cache_offset_num))
 
         # offsetof(kmem_cache, gfporder)
         self.kmem_cache_offset_gfporder = self.kmem_cache_offset_num + 4
-        if not self.quiet:
-            info("offsetof(kmem_cache, gfporder): {:#x}".format(self.kmem_cache_offset_gfporder))
+        self.quiet_info("offsetof(kmem_cache, gfporder): {:#x}".format(self.kmem_cache_offset_gfporder))
 
         # offsetof(kmem_cache, object_size)
         self.kmem_cache_offset_object_size = self.kmem_cache_offset_list + current_arch.ptrsize * 2 + 4
-        if not self.quiet:
-            info("offsetof(kmem_cache, object_size): {:#x}".format(self.kmem_cache_offset_object_size))
+        self.quiet_info("offsetof(kmem_cache, object_size): {:#x}".format(self.kmem_cache_offset_object_size))
 
         # offsetof(kmem_cache, node)
         if kversion < "4.16":
             self.kmem_cache_offset_node = self.kmem_cache_offset_object_size + 4 * 2 # heuristic could not use, so hard-coded
-            if not self.quiet:
-                info("offsetof(kmem_cache, node): {:#x}".format(self.kmem_cache_offset_node))
+            self.quiet_info("offsetof(kmem_cache, node): {:#x}".format(self.kmem_cache_offset_node))
         else:
             # Search heuristically using useroffset and usersize as markers
             start_offset = self.kmem_cache_offset_list + current_arch.ptrsize * 2
@@ -63803,23 +63804,19 @@ class SlabDumpCommand(GenericCommand):
 
                 if found:
                     self.kmem_cache_offset_node = align_address_to_size(candidate_offset + 4 * 2, current_arch.ptrsize)
-                    if not self.quiet:
-                        info("offsetof(kmem_cache, node): {:#x}".format(self.kmem_cache_offset_node))
+                    self.quiet_info("offsetof(kmem_cache, node): {:#x}".format(self.kmem_cache_offset_node))
                     break
             else:
-                if not self.quiet:
-                    info("offsetof(kmem_cache, node): Not found")
+                self.quiet_info("offsetof(kmem_cache, node): Not found")
                 self.kmem_cache_offset_node = None
 
         if kversion >= "3.18":
             # offsetof(kmem_cache, cpu_cache)
             self.kmem_cache_offset_cpu_cache = 0
-            if not self.quiet:
-                info("offsetof(kmem_cache, cpu_cache): {:#x}".format(self.kmem_cache_offset_cpu_cache))
+            self.quiet_info("offsetof(kmem_cache, cpu_cache): {:#x}".format(self.kmem_cache_offset_cpu_cache))
         else:
             self.kmem_cache_offset_array = self.kmem_cache_offset_node + current_arch.ptrsize
-            if not self.quiet:
-                info("offsetof(kmem_cache, array): {:#x}".format(self.kmem_cache_offset_array))
+            self.quiet_info("offsetof(kmem_cache, array): {:#x}".format(self.kmem_cache_offset_array))
 
         # offsetof(page, next)
         kversion = KernelVersionCommand.kernel_version()
@@ -63833,8 +63830,7 @@ class SlabDumpCommand(GenericCommand):
             self.page_offset_next = current_arch.ptrsize
         else:
             self.page_offset_next = current_arch.ptrsize * 2
-        if not self.quiet:
-            info("offsetof(page, next): {:#x}".format(self.page_offset_next))
+        self.quiet_info("offsetof(page, next): {:#x}".format(self.page_offset_next))
 
         # offsetof(page, freelist)
         if kversion < "4.18":
@@ -63845,8 +63841,7 @@ class SlabDumpCommand(GenericCommand):
             self.page_offset_freelist = current_arch.ptrsize * 4
         else:
             self.page_offset_freelist = current_arch.ptrsize * 4
-        if not self.quiet:
-            info("offsetof(page, freelist): {:#x}".format(self.page_offset_freelist))
+        self.quiet_info("offsetof(page, freelist): {:#x}".format(self.page_offset_freelist))
 
         # offsetof(page, slab_cache)
         if kversion < "4.16" and is_32bit():
@@ -63859,8 +63854,7 @@ class SlabDumpCommand(GenericCommand):
             self.page_offset_slab_cache = current_arch.ptrsize * 3
         else:
             self.page_offset_slab_cache = current_arch.ptrsize
-        if not self.quiet:
-            info("offsetof(page, slab_cache): {:#x}".format(self.page_offset_slab_cache))
+        self.quiet_info("offsetof(page, slab_cache): {:#x}".format(self.page_offset_slab_cache))
 
         # offsetof(page, s_mem)
         if kversion < "4.18":
@@ -63871,8 +63865,7 @@ class SlabDumpCommand(GenericCommand):
             self.page_offset_s_mem = 8 + current_arch.ptrsize * 5
         else:
             self.page_offset_s_mem = 8 + current_arch.ptrsize * 5
-        if not self.quiet:
-            info("offsetof(page, s_mem): {:#x}".format(self.page_offset_s_mem))
+        self.quiet_info("offsetof(page, s_mem): {:#x}".format(self.page_offset_s_mem))
 
         # offsetof(page, active)
         if kversion < "4.18":
@@ -63883,8 +63876,7 @@ class SlabDumpCommand(GenericCommand):
             self.page_offset_active = current_arch.ptrsize * 6
         else:
             self.page_offset_active = current_arch.ptrsize * 6
-        if not self.quiet:
-            info("offsetof(page, active): {:#x}".format(self.page_offset_active))
+        self.quiet_info("offsetof(page, active): {:#x}".format(self.page_offset_active))
 
         # offsetof(kmem_cache_node, slabs_partial)
         # sizeof(raw_spinlock_t) can take many different values and must be determined heuristically.
@@ -63913,33 +63905,27 @@ class SlabDumpCommand(GenericCommand):
 
             if found:
                 self.kmem_cache_node_offset_slabs_partial = candidate_offset
-                if not self.quiet:
-                    info("offsetof(kmem_cache_node, slabs_partial): {:#x}".format(self.kmem_cache_node_offset_slabs_partial))
+                self.quiet_info("offsetof(kmem_cache_node, slabs_partial): {:#x}".format(self.kmem_cache_node_offset_slabs_partial))
                 break
         else:
-            if not self.quiet:
-                info("offsetof(kmem_cache_node, slabs_partial): Not found")
+            self.quiet_info("offsetof(kmem_cache_node, slabs_partial): Not found")
             return False
 
         # offsetof(kmem_cache_node, slabs_full)
         self.kmem_cache_node_offset_slabs_full = self.kmem_cache_node_offset_slabs_partial + current_arch.ptrsize * 2
-        if not self.quiet:
-            info("offsetof(kmem_cache_node, slabs_full): {:#x}".format(self.kmem_cache_node_offset_slabs_full))
+        self.quiet_info("offsetof(kmem_cache_node, slabs_full): {:#x}".format(self.kmem_cache_node_offset_slabs_full))
 
         # offsetof(kmem_cache_node, slabs_free)
         self.kmem_cache_node_offset_slabs_free = self.kmem_cache_node_offset_slabs_full + current_arch.ptrsize * 2
-        if not self.quiet:
-            info("offsetof(kmem_cache_node, slabs_free): {:#x}".format(self.kmem_cache_node_offset_slabs_free))
+        self.quiet_info("offsetof(kmem_cache_node, slabs_free): {:#x}".format(self.kmem_cache_node_offset_slabs_free))
 
         # offsetof(array_cache, avail)
         self.array_cache_offset_avail = 0
-        if not self.quiet:
-            info("offsetof(array_cache, avail): {:#x}".format(self.array_cache_offset_avail))
+        self.quiet_info("offsetof(array_cache, avail): {:#x}".format(self.array_cache_offset_avail))
 
         # offsetof(array_cache, limit)
         self.array_cache_offset_limit = 4
-        if not self.quiet:
-            info("offsetof(array_cache, limit): {:#x}".format(self.array_cache_offset_limit))
+        self.quiet_info("offsetof(array_cache, limit): {:#x}".format(self.array_cache_offset_limit))
 
         # offsetof(array_cache, entry)
         if kversion >= "3.17":
@@ -63947,8 +63933,7 @@ class SlabDumpCommand(GenericCommand):
         else:
             sizeof_raw_spinlock_t = self.kmem_cache_node_offset_slabs_partial
             self.array_cache_offset_entry = 4 * 4 + sizeof_raw_spinlock_t
-        if not self.quiet:
-            info("offsetof(array_cache, entry): {:#x}".format(self.array_cache_offset_entry))
+        self.quiet_info("offsetof(array_cache, entry): {:#x}".format(self.array_cache_offset_entry))
 
         self.initialized = True
         return True
@@ -64012,10 +63997,13 @@ class SlabDumpCommand(GenericCommand):
         else:
             return read_int_from_memory(addr + self.kmem_cache_offset_array + current_arch.ptrsize * cpu)
 
-    def walk_array_cache(self, array_cache, kmem_cache):
+    def walk_array_cache(self, array_cache, cpu, kmem_cache):
+        if self.args.simple:
+            return []
+
         freelist = []
         entry = array_cache + self.array_cache_offset_entry
-        end = entry + kmem_cache["array_cache"]["avail"] * current_arch.ptrsize
+        end = entry + kmem_cache["array_cache"][cpu]["avail"] * current_arch.ptrsize
         for current in range(entry, end, current_arch.ptrsize):
             chunk = read_int_from_memory(current)
             freelist.append(chunk)
@@ -64034,26 +64022,27 @@ class SlabDumpCommand(GenericCommand):
             if not is_valid_addr(node_page["address"]):
                 node_page_list.append(node_page)
                 break
-            s_mem = read_int_from_memory(node_page["address"] + self.page_offset_s_mem)
-            node_page["s_mem"] = s_mem & gef_getpagesize_mask_high()
+            node_page["s_mem"] = read_int_from_memory(node_page["address"] + self.page_offset_s_mem)
+            node_page["s_mem_base"] = node_page["s_mem"] & gef_getpagesize_mask_high()
 
-            freelist_addr = read_int_from_memory(node_page["address"] + self.page_offset_freelist)
-            if is_valid_addr(freelist_addr):
-                active = u32(read_memory(node_page["address"] + self.page_offset_active, 4))
-                if kversion >= "3.15":
-                    freelist_byteseq = read_memory(freelist_addr, kmem_cache["objperslab"])
-                    node_page["freelist"] = list(freelist_byteseq[active:])
+            if not self.args.simple:
+                freelist_addr = read_int_from_memory(node_page["address"] + self.page_offset_freelist)
+                if is_valid_addr(freelist_addr):
+                    active = u32(read_memory(node_page["address"] + self.page_offset_active, 4))
+                    if kversion >= "3.15":
+                        freelist_byteseq = read_memory(freelist_addr, kmem_cache["objperslab"])
+                        node_page["freelist"] = list(freelist_byteseq[active:])
+                    else:
+                        freelist_intseq = read_memory(freelist_addr, kmem_cache["objperslab"] * 4)
+                        node_page["freelist"] = slice_unpack(freelist_intseq, current_arch.ptrsize)[active:]
                 else:
-                    freelist_intseq = read_memory(freelist_addr, kmem_cache["objperslab"] * 4)
-                    node_page["freelist"] = slice_unpack(freelist_intseq, current_arch.ptrsize)[active:]
-            else:
-                node_page["freelist"] = []
+                    node_page["freelist"] = []
 
             node_page_list.append(node_page)
             current_node_page = read_int_from_memory(node_page["address"] + self.page_offset_next)
         return node_page_list
 
-    def walk_caches(self, target_names, cpu):
+    def walk_caches(self, target_names, cpus):
         kversion = KernelVersionCommand.kernel_version()
         current_kmem_cache = self.get_next_kmem_cache(self.slab_caches, point_to_base=False)
         parsed_caches = [{"name": "slab_caches", "next": current_kmem_cache}]
@@ -64079,26 +64068,30 @@ class SlabDumpCommand(GenericCommand):
             # goto next
             current_kmem_cache = kmem_cache["next"]
 
-        if self.listup:
+        if self.args.list:
             return parsed_caches
 
-        # second, parse array_cache and node then update
-        if self.quiet:
-            tqdm = lambda x, leave, desc: x # noqa: F841
+        # second, parse array_cache and node
+        if self.args.quiet:
+            tqdm = lambda x, leave: x # noqa: F841
         else:
             try:
                 from tqdm import tqdm
             except ImportError:
-                tqdm = lambda x, leave, desc: x # noqa: F841
+                tqdm = lambda x, leave: x # noqa: F841
 
-        for kmem_cache in tqdm(parsed_caches[1:], leave=False, desc="cpu{:d}".format(cpu)): # parsed_caches[0] is slab_caches, so skip
+        for kmem_cache in tqdm(parsed_caches[1:], leave=False): # parsed_caches[0] is slab_caches, so skip
             # parse array_cache
-            if is_valid_addr(self.get_array_cache_cpu(kmem_cache["address"], cpu)):
-                kmem_cache["array_cache"] = {}
-                kmem_cache["array_cache"]["address"] = self.get_array_cache_cpu(kmem_cache["address"], cpu)
-                kmem_cache["array_cache"]["avail"] = u32(read_memory(kmem_cache["array_cache"]["address"] + self.array_cache_offset_avail, 4))
-                kmem_cache["array_cache"]["limit"] = u32(read_memory(kmem_cache["array_cache"]["address"] + self.array_cache_offset_limit, 4))
-                kmem_cache["array_cache"]["freelist"] = self.walk_array_cache(kmem_cache["array_cache"]["address"], kmem_cache)
+            kmem_cache["array_cache"] = {}
+            kmem_cache["array_cache"]["freelist_all"] = []
+            for cpu in cpus:
+                kmem_cache["array_cache"][cpu] = {}
+                if is_valid_addr(self.get_array_cache_cpu(kmem_cache["address"], cpu)):
+                    kmem_cache["array_cache"][cpu]["address"] = array_cache = self.get_array_cache_cpu(kmem_cache["address"], cpu)
+                    kmem_cache["array_cache"][cpu]["avail"] = u32(read_memory(array_cache + self.array_cache_offset_avail, 4))
+                    kmem_cache["array_cache"][cpu]["limit"] = u32(read_memory(array_cache + self.array_cache_offset_limit, 4))
+                    kmem_cache["array_cache"][cpu]["freelist"] = self.walk_array_cache(array_cache, cpu, kmem_cache)
+                    kmem_cache["array_cache"]["freelist_all"].extend(kmem_cache["array_cache"][cpu]["freelist"])
 
             # parse node
             kmem_cache["nodes"] = []
@@ -64137,7 +64130,7 @@ class SlabDumpCommand(GenericCommand):
                 current_kmem_cache_node_ptr += current_arch.ptrsize
         return parsed_caches
 
-    def dump_page(self, page, kmem_cache, tag, freelist=None):
+    def dump_page(self, page, kmem_cache, tag):
         heap_page_color = get_gef_setting("theme.heap_page_address")
         label_inactive_color = get_gef_setting("theme.heap_label_inactive")
         used_address_color = get_gef_setting("theme.heap_chunk_address_used")
@@ -64152,16 +64145,30 @@ class SlabDumpCommand(GenericCommand):
             return
 
         # print virtual address
-        colored_s_mem = Color.colorify_hex(page["s_mem"], heap_page_color)
-        self.out.append("        virtual address (s_mem): {:s}".format(colored_s_mem))
+        colored_s_mem_base = Color.colorify_hex(page["s_mem_base"], heap_page_color)
+        self.out.append("        virtual address (s_mem & ~0xfff): {:s}".format(colored_s_mem_base))
 
         # print info
         self.out.append("        num pages: {:d}".format(kmem_cache["pagesperslab"]))
 
+        colour_off = page["s_mem"] - page["s_mem_base"]
+        self.out.append("        colour offset: {:#x}".format(colour_off))
+
+        if self.args.simple:
+            return
+
         # print layout
         freelist = page["freelist"]
-        end_virt = page["s_mem"] + kmem_cache["pagesperslab"] * gef_getpagesize()
-        for idx, chunk in enumerate(range(page["s_mem"], end_virt, kmem_cache["size"])):
+        end_virt = page["s_mem_base"] + kmem_cache["pagesperslab"] * gef_getpagesize()
+
+        if colour_off:
+            chunk_s = Color.colorify_hex(page["s_mem_base"], used_address_color)
+            self.out.append("        {:7s}   {:#04x} {:s} ({:s})".format("layout:", 0, chunk_s, "never-used"))
+            start_idx = 1
+        else:
+            start_idx = 0
+
+        for idx, chunk in enumerate(range(page["s_mem"], end_virt, kmem_cache["size"]), start=start_idx):
             if idx in freelist:
                 idxidx = freelist.index(idx)
                 if idxidx == len(freelist) - 1:
@@ -64170,7 +64177,7 @@ class SlabDumpCommand(GenericCommand):
                     next_idx = freelist[idxidx + 1]
                     next_msg = "next: {:#x}".format(next_idx)
                 chunk_s = Color.colorify_hex(chunk, freed_address_color)
-            elif "array_cache" in kmem_cache and chunk in kmem_cache["array_cache"]["freelist"]:
+            elif "array_cache" in kmem_cache and chunk in kmem_cache["array_cache"]["freelist_all"]:
                 next_msg = "in-use (array_cache)"
                 chunk_s = Color.colorify_hex(chunk, freed_address_color)
             else:
@@ -64182,24 +64189,24 @@ class SlabDumpCommand(GenericCommand):
             self.out.append("        {:7s}   {:#04x} {:s} ({:s})".format("layout:" if idx == 0 else "", idx, chunk_s, next_msg))
 
             # dump chunks
-            if self.hexdump_used_size and next_msg == "in-use":
-                peeked_data = read_memory(chunk, self.hexdump_used_size)
+            if self.args.hexdump_used and next_msg == "in-use":
+                peeked_data = read_memory(chunk, self.args.hexdump_used)
                 h = hexdump(peeked_data, 0x10, base=chunk, unit=current_arch.ptrsize)
                 self.out.append(h)
 
-            if self.hexdump_freed_size and next_msg.startswith(("next: ", "in-use (array_cache)")):
-                peeked_data = read_memory(chunk, self.hexdump_freed_size)
+            if self.args.hexdump_freed and next_msg.startswith(("next: ", "in-use (array_cache)")):
+                peeked_data = read_memory(chunk, self.args.hexdump_freed)
                 h = hexdump(peeked_data, 0x10, base=chunk, unit=current_arch.ptrsize)
                 self.out.append(h)
 
-            if self.telescope_used_size and next_msg == "in-use":
-                n = self.telescope_used_size // current_arch.ptrsize
+            if self.args.telescope_used and next_msg == "in-use":
+                n = self.args.telescope_used // current_arch.ptrsize
                 for i in range(n):
                     line = DereferenceCommand.pprint_dereferenced(chunk, i)
                     self.out.append(line)
 
-            if self.telescope_freed_size and next_msg.startswith(("next: ", "in-use (array_cache)")):
-                n = self.telescope_freed_size // current_arch.ptrsize
+            if self.args.telescope_freed and next_msg.startswith(("next: ", "in-use (array_cache)")):
+                n = self.args.telescope_freed // current_arch.ptrsize
                 for i in range(n):
                     line = DereferenceCommand.pprint_dereferenced(chunk, i)
                     self.out.append(line)
@@ -64222,11 +64229,15 @@ class SlabDumpCommand(GenericCommand):
         if "array_cache" not in kmem_cache:
             self.out.append("      {:s}: (none)".format(tag_s))
             return
-        self.out.append("      {:s}: {:#x}".format(tag_s, kmem_cache["array_cache"]["address"]))
+        self.out.append("      {:s}: {:#x}".format(tag_s, kmem_cache["array_cache"][cpu]["address"]))
 
-        self.out.append("        avail: {:d}".format(kmem_cache["array_cache"]["avail"]))
-        self.out.append("        limit: {:d}".format(kmem_cache["array_cache"]["limit"]))
-        freelist = kmem_cache["array_cache"]["freelist"]
+        self.out.append("        avail: {:d}".format(kmem_cache["array_cache"][cpu]["avail"]))
+        self.out.append("        limit: {:d}".format(kmem_cache["array_cache"][cpu]["limit"]))
+
+        if self.args.simple:
+            return
+
+        freelist = kmem_cache["array_cache"][cpu]["freelist"]
         if freelist == []:
             self.out.append("        entry: (none)")
         else:
@@ -64237,7 +64248,7 @@ class SlabDumpCommand(GenericCommand):
                 self.out.append("        {:6s} {:s}".format("entry:" if idx == 0 else "", msg))
         return
 
-    def dump_caches(self, target_names, cpu, parsed_caches):
+    def dump_caches(self, target_names, cpus, parsed_caches):
         chunk_label_color = get_gef_setting("theme.heap_chunk_label")
         chunk_size_color = get_gef_setting("theme.heap_chunk_size")
         label_inactive_color = get_gef_setting("theme.heap_label_inactive")
@@ -64246,6 +64257,8 @@ class SlabDumpCommand(GenericCommand):
         for kmem_cache in parsed_caches[1:]:
             if target_names != [] and kmem_cache["name"] not in target_names:
                 continue
+
+            # dump meta
             self.out.append("")
             self.out.append("  kmem_cache: {:#x}".format(kmem_cache["address"]))
             self.out.append("    name: {:s}".format(Color.colorify(kmem_cache["name"], chunk_label_color)))
@@ -64255,13 +64268,19 @@ class SlabDumpCommand(GenericCommand):
             self.out.append("    object per slab: {:#x}".format(kmem_cache["objperslab"]))
             self.out.append("    pages per slab: {:#x}".format(kmem_cache["pagesperslab"]))
 
-            self.dump_array_cache(cpu, kmem_cache)
+            # dump array_cache
+            for cpu in cpus:
+                self.dump_array_cache(cpu, kmem_cache)
 
+            # dump nodes
             if len(kmem_cache["nodes"]) == 0:
                 self.out.append("      {:s}: (none)".format(Color.colorify("node pages", label_inactive_color)))
             else:
                 for node_index, slabs_list in enumerate(kmem_cache["nodes"]):
-                    if not self.skip_partial and "slabs_partial" in slabs_list:
+                    node_addr = read_int_from_memory(kmem_cache["address"] + self.kmem_cache_offset_node + current_arch.ptrsize * node_index)
+                    self.out.append("    kmem_cache_node[{:d}]: {:#x}".format(node_index, node_addr))
+
+                    if not self.args.skip_partial and "slabs_partial" in slabs_list:
                         if len(slabs_list["slabs_partial"]) == 0:
                             tag = Color.colorify("node[{:d}].slabs_partial".format(node_index), label_inactive_color)
                             self.out.append("      {:s}: (none)".format(tag))
@@ -64269,7 +64288,7 @@ class SlabDumpCommand(GenericCommand):
                             for node_page in slabs_list["slabs_partial"]:
                                 self.dump_page(node_page, kmem_cache, tag="node[{:d}].slabs_partial".format(node_index))
 
-                    if not self.skip_full and "slabs_full" in slabs_list:
+                    if not self.args.skip_full and "slabs_full" in slabs_list:
                         if len(slabs_list["slabs_full"]) == 0:
                             tag = Color.colorify("node[{:d}].slabs_full".format(node_index), label_inactive_color)
                             self.out.append("      {:s}: (none)".format(tag))
@@ -64277,7 +64296,7 @@ class SlabDumpCommand(GenericCommand):
                             for node_page in slabs_list["slabs_full"]:
                                 self.dump_page(node_page, kmem_cache, tag="node[{:d}].slabs_full".format(node_index))
 
-                    if not self.skip_free and "slabs_free" in slabs_list:
+                    if not self.args.skip_free and "slabs_free" in slabs_list:
                         if len(slabs_list["slabs_free"]) == 0:
                             tag = Color.colorify("node[{:d}].slabs_free".format(node_index), label_inactive_color)
                             self.out.append("      {:s}: (none)".format(tag))
@@ -64302,33 +64321,28 @@ class SlabDumpCommand(GenericCommand):
         return
 
     def slabwalk(self, target_names, cpu):
-        if self.init_offset(force=self.meta) is False:
-            if not self.quiet:
-                err("Initialize failed")
+        if self.initialize() is False:
+            self.quiet_err("Initialize failed")
             return
 
-        if self.meta:
+        if self.args.meta:
             return
 
-        if self.listup:
-            parsed_caches = self.walk_caches(target_names, cpu=0)
+        if self.args.list:
+            parsed_caches = self.walk_caches(target_names, cpus=None)
             self.dump_names(parsed_caches)
             return
 
         if cpu is None:
-            # dump all cpu
-            for cpu_idx in range(len(self.cpu_offset) or 1):
-                self.out.append(titlify("CPU {:d}".format(cpu_idx)))
-                parsed_caches = self.walk_caches(target_names, cpu_idx)
-                self.dump_caches(target_names, cpu_idx, parsed_caches)
+            target_cpus = list(range(self.ncpus))
         else:
-            if (len(self.cpu_offset) or 1) > cpu:
-                self.out.append(titlify("CPU {:d}".format(cpu)))
-                parsed_caches = self.walk_caches(target_names, cpu)
-                self.dump_caches(target_names, cpu, parsed_caches)
-            else:
-                if not self.quiet:
-                    err("CPU number is invalid (valid range:{:d}-{:d})".format(0, (len(self.cpu_offset) or 1) - 1))
+            if self.ncpus <= cpu:
+                self.quiet_err("CPU number is invalid (valid range: {:d}-{:d})".format(0, self.ncpus - 1))
+                return
+            target_cpus = [cpu]
+
+        parsed_caches = self.walk_caches(target_names, target_cpus)
+        self.dump_caches(target_names, target_cpus, parsed_caches)
         return
 
     @parse_args
@@ -64339,26 +64353,16 @@ class SlabDumpCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        self.listup = args.list
-        self.meta = args.meta
-        self.skip_partial = args.skip_partial
-        self.skip_full = args.skip_full
-        self.skip_free = args.skip_free
-        self.hexdump_used_size = args.hexdump_used
-        self.hexdump_freed_size = args.hexdump_freed
-        self.telescope_used_size = args.telescope_used
-        self.telescope_freed_size = args.telescope_freed
-        self.quiet = args.quiet
-
-        if not self.quiet:
+        if not args.quiet:
             info("Wait for memory scan")
 
         allocator = KernelChecksecCommand.get_slab_type()
         if allocator != "SLAB":
-            if not self.quiet:
+            if not args.quiet:
                 err("Unsupported SLUB, SLOB, SLUB_TINY")
             return
 
+        self.args = args
         self.maps = None
         self.out = []
         self.slabwalk(args.cache_name, args.cpu)
@@ -79901,7 +79905,7 @@ class PagewalkWithHintsCommand(GenericCommand):
             if r:
                 name = Color.remove_color(r.group(1))
                 continue
-            r = re.search(r"virtual address \(s_mem\): (.+0x.+)", line)
+            r = re.search(r"virtual address \(s_mem & ~0xfff\): (.+0x.+)", line)
             if r:
                 address = Color.remove_color(r.group(1))
                 address = int(address, 16)
@@ -80251,9 +80255,9 @@ class PageCommand(GenericCommand):
 
         elif allocator == "SLAB":
             # get valid page and vaddr pair
-            ret = gdb.execute("slab-dump --cpu 0 --no-pager --quiet kmalloc-256", to_string=True)
+            ret = gdb.execute("slab-dump --simple --cpu 0 --no-pager --quiet kmalloc-256", to_string=True)
             r1 = re.search(r"node\[\d+\]\.slabs_(?:partial|full): (0x\S+)", Color.remove_color(ret))
-            r2 = re.search(r"virtual address \(s_mem\): (0x\S+)", Color.remove_color(ret))
+            r2 = re.search(r"virtual address \(s_mem & ~0xfff\): (0x\S+)", Color.remove_color(ret))
             if not r1 or not r2:
                 return False
             page = int(r1.group(1), 16)
