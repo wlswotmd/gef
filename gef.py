@@ -70677,7 +70677,6 @@ class MimallocHeapDumpCommand(GenericCommand):
         self.offset_local_free = 0x10
         self.offset_used = 0x18
         self.offset_block_size = 0x20
-        self.offset_page_start = 0x28
         return
 
     def get_mi_heap_main(self):
