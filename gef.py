@@ -4320,6 +4320,9 @@ def get_symbol_string(addr, nosymbol_string=""):
         return nosymbol_string
 
     sym_name, sym_offset = ret[0], ret[1]
+    if addr - sym_offset == 0:
+        return nosymbol_string
+
     sym_name = Instruction.smartify_text(sym_name)
     if sym_offset == 0:
         return " <{}>".format(sym_name)
