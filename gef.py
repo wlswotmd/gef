@@ -27951,10 +27951,10 @@ def dereference_from(addr, phys=False):
             unpack = u32 if current_arch.ptrsize == 4 else u64
             addr = unpack(mem)
         else:
-            # check non-address
-            if not is_valid_addr(addr):
+            try:
+                addr = read_int_from_memory(addr)
+            except gdb.MemoryError:
                 break
-            addr = read_int_from_memory(addr)
         recursion -= 1
 
     return addr_list, error
