@@ -68430,7 +68430,8 @@ class KsymaddrRemoteCommand(GenericCommand):
 
     def get_cfg_name(self):
         h = hashlib.sha256(str2bytes(self.version_string)).hexdigest()[-16:]
-        cfg_file_name = os.path.join(GEF_TEMP_DIR, "ksymaddr-remote-{:s}.cfg".format(h))
+        major, minor = self.kernel_version
+        cfg_file_name = os.path.join(GEF_TEMP_DIR, "ksymaddr-remote-{:d}.{:d}-{:s}.cfg".format(major, minor, h))
         return cfg_file_name
 
     def save_config(self, param_name):
