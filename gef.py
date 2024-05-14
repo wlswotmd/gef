@@ -70538,7 +70538,7 @@ class TlsfHeapDumpCommand(GenericCommand):
 
 @register_command
 class HoardHeapDumpCommand(GenericCommand):
-    """Hoard heap free-list viewer (only x64)."""
+    """Hoard v3.13 heap free-list viewer (only x64)."""
     _cmdline_ = "hoard-heap-dump"
     _category_ = "06-b. Heap - Other"
 
@@ -70696,12 +70696,11 @@ class MimallocHeapDumpCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-m", "--mi-heap-main", type=parse_address, help="the address of _mi_heap_main.")
+    parser.add_argument("--v21x", action="store_true", help="for v.2.1.x.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
-    def __init__(self):
-        super().__init__()
-
+    def initialize(self):
         """
         typedef struct mi_heap_s {
             mi_tld_t* tld;
@@ -70726,8 +70725,10 @@ class MimallocHeapDumpCommand(GenericCommand):
 
         """
         typedef struct mi_page_s {
-            uint8_t segment_idx;
-            uint8_t segment_in_use:1;
+            uint32_t slice_count; // v2.1.6
+            uint32_t slice_offset; // v2.1.6
+            uint8_t segment_idx; // latest
+            uint8_t segment_in_use:1; // latest
             uint8_t is_committed:1;
             uint8_t is_zero_init:1;
             uint8_t is_huge:1;
@@ -70761,11 +70762,18 @@ class MimallocHeapDumpCommand(GenericCommand):
         #endif
         } mi_page_t;
         """
-        self.offset_capacity = 0x02
-        self.offset_free = 0x08
-        self.offset_local_free = 0x10
-        self.offset_used = 0x18
-        self.offset_block_size = 0x20
+        if self.v21x:
+            self.offset_capacity = 0x4 * 2 + 2 # with padding
+            self.offset_free = 0x10
+            self.offset_local_free = 0x18
+            self.offset_used = 0x20
+            self.offset_block_size = 0x28
+        else:
+            self.offset_capacity = 0x02
+            self.offset_free = 0x08
+            self.offset_local_free = 0x10
+            self.offset_used = 0x18
+            self.offset_block_size = 0x20
         return
 
     def get_mi_heap_main(self):
@@ -70859,6 +70867,9 @@ class MimallocHeapDumpCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_64",))
     def do_invoke(self, args):
         self.dont_repeat()
+
+        self.v21x = args.v21x
+        self.initialize()
 
         if args.mi_heap_main:
             mi_heap_main = args.mi_heap_main
@@ -71731,7 +71742,7 @@ class PartitionAllocDumpCommand(GenericCommand):
 
 @register_command
 class MuslHeapDumpCommand(GenericCommand):
-    """musl v1.2.2 (src/malloc/mallocng) heap reusable chunks viewer (only x64/x86)."""
+    """musl v1.2.5 (src/malloc/mallocng) heap reusable chunks viewer (only x64/x86)."""
     # See https://h-noson.hatenablog.jp/entry/2021/05/03/161933#-177pts-mooosl
     _cmdline_ = "musl-heap-dump"
     _category_ = "06-b. Heap - Other"

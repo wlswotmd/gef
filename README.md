@@ -295,10 +295,10 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * How to test:
         * Execute as `LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libtcmalloc.so ./a.out`.
 * `musl-heap-dump`: dumps musl-libc heap chunks.
-    * Supported on x64/x86, based on musl-libc v1.2.4.
+    * Supported on x64/x86, based on musl-libc v1.2.5.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/musl-heap-dump.png)
     * How to test:
-        * Get and extract latest source, then `./configure && make install`.
+        * Get and extract latest source from https://musl.libc.org/ then `./configure && make install`.
         * Build as `/usr/local/musl/bin/musl-gcc test.c`.
 * `uclibc-ng-heap-dump`: dumps uClibc-ng heap chunks.
     * Supported on x64/x86, based on uClibc-ng v1.0.42 malloc-standard.
@@ -313,10 +313,20 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/go-heap-dump.png)
 * `tlsf-heap-dump`: dumps TLSF (Two-Level Segregated Fit) v2.4.6 free-list (only x64).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tlsf-heap-dump.png)
-* `hoard-heap-dump`: dumps Hoard free-list (only x64).
+    * How to test (x64):
+        * Get and extract latest source from http://www.gii.upv.es/tlsf/
+        * `cd TLSF-2.4.6/src && make && cd ../examples && make`, then use `test1` etc.
+* `hoard-heap-dump`: dumps Hoard v3.13 free-list (only x64).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hoard-heap-dump.png)
+    * How to test (x64):
+        * `git clone https://github.com/emeryberger/Hoard && cd Hoard/src && make`
+        * *Execute as `LD_PRELOAD=/path/to/libhoard.so ./a.out`
 * `mimalloc-heap-dump`: dumps mimalloc free-list (only x64).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/mimalloc-heap-dump.png)
+    * How to test (x64):
+        * Get and extract latest source from https://github.com/microsoft/mimalloc
+        * `mkdir build && cd build && cmake .. && make`
+        * *Execute as `LD_PRELOAD=/path/to/libmimalloc.so ./a.out`
 * `optee-bget-dump`: dumps bget allocator of OPTEE-Trusted-App.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-bget-dump.png)
 
