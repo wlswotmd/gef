@@ -70696,7 +70696,7 @@ class MimallocHeapDumpCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-m", "--mi-heap-main", type=parse_address, help="the address of _mi_heap_main.")
-    parser.add_argument("--v21x", action="store_true", help="for v.2.1.x.")
+    parser.add_argument("--v21x", action="store_true", help="for v2.1.x.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
