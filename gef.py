@@ -14797,6 +14797,10 @@ class AuxvCommand(GenericCommand):
         reverse_AT_CONSTS = {v: "{:#04x}".format(k) for k, v in self.AT_CONSTANTS.items()}
 
         gef_print(titlify("ELF auxiliary vector"))
+        fmt = "{:6s} {:22s} {:s}"
+        legend = ["Const", "Name", "Value"]
+        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
         for k, v in auxval.items():
             num = reverse_AT_CONSTS.get(k, "?")
             additional_message = ""
@@ -14820,7 +14824,7 @@ class AuxvCommand(GenericCommand):
                 v = str(lookup_address(v))
             else:
                 v = hex(v)
-            gef_print("[{:4s}] {:16s} {:s}{:s}".format(num, k + ":", v, additional_message))
+            gef_print("{:6s} {:22s} {:s}{:s}".format(num, k + ":", v, additional_message))
         return
 
 
