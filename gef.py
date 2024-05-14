@@ -14845,6 +14845,10 @@ class ArgvCommand(GenericCommand):
             return None
 
     def print_from_mem(self, array, verbose):
+        fmt = "{:3s} {:{:d}s}  {:{:d}s} -> {:s}"
+        legend = ["#", "ArrAddr", get_format_address_width(), "StrAddr", get_format_address_width(), "String"]
+        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
         i = 0
         while True:
             pos = array + i * current_arch.ptrsize
@@ -14855,15 +14859,19 @@ class ArgvCommand(GenericCommand):
                 gef_print("...")
                 break
 
-            colored_pos = str(lookup_address(pos))
-            colored_addr = str(lookup_address(addr))
             s = read_cstring_from_memory(addr, gef_getpagesize())
             s = Color.yellowify(repr(s))
-            gef_print("[{:03d}] {:s}: {:s}{:s}{:s}".format(i, colored_pos, colored_addr, RIGHT_ARROW, s))
+            gef_print("{:03d} {!s}: {!s}{:s}{:s}".format(
+                i, lookup_address(pos), lookup_address(addr), RIGHT_ARROW, s,
+            ))
             i += 1
         return
 
     def print_from_proc(self, filename, verbose):
+        fmt = "{:3s} {:s}"
+        legend = ["#", "String"]
+        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
         lines = open(filename).read()
         for i, elem in enumerate(lines.split("\0")):
             if not elem:
@@ -14871,7 +14879,7 @@ class ArgvCommand(GenericCommand):
             if not verbose and i > 99:
                 gef_print("...")
                 break
-            gef_print("[{:03d}] {:s}".format(i, repr(elem)))
+            gef_print("{:03d} {!s}".format(i, elem))
         return
 
     @parse_args
@@ -14920,6 +14928,10 @@ class EnvpCommand(GenericCommand):
             return None
 
     def print_from_mem(self, array, verbose):
+        fmt = "{:3s} {:{:d}s}  {:{:d}s} -> {:s}"
+        legend = ["#", "ArrAddr", get_format_address_width(), "StrAddr", get_format_address_width(), "String"]
+        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
         i = 0
         while True:
             pos = array + i * current_arch.ptrsize
@@ -14930,15 +14942,19 @@ class EnvpCommand(GenericCommand):
                 gef_print("...")
                 break
 
-            colored_pos = str(lookup_address(pos))
-            colored_addr = str(lookup_address(addr))
             s = read_cstring_from_memory(addr, gef_getpagesize())
             s = Color.yellowify(repr(s))
-            gef_print("[{:03d}] {:s}: {:s}{:s}{:s}".format(i, colored_pos, colored_addr, RIGHT_ARROW, s))
+            gef_print("{:03d} {!s}: {!s}{:s}{:s}".format(
+                i, lookup_address(pos), lookup_address(addr), RIGHT_ARROW, s,
+            ))
             i += 1
         return
 
     def print_from_proc(self, filename, verbose):
+        fmt = "{:3s} {:s}"
+        legend = ["#", "Name=Value"]
+        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+
         lines = open(filename).read()
         for i, elem in enumerate(lines.split("\0")):
             if not elem:
@@ -14947,7 +14963,7 @@ class EnvpCommand(GenericCommand):
                 gef_print("...")
                 break
             elem = re.sub(r"^(.*?=)", Color.boldify("\\1"), elem)
-            gef_print("[{:03d}] {:s}".format(i, elem))
+            gef_print("{:03d} {:s}".format(i, elem))
         return
 
     @parse_args
