@@ -91,14 +91,14 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-x64.png)
     * x86 (Supported: PAE/Non-PAE)
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-x86.png)
-    * ARM64 (Supported: only Cortex-A, EL1&0-stage1/EL1&0-stage2/EL2&0-stage1/EL2-stage1/EL3-stage1)
+    * ARM64 (Supported: only Cortex-A, EL0-EL3, stage1-2)
         * ARM v8.7 base. 32bit mode is NOT supported.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64.png)
         * Here is a sample of each level pagewalk from HITCON CTF 2018 `super_hexagon`.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-el123.png)
         * Secure memory scanning is also supported, but you have to break in the secure world.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-secure.png)
-        * Pseudo memory map without detailed flags and permission can be output even in the normal world (when uses OP-TEE).
+        * Pseudo memory map without detailed flags and permission can be output even in the normal world (when OP-TEE).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm64-secure-pseudo.png)
     * ARM (Supported: only Cortex-A, LPAE/Non-LPAE, PL0/PL1)
         * ARM v7 base. PL2 is NOT supported.
