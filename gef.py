@@ -1534,7 +1534,6 @@ class Elf:
         if isinstance(elf, str):
             if not os.access(elf, os.R_OK):
                 err("'{:s}' not found/readable".format(elf))
-                err("Failed to get file debug information, most of gef features will not work")
                 self.e_magic = None
                 return
             self.fd = open(elf, "rb")
@@ -21719,9 +21718,9 @@ class ElfInfoCommand(GenericCommand):
         # readelf pattern
         if args.use_readelf:
             if args.no_pager:
-                os.system("readelf -a '{:s}'".format(local_filepath))
+                os.system("LANG=C readelf -a --wide '{:s}'".format(local_filepath))
             else:
-                os.system("readelf -a '{:s}' | less".format(local_filepath))
+                os.system("LANG=C readelf -a --wide '{:s}' | less".format(local_filepath))
             if tmp_filepath and os.path.exists(tmp_filepath):
                 os.unlink(tmp_filepath)
             return
