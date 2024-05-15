@@ -81,26 +81,25 @@ If you install with `install-minimal.sh`, you will not be able to use these comm
 
 * `apt` packages
     * `gdb-multiarch`: `gdb` is also good, but of course one is required.
-    * `binutils`: required by following commands.
-        * `objdump`: required by `got` command.
-        * `readelf`: required by `got` command.
-        * `nm`: required by `rp --kernel` and `qemu-device-info` commands.
-        * `objcopy`: required by `add-symbol-temporary` and `ksymaddr-remote-apply` commands.
-    * `python3-pip`: required to install some python3 packages and `vmlinux-to-elf`.
-    * `git`: required to install `vmlinux-to-elf`. Also required by `diffo` command.
-    * `ruby-dev`: required to install `one_gadget` and `seccomp-tools`.
+    * `binutils`: is required by following commands.
+        * `objdump` and `readelf`: are required by `got` command.
+        * `nm`: is required by `rp --kernel` and `qemu-device-info` commands.
+        * `objcopy`: is required by `add-symbol-temporary` and `ksymaddr-remote-apply` commands.
+    * `python3-pip`: is required to install `vmlinux-to-elf` and some python3 packages.
+    * `git`: is required to install `vmlinux-to-elf` and required by `diffo git-diff` command.
+    * `ruby-dev`: is required to install `one_gadget` and `seccomp-tools`.
 * `python3` packages
-    * `crccheck`: required by `uefi-ovmf-info` and `hash-memory -v` commands.
-    * `unicorn`: required by `unicorn-emulate` command.
-    * `capstone`: required by `unicorn-emulate`, `capstone-disassemble`, `dasm` and `asm-list` commands. Also required by `i8086` mode.
-    * `ropper`: required by `ropper` command.
-    * `keystone-engine`: required by `mprotect` and `asm` commands.
-    * `tqdm`: It just makes it look better, so GEF will work without it.
+    * `crccheck`: is required by `uefi-ovmf-info` and `hash-memory -v` commands.
+    * `unicorn`: is required by `unicorn-emulate` command.
+    * `capstone`: is required by `i8086` mode and required by `unicorn-emulate`, `capstone-disassemble`, `dasm` and `asm-list` commands.
+    * `ropper`: is required by `ropper` command.
+    * `keystone-engine`: is required by `mprotect` and `asm` commands.
+    * `tqdm`: just makes it look better, so GEF will work without it.
 * Others
-  * `vmlinux-to-elf`: required by `vmlinux-to-elf-apply` command.
-  * `rp++`: required by `rp` command.
-  * `seccomp-tools`: required by `seccomp-tools` command.
-  * `one_gadget`: required by `onegadget` command.
+  * `vmlinux-to-elf`: is required by `vmlinux-to-elf-apply` command.
+  * `rp++`: is required by `rp` command.
+  * `seccomp-tools`: is required by `seccomp-tools` command.
+  * `one_gadget`: is required by `onegadget` command.
 
 ## How can I install GEF offline?
 Please refer to [`install.sh`](https://github.com/bata24/gef/blob/dev/install.sh) or [`install-minimal.sh`](https://github.com/bata24/gef/blob/dev/install-minimal.sh), and set it up manually.
