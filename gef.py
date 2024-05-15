@@ -12085,6 +12085,10 @@ def get_process_maps(outer=False):
         return []
 
     elif is_wine():
+        # wine loads the EXE at wine's own virtual address.
+        # Due to pwner's use case, wine itself and its libraries should also be displayed.
+        # However, wine's `monitor mem` does not display them, so I did not adopt them.
+        # It's more reliable to resolve wine's PID and get its maps.
         pid = get_pid()
         if pid:
             return get_process_maps_linux(pid)
