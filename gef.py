@@ -13599,6 +13599,36 @@ class ResetCacheCommand(GenericCommand):
         return
 
 
+@register_command
+class ResetBreakpointsCommand(GenericCommand):
+    """Show and reset all breakpoints (include internal breakpoints)."""
+    _cmdline_ = "reset-bp"
+    _category_ = "99. GEF Maintenance Command"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-c", "--commit", action="store_true", help="actually perform delete.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        breakpoints = gdb.breakpoints()
+        n = len(breakpoints)
+
+        for bp in breakpoints:
+            bp_str = repr(bp)
+            if args.commit:
+                bp.delete()
+                gef_print("Delete successfully: {:s}".format(bp_str))
+            else:
+                info("Breakpoint is found: {:s}".format(bp_str))
+
+        if not args.commit and n > 0:
+            warn('This is dry run mode. No breakpoint is deleted yet. To delete, please add "--commit".')
+        return
+
+
 @register_priority_command
 class GefThemeCommand(GenericCommand):
     """Customize GEF appearance."""

@@ -436,6 +436,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * Supports many colors.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/theme.png)
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/theme-colors-sample.png)
+* `reset-cache` is improved.
+    * The cache structure within GEF has changed significantly. This command corresponds to them.
 
 ### Added features
 * `pid`/`tid`: prints pid and tid.
@@ -628,6 +630,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * This area is mapped to userland, but cannot be accessed from gdb.
     * Therefore, it executes the assembly code and retrieve the contents.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/iouring-dump.png)
+* `reset-bp`: shows and resets all breakpoints.
 * `gef arch-list`: displays defined architecture information.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-arch-list.png)
 * `gef pyobj-list`: displays defined global python object.
