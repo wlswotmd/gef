@@ -464,6 +464,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/fsbase_gsbase.png)
 * `libc`/`ld`/`heapbase`/`codebase`: displays each of the base address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/base.png)
+* `got-all`: shows got entries for all libraries.
 * `break-rva`: sets a breakpoint at relative offset from codebase.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/break-rva.png)
 * `command-break`: sets a breakpoint which executes user defined command if hit.

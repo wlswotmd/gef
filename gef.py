@@ -31347,6 +31347,54 @@ class GotCommand(GenericCommand):
         return
 
 
+@register_command
+class GotAllCommand(GenericCommand):
+    """Show got entries for all libraries."""
+    _cmdline_ = "got-all"
+    _category_ = "02-e. Process Information - Complex Structure Information"
+    _aliases_ = ["plt-all"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
+    parser.add_argument("filter", metavar="FILTER", nargs="*", help="filter string.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_gdb_target_local
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        verbose = ["", "-v"][args.verbose]
+        extra_args = "{:s} {:s}".format(verbose, " ".join(args.filter))
+
+        self.out = []
+        for m in get_process_maps():
+            if not m.path:
+                continue
+            if m.path.startswith(("[", "<")) or m.path.endswith(("]", ">")):
+                continue
+
+            if not is_valid_addr(m.page_start):
+                continue
+            x = read_memory(m.page_start, 4)
+            if x != b"\x7fELF":
+                continue
+
+            ret = gdb.execute("got -f {:s} -n {:s}".format(m.path, extra_args), to_string=True)
+            if "<" in Color.remove_color(ret): # at least one element is hit
+                self.out.extend(ret.splitlines())
+                self.out.append("")
+
+        if len(self.out) > get_terminal_size()[0]:
+            gef_print("\n".join(self.out), less=not args.no_pager)
+        else:
+            gef_print("\n".join(self.out), less=False)
+        return
+
+
 class FormatStringBreakpoint(gdb.Breakpoint):
     """Inspect stack for format string."""
     def __init__(self, spec, num_args):
