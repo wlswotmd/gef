@@ -70037,49 +70037,45 @@ class TcmallocDumpCommand(GenericCommand):
         corrupted_msg_color = get_gef_setting("theme.heap_corrupted_msg")
         chunk_size_color = get_gef_setting("theme.heap_chunk_size")
 
-        seen = []
         chunk = read_int_from_memory(freelist + self.FreeList_offset_list)
         length = read_int_from_memory(freelist + self.FreeList_offset_length) & 0xffffffff
         real_length = 0
         error = False
         if chunk != 0: # freelist exists
-            chunklist_string = ""
+            seen = []
+            out = []
             while chunk != 0:
                 real_length += 1
                 seen.append(chunk)
-                if (real_length % 8) == 1:
-                    chunklist_string += "\n"
-                chunklist_string += " -> " + Color.colorify_hex(chunk, freed_address_color)
                 # corrupted memory check
                 try:
-                    chunk = read_int_from_memory(chunk)
+                    new_chunk = read_int_from_memory(chunk)
+                    out.append(" -> " + Color.colorify_hex(chunk, freed_address_color))
+                    chunk = new_chunk
                 except gdb.MemoryError:
-                    if chunklist_string.endswith(" -> ..."):
-                        chunklist_string += " -> " + Color.colorify_hex(seen[-2], freed_address_color)
-                        chunklist_string += " -> " + Color.colorify_hex(chunk, corrupted_msg_color)
-                    chunklist_string += " (corrupted)"
+                    out.append(Color.colorify(" -> {:#x} (corrupted)".format(chunk), corrupted_msg_color))
                     error = True
                     break
                 # heap key decode
                 chunk ^= self.get_heap_key()
                 # loop check
                 if chunk in seen:
-                    chunklist_string += " -> " + Color.colorify_hex(chunk, corrupted_msg_color) + " (loop)"
+                    out.append(Color.colorify(" -> {:#x} (loop)".format(chunk), corrupted_msg_color))
                     error = True
                     break
             # corrupted length check
             if length != real_length and error is False:
-                chunklist_string += " (length corrupted)"
+                out.append(Color.colorify("    (length corrupted; len != {:d})".format(length), corrupted_msg_color))
                 error = True
             # print
             chunksize = self.index_to_size(freelist, idx)
-            colored_freelist_addr = str(lookup_address(freelist))
             if chunksize is None:
                 chunksize = Color.colorify("unknown", chunk_size_color)
             else:
                 chunksize = Color.colorify_hex(chunksize, chunk_size_color)
-            fmt = "freelist[idx={:d}, size={:s}, len={:d}] @ {:s}{:s}"
-            self.out.append(fmt.format(idx, chunksize, length, colored_freelist_addr, chunklist_string))
+            fmt = "freelist[idx={:d}, size={:s}, len={:d}] @ {!s}"
+            self.out.append(fmt.format(idx, chunksize, length, lookup_address(freelist)))
+            self.out.extend(out)
         return
 
     def dump_thread_heap_freelist_array(self, thread_heap):
@@ -70127,36 +70123,30 @@ class TcmallocDumpCommand(GenericCommand):
         freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
         corrupted_msg_color = get_gef_setting("theme.heap_corrupted_msg")
 
-        seen = []
         chunk = read_int_from_memory(freelist + self.FreeList_offset_list)
-        real_length = 0
         if chunk != 0: # freelist exists
-            chunklist_string = ""
+            seen = []
+            out = []
             while chunk != 0:
-                real_length += 1
                 seen.append(chunk)
-                if (real_length % 8) == 1:
-                    chunklist_string += "\n"
-                chunklist_string += " -> " + Color.colorify_hex(chunk, freed_address_color)
                 # corrupted memory check
                 try:
-                    chunk = read_int_from_memory(chunk)
+                    new_chunk = read_int_from_memory(chunk)
+                    out.append(" -> " + Color.colorify_hex(chunk, freed_address_color))
+                    chunk = new_chunk
                 except gdb.MemoryError:
-                    if chunklist_string.endswith(" -> ..."):
-                        chunklist_string += " -> " + Color.colorify_hex(seen[-2], freed_address_color)
-                        chunklist_string += " -> " + Color.colorify_hex(chunk, corrupted_msg_color)
-                    chunklist_string += " (corrupted)"
+                    out.append(Color.colorify(" -> {:#x} (corrupted)".format(chunk), corrupted_msg_color))
                     break
                 # heap key decode
                 chunk ^= self.get_heap_key()
                 # loop check
                 if chunk in seen:
-                    chunklist_string += " -> " + Color.colorify_hex(chunk, corrupted_msg_color) + " (loop)"
+                    out.append(Color.colorify(" -> {:#x} (loop)".format(chunk), corrupted_msg_color))
                     break
             # print
-            colored_freelist_addr = str(lookup_address(freelist))
-            fmt = "central_cache_[{:d}].tc_slot[{:d}] @ {:s}{:s}"
-            self.out.append(fmt.format(_i, _j, colored_freelist_addr, chunklist_string))
+            fmt = "central_cache_[{:d}].tc_slot[{:d}] @ {!s}"
+            self.out.append(fmt.format(_i, _j, lookup_address(freelist)))
+            self.out.extend(out)
         return
 
     def dump_central_cache(self):

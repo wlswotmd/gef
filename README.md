@@ -315,7 +315,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tlsf-heap-dump.png)
     * How to test (x64):
         * Get and extract latest source from http://www.gii.upv.es/tlsf/
-        * `cd TLSF-2.4.6/src && make && cd ../examples && make`, then use `test1` etc.
+        * `cd TLSF-2.4.6/src && make && cd ../examples && make` then use `test1` etc.
 * `hoard-heap-dump`: dumps Hoard v3.13 free-list (only x64).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hoard-heap-dump.png)
     * How to test (x64):
@@ -326,7 +326,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * How to test (x64):
         * Get and extract latest source from https://github.com/microsoft/mimalloc
         * `mkdir build && cd build && cmake .. && make`
-        * *Execute as `LD_PRELOAD=/path/to/libmimalloc.so ./a.out`
+        * Execute as `LD_PRELOAD=/path/to/libmimalloc.so ./a.out`
 * `optee-bget-dump`: dumps bget allocator of OPTEE-Trusted-App.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-bget-dump.png)
 
