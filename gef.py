@@ -70677,21 +70677,21 @@ class HoardHeapDumpCommand(GenericCommand):
         return heads
 
     def get_freelist_start(self, sb):
-        # pattern1: HoardSuperblockHeaderHelper holds it
-        head = read_int_from_memory(sb + current_arch.ptrsize * 11)
-        if head:
-            return head
+        # pattern1: HoardSuperblockHeaderHelper->_freeList
+        freeList = read_int_from_memory(sb + current_arch.ptrsize * 11)
+        if freeList:
+            return freeList
 
-        # thread variable holds it
-        chunk_sz = read_int_from_memory(sb + current_arch.ptrsize * 2)
-        chunk_num = u32(read_memory(sb + current_arch.ptrsize * 3 + 4, 4))
+        # pattern2: thread variable holds it
+        objectSize = read_int_from_memory(sb + current_arch.ptrsize * 2)
+        totalObjects = u32(read_memory(sb + current_arch.ptrsize * 3 + 4, 4))
 
         sizeof_super_block_header = 0x70
         sb_start = sb + sizeof_super_block_header
-        sb_end = sb_start + chunk_sz * chunk_num
+        sb_end = sb_start + objectSize * totalObjects
 
         heads = HoardHeapDumpCommand.get_all_freelist_head_from_tls()
-        candidates = list(filter(lambda f: sb_start <= f < sb_end, heads))
+        candidates = [h for h in heads if sb_start <= h < sb_end]
         if len(candidates) == 1:
             return candidates[0]
         return None
@@ -70725,8 +70725,8 @@ class HoardHeapDumpCommand(GenericCommand):
         freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
         corrupted_msg_color = get_gef_setting("theme.heap_corrupted_msg")
 
-        current = head = self.get_freelist_start(sb)
-        if head is None:
+        current = self.get_freelist_start(sb)
+        if current is None:
             return
 
         sz = read_int_from_memory(sb + current_arch.ptrsize * 2)
@@ -70737,15 +70737,15 @@ class HoardHeapDumpCommand(GenericCommand):
             self.out.append("Before allocating from freelist, you must use up all unused blocks.")
             self.out.append("There are {:s} unused blocks left.".format(Color.colorify_hex(reap_count, "bold")))
 
-        self.out.append("freelist:")
+        self.out.append("freelist @{:#x}:".format(current))
         seen = []
         while True:
             if current in seen:
-                self.out.append(Color.colorify("  -> {:#x} (loop) ".format(current), corrupted_msg_color))
+                self.out.append(Color.colorify(" -> {:#x} (loop) ".format(current), corrupted_msg_color))
                 break
             seen.append(current)
             if current and not is_valid_addr(current):
-                self.out.append(Color.colorify("  -> {:#x} (corrupted) ".format(current), corrupted_msg_color))
+                self.out.append(Color.colorify(" -> {:#x} (corrupted) ".format(current), corrupted_msg_color))
                 break
             self.out.append(" -> {:s}".format(Color.colorify_hex(current, freed_address_color)))
             if current == 0:
