@@ -84959,6 +84959,7 @@ class SymbolsCommand(GenericCommand):
     _category_ = "02-g. Process Information - Symbol"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-t", "--type", action="append", default=[], help="filter by symbol type.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
@@ -84969,20 +84970,29 @@ class SymbolsCommand(GenericCommand):
 
         ret = gdb.execute("maintenance print msymbols", to_string=True).strip()
         out = []
+        PATTERN = re.compile(r"^(\[ ?\d+\]) (.) (0x[0-9a-f]+) (.*)")
         for line in ret.splitlines():
-            line_out = []
-            for elem in line.split(" "):
-                try:
-                    addr = int(elem, 16)
-                except ValueError:
-                    line_out.append(elem)
-                    continue
-                if not is_valid_addr(addr):
-                    line_out.append(elem)
-                    continue
-                line_out.append(str(lookup_address(addr)))
+            line = line.strip()
+            if not line:
+                out.append(line)
+                continue
 
-            out.append(" ".join(line_out))
+            r = PATTERN.search(line)
+            if not r:
+                out.append(line)
+                continue
+
+            t = r.group(2)
+            if args.type and t.lower() not in args.type:
+                continue
+
+            addr = int(r.group(3), 16)
+            if not is_valid_addr(addr):
+                out.append(line)
+                continue
+
+            fixed_line = r.group(1) + " {:s} {!s} {:s}".format(t, lookup_address(addr), r.group(4))
+            out.append(fixed_line)
 
         gef_print("\n".join(out), less=not args.no_pager)
         return
