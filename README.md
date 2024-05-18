@@ -298,14 +298,15 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * Supported on x64/x86, based on musl-libc v1.2.5.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/musl-heap-dump.png)
     * How to test:
-        * Get and extract latest source from https://musl.libc.org/ then `./configure && make install`.
+        * Get and extract latest source from https://musl.libc.org/
+        * Build with `./configure && make install`.
         * Build as `/usr/local/musl/bin/musl-gcc test.c`.
 * `uclibc-ng-heap-dump`: dumps uClibc-ng heap chunks.
     * Supported on x64/x86, based on uClibc-ng v1.0.42 malloc-standard.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uclibc-ng-heap-dump.png)
     * How to test (x64):
         * Download and extract `x86-64--uclibc--stable-2022.08-1.tar.bz2` from https://toolchains.bootlin.com/
-        * Add `/PATH/TO/x86_64-buildroot-linux-uclibc/bin` to `$PATH`, then `x86_64-linux-gcc test.c`.
+        * Add `/PATH/TO/x86_64-buildroot-linux-uclibc/bin` to `$PATH`, then build as `x86_64-linux-gcc test.c`.
         * Fix interpreter by `patchelf --set-interpreter /PATH/TO/x86_64-buildroot-linux-uclibc/sysroot/lib/ld64-uClibc.so.0 a.out`.
 * `uclibc-ng-visual-heap`: is colorized heap viewer for uClibc-ng.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uclibc-ng-visual-heap.png)
@@ -315,18 +316,19 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tlsf-heap-dump.png)
     * How to test (x64):
         * Get and extract latest source from http://www.gii.upv.es/tlsf/
-        * `cd TLSF-2.4.6/src && make && cd ../examples && make` then use `test1` etc.
+        * Build with `cd TLSF-2.4.6/src && make && cd ../examples && make` then use `test1` etc.
 * `hoard-heap-dump`: dumps Hoard v3.13 free-list (only x64).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hoard-heap-dump.png)
     * How to test (x64):
-        * `git clone https://github.com/emeryberger/Hoard && cd Hoard/src && make`
-        * *Execute as `LD_PRELOAD=/path/to/libhoard.so ./a.out`
+        * Get and extract latest source from https://github.com/emeryberger/Hoard
+        * Build with `cd Hoard/src && make`.
+        * Execute as `LD_PRELOAD=/path/to/libhoard.so ./a.out`.
 * `mimalloc-heap-dump`: dumps mimalloc free-list (only x64).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/mimalloc-heap-dump.png)
     * How to test (x64):
         * Get and extract latest source from https://github.com/microsoft/mimalloc
-        * `mkdir build && cd build && cmake .. && make`
-        * Execute as `LD_PRELOAD=/path/to/libmimalloc.so ./a.out`
+        * Build with `mkdir build && cd build && cmake .. && make`.
+        * Execute as `LD_PRELOAD=/path/to/libmimalloc.so ./a.out`.
 * `optee-bget-dump`: dumps bget allocator of OPTEE-Trusted-App.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-bget-dump.png)
 
