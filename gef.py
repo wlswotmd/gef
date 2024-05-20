@@ -16545,6 +16545,7 @@ class SearchPatternCommand(GenericCommand):
     parser.add_argument("-s", "--max-region-size", type=lambda x: int(x, 0), default=0x10000000,
                         help="maximum size of search region. (default: %(default)s)")
     parser.add_argument("-d", "--disable-utf16", action="store_true", help="disable utf16 search if PATTERN is ascii string.")
+    parser.add_argument("-p", "--perm", default="r??", help="the filter by permission. (default: %(default)s)")
     parser.add_argument("-v", "--verbose", action="store_true", help="shows the section you are currently searching.")
     parser.add_argument("pattern", metavar="PATTERN", help='search target value. "double-espaced string" or 0xXXXXXXXX style.')
     parser.add_argument("section", metavar="SECTION_OR_START_ADDR", nargs="?", help="section name or starting address of search range.")
@@ -16559,7 +16560,8 @@ class SearchPatternCommand(GenericCommand):
     _example_ += "{:s} AAAA binary                # 'binary' means the area executable itself (only usermode)\n".format(_cmdline_)
     _example_ += "{:s} AAAA 0x400000-0x404000     # search 'AAAA' from specific range\n".format(_cmdline_)
     _example_ += "{:s} AAAA 0x400000 0x4000       # search 'AAAA' from specific range (another valid format)\n".format(_cmdline_)
-    _example_ += "{:s} AAAA heap --aligned 16     # search with aligned".format(_cmdline_)
+    _example_ += "{:s} AAAA heap --aligned 16     # search with aligned\n".format(_cmdline_)
+    _example_ += "{:s} AAAA -p r?-                # search from r-- or rw-, but not from r-x or rwx\n".format(_cmdline_)
 
     def print_section(self, section):
         if isinstance(section, Address):
@@ -16577,7 +16579,7 @@ class SearchPatternCommand(GenericCommand):
         return
 
     def print_loc(self, loc):
-        if self.aligned and loc[0] % self.aligned:
+        if self.args.aligned and loc[0] % self.args.aligned:
             return
         h = hexdump(loc[1], 0x10, base=loc[0])
         gef_print("  {:s}".format(h))
@@ -16593,7 +16595,7 @@ class SearchPatternCommand(GenericCommand):
         locations = []
 
         tqdm = lambda x, leave: x # noqa: F841
-        if self.verbose:
+        if self.args.verbose:
             try:
                 from tqdm import tqdm
             except ImportError:
@@ -16613,9 +16615,9 @@ class SearchPatternCommand(GenericCommand):
 
             for match in re.finditer(pattern, mem):
                 start = chunk_addr + match.start()
-                if self.interval:
+                if self.args.interval:
                     if len(locations) > 0:
-                        if start < locations[-1][0] + self.interval:
+                        if start < locations[-1][0] + self.args.interval:
                             continue
 
                 data = mem[match.start():][:0x10]
@@ -16628,7 +16630,7 @@ class SearchPatternCommand(GenericCommand):
                 locations.append((start, data))
 
                 self.found_count += 1
-                if self.limit and self.limit <= self.found_count:
+                if self.args.limit and self.args.limit <= self.found_count:
                     return locations
         return locations
 
@@ -16648,7 +16650,7 @@ class SearchPatternCommand(GenericCommand):
             if not is_valid_addr(addr_start):
                 continue
             # too big
-            if addr_end - addr_start >= self.max_region_size:
+            if addr_end - addr_start >= self.args.max_region_size:
                 continue
             # parse
             if is_x86():
@@ -16669,22 +16671,35 @@ class SearchPatternCommand(GenericCommand):
             maps_generator = get_process_maps()
 
         for section in maps_generator:
+            # permission filter
             if not section.permission & Permission.READ:
                 continue
+            if self.args.perm[1] in "wW" and not section.permission & Permission.WRITE:
+                continue
+            if self.args.perm[1] in "-_" and section.permission & Permission.WRITE:
+                continue
+            if self.args.perm[2] in "xX" and not section.permission & Permission.EXECUTE:
+                continue
+            if self.args.perm[2] in "-_" and section.permission & Permission.EXECUTE:
+                continue
+
+            # specific section name filter
             if section.path in ["[vvar]", "[vsyscall]", "[vectors]", "[sigpage]"]:
                 continue
             if section_name not in section.path:
                 continue
 
-            if self.verbose:
+            # verbose print
+            if self.args.verbose:
                 self.print_section(section) # verbose: always print section before search
 
+            # search
             start = section.page_start
             end = section.page_end
             ret = self.search_pattern_by_address(pattern, start, end) # search
 
             if ret:
-                if not self.verbose:
+                if not self.args.verbose:
                     self.print_section(section) # default: print section if found
 
             for loc in ret:
@@ -16694,7 +16709,7 @@ class SearchPatternCommand(GenericCommand):
                 err("The process is dead")
                 break
 
-            if self.limit and self.limit <= self.found_count:
+            if self.args.limit and self.args.limit <= self.found_count:
                 break
         return
 
@@ -16707,48 +16722,46 @@ class SearchPatternCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        self.verbose = args.verbose
-        self.aligned = args.aligned
-        self.interval = args.interval
-        self.max_region_size = args.max_region_size
-        self.limit = args.limit
+        self.args = args
         self.found_count = 0
+
+        # permission check
+        if len(args.perm) != 3:
+            err("Invalid permission length")
+            return
+        if args.perm[0] not in "rR":
+            err("Permission needs to start by `r`")
+            return
+        if args.perm[1] not in "wW-_?" or args.perm[2] not in "xX-_?":
+            err("Invalid permission")
+            return
 
         # pattern replace
         if args.hex: # "41414141" -> "\x41\x41\x41\x41"
-            _pattern = ""
-            for c in args.pattern.lower():
-                if c in "0123456789abcdef":
-                    _pattern += c
-            if len(_pattern) % 2 != 0:
+            pattern = re.sub(r"[^0-9a-f]", "", args.pattern)
+            if len(pattern) % 2 != 0:
                 err("hex pattern length is odd")
                 return
-            pattern = "".join(["\\x" + _pattern[i:i + 2] for i in range(0, len(_pattern), 2)])
+            pattern = "".join(["\\x" + x for x in slicer(pattern, 2)])
 
         elif is_hex(args.pattern): # "0x41414141" -> "\x41\x41\x41\x41"
             if args.big or is_big_endian():
-                pattern = "".join(["\\x" + args.pattern[i:i + 2] for i in range(2, len(args.pattern), 2)])
+                pattern = "".join(["\\x" + x for x in slicer(args.pattern[2:], 2)])
             else:
-                pattern = "".join(["\\x" + args.pattern[i:i + 2] for i in range(len(args.pattern) - 2, 0, -2)])
+                pattern = "".join(["\\x" + x for x in slicer(args.pattern[2:], 2)[::-1]])
         else:
             pattern = args.pattern
 
         # create utf16 pattern
         pattern_utf16 = None
-        if not args.disable_utf16 and self.isascii(pattern) and "\\" not in pattern:
-            pattern_utf16 = "".join([x + "\\x00" for x in pattern])
+        if not args.disable_utf16:
+            if self.isascii(pattern) and "\\" not in pattern:
+                pattern_utf16 = "".join([x + "\\x00" for x in pattern])
 
-        # search from whole memory
-        if args.section is None:
-            info("Searching '{:s}' in whole memory".format(Color.yellowify(pattern)))
-            self.search_pattern(pattern)
-            if pattern_utf16 is not None:
-                info("Searching '{:s}' in whole memory".format(Color.yellowify(pattern_utf16)))
-                self.search_pattern(pattern_utf16)
-
-        # search from range
-        elif args.size or re.match(r"(0x)?[0-9a-fA-F]+-(0x)?[0-9a-fA-F]+", args.section):
+        # search from specific range
+        if args.size or (args.section and re.match(r"(0x)?[0-9a-fA-F]+-(0x)?[0-9a-fA-F]+", args.section)):
             if args.size:
+                # the case `find AAAA 0x400000 0x4000`
                 try:
                     start = int(args.section, 16)
                     end = start + int(args.size, 16)
@@ -16756,6 +16769,7 @@ class SearchPatternCommand(GenericCommand):
                     self.usage()
                     return
             else:
+                # the case `find AAAA 0x400000-0x404000`
                 try:
                     start, end = parse_string_range(args.section)
                 except ValueError:
@@ -16773,18 +16787,23 @@ class SearchPatternCommand(GenericCommand):
                 for found_loc in ret:
                     self.print_loc(found_loc)
 
-        # search from section
+        # search from specific section or whole memory
         else:
-            if args.section in ["binary", "bin"] and not is_qemu_system():
+            if args.section is None:
+                section_name = ""
+                section_name_info = "whole memory"
+            elif args.section in ["binary", "bin"] and not is_qemu_system():
                 section_name = get_filepath(append_proc_root_prefix=False)
+                section_name_info = section_name
             else:
                 section_name = args.section
+                section_name_info = section_name
 
-            info("Searching '{:s}' in {:s}".format(Color.yellowify(pattern), section_name))
+            info("Searching '{:s}' in {:s}".format(Color.yellowify(pattern), section_name_info))
             self.search_pattern(pattern, section_name)
 
             if pattern_utf16 is not None:
-                info("Searching '{:s}' in {:s}".format(Color.yellowify(pattern_utf16), section_name))
+                info("Searching '{:s}' in {:s}".format(Color.yellowify(pattern_utf16), section_name_info))
                 self.search_pattern(pattern_utf16, section_name)
         return
 
