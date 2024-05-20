@@ -22,10 +22,11 @@
 
 ## What is this?
 This is a fork of [GEF](https://github.com/hugsy/gef).
-However, there are two major improvements.
+However, there are 3 major improvements.
 
 1. Added many heuristic commands for kernel debugging __WITHOUT symboled vmlinux__ (for qemu-system; linux kernel 3.x ~ 6.9.x).
 2. Added support for [many architectures](https://github.com/bata24/gef/blob/dev/docs/QEMU-USER-SUPPORTED-ARCH.md) (for qemu-user).
+3. Added some heap dump commands for various allocators.
 
 Many other commands have been added and improved. Enjoy!
 
@@ -69,7 +70,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 ## Supported mode
 * Normal debugging
 * Attach to the process
-* Attach to the process in another pid namespace (e.g. attaching from outside of `docker`)
+* Attach to the process in another pid namespace (e.g. attaching from the outside of `docker`)
 * Connect to `gdbserver`
 * Connect to the gdb stub of `qemu-system`
 * Connect to the gdb stub of `qemu-user`
@@ -280,7 +281,16 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/visual-heap.png)
     * `extract-heap-addr`: analyzes tcache-protected-fd introduced from glibc-2.32.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/extract-heap-addr.png)
-* `partition-alloc-dump`: dumps partition-alloc free-list.
+* `uclibc-ng-heap-dump`: dumps uClibc-ng heap chunks.
+    * Supported on x64/x86, based on uClibc-ng v1.0.42 malloc-standard.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uclibc-ng-heap-dump.png)
+    * How to test (x64):
+        * Download and extract `x86-64--uclibc--stable-2022.08-1.tar.bz2` from https://toolchains.bootlin.com/
+        * Add `/PATH/TO/x86_64-buildroot-linux-uclibc/bin` to `$PATH`, then build as `x86_64-linux-gcc test.c`.
+        * Fix interpreter by `patchelf --set-interpreter /PATH/TO/x86_64-buildroot-linux-uclibc/sysroot/lib/ld64-uClibc.so.0 a.out`.
+* `uclibc-ng-visual-heap`: is colorized heap viewer for uClibc-ng.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uclibc-ng-visual-heap.png)
+* `partition-alloc-dump`: dumps partition-alloc free-list for chromium.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/partition-alloc-dump.png)
     * This command is reserved for the implementation of latest version of chromium.
         * Currently tested: v126.x / 1288419 / 2f7567cc2aa93d7eac5f453668f8dcb761f4b8dc
@@ -301,15 +311,6 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
         * Get and extract latest source from https://musl.libc.org/
         * Build with `./configure && make install`.
         * Build as `/usr/local/musl/bin/musl-gcc test.c`.
-* `uclibc-ng-heap-dump`: dumps uClibc-ng heap chunks.
-    * Supported on x64/x86, based on uClibc-ng v1.0.42 malloc-standard.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uclibc-ng-heap-dump.png)
-    * How to test (x64):
-        * Download and extract `x86-64--uclibc--stable-2022.08-1.tar.bz2` from https://toolchains.bootlin.com/
-        * Add `/PATH/TO/x86_64-buildroot-linux-uclibc/bin` to `$PATH`, then build as `x86_64-linux-gcc test.c`.
-        * Fix interpreter by `patchelf --set-interpreter /PATH/TO/x86_64-buildroot-linux-uclibc/sysroot/lib/ld64-uClibc.so.0 a.out`.
-* `uclibc-ng-visual-heap`: is colorized heap viewer for uClibc-ng.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uclibc-ng-visual-heap.png)
 * `go-heap-dump`: dumps go language v1.21.1 mheap (only x64).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/go-heap-dump.png)
 * `tlsf-heap-dump`: dumps TLSF (Two-Level Segregated Fit) v2.4.6 free-list (only x64).
