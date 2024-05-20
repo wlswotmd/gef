@@ -73186,6 +73186,60 @@ class XStringCommand(GenericCommand):
 
 
 @register_command
+class XColoredCommand(GenericCommand):
+    """Dump address like x/x command, but with coloring at some intervals."""
+    _cmdline_ = "xc"
+    _category_ = "03-b. Memory - View"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("format", metavar="FMT", nargs="?", default="", help="dump format.")
+    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="dump address.")
+    parser.add_argument("-i", "--interval", type=lambda x: int(x, 16), help="the line of interval for coloring.")
+    parser.add_argument("-c", "--color-num", type=lambda x: int(x, 16), default=4, help="the number of colors used (1-5).")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="quiet mode.")
+    _syntax_ = parser.format_help()
+
+    color = [
+        Color.greenify,
+        Color.redify,
+        Color.blueify,
+        Color.yellowify,
+        Color.cyanify,
+    ]
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if args.color_num < 1 or len(self.color) < args.color_num:
+            err("Invaid --color-num")
+            return
+
+        try:
+            ret = gdb.execute("x{:s} {:#x}".format(args.format, args.address), to_string=True)
+            ret = ret.strip()
+        except gdb.error as e:
+            err(e)
+            return
+
+        out = []
+        for i, line in enumerate(ret.splitlines()):
+            if args.interval and args.interval > 0:
+                color_func = self.color[:args.color_num][(i // args.interval) % args.color_num]
+            else:
+                color_func = self.color[:args.color_num][0]
+            out.append(color_func(line))
+
+        if len(out) > get_terminal_size()[0]:
+            gef_print("\n".join(out), less=not args.no_pager)
+        else:
+            gef_print("\n".join(out), less=False)
+        return
+
+
+@register_command
 class XphysAddrCommand(GenericCommand):
     """Dump physical memory via qemu-monitor."""
     _cmdline_ = "xp"

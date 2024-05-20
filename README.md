@@ -535,6 +535,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/strings.png)
 * `xs`: dumps string like `x/s` command, but with hex-string style.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xs.png)
+* `xc`; dumps address like `x/x` command, but with coloring at some intervals.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xc.png)
 * `ii`: is a shortcut for `x/50i $pc` with opcode bytes.
     * It prints the value if it is memory access operation.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ii.png)
