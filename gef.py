@@ -23196,7 +23196,11 @@ class KernelChecksecCommand(GenericCommand):
                 supported_syscall.append("x64")
             if KernelAddressHeuristicFinder.get_sys_call_table_x86():
                 supported_syscall.append("x86(compat)")
+            elif get_ksymaddr("ia32_sys_call"): # 6.6.26~
+                supported_syscall.append("x86(compat)")
             if KernelAddressHeuristicFinder.get_sys_call_table_x32():
+                supported_syscall.append("x32")
+            elif get_ksymaddr("x32_sys_call"): # 6.6.26~
                 supported_syscall.append("x32")
         elif is_arm32():
             if KernelAddressHeuristicFinder.get_sys_call_table_arm32():
@@ -48759,6 +48763,10 @@ class KernelAddressHeuristicFinder:
         kversion = KernelVersionCommand.kernel_version()
         if kversion and kversion < "5.4":
             return None
+        if kversion and kversion >= "6.6.26":
+            # x32_sys_call_table is removed from 6.6.26.
+            # each entry is embeded in `x32_sys_call` as call instruction.
+            return None
 
         # plan 2 (available v5.4 or later)
         if kversion and kversion >= "5.4":
@@ -48788,7 +48796,17 @@ class KernelAddressHeuristicFinder:
         kversion = KernelVersionCommand.kernel_version()
 
         # plan 2 (available v2.6.24 or later)
-        if kversion and kversion >= "4.6":
+        if kversion and kversion >= "6.6.26" and is_x86_64():
+            # ia32_sys_call_table is removed from 6.6.26.
+            # each entry is embeded in `ia32_sys_call` as call instruction.
+            return None
+        elif kversion and kversion >= "6.6.7" and kversion < "6.6.26":
+            if is_x86_64():
+                # ia32_sys_call_table is still used, but no detection logic
+                return None
+            else:
+                addr = get_ksymaddr("do_int80_syscall_32")
+        elif kversion and kversion >= "4.6" and kversion < "6.6.7":
             addr = get_ksymaddr("do_int80_syscall_32")
         elif kversion and kversion >= "4.4" and kversion < "4.6":
             if is_x86_64():
@@ -59568,7 +59586,7 @@ class SyscallTableViewCommand(GenericCommand):
             if not self.quiet:
                 self.out.append(titlify("sys_call_table (x86)"))
             sys_call_table_addr = KernelAddressHeuristicFinder.get_sys_call_table_x86()
-            self.syscall_table_view("x86", sys_call_table_addr, get_syscall_table("X86", "32"))
+            self.syscall_table_view("x86", sys_call_table_addr, get_syscall_table("X86", "N32"))
 
         elif is_x86_64():
             if not self.quiet:
@@ -59576,15 +59594,27 @@ class SyscallTableViewCommand(GenericCommand):
             sys_call_table_addr = KernelAddressHeuristicFinder.get_sys_call_table_x64()
             self.syscall_table_view("x86_64", sys_call_table_addr, get_syscall_table("X86", "64"))
 
+            kversion = KernelVersionCommand.kernel_version()
+
             if not self.quiet:
                 self.out.append(titlify("ia32_sys_call_table"))
-            sys_call_table_addr = KernelAddressHeuristicFinder.get_sys_call_table_x86()
-            self.syscall_table_view("x86_N32", sys_call_table_addr, get_syscall_table("X86", "N32"))
+            if kversion < "6.6.26":
+                sys_call_table_addr = KernelAddressHeuristicFinder.get_sys_call_table_x86()
+                self.syscall_table_view("x86_32", sys_call_table_addr, get_syscall_table("X86", "32"))
+            else:
+                if not self.quiet:
+                    self.out.append("ia32_sys_call_table is removed from 6.6.26.")
+                    self.out.append("each entry is embeded in `ia32_sys_call()` as call instruction.")
 
             if not self.quiet:
                 self.out.append(titlify("x32_sys_call_table"))
-            sys_call_table_addr = KernelAddressHeuristicFinder.get_sys_call_table_x32()
-            self.syscall_table_view("x86_32", sys_call_table_addr, get_syscall_table("X86", "64"), nr_base=0x40000000)
+            if kversion < "6.6.26":
+                sys_call_table_addr = KernelAddressHeuristicFinder.get_sys_call_table_x32()
+                self.syscall_table_view("x86_x32", sys_call_table_addr, get_syscall_table("X86", "64"), nr_base=0x40000000)
+            else:
+                if not self.quiet:
+                    self.out.append("x32_sys_call_table is removed from 6.6.26.")
+                    self.out.append("each entry is embeded in `x32_sys_call()` as call instruction.")
 
         elif is_arm32():
             if not self.quiet:
