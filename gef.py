@@ -3564,6 +3564,40 @@ class GlibcArena:
 
         self.cached_largebins_list = self.largebins_list()
         self.cached_largebins_addr_list = set().union(*self.cached_largebins_list.values())
+
+        self.bins_dict_for_address = {}
+        for tcache_idx, tcache_list in self.cached_tcache_list.items():
+            for address in set(tcache_list):
+                pos = ",".join([str(i + 1) for i, x in enumerate(tcache_list) if x == address])
+                sz = get_binsize_table()["tcache"][tcache_idx]["size"]
+                m = "tcache[idx={:d},sz={:#x}][{:s}/{:d}]".format(tcache_idx, sz, pos, len(tcache_list))
+                self.bins_dict_for_address[address] = self.bins_dict_for_address.get(address, []) + [m]
+        for fastbin_idx, fastbin_list in self.cached_fastbins_list.items():
+            if address in set(fastbin_list):
+                pos = ",".join([str(i + 1) for i, x in enumerate(fastbin_list) if x == address])
+                sz = get_binsize_table()["fastbins"][fastbin_idx]["size"]
+                m = "fastbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(fastbin_idx, sz, pos, len(fastbin_list))
+                self.bins_dict_for_address[address] = self.bins_dict_for_address.get(address, []) + [m]
+
+        self.bins_dict_for_base_address = {}
+        for _, unsortedbin_list in self.cached_unsortedbin_list.items():
+            for base_address in set(unsortedbin_list):
+                pos = ",".join([str(i + 1) for i, x in enumerate(unsortedbin_list) if x == base_address])
+                m = "unsortedbins[{:s}/{:d}]".format(pos, len(unsortedbin_list))
+                self.bins_dict_for_base_address[base_address] = self.bins_dict_for_base_address.get(base_address, []) + [m]
+        for smallbin_idx, smallbin_list in self.cached_smallbins_list.items():
+            for base_address in set(smallbin_list):
+                pos = ",".join([str(i + 1) for i, x in enumerate(smallbin_list) if x == base_address])
+                sz = get_binsize_table()["small_bins"][smallbin_idx]["size"]
+                m = "smallbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(smallbin_idx, sz, pos, len(smallbin_list))
+                self.bins_dict_for_base_address[base_address] = self.bins_dict_for_base_address.get(base_address, []) + [m]
+        for largebin_idx, largebin_list in self.cached_largebins_list.items():
+            for base_address in set(largebin_list):
+                pos = ",".join([str(i + 1) for i, x in enumerate(largebin_list) if x == base_address])
+                sz_min = get_binsize_table()["large_bins"][largebin_idx]["size_min"]
+                sz_max = get_binsize_table()["large_bins"][largebin_idx]["size_max"]
+                m = "largebins[idx={:d},sz={:#x}-{:#x}][{:s}/{:d}]".format(largebin_idx, sz_min, sz_max, pos, len(largebin_list))
+                self.bins_dict_for_base_address[base_address] = self.bins_dict_for_base_address.get(base_address, []) + [m]
         return
 
     def is_chunk_in_tcache(self, chunk):
@@ -3590,36 +3624,8 @@ class GlibcArena:
             base_address = address_or_chunk
 
         info = []
-        for k, v in self.cached_tcache_list.items():
-            if address in v:
-                pos = ",".join([str(i + 1) for i, x in enumerate(v) if x == address])
-                sz = get_binsize_table()["tcache"][k]["size"]
-                m = "tcache[idx={:d},sz={:#x}][{:s}/{:d}]".format(k, sz, pos, len(v))
-                info.append(m)
-        for k, v in self.cached_fastbins_list.items():
-            if address in v:
-                pos = ",".join([str(i + 1) for i, x in enumerate(v) if x == address])
-                sz = get_binsize_table()["fastbins"][k]["size"]
-                m = "fastbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(k, sz, pos, len(v))
-                info.append(m)
-        for _k, v in self.cached_unsortedbin_list.items():
-            if base_address in v:
-                pos = ",".join([str(i + 1) for i, x in enumerate(v) if x == base_address])
-                m = "unsortedbins[{:s}/{:d}]".format(pos, len(v))
-                info.append(m)
-        for k, v in self.cached_smallbins_list.items():
-            if base_address in v:
-                pos = ",".join([str(i + 1) for i, x in enumerate(v) if x == base_address])
-                sz = get_binsize_table()["small_bins"][k]["size"]
-                m = "smallbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(k, sz, pos, len(v))
-                info.append(m)
-        for k, v in self.cached_largebins_list.items():
-            if base_address in v:
-                pos = ",".join([str(i + 1) for i, x in enumerate(v) if x == base_address])
-                sz_min = get_binsize_table()["large_bins"][k]["size_min"]
-                sz_max = get_binsize_table()["large_bins"][k]["size_max"]
-                m = "largebins[idx={:d},sz={:#x}-{:#x}][{:s}/{:d}]".format(k, sz_min, sz_max, pos, len(v))
-                info.append(m)
+        info.extend(self.bins_dict_for_address.get(address, []))
+        info.extend(self.bins_dict_for_base_address.get(base_address, []))
         if not skip_top:
             if base_address == self.top:
                 info.append("top")
@@ -47190,6 +47196,13 @@ class VisualHeapCommand(GenericCommand):
             # So it detects the end of the page from arena.top.
             end = arena.top + GlibcChunk(arena.top, from_base=True).size
 
+        try:
+            from tqdm import tqdm
+        except ImportError:
+            tqdm = None
+        if tqdm:
+            pbar = tqdm(total=end - dump_start, leave=False)
+
         addr = dump_start
         i = 0
         while addr < end:
@@ -47216,8 +47229,14 @@ class VisualHeapCommand(GenericCommand):
             addr += chunk.size
             i += 1
 
+            if tqdm:
+                pbar.update(chunk.size)
+
             if max_count and max_count <= i:
                 break
+
+        if tqdm:
+            pbar.close()
         return
 
     @parse_args
@@ -72899,7 +72918,7 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
         return
 
     def init_bins_info(self, malloc_state):
-        bins_info = {
+        self.bins_info = {
             "fastbins": {},
             "small_bins": {},
             "large_bins": {},
@@ -72915,7 +72934,7 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
                     n = chunk.get_fwd_ptr(True)
                 except gdb.MemoryError:
                     break
-            bins_info["fastbins"][i] = seen
+            self.bins_info["fastbins"][i] = seen
         # smallbins / unsortedbin
         for i in range(len(malloc_state.smallbins)):
             addr, n, p, size = malloc_state.smallbins[i]
@@ -72927,7 +72946,7 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
                     n = chunk.fwd
                 except gdb.MemoryError:
                     break
-            bins_info["small_bins"][i] = seen
+            self.bins_info["small_bins"][i] = seen
         # largebins
         for i in range(len(malloc_state.largebins)):
             addr, n, p, size = malloc_state.largebins[i]
@@ -72939,45 +72958,48 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
                     n = chunk.fwd
                 except gdb.MemoryError:
                     break
-            bins_info["large_bins"][i] = seen
-        return bins_info
+            self.bins_info["large_bins"][i] = seen
 
-    def make_bins_info(self, malloc_state, bins_info, address):
-        info = []
-        for k, v in bins_info["fastbins"].items():
-            if address in v:
-                pos = ",".join([str(i + 1) for i, x in enumerate(v) if x == address])
-                sz = self.fast_size_table[k][is_32bit()]
-                m = "fastbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(k, sz, pos, len(v))
-                info.append(m)
-        for k, v in bins_info["small_bins"].items():
-            if address in v:
-                pos = ",".join([str(i + 1) for i, x in enumerate(v) if x == address])
-                if k == 0:
-                    m = "unsortedbins[{:s}/{:d}]".format(pos, len(v))
+        # make table
+        self.bins_dict_for_address = {}
+        for fastbin_idx, fastbin_list in self.bins_info["fastbins"].items():
+            for address in set(fastbin_list):
+                pos = ",".join([str(i + 1) for i, x in enumerate(fastbin_list) if x == address])
+                sz = self.fast_size_table[fastbin_idx][is_32bit()]
+                m = "fastbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(fastbin_idx, sz, pos, len(fastbin_list))
+                self.bins_dict_for_address[address] = self.bins_dict_for_address.get(address, []) + [m]
+        for smallbin_idx, smallbin_list in self.bins_info["small_bins"].items():
+            for address in set(smallbin_list):
+                pos = ",".join([str(i + 1) for i, x in enumerate(smallbin_list) if x == address])
+                if smallbin_idx == 0:
+                    m = "unsortedbins[{:s}/{:d}]".format(pos, len(smallbin_list))
                 else:
-                    size = self.size_table[k][is_32bit()]
+                    size = self.size_table[smallbin_idx][is_32bit()]
                     if isinstance(size, tuple):
                         sz = "{:#x}-{:#x}".format(size[0], size[1])
                     else:
                         sz = size
-                    m = "smallbins[idx={:d},sz={:s}][{:s}/{:d}]".format(k, sz, pos, len(v))
-                info.append(m)
-        for k, v in bins_info["large_bins"].items():
-            if address in v:
-                pos = ",".join([str(i + 1) for i, x in enumerate(v) if x == address])
-                size = self.size_table[self.NSMALLBINS + k][is_32bit()]
+                    m = "smallbins[idx={:d},sz={:s}][{:s}/{:d}]".format(smallbin_idx, sz, pos, len(smallbin_list))
+                self.bins_dict_for_address[address] = self.bins_dict_for_address.get(address, []) + [m]
+        for largebin_idx, largebin_list in self.bins_info["large_bins"].items():
+            for address in set(largebin_list):
+                pos = ",".join([str(i + 1) for i, x in enumerate(largebin_list) if x == address])
+                size = self.size_table[self.NSMALLBINS + largebin_idx][is_32bit()]
                 if isinstance(size, tuple):
                     sz = "{:#x}-{:#x}".format(size[0], size[1])
                 else:
                     sz = size
-                m = "largebins[idx={:d},sz={:s}][{:s}/{:d}]".format(self.NSMALLBINS + k, sz, pos, len(v))
-                info.append(m)
+                m = "largebins[idx={:d},sz={:s}][{:s}/{:d}]".format(self.NSMALLBINS + largebin_idx, sz, pos, len(largebin_list))
+                self.bins_dict_for_address[address] = self.bins_dict_for_address.get(address, []) + [m]
+        return
+
+    def make_bins_info(self, malloc_state, address):
+        info = self.bins_dict_for_address.get(address, [])
         if address == malloc_state.top:
             info.append("top")
         return info
 
-    def generate_visual_chunk(self, malloc_state, bins_info, chunk, idx):
+    def generate_visual_chunk(self, malloc_state, chunk, idx):
         unpack = u32 if current_arch.ptrsize == 4 else u64
         data = slicer(chunk.data, current_arch.ptrsize * 2)
         group_line_threshold = 8
@@ -72999,7 +73021,7 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
             if self.full or repeat_count < group_line_threshold:
                 # non-collapsed line
                 for _ in range(repeat_count):
-                    sub_info = self.make_bins_info(malloc_state, bins_info, addr)
+                    sub_info = self.make_bins_info(malloc_state, addr)
                     if sub_info:
                         sub_info = "{:s} {:s}".format(LEFT_ARROW, ", ".join(sub_info))
                         has_subinfo = True
@@ -73021,7 +73043,7 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
                         break
             else:
                 # collapsed line
-                sub_info = self.make_bins_info(malloc_state, bins_info, addr)
+                sub_info = self.make_bins_info(malloc_state, addr)
                 if sub_info:
                     sub_info = "{:s} {:s}".format(LEFT_ARROW, ", ".join(sub_info))
                     has_subinfo = True
@@ -73051,7 +73073,7 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
             self.out.append(Color.boldify("..."))
         return
 
-    def generate_visual_heap(self, malloc_state, bins_info, dump_start, max_count):
+    def generate_visual_heap(self, malloc_state, dump_start, max_count):
         sect = process_lookup_address(dump_start)
         if sect:
             end = sect.page_end
@@ -73062,8 +73084,16 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
             # So it detects the end of the page from malloc_state.top.
             end = malloc_state.top + uClibcChunk(malloc_state.top, from_base=True).size
 
+        try:
+            from tqdm import tqdm
+        except ImportError:
+            tqdm = None
+        if tqdm:
+            pbar = tqdm(total=end - dump_start, leave=False)
+
         addr = dump_start
         i = 0
+
         while addr < end:
             chunk = GlibcChunk(addr + current_arch.ptrsize * 2)
             # corrupt check
@@ -73075,25 +73105,31 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
                 msg = "{} Corrupted (addr + chunk.size > malloc_state.top)".format(Color.colorify("[!]", "bold red"))
                 self.out.append(msg)
                 chunk.data = read_memory(addr, malloc_state.top - addr + 0x10)
-                self.generate_visual_chunk(malloc_state, bins_info, chunk, i)
+                self.generate_visual_chunk(malloc_state, chunk, i)
                 break
             elif addr + chunk.size > end:
                 msg = "{} Corrupted (addr + chunk.size > sect.page_end)".format(Color.colorify("[!]", "bold red"))
                 self.out.append(msg)
                 chunk.data = read_memory(addr, malloc_state.top - addr + 0x10)
-                self.generate_visual_chunk(malloc_state, bins_info, chunk, i)
+                self.generate_visual_chunk(malloc_state, chunk, i)
                 break
             # maybe not corrupted
             try:
                 chunk.data = read_memory(addr, chunk.size)
             except gdb.MemoryError:
                 break
-            self.generate_visual_chunk(malloc_state, bins_info, chunk, i)
+            self.generate_visual_chunk(malloc_state, chunk, i)
             addr += chunk.size
             i += 1
 
+            if tqdm:
+                pbar.update(chunk.size)
+
             if max_count and max_count <= i:
                 break
+
+        if tqdm:
+            pbar.close()
         return
 
     @parse_args
@@ -73115,7 +73151,7 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
             err("Not found heap base")
             return
 
-        bins_info = self.init_bins_info(malloc_state)
+        self.init_bins_info(malloc_state)
 
         if args.location is None:
             dump_start = malloc_state.heap_base
@@ -73124,7 +73160,7 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
 
         self.out = []
         reset_gef_caches(all=True)
-        self.generate_visual_heap(malloc_state, bins_info, dump_start, args.max_count)
+        self.generate_visual_heap(malloc_state, dump_start, args.max_count)
         gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
