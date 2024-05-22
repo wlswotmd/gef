@@ -47183,7 +47183,8 @@ class VisualHeapCommand(GenericCommand):
         if sect:
             end = sect.page_end
         else:
-            # If qemu-user 8.1 or higher, the process_lookup_address to obtain the section list uses info proc mappings internally.
+            # If qemu-user 8.1 or higher, the `process_lookup_address` to obtain the section list
+            # uses `info proc mappings` internally.
             # This is fast, but does not return an accurate list in some cases.
             # For example, sparc64 may not include the heap area.
             # So it detects the end of the page from arena.top.
