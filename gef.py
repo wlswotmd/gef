@@ -14853,8 +14853,18 @@ class AuxvCommand(GenericCommand):
                 additional_message = "{:s}{:s}".format(RIGHT_ARROW, s)
             elif k in ["AT_RANDOM"]:
                 try:
-                    s = read_int_from_memory(v)
-                    additional_message = "{:s}{:#x}".format(RIGHT_ARROW, s)
+                    if is_64bit():
+                        s1 = read_int_from_memory(v + current_arch.ptrsize * 0)
+                        s2 = read_int_from_memory(v + current_arch.ptrsize * 1)
+                        additional_message = "{:s}{:#018x}, {:#018x}".format(RIGHT_ARROW, s1, s2)
+                    else:
+                        s1 = read_int_from_memory(v + current_arch.ptrsize * 0)
+                        s2 = read_int_from_memory(v + current_arch.ptrsize * 1)
+                        s3 = read_int_from_memory(v + current_arch.ptrsize * 2)
+                        s4 = read_int_from_memory(v + current_arch.ptrsize * 3)
+                        additional_message = "{:s}{:#010x}, {:#010x}, {:#010x}, {:#010x}".format(
+                            RIGHT_ARROW, s1, s2, s3, s4,
+                        )
                 except gdb.MemoryError:
                     s = Color.yellowify(repr("Cannot access memory"))
                     additional_message = "{:s}{:s}".format(RIGHT_ARROW, s)
