@@ -476,7 +476,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/command-break.png)
 * `main-break`: sets a breakpoint at `main` with or without symbols, then continue.
     * This is useful when you just want to run to `main` under using qemu-user or pin, or debugging no-symbol ELF.
-* `break-only-if-taken`/`break-only-if-not-taken`: sets a breakpoint which breaks only branch is taken (or not taken).
+* `break-if-taken`/`break-if-not-taken`: sets a breakpoint which breaks if branch is taken (or not taken).
 * `distance`: calculates the offset from its base address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/distance.png)
 * `fpu`/`mmx`/`sse`/`avx`: pretty prints FPU/MMX/SSE/AVX registers.

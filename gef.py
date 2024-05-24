@@ -25407,9 +25407,9 @@ class TakenOrNotBreakpoint(gdb.Breakpoint):
 
 
 @register_command
-class BreakOnlyIfTakenCommand(GenericCommand):
-    """Set a breakpoint which breaks only branch is taken."""
-    _cmdline_ = "break-only-if-taken"
+class BreakIfTakenCommand(GenericCommand):
+    """Set a breakpoint which breaks if branch is taken."""
+    _cmdline_ = "break-if-taken"
     _category_ = "01-b. Debugging Support - Breakpoint"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
@@ -25426,9 +25426,9 @@ class BreakOnlyIfTakenCommand(GenericCommand):
 
 
 @register_command
-class BreakOnlyIfNotTakenCommand(GenericCommand):
-    """Set a breakpoint which breaks only branch is not taken."""
-    _cmdline_ = "break-only-if-not-taken"
+class BreakIfNotTakenCommand(GenericCommand):
+    """Set a breakpoint which breaks if branch is not taken."""
+    _cmdline_ = "break-if-not-taken"
     _category_ = "01-b. Debugging Support - Breakpoint"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
