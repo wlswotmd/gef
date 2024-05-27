@@ -3573,7 +3573,7 @@ class GlibcArena:
                 m = "tcache[idx={:d},sz={:#x}][{:s}/{:d}]".format(tcache_idx, sz, pos, len(tcache_list))
                 self.bins_dict_for_address[address] = self.bins_dict_for_address.get(address, []) + [m]
         for fastbin_idx, fastbin_list in self.cached_fastbins_list.items():
-            if address in set(fastbin_list):
+            for address in set(fastbin_list):
                 pos = ",".join([str(i + 1) for i, x in enumerate(fastbin_list) if x == address])
                 sz = get_binsize_table()["fastbins"][fastbin_idx]["size"]
                 m = "fastbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(fastbin_idx, sz, pos, len(fastbin_list))
@@ -3672,10 +3672,10 @@ class GlibcChunk:
             self.chunk_base_address = addr
             self.address = addr + 2 * self.ptrsize
         else:
-            self.chunk_base_address = int(addr - 2 * self.ptrsize)
+            self.chunk_base_address = align_address(addr - 2 * self.ptrsize)
             self.address = addr
 
-        self.size_addr = int(self.address - self.ptrsize)
+        self.size_addr = align_address(self.address - self.ptrsize)
         self.prev_size_addr = self.chunk_base_address
         return
 
@@ -20016,8 +20016,8 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
         return
 
 
-@cache_until_next
-def __get_binsize_table():
+@cache_this_session
+def get_binsize_table():
     table = {
         "tcache": {},
         "fastbins": {},
@@ -20210,10 +20210,6 @@ def __get_binsize_table():
     table["large_bins"][125] = {"size_min": 0x80000, "size_max": 0x0}
     table["large_bins"][126] = {"size_min": 0x0, "size_max": 0x0} # maybe unused
     return table
-
-
-def get_binsize_table():
-    return __get_binsize_table() # to prevent clear_all_cache
 
 
 @register_command
@@ -47222,7 +47218,13 @@ class VisualHeapCommand(GenericCommand):
         while addr < end:
             chunk = GlibcChunk(addr + current_arch.ptrsize * 2)
             # corrupt check
-            if addr != arena.top and addr + chunk.size > arena.top:
+            if chunk.size == 0:
+                msg = "{} Corrupted (chunk.size == 0)".format(Color.colorify("[!]", "bold red"))
+                self.out.append(msg)
+                chunk.data = read_memory(addr, arena.top - addr + 0x10)
+                self.generate_visual_chunk(arena, chunk, i)
+                break
+            elif addr != arena.top and addr + chunk.size > arena.top:
                 msg = "{} Corrupted (addr + chunk.size > arena.top)".format(Color.colorify("[!]", "bold red"))
                 self.out.append(msg)
                 chunk.data = read_memory(addr, arena.top - addr + 0x10)
@@ -72400,10 +72402,10 @@ class uClibcChunk:
             self.chunk_base_address = addr
             self.address = addr + 2 * self.ptrsize
         else:
-            self.chunk_base_address = int(addr - 2 * self.ptrsize)
+            self.chunk_base_address = align_address(addr - 2 * self.ptrsize)
             self.address = addr
 
-        self.size_addr = int(self.address - self.ptrsize)
+        self.size_addr = align_address(self.address - self.ptrsize)
         return
 
     def get_chunk_size(self):
@@ -73140,8 +73142,10 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
             if chunk.size == 0:
                 msg = "{} Corrupted (chunk.size == 0)".format(Color.colorify("[!]", "bold red"))
                 self.out.append(msg)
+                chunk.data = read_memory(addr, malloc_state.top - addr + 0x10)
+                self.generate_visual_chunk(malloc_state, chunk, i)
                 break
-            if addr != malloc_state.top and addr + chunk.size > malloc_state.top:
+            elif addr != malloc_state.top and addr + chunk.size > malloc_state.top:
                 msg = "{} Corrupted (addr + chunk.size > malloc_state.top)".format(Color.colorify("[!]", "bold red"))
                 self.out.append(msg)
                 chunk.data = read_memory(addr, malloc_state.top - addr + 0x10)
