@@ -3846,7 +3846,8 @@ class GlibcChunk:
     def to_str(self, arena):
         chunk_c = Color.colorify("Chunk", get_gef_setting("theme.heap_chunk_label"))
         size_c = Color.colorify_hex(self.get_chunk_size(), get_gef_setting("theme.heap_chunk_size"))
-        addr_c = Color.colorify_hex(self.chunk_base_address, get_gef_setting("theme.heap_chunk_address_freed"))
+        base_c = Color.colorify_hex(self.chunk_base_address, get_gef_setting("theme.heap_chunk_address_freed"))
+        addr_c = Color.colorify_hex(self.address, get_gef_setting("theme.heap_chunk_address_freed"))
         flags = self.flags_as_string()
 
         # large bins
@@ -3857,41 +3858,42 @@ class GlibcChunk:
                 # largebin and valid (fd|bk)_nextsize
                 fd_nextsize = lookup_address(self.fd_nextsize)
                 bk_nextsize = lookup_address(self.bk_nextsize)
-                fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s}, fd_nextsize={!s}, bk_nextsize={!s})"
-                msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, bk, fd_nextsize, bk_nextsize)
+                fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s}, fd_nextsize={!s}, bk_nextsize={!s})"
+                msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk, fd_nextsize, bk_nextsize)
             else:
-                fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
-                msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, bk)
+                fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
+                msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk)
 
         # small bins / unsorted bin
         elif arena.is_chunk_in_smallbins(self) or arena.is_chunk_in_unsortedbin(self):
             fd = lookup_address(self.fd)
             bk = lookup_address(self.bk)
-            fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
-            msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, bk)
+            fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
+            msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk)
 
         # tcache / fastbins
         elif arena.is_chunk_in_fastbins(self) or arena.is_chunk_in_tcache(self):
             fd = self.get_fwd_ptr(sll=False)
             if get_libc_version() < (2, 32):
                 fd = lookup_address(fd)
-                fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={!s})"
-                msg = fmt.format(chunk_c, addr_c, size_c, flags, fd)
+                fmt = "{:s}(base={:s}. addr={:s}, size={:s}, flags={:s}, fd={!s})"
+                msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd)
             else:
                 decoded_fd = lookup_address(self.get_fwd_ptr(sll=True))
-                fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={:#x}(={!s}))"
-                msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, decoded_fd)
+                fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={:#x}(={!s}))"
+                msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, decoded_fd)
 
         # top
         elif arena.top == self.chunk_base_address:
-            fmt = "{:s}(addr={:s}, size={:s}, flags={:s})"
-            msg = fmt.format(chunk_c, addr_c, size_c, flags)
+            fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s})"
+            msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags)
 
         # used chunk
         else:
-            addr_c = Color.colorify_hex(self.chunk_base_address, get_gef_setting("theme.heap_chunk_address_used"))
-            fmt = "{:s}(addr={:s}, size={:s}, flags={:s})"
-            msg = fmt.format(chunk_c, addr_c, size_c, flags)
+            base_c = Color.colorify_hex(self.chunk_base_address, get_gef_setting("theme.heap_chunk_address_used"))
+            addr_c = Color.colorify_hex(self.address, get_gef_setting("theme.heap_chunk_address_used"))
+            fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s})"
+            msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags)
         return msg
 
     def psprint(self, arena):
@@ -72460,19 +72462,20 @@ class uClibcChunk:
     def to_str(self, is_fastbin=False):
         chunk_c = Color.colorify("Chunk", get_gef_setting("theme.heap_chunk_label"))
         size_c = Color.colorify_hex(self.get_chunk_size(), get_gef_setting("theme.heap_chunk_size"))
-        addr_c = Color.colorify_hex(self.chunk_base_address, get_gef_setting("theme.heap_chunk_address_freed"))
+        base_c = Color.colorify_hex(self.chunk_base_address, get_gef_setting("theme.heap_chunk_address_freed"))
+        addr_c = Color.colorify_hex(self.address, get_gef_setting("theme.heap_chunk_address_freed"))
         flags = self.flags_as_string()
 
         if is_fastbin:
             decoded_fd = lookup_address(self.get_fwd_ptr(sll=True))
             fd = self.get_fwd_ptr(sll=False)
-            fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={:#x}(={!s})"
-            msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, decoded_fd)
+            fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={:#x}(={!s})"
+            msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, decoded_fd)
         else:
             fd = lookup_address(self.fd)
             bk = lookup_address(self.bk)
-            fmt = "{:s}(addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
-            msg = fmt.format(chunk_c, addr_c, size_c, flags, fd, bk)
+            fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
+            msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk)
         return msg
 
 
