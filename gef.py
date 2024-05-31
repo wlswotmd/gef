@@ -4099,6 +4099,7 @@ def gef_pybytes(x):
 
 
 def str2bytes(x):
+    """Helper function for str -> bytes."""
     if isinstance(x, bytes):
         return x
     if isinstance(x, str):
@@ -4114,6 +4115,7 @@ def str2bytes(x):
 
 
 def bytes2str(x):
+    """Helper function for bytes -> str."""
     if isinstance(x, str):
         return x
     if isinstance(x, bytes):
@@ -4122,10 +4124,12 @@ def bytes2str(x):
 
 
 def slicer(data, n):
+    """Helper function for slice."""
     return [data[i:i + n] for i in range(0, len(data), n)]
 
 
 def slice_unpack(data, n):
+    """Helper function for slice then unpack."""
     if n in [1, 2, 4, 8]:
         length = len(data) // n
         fmt = "{:s}{:d}{:s}".format(endian_str(), length, {1: "B", 2: "H", 4: "I", 8: "Q"}[n])
@@ -4137,12 +4141,51 @@ def slice_unpack(data, n):
 
 
 def byteswap(x, byte_size=None):
+    """Helper function for byte swap."""
     byte_size = byte_size or current_arch.ptrsize
     bit_size = byte_size * 8
     s = 0
     for i in range(0, bit_size, 8):
         s += ((x >> i) & 0xff) << (bit_size - (i + 8))
     return s
+
+
+def xor(a, b=None):
+    """Helper function for xor.
+    xor("AAA", "BBB") -> "\x03\x03\x03"
+    xor(b"AAA", b"BBB") -> b"\x03\x03\x03"
+    xor(["AAA", "BBB", "\x03\x03\x03"]) -> "\0\0\0"
+    """
+    def _xor(a, b):
+        if len(a) < len(b):
+            a, b = b, a
+        if isinstance(a, str) and isinstance(b, str):
+            return ''.join([chr(ord(c1) ^ ord(c2)) for (c1, c2) in zip(a, itertools.cycle(b))])
+        elif isinstance(a, bytes) and isinstance(b, bytes):
+            return bytes([c1 ^ c2 for (c1, c2) in zip(a, itertools.cycle(b))])
+        elif isinstance(a, bytearray) and isinstance(b, bytearray):
+            return bytearray([c1 ^ c2 for (c1, c2) in zip(a, itertools.cycle(b))])
+        raise
+
+    if b is None:
+        if hasattr(a, "__iter__"):
+            return functools.reduce(_xor, a)
+        raise
+    return _xor(a, b)
+
+
+def ror(val, bits, arch_bits=64):
+    """Helper function for rotate right."""
+    new_val = (val >> bits) | (val << (arch_bits - bits))
+    mask = (1 << arch_bits) - 1
+    return new_val & mask
+
+
+def rol(val, bits, arch_bits=64):
+    """Helper function for rotate left."""
+    new_val = (val << bits) | (val >> (arch_bits - bits))
+    mask = (1 << arch_bits) - 1
+    return new_val & mask
 
 
 @cache_this_session
@@ -4169,31 +4212,30 @@ def which(program):
     raise FileNotFoundError("Missing file `{:s}`".format(program))
 
 
-def style_byte(b, color=True):
-    style = {
-        "nonprintable": "yellow",
-        "printable": "white",
-        "00": "bright_black",
-        "0a": "blue",
-        "ff": "green",
-    }
-    sbyte = "{:02x}".format(b)
-    if not color or get_gef_setting("highlight.regex"):
-        return sbyte
-
-    if sbyte in style:
-        st = style[sbyte]
-    elif chr(b) in STRING_CHARSET:
-        st = style.get("printable")
-    else:
-        st = style.get("nonprintable")
-    if st:
-        sbyte = Color.colorify(sbyte, st)
-    return sbyte
-
-
 def hexdump(source, length=0x10, separator=".", color=True, show_symbol=True, base=0x00, unit=1):
     """Return the hexdump of `src` argument."""
+
+    def style_byte(b, color=True):
+        style = {
+            "nonprintable": "yellow",
+            "printable": "white",
+            "00": "bright_black",
+            "0a": "blue",
+            "ff": "green",
+        }
+        sbyte = "{:02x}".format(b)
+        if not color or get_gef_setting("highlight.regex"):
+            return sbyte
+
+        if sbyte in style:
+            st = style[sbyte]
+        elif chr(b) in STRING_CHARSET:
+            st = style.get("printable")
+        else:
+            st = style.get("nonprintable")
+        if st:
+            sbyte = Color.colorify(sbyte, st)
+        return sbyte
 
     align = get_format_address_width()
 
@@ -6063,17 +6105,9 @@ class X86(Architecture):
         return self.get_gs()
 
     def decode_cookie(self, value, cookie):
-        def ror(val, bits, arch_bits):
-            new_val = (val >> bits) | (val << (arch_bits - bits))
-            mask = (1 << arch_bits) - 1
-            return new_val & mask
         return ror(value, 9, 32) ^ cookie
 
     def encode_cookie(self, value, cookie):
-        def rol(val, bits, arch_bits):
-            new_val = (val << bits) | (val >> (arch_bits - bits))
-            mask = (1 << arch_bits) - 1
-            return new_val & mask
         return rol(value ^ cookie, 9, 32)
 
     def get_fs(self):
@@ -6234,17 +6268,9 @@ class X86_64(X86):
         return self.get_fs()
 
     def decode_cookie(self, value, cookie):
-        def ror(val, bits, arch_bits):
-            new_val = (val >> bits) | (val << (arch_bits - bits))
-            mask = (1 << arch_bits) - 1
-            return new_val & mask
         return ror(value, 17, 64) ^ cookie
 
     def encode_cookie(self, value, cookie):
-        def rol(val, bits, arch_bits):
-            new_val = (val << bits) | (val >> (arch_bits - bits))
-            mask = (1 << arch_bits) - 1
-            return new_val & mask
         return rol(value ^ cookie, 17, 64)
 
     def get_fs(self):
@@ -29099,7 +29125,7 @@ class XorMemoryDisplayCommand(GenericCommand):
         gef_print(hexdump(block, base=start_addr))
 
         gef_print(titlify("XOR-ed block"))
-        xored_block = bytearray([x ^ y for x, y in zip(block, itertools.cycle(args.key))])
+        xored_block = xor(block, args.key)
         gef_print(hexdump(xored_block, base=start_addr))
         return
 
@@ -29138,7 +29164,7 @@ class XorMemoryPatchCommand(GenericCommand):
             err("Failed to read memory")
             return
         info("Patching XOR-ing {:#x}-{:#x} with '{:s}'".format(start_addr, end_addr, repr(args.key)))
-        xored_block = bytearray([x ^ y for x, y in zip(block, itertools.cycle(args.key))])
+        xored_block = xor(block, args.key)
         gdb.execute("patch hex {:#x} {:s}".format(start_addr, xored_block.hex()))
         return
 
