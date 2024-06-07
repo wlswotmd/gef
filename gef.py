@@ -16240,12 +16240,6 @@ class SmartMemoryDumpCommand(GenericCommand):
             if entry.path in ["[vvar]", "[vsyscall]", "[vectors]", "[sigpage]"]:
                 continue
 
-            if self.filter and not any(filt.search(entry.path) for filt in self.filter):
-                continue
-
-            if self.exclude and any(ex.search(entry.path) for ex in self.exclude):
-                continue
-
             if not entry.path.startswith(("[", "<")):
                 path = os.path.basename(entry.path)
             else:
@@ -16256,6 +16250,13 @@ class SmartMemoryDumpCommand(GenericCommand):
 
             fmt = "{:s}{:0{}x}-{:0{}x}_{:s}_{:s}{:s}.raw"
             dumpfile_name = fmt.format(self.prefix, start, addr_len, end, addr_len, perm, path, self.suffix)
+
+            if self.filter and not any(filt.search(dumpfile_name) for filt in self.filter):
+                continue
+
+            if self.exclude and any(ex.search(dumpfile_name) for ex in self.exclude):
+                continue
+
             filepath = os.path.join(GEF_TEMP_DIR, dumpfile_name)
 
             if self.commit:
