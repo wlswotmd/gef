@@ -73256,26 +73256,16 @@ class XStringCommand(GenericCommand):
     _category_ = "03-b. Memory - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("count", metavar="COUNT", nargs="?", help="repeat count for displaying.")
     parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="dump target address.")
-    parser.add_argument("count", metavar="COUNT", nargs="?", default=1, type=parse_address, help="repeat count for displaying.")
     parser.add_argument("-l", "--max-length", type=parse_address,
                         help="maximum number of characters to display. 0 means unlimited.")
     parser.add_argument("-H", "--hex", action="store_true", help="show in hex style.")
     parser.add_argument("-q", "--quiet", action="store_true", help="quiet mode.")
     _syntax_ = parser.format_help()
 
-    @parse_args
-    @only_if_gdb_running
-    def do_invoke(self, args):
-        self.dont_repeat()
-
-        if args.max_length is not None:
-            max_length = args.max_length
-        else:
-            max_length = get_gef_setting("context.nb_max_string_length")
-
-        address = args.address
-        for _ in range(args.count):
+    def dump_string(self, address, count, max_length, tohex, quiet):
+        for _ in range(count):
             if not is_valid_addr(address):
                 err("Memory access error at {:#x}".format(address))
                 break
@@ -73306,13 +73296,13 @@ class XStringCommand(GenericCommand):
             else:
                 cs = s
 
-            if args.quiet:
-                if args.hex:
+            if quiet:
+                if tohex:
                     gef_print("{:s}".format(cs.hex()))
                 else:
                     gef_print("{:s}".format(repr(cs)))
             else:
-                if args.hex:
+                if tohex:
                     gef_print("{!s}: {:s} ({:#x} bytes)".format(lookup_address(address), cs.hex(), len(s)))
                 else:
                     gef_print("{!s}: {:s} ({:#x} bytes)".format(lookup_address(address), repr(cs), len(s)))
@@ -73322,6 +73312,33 @@ class XStringCommand(GenericCommand):
                 address += 1
             else:
                 address += pos + 1
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if args.count is None:
+            count = 1
+        else:
+            count = args.count
+            if args.count.startswith("/"):
+                count = count[1:]
+            if args.count.endswith("s"):
+                count = count[:-1]
+            try:
+                count = int(count)
+            except ValueError:
+                err("parse failed: {}".format(args.count))
+                return
+
+        if args.max_length is not None:
+            max_length = args.max_length
+        else:
+            max_length = get_gef_setting("context.nb_max_string_length")
+
+        self.dump_string(args.address, count, max_length, args.hex, args.quiet)
         return
 
 
