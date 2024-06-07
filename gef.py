@@ -13445,27 +13445,38 @@ class GenericCommand(gdb.Command):
     def __init__(self, *args, **kwargs):
         self.pre_load()
 
-        self.__doc__ = self.__doc__.replace(" " * 4, "") + "\n"
+        def tab(lines):
+            return "\n".join(["  " + line for line in lines.splitlines()])
+
+        self.__doc__ += "\n"
 
         if self._syntax_:
             self.__doc__ += "\n"
-            syntax = Color.colorify("Syntax:\n", "bold yellow") + self._syntax_.strip()
-            self.__doc__ += syntax + "\n"
+            self.__doc__ += Color.colorify("Syntax:", "bold yellow")
+            self.__doc__ += "\n"
+            self.__doc__ += self._syntax_.strip()
+            self.__doc__ += "\n"
 
         if self._example_:
             self.__doc__ += "\n"
-            example = Color.colorify("Example:\n", "bold yellow") + "  " + self._example_.strip().replace("\n", "\n  ")
-            self.__doc__ += example + "\n"
+            self.__doc__ += Color.colorify("Example:", "bold yellow")
+            self.__doc__ += "\n"
+            self.__doc__ += tab(self._example_.strip())
+            self.__doc__ += "\n"
 
         if self._note_:
             self.__doc__ += "\n"
-            note = Color.colorify("Note:\n", "bold yellow") + "  " + self._note_.strip().replace("\n", "\n  ")
-            self.__doc__ += note + "\n"
+            self.__doc__ += Color.colorify("Note:", "bold yellow")
+            self.__doc__ += "\n"
+            self.__doc__ += tab(self._note_.strip())
+            self.__doc__ += "\n"
 
         if hasattr(self, "_aliases_") and self._aliases_:
             self.__doc__ += "\n"
-            aliases = Color.colorify("Aliases:\n", "bold yellow") + "  " + str(self._aliases_)
-            self.__doc__ += aliases + "\n"
+            self.__doc__ += Color.colorify("Aliases:", "bold yellow")
+            self.__doc__ += "\n"
+            self.__doc__ += tab(str(self._aliases_))
+            self.__doc__ += "\n"
 
         self.repeat = False
         self.repeat_count = 0
@@ -13495,18 +13506,18 @@ class GenericCommand(gdb.Command):
         return
 
     def usage(self):
-        syntax = Color.colorify("Syntax:\n", "bold yellow") + self._syntax_.strip()
-        gef_print(syntax)
+        gef_print(Color.colorify("Syntax:", "bold yellow"))
+        gef_print(self._syntax_.strip())
 
         if self._example_:
             gef_print("")
-            example = Color.colorify("Example:\n", "bold yellow") + self._example_.strip()
-            gef_print(example)
+            gef_print(Color.colorify("Example:", "bold yellow"))
+            gef_print(self._example_.strip())
 
         if self._note_:
             gef_print("")
-            note = Color.colorify("Note:\n", "bold yellow") + self._note_.strip()
-            gef_print(note)
+            gef_print(Color.colorify("Note:", "bold yellow"))
+            gef_print(self._note_.strip())
         return
 
     @abc.abstractproperty
