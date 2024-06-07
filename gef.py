@@ -476,8 +476,8 @@ def gef_print(x="", less=False, *args, **kwargs):
     if less and not always_no_pager:
         if not x:
             return
-        _, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".txt", prefix="gef_print_")
-        open(tmp_path, "wb").write(str2bytes(x))
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".txt", prefix="gef_print_")
+        os.fdopen(tmp_fd, "w").write(x)
         os.system("{:s} -R {:s}".format(less, tmp_path))
 
         keep_pager_result = get_gef_setting("gef.keep_pager_result")
@@ -4753,13 +4753,11 @@ def gef_execute_external(command, as_list=False, *args, **kwargs):
 def gef_execute_gdb_script(commands):
     """Execute the parameter `source` as GDB command. This is done by writing `commands` to
     a temporary file, which is then executed via GDB `source` command. The tempfile is then deleted."""
-    fd, fname = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".gdb", prefix="gef_")
-    with os.fdopen(fd, "w") as f:
-        f.write(commands)
-        f.flush()
-    if os.access(fname, os.R_OK):
-        gdb.execute("source {:s}".format(fname))
-        os.unlink(fname)
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".gdb", prefix="gef_")
+    os.fdopen(tmp_fd, "w").write(commands)
+    if os.access(tmp_path, os.R_OK):
+        gdb.execute("source {:s}".format(tmp_path))
+        os.unlink(tmp_path)
     return
 
 
@@ -15967,11 +15965,10 @@ class ProcDumpCommand(GenericCommand):
                     data = data.replace(b"tx_queue ", b"tx_queue:")
                     data = data.replace(b" tr ", b" tr:")
                     tmp_fd, tmp_filename = tempfile.mkstemp(dir=GEF_TEMP_DIR, prefix="proc-dump-")
-                    os.write(tmp_fd, data)
-                    os.close(tmp_fd)
+                    os.fdopen(tmp_fd, "wb").write(data)
                     ret = gef_execute_external([column_command, "-t", tmp_filename], as_list=True)
-                    out.extend(ret)
                     os.unlink(tmp_filename)
+                    out.extend(ret)
                     continue
 
                 if f == "dev":
@@ -15985,9 +15982,9 @@ class ProcDumpCommand(GenericCommand):
                     data = re.sub(rb"\|\s*Receive", b"|Receive", data)
                     data = re.sub(rb"\|\s*Transmit", b"|Transmit", data)
                     tmp_fd, tmp_filename = tempfile.mkstemp(dir=GEF_TEMP_DIR, prefix="proc-dump-")
-                    os.write(tmp_fd, data)
-                    os.close(tmp_fd)
+                    os.fdopen(tmp_fd, "wb").write(data)
                     ret = gef_execute_external([column_command, "-t", tmp_filename], as_list=True)
+                    os.unlink(tmp_filename)
                     wrong = ret[0].rfind("|")
                     rright = ret[1].rfind("|")
                     lright = ret[1].find("|")
@@ -15998,7 +15995,6 @@ class ProcDumpCommand(GenericCommand):
                         ret[i] = ret[i][:lright] + "  " + ret[i][lright:]
                         ret[i] = ret[i][:rright] + "  " + ret[i][rright:]
                     out.extend(ret)
-                    os.unlink(tmp_filename)
                     continue
 
                 if f in ["igmp", "fib_trie", "wireless"]:
@@ -18870,8 +18866,7 @@ class UnicornEmulateCommand(GenericCommand):
             tmp_fd = tmp_fd_.fileno()
         else:
             tmp_fd, tmp_filename = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".py", prefix="gef-uc-")
-        os.write(tmp_fd, gef_pybytes(content))
-        os.close(tmp_fd)
+        os.fdopen(tmp_fd, "w").write(content)
         if kwargs["to_file"] or kwargs["skip_emulation"]:
             info("Unicorn script generated as '{:s}'".format(tmp_filename))
             os.chmod(tmp_filename, 0o700)
@@ -21797,8 +21792,7 @@ class ElfInfoCommand(GenericCommand):
                 err("Failed to read remote filepath.")
                 return
             tmp_fd, tmp_filepath = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".elf", prefix="elf-info-")
-            os.write(tmp_fd, data)
-            os.close(tmp_fd)
+            os.fdopen(tmp_fd, "wb").write(data)
             local_filepath = tmp_filepath
             del data
 
@@ -22234,8 +22228,7 @@ class ChecksecCommand(GenericCommand):
                 err("Failed to read remote filepath")
                 return
             tmp_fd, tmp_filepath = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".elf", prefix="checksec-")
-            os.write(tmp_fd, data)
-            os.close(tmp_fd)
+            os.fdopen(tmp_fd, "wb").write(data)
             local_filepath = tmp_filepath
             del data
 
@@ -25062,8 +25055,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                 err("Failed to read remote filepath")
                 return
             tmp_fd, tmp_filepath = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".elf", prefix="dwarf-exception-handler-")
-            os.write(tmp_fd, data)
-            os.close(tmp_fd)
+            os.fdopen(tmp_fd, "wb").write(data)
             local_filepath = tmp_filepath
             del data
 
@@ -30927,8 +30919,7 @@ class DestructorDumpCommand(GenericCommand):
                 err("Failed to read remote filepath")
                 return
             tmp_fd, tmp_filepath = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".elf", prefix="dtor-dump-")
-            os.write(tmp_fd, data)
-            os.close(tmp_fd)
+            os.fdopen(tmp_fd, "wb").write(data)
             local_filepath = tmp_filepath
             del data
 
@@ -31371,8 +31362,7 @@ class GotCommand(GenericCommand):
                     err("Failed to read remote filepath")
                 return
             tmp_fd, tmp_filepath = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".elf", prefix="got-")
-            os.write(tmp_fd, data)
-            os.close(tmp_fd)
+            os.fdopen(tmp_fd, "wb").write(data)
             local_filepath = tmp_filepath
             del data
 
@@ -61563,9 +61553,9 @@ class SaveOutputCommand(GenericCommand):
             return
 
         # save
-        _, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".txt", prefix="diff_saved_output_")
-        open(tmp_path, "wb").write(str2bytes(current_output))
-        open(tmp_path[:-4] + ".cmd", "wb").write(str2bytes(cmd))
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".txt", prefix="diff_saved_output_")
+        os.fdopen(tmp_fd, "w").write(current_output)
+        open(tmp_path[:-4] + ".cmd", "w").write(cmd)
         info("The output is saved to {:s}.(txt|cmd)".format(tmp_path[:-4]))
 
         # print
