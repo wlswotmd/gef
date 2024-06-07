@@ -85033,6 +85033,93 @@ class BytearrayCommand(GenericCommand):
 
 
 @register_command
+class BinwalkMemoryCommand(GenericCommand):
+    """Scan memory by binwalk."""
+    _cmdline_ = "binwalk-memory"
+    _category_ = "03-f. Memory - Investigation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP include filter.")
+    parser.add_argument("-e", "--exclude", action="append", type=re.compile, default=[], help="REGEXP exclude filter.")
+    parser.add_argument("-m", "--maxsize", default=0x10000000, type=parse_address,
+                        help="maximum size of a section to be dumped. (default: 256 MB)")
+    parser.add_argument("-c", "--commit", action="store_true", help="actually perform binwalk.")
+    _syntax_ = parser.format_help()
+
+    def memory_binwalk(self):
+        try:
+            binwalk = __import__("binwalk")
+        except ImportError as err:
+            msg = "Missing `binwalk` package for Python, install with: `apt install binwalk`."
+            raise ImportWarning(msg) from err
+
+        maps = get_process_maps()
+        if maps is None:
+            err("Failed to get maps")
+            return
+
+        addr_len = current_arch.ptrsize * 2
+        for entry in maps:
+            start = entry.page_start
+            end = entry.page_end
+            perm = str(entry.permission)
+
+            if entry.size > self.maxsize:
+                continue
+
+            if entry.path in ["[vvar]", "[vsyscall]", "[vectors]", "[sigpage]"]:
+                continue
+
+            if not entry.path.startswith(("[", "<")):
+                path = os.path.basename(entry.path)
+            else:
+                path = entry.path
+                path = path.replace("[", "").replace("]", "") # consider [heap], [stack], [vdso]
+                path = path.replace("<", "").replace(">", "") # consider <tls-th1>, <explored>
+            path = path.replace(" ", "_") # consider deleted case. e.g.: /path/to/file (deleted)
+
+            fmt = "binwalk-{:0{}x}-{:0{}x}_{:s}_{:s}.raw"
+            dumpfile_name = fmt.format(start, addr_len, end, addr_len, perm, path)
+
+            if self.filter and not any(filt.search(dumpfile_name) for filt in self.filter):
+                continue
+
+            if self.exclude and any(ex.search(dumpfile_name) for ex in self.exclude):
+                continue
+
+            filepath = os.path.join(GEF_TEMP_DIR, dumpfile_name)
+
+            if self.commit:
+                gef_print(titlify("{:#x}-{:#x} [{}] {:s}".format(entry.page_start, entry.page_end, entry.permission, entry.path)))
+                try:
+                    data = read_memory(start, end - start)
+                except gdb.MemoryError:
+                    continue
+                open(filepath, "wb").write(data)
+                binwalk.scan(filepath, signature=True)
+                os.unlink(filepath)
+            else:
+                gef_print(dumpfile_name)
+
+        if not self.commit:
+            warn('This is dry run mode. binwalk has not been performed yet. To execute, please add "--commit".')
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        self.filter = args.filter
+        self.exclude = args.exclude
+        self.maxsize = args.maxsize
+        self.commit = args.commit
+
+        self.memory_binwalk()
+        return
+
+
+@register_command
 class BincompareCommand(GenericCommand):
     """Compare an binary file with the memory position looking for badchars."""
     _cmdline_ = "bincompare"
