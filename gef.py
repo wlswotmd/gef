@@ -4093,11 +4093,6 @@ def gef_pystring(x):
     return res
 
 
-def gef_pybytes(x):
-    """Returns an immutable bytes list from the string given as input."""
-    return bytes(str(x), encoding="utf-8")
-
-
 def str2bytes(x):
     """Helper function for str -> bytes."""
     if isinstance(x, bytes):
@@ -12554,7 +12549,7 @@ def keystone_assemble(code, arch, mode, *args, **kwargs):
     """Assembly encoding function based on keystone."""
     import multiprocessing
     keystone = sys.modules["keystone"]
-    code = gef_pybytes(code)
+    code = str2bytes(code)
     addr = kwargs.get("addr", 0x1000)
 
     # `asm "[]"` returns no response
@@ -16638,7 +16633,7 @@ class SearchPatternCommand(GenericCommand):
 
     def search_pattern_by_address(self, pattern, start_address, end_address):
         """Search a pattern within a range defined by arguments."""
-        pattern = gef_pybytes(pattern)
+        pattern = str2bytes(pattern)
         if is_qemu_system():
             step = gef_getpagesize()
         else:
