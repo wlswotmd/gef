@@ -85033,6 +85033,67 @@ class BytearrayCommand(GenericCommand):
 
 
 @register_command
+class FiletypeMemoryCommand(GenericCommand):
+    """Scan memory by file and magika."""
+    _cmdline_ = "filetype-memory"
+    _category_ = "03-f. Memory - Investigation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="target address.")
+    parser.add_argument("end_address", metavar="END_ADDRESS", nargs="?", type=parse_address,
+                        help="target end address. (default: the end of section of ADDRESS)")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if not is_valid_addr(args.address):
+            err("Memory read error")
+            return
+
+        try:
+            start_address = args.address
+            if args.end_address is not None:
+                size = args.end_address - args.address
+            else:
+                section = lookup_address(args.address).section
+                size = section.page_end - args.address
+            end_address = start_address + size
+        except (AttributeError, ValueError):
+            self.usage()
+            return
+
+        try:
+            data = read_memory(start_address, size)
+        except gdb.MemoryError:
+            err("Memory read error")
+            return
+
+        dumpfile_name = "filetype_{:#x}-{:#x}.dat".format(start_address, end_address)
+        filepath = os.path.join(GEF_TEMP_DIR, dumpfile_name)
+        open(filepath, "wb").write(data)
+
+        try:
+            gef_print(titlify("file {:s}".format(filepath)))
+            file_command = which("file")
+            os.system("{:s} {:s}".format(file_command, filepath))
+        except FileNotFoundError as e:
+            warn("{}".format(e))
+
+        try:
+            gef_print(titlify("magika {:s}".format(filepath)))
+            magika_command = which("magika")
+            os.system("{:s} {:s}".format(magika_command, filepath))
+        except FileNotFoundError as e:
+            warn("{}".format(e))
+
+        os.unlink(filepath)
+        return
+
+
+@register_command
 class BinwalkMemoryCommand(GenericCommand):
     """Scan memory by binwalk."""
     _cmdline_ = "binwalk-memory"
