@@ -211,7 +211,7 @@ STRING_PRINTABLE = STRING_DIGITS + STRING_ASCII_LETTERS + STRING_PUNCTUATION + S
 STRING_CHARSET = STRING_DIGITS + STRING_ASCII_LETTERS + STRING_PUNCTUATION + " "
 
 
-def perf(f):
+def perf(f): # noqa
     """Decorator wrapper to perf."""
 
     @functools.wraps(f)
@@ -228,11 +228,10 @@ def perf(f):
         print(s.getvalue())
         return ret
 
-    perf # avoid to be detected as unused # noqa: B018
     return wrapper
 
 
-def cperf(f):
+def cperf(f): # noqa
     """Decorator wrapper to perf."""
 
     @functools.wraps(f)
@@ -252,11 +251,10 @@ def cperf(f):
         print(s.getvalue())
         return ret
 
-    cperf # avoid to be detected as unused # noqa: B018
     return wrapper
 
 
-def _displayhook(o):
+def _displayhook(o): # noqa
     def dec2hex(o, idt):
         def I1():
             return "  " * idt
@@ -319,31 +317,23 @@ def _displayhook(o):
             return f
         return repr(o)
 
-    __builtins__._ = o
+    __builtins__._ = o # noqa
 
     if o is None:
         return
 
     out = dec2hex(o, 0)
-    if out:
-        print(out)
-        return
-
-    # unreachable
-    __builtins__._ # noqa: B018
-    hexon # noqa: B018
-    hexoff # noqa: B018
-    _displayhook # noqa: B018
-    sys.displayhook # noqa: B018
-
-
-def hexon():
-    sys.displayhook = _displayhook
+    print(out)
     return
 
 
-def hexoff():
-    sys.displayhook = sys.__displayhook__
+def hexon(): # noqa
+    sys.displayhook = _displayhook # noqa
+    return
+
+
+def hexoff(): # noqa
+    sys.displayhook = sys.__displayhook__ # noqa
     return
 
 
@@ -1546,8 +1536,7 @@ class Elf:
         # off 0x7
         self.e_osabi, self.e_abiversion = struct.unpack("{}BB".format(endian), self.read(2))
         # off 0x9
-        self.e_pad = self.read(7)
-        self.e_pad # avoid to be detected as unused # noqa: B018
+        self.e_pad = self.read(7) # noqa
         # off 0x10
         self.e_type, self.e_machine, self.e_version = struct.unpack("{}HHI".format(endian), self.read(8))
         # off 0x18
@@ -4772,8 +4761,7 @@ def capstone_disassemble(location, nb_insn, **kwargs):
     arch, mode = get_capstone_arch(arch=_arch, mode=_mode, endian=_endian)
     try:
         cs = capstone.Cs(arch, mode)
-        cs.detail = True
-        cs.detail # avoid to be detected as unused # noqa: B018
+        cs.detail = True # noqa
     except capstone.CsError:
         err("CsError")
         return
@@ -20771,7 +20759,7 @@ class DisassembleCommand(GenericCommand):
         except capstone.CsError:
             err("CsError")
             return
-        cs.detail = True
+        cs.detail = True # noqa
 
         for insn in cs.disasm(insns, 0x0):
             b = binascii.hexlify(insn.bytes).decode("utf-8")
@@ -31712,7 +31700,7 @@ class TraceMallocRetBreakpoint(gdb.FinishBreakpoint):
         HeapAnalysisCommand.heap_allocated_list.append(item)
         return False
 
-    def out_of_scope(self):
+    def out_of_scope(self): # noqa
         print("{:s}: abnormal finish".format(self.name))
         return
 
@@ -31772,7 +31760,7 @@ class TraceReallocRetBreakpoint(gdb.FinishBreakpoint):
 
         return False
 
-    def out_of_scope(self):
+    def out_of_scope(self): # noqa
         print("realloc: abnormal finish")
         return
 
@@ -31854,7 +31842,7 @@ class TraceFreeRetBreakpoint(gdb.FinishBreakpoint):
         HeapAnalysisCommand.heap_uaf_watchpoints.append(wp)
         return False
 
-    def out_of_scope(self):
+    def out_of_scope(self): # noqa
         print("free: abnormal finish")
         return
 
@@ -86450,8 +86438,7 @@ def main():
     fix_venv()
 
     # setup prompt
-    gdb.prompt_hook = __gef_prompt__
-    gdb.prompt_hook # avoid to be detected as unused # noqa: B018
+    gdb.prompt_hook = __gef_prompt__ # noqa
 
     # setup config
     gdb.execute("set confirm off")
