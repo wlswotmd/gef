@@ -191,9 +191,6 @@ __heap_allocated_list__         = [] # for heap-analysis-helper command
 __heap_freed_list__             = [] # for heap-analysis-helper command
 __heap_uaf_watchpoints__        = [] # for heap-analysis-helper command
 __patch_history__               = [] # keep patched information
-__cached_context_legend__       = None # for caching
-__cached_heap_base__            = None # for caching
-__cached_main_arena__           = None # for caching
 current_elf                     = None # keep Elf instance
 current_arch                    = None # keep Architecture instance
 
@@ -206,7 +203,6 @@ GEF_TEMP_DIR                    = os.path.join(tempfile.gettempdir(), "gef")
 
 GDB_MIN_VERSION                 = (9, 2) # ubuntu 20.04
 GDB_VERSION                     = tuple(map(int, re.search(r"(\d+)[^\d]+(\d+)", gdb.VERSION).groups()))
-
 
 STRING_ASCII_LOWERCASE = "abcdefghijklmnopqrstuvwxyz"
 STRING_ASCII_UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -360,6 +356,9 @@ class Cache:
         "until_next": {},
         "this_session": {},
     }
+    cached_context_legend = None
+    cached_heap_base = None
+    cached_main_arena = None
 
     @staticmethod
     def cache_until_next(f):
@@ -421,12 +420,9 @@ class Cache:
             Cache.gef_caches["this_session"] = {}
 
         if all:
-            global __cached_context_legend__
-            __cached_context_legend__ = None
-            global __cached_heap_base__
-            __cached_heap_base__ = None
-            global __cached_main_arena__
-            __cached_main_arena__ = None
+            Cache.cached_context_legend = None
+            Cache.cached_main_arena = None
+            Cache.cached_heap_base = None
         return
 
 
@@ -2487,1423 +2483,1621 @@ class Instruction:
         return text
 
 
-class HeapInfo:
-    """GEF representation of heap_info"""
+class GlibcHeap:
+    class HeapInfo:
+        """GEF representation of heap_info"""
 
-    def __init__(self, addr):
-        self.__addr = addr
+        def __init__(self, addr):
+            self.__addr = addr
 
-        if is_64bit():
-            MALLOC_ALIGNMENT = 0x10
-        elif (is_x86_32() or is_riscv32() or is_ppc32()) and get_libc_version() >= (2, 26):
-            MALLOC_ALIGNMENT = 0x10
-        else:
-            MALLOC_ALIGNMENT = 0x8
-        self.MALLOC_ALIGN_MASK = MALLOC_ALIGNMENT - 1
+            if is_64bit():
+                MALLOC_ALIGNMENT = 0x10
+            elif (is_x86_32() or is_riscv32() or is_ppc32()) and get_libc_version() >= (2, 26):
+                MALLOC_ALIGNMENT = 0x10
+            else:
+                MALLOC_ALIGNMENT = 0x8
+            self.MALLOC_ALIGN_MASK = MALLOC_ALIGNMENT - 1
 
-        self.char_t = cached_lookup_type("char")
-        self.size_t = cached_lookup_type("size_t")
-        if not self.size_t:
-            ptr_type = "unsigned long" if current_arch.ptrsize == 8 else "unsigned int"
-            self.size_t = cached_lookup_type(ptr_type)
-        return
+            self.char_t = cached_lookup_type("char")
+            self.size_t = cached_lookup_type("size_t")
+            if not self.size_t:
+                ptr_type = "unsigned long" if current_arch.ptrsize == 8 else "unsigned int"
+                self.size_t = cached_lookup_type(ptr_type)
+            return
 
-    # struct offsets
-    @property
-    def addr(self):
-        return self.__addr
+        # struct offsets
+        @property
+        def addr(self):
+            return self.__addr
 
-    @property
-    def ar_ptr_addr(self):
-        return self.__addr
+        @property
+        def ar_ptr_addr(self):
+            return self.__addr
 
-    @property
-    def prev_addr(self):
-        return self.ar_ptr_addr + self.char_t.pointer().sizeof
+        @property
+        def prev_addr(self):
+            return self.ar_ptr_addr + self.char_t.pointer().sizeof
 
-    @property
-    def size_addr(self):
-        return self.prev_addr + self.char_t.pointer().sizeof
+        @property
+        def size_addr(self):
+            return self.prev_addr + self.char_t.pointer().sizeof
 
-    @property
-    def mprotect_size_addr(self):
-        return self.size_addr + self.size_t.sizeof
+        @property
+        def mprotect_size_addr(self):
+            return self.size_addr + self.size_t.sizeof
 
-    @property
-    def pagesize_addr(self):
-        if get_libc_version() >= (2, 35):
-            return self.mprotect_size_addr + self.size_t.sizeof
-        else:
-            return None
+        @property
+        def pagesize_addr(self):
+            if get_libc_version() >= (2, 35):
+                return self.mprotect_size_addr + self.size_t.sizeof
+            else:
+                return None
 
-    @property
-    def pad_addr(self):
-        if get_libc_version() >= (2, 35):
-            return self.pagesize_addr + self.size_t.sizeof
-        else:
-            return self.mprotect_size_addr + self.size_t.sizeof
+        @property
+        def pad_addr(self):
+            if get_libc_version() >= (2, 35):
+                return self.pagesize_addr + self.size_t.sizeof
+            else:
+                return self.mprotect_size_addr + self.size_t.sizeof
 
-    @property
-    def sizeof(self):
-        if get_libc_version() >= (2, 35):
-            end = self.pad_addr + (-3 * self.size_t.sizeof) & self.MALLOC_ALIGN_MASK
-        else:
-            end = self.pad_addr + (-6 * self.size_t.sizeof) & self.MALLOC_ALIGN_MASK
-        return end - self.__addr
+        @property
+        def sizeof(self):
+            if get_libc_version() >= (2, 35):
+                end = self.pad_addr + (-3 * self.size_t.sizeof) & self.MALLOC_ALIGN_MASK
+            else:
+                end = self.pad_addr + (-6 * self.size_t.sizeof) & self.MALLOC_ALIGN_MASK
+            return end - self.__addr
 
-    # struct members
-    @property
-    def ar_ptr(self):
-        return self.get_char_t_pointer(self.ar_ptr_addr)
+        # struct members
+        @property
+        def ar_ptr(self):
+            return self.get_char_t_pointer(self.ar_ptr_addr)
 
-    @property
-    def prev(self):
-        return self.get_char_t_pointer(self.prev_addr)
+        @property
+        def prev(self):
+            return self.get_char_t_pointer(self.prev_addr)
 
-    @property
-    def size(self):
-        return self.get_size_t(self.size_addr)
+        @property
+        def size(self):
+            return self.get_size_t(self.size_addr)
 
-    @property
-    def mprotect_size(self):
-        return self.get_size_t(self.mprotect_size_addr)
+        @property
+        def mprotect_size(self):
+            return self.get_size_t(self.mprotect_size_addr)
 
-    @property
-    def pagesize(self):
-        if get_libc_version() >= (2, 35):
-            return self.get_size_t(self.pagesize_addr)
-        else:
-            return None
+        @property
+        def pagesize(self):
+            if get_libc_version() >= (2, 35):
+                return self.get_size_t(self.pagesize_addr)
+            else:
+                return None
 
-    @property
-    def pad(self):
-        if get_libc_version() >= (2, 35):
-            length = (-3 * self.size_t.sizeof) & self.MALLOC_ALIGN_MASK
-        else:
-            length = (-6 * self.size_t.sizeof) & self.MALLOC_ALIGN_MASK
-        return self.get_char_t_array(self.pad_addr, length)
+        @property
+        def pad(self):
+            if get_libc_version() >= (2, 35):
+                length = (-3 * self.size_t.sizeof) & self.MALLOC_ALIGN_MASK
+            else:
+                length = (-6 * self.size_t.sizeof) & self.MALLOC_ALIGN_MASK
+            return self.get_char_t_array(self.pad_addr, length)
 
-    # helper methods
-    def get_size_t(self, addr):
-        return dereference(addr).cast(self.size_t)
+        # helper methods
+        def get_size_t(self, addr):
+            return dereference(addr).cast(self.size_t)
 
-    def get_char_t_pointer(self, addr):
-        char_t_pointer = self.char_t.pointer()
-        return dereference(addr).cast(char_t_pointer)
+        def get_char_t_pointer(self, addr):
+            char_t_pointer = self.char_t.pointer()
+            return dereference(addr).cast(char_t_pointer)
 
-    def get_char_t_array(self, addr, length):
-        char_t_array = self.char_t.array(length)
-        return dereference(addr).cast(char_t_array)
+        def get_char_t_array(self, addr, length):
+            char_t_array = self.char_t.array(length)
+            return dereference(addr).cast(char_t_array)
 
-    def __getitem__(self, item):
-        return getattr(self, item)
+        def __getitem__(self, item):
+            return getattr(self, item)
 
+    class MallocPar:
+        """GEF representation of malloc_par"""
+        def __init__(self, addr):
+            self.__addr = addr
 
-class MallocPar:
-    """GEF representation of malloc_par"""
-    def __init__(self, addr):
-        self.__addr = addr
+            self.char_t = cached_lookup_type("char")
+            self.int_t = cached_lookup_type("int")
+            self.long_t = cached_lookup_type("long")
+            self.size_t = cached_lookup_type("size_t")
+            if not self.size_t:
+                ptr_type = "unsigned long" if current_arch.ptrsize == 8 else "unsigned int"
+                self.size_t = cached_lookup_type(ptr_type)
+            return
 
-        self.char_t = cached_lookup_type("char")
-        self.int_t = cached_lookup_type("int")
-        self.long_t = cached_lookup_type("long")
-        self.size_t = cached_lookup_type("size_t")
-        if not self.size_t:
-            ptr_type = "unsigned long" if current_arch.ptrsize == 8 else "unsigned int"
-            self.size_t = cached_lookup_type(ptr_type)
-        return
+        # struct offsets
+        @property
+        def addr(self):
+            return self.__addr
 
-    # struct offsets
-    @property
-    def addr(self):
-        return self.__addr
+        @property
+        def trim_threshold_addr(self):
+            return self.__addr
 
-    @property
-    def trim_threshold_addr(self):
-        return self.__addr
+        @property
+        def top_pad_addr(self):
+            return self.trim_threshold_addr + self.long_t.sizeof
 
-    @property
-    def top_pad_addr(self):
-        return self.trim_threshold_addr + self.long_t.sizeof
+        @property
+        def mmap_threshold_addr(self):
+            return self.top_pad_addr + self.size_t.sizeof
 
-    @property
-    def mmap_threshold_addr(self):
-        return self.top_pad_addr + self.size_t.sizeof
+        @property
+        def arena_test_addr(self):
+            return self.mmap_threshold_addr + self.size_t.sizeof
 
-    @property
-    def arena_test_addr(self):
-        return self.mmap_threshold_addr + self.size_t.sizeof
+        @property
+        def arena_max_addr(self):
+            return self.arena_test_addr + self.size_t.sizeof
 
-    @property
-    def arena_max_addr(self):
-        return self.arena_test_addr + self.size_t.sizeof
+        @property
+        def thp_pagesize_addr(self):
+            if get_libc_version() >= (2, 35):
+                return self.arena_max_addr + self.size_t.sizeof
+            else:
+                return None
 
-    @property
-    def thp_pagesize_addr(self):
-        if get_libc_version() >= (2, 35):
-            return self.arena_max_addr + self.size_t.sizeof
-        else:
-            return None
+        @property
+        def hp_pagesize_addr(self):
+            if get_libc_version() >= (2, 35):
+                return self.thp_pagesize_addr + self.size_t.sizeof
+            else:
+                return None
 
-    @property
-    def hp_pagesize_addr(self):
-        if get_libc_version() >= (2, 35):
-            return self.thp_pagesize_addr + self.size_t.sizeof
-        else:
-            return None
+        @property
+        def hp_flags_addr(self):
+            if get_libc_version() >= (2, 35):
+                return self.hp_pagesize_addr + self.size_t.sizeof
+            else:
+                return None
 
-    @property
-    def hp_flags_addr(self):
-        if get_libc_version() >= (2, 35):
-            return self.hp_pagesize_addr + self.size_t.sizeof
-        else:
-            return None
+        @property
+        def n_mmaps_addr(self):
+            if get_libc_version() >= (2, 35):
+                return self.hp_flags_addr + self.int_t.sizeof
+            else:
+                return self.arena_max_addr + self.size_t.sizeof
 
-    @property
-    def n_mmaps_addr(self):
-        if get_libc_version() >= (2, 35):
-            return self.hp_flags_addr + self.int_t.sizeof
-        else:
-            return self.arena_max_addr + self.size_t.sizeof
+        @property
+        def n_mmaps_max_addr(self):
+            return self.n_mmaps_addr + self.int_t.sizeof
 
-    @property
-    def n_mmaps_max_addr(self):
-        return self.n_mmaps_addr + self.int_t.sizeof
+        @property
+        def max_n_mmaps_addr(self):
+            return self.n_mmaps_max_addr + self.int_t.sizeof
 
-    @property
-    def max_n_mmaps_addr(self):
-        return self.n_mmaps_max_addr + self.int_t.sizeof
-
-    @property
-    def no_dyn_threshold_addr(self):
-        return self.max_n_mmaps_addr + self.int_t.sizeof
-
-    @property
-    def pagesize_addr(self):
-        if get_libc_version() >= (2, 15):
-            return None
-        else:
+        @property
+        def no_dyn_threshold_addr(self):
             return self.max_n_mmaps_addr + self.int_t.sizeof
 
-    @property
-    def mmapped_mem_addr(self):
-        if get_libc_version() >= (2, 15):
-            return align_address_to_size(self.no_dyn_threshold_addr + self.int_t.sizeof, current_arch.ptrsize)
-        else:
-            return align_address_to_size(self.pagesize_addr + self.int_t.sizeof, current_arch.ptrsize)
+        @property
+        def pagesize_addr(self):
+            if get_libc_version() >= (2, 15):
+                return None
+            else:
+                return self.max_n_mmaps_addr + self.int_t.sizeof
 
-    @property
-    def max_mmapped_mem_addr(self):
-        return self.mmapped_mem_addr + self.size_t.sizeof
+        @property
+        def mmapped_mem_addr(self):
+            if get_libc_version() >= (2, 15):
+                return align_address_to_size(self.no_dyn_threshold_addr + self.int_t.sizeof, current_arch.ptrsize)
+            else:
+                return align_address_to_size(self.pagesize_addr + self.int_t.sizeof, current_arch.ptrsize)
 
-    @property
-    def max_total_mem_addr(self):
-        if get_libc_version() >= (2, 24):
-            return None
-        else:
+        @property
+        def max_mmapped_mem_addr(self):
             return self.mmapped_mem_addr + self.size_t.sizeof
 
-    @property
-    def sbrk_base_addr(self):
-        if get_libc_version() >= (2, 24):
-            return self.max_mmapped_mem_addr + self.size_t.sizeof
-        else:
-            return self.max_total_mem_addr + self.size_t.sizeof
+        @property
+        def max_total_mem_addr(self):
+            if get_libc_version() >= (2, 24):
+                return None
+            else:
+                return self.mmapped_mem_addr + self.size_t.sizeof
 
-    @property
-    def tcache_bins_addr(self):
-        if get_libc_version() >= (2, 26):
-            return self.sbrk_base_addr + self.char_t.pointer().sizeof
-        else:
+        @property
+        def sbrk_base_addr(self):
+            if get_libc_version() >= (2, 24):
+                return self.max_mmapped_mem_addr + self.size_t.sizeof
+            else:
+                return self.max_total_mem_addr + self.size_t.sizeof
+
+        @property
+        def tcache_bins_addr(self):
+            if get_libc_version() >= (2, 26):
+                return self.sbrk_base_addr + self.char_t.pointer().sizeof
+            else:
+                return None
+
+        @property
+        def tcache_max_bytes_addr(self):
+            if get_libc_version() >= (2, 26):
+                return self.tcache_bins_addr + self.size_t.sizeof
+            else:
+                return None
+
+        @property
+        def tcache_count_addr(self):
+            if get_libc_version() >= (2, 26):
+                return self.tcache_max_bytes_addr + self.size_t.sizeof
+            else:
+                return None
+
+        @property
+        def tcache_unsorted_limit_addr(self):
+            if get_libc_version() >= (2, 26):
+                return self.tcache_count_addr + self.size_t.sizeof
+            else:
+                return None
+
+        @property
+        def sizeof(self):
+            if get_libc_version() >= (2, 26):
+                end = self.tcache_unsorted_limit_addr + self.size_t.sizeof
+            else:
+                end = self.sbrk_base_addr + self.char_t.pointer().sizeof
+            return end - self.__addr
+
+        # struct members
+        @property
+        def trim_threshold(self):
+            return self.get_long_t(self.trim_threshold_addr)
+
+        @property
+        def top_pad(self):
+            return self.get_size_t(self.top_pad_addr)
+
+        @property
+        def mmap_threshold(self):
+            return self.get_size_t(self.mmap_threshold_addr)
+
+        @property
+        def arena_test(self):
+            return self.get_size_t(self.arena_test_addr)
+
+        @property
+        def arena_max(self):
+            return self.get_size_t(self.arena_max_addr)
+
+        @property
+        def thp_pagesize(self):
+            if get_libc_version() >= (2, 35):
+                return self.get_size_t(self.thp_pagesize_addr)
+            else:
+                return None
+
+        @property
+        def hp_pagesize(self):
+            if get_libc_version() >= (2, 35):
+                return self.get_size_t(self.hp_pagesize_addr)
+            else:
+                return None
+
+        @property
+        def hp_flags(self):
+            if get_libc_version() >= (2, 35):
+                return self.get_int_t(self.hp_flags_addr)
+            else:
+                return None
+
+        @property
+        def n_mmaps(self):
+            return self.get_int_t(self.n_mmaps_addr)
+
+        @property
+        def n_mmaps_max(self):
+            return self.get_int_t(self.n_mmaps_max_addr)
+
+        @property
+        def max_n_mmaps(self):
+            return self.get_int_t(self.max_n_mmaps_addr)
+
+        @property
+        def no_dyn_threshold(self):
+            return self.get_int_t(self.no_dyn_threshold_addr)
+
+        @property
+        def pagesize(self):
+            if get_libc_version() >= (2, 15):
+                return None
+            else:
+                return self.get_int_t(self.pagesize_addr)
+
+        @property
+        def mmapped_mem(self):
+            return self.get_size_t(self.mmapped_mem_addr)
+
+        @property
+        def max_mmapped_mem(self):
+            return self.get_size_t(self.max_mmapped_mem_addr)
+
+        @property
+        def max_total_mem(self):
+            if get_libc_version() >= (2, 24):
+                return None
+            else:
+                return self.get_size_t(self.max_total_mem_addr)
+
+        @property
+        def sbrk_base(self):
+            return self.get_char_t_pointer(self.sbrk_base_addr)
+
+        @property
+        def tcache_bins(self):
+            if get_libc_version() >= (2, 26):
+                return self.get_size_t(self.tcache_bins_addr)
+            else:
+                return None
+
+        @property
+        def tcache_max_bytes(self):
+            if get_libc_version() >= (2, 26):
+                return self.get_size_t(self.tcache_max_bytes_addr)
+            else:
+                return None
+
+        @property
+        def tcache_count(self):
+            if get_libc_version() >= (2, 26):
+                return self.get_size_t(self.tcache_count_addr)
+            else:
+                return None
+            self.tcache_count # avoid to be detected as unused # noqa: B018
+
+        @property
+        def tcache_unsorted_limit(self):
+            if get_libc_version() >= (2, 26):
+                return self.get_size_t(self.tcache_unsorted_limit_addr)
+            else:
+                return None
+
+        # helper methods
+        def get_size_t(self, addr):
+            return dereference(addr).cast(self.size_t)
+
+        def get_int_t(self, addr):
+            return dereference(addr).cast(self.int_t)
+
+        def get_long_t(self, addr):
+            return dereference(addr).cast(self.long_t)
+
+        def get_char_t_pointer(self, addr):
+            char_t_pointer = self.char_t.pointer()
+            return dereference(addr).cast(char_t_pointer)
+
+        def __getitem__(self, item):
+            return getattr(self, item)
+
+
+    @staticmethod
+    @Cache.cache_until_next
+    def search_for_mp_():
+        """search mp_ from main_arena, then return addr."""
+        main_arena_ptr = GlibcHeap.search_for_main_arena_from_tls()
+        if main_arena_ptr is None:
+            return None
+        main_arena = read_int_from_memory(main_arena_ptr)
+
+        heap_base = HeapbaseCommand.heap_base()
+        if heap_base is None:
             return None
 
-    @property
-    def tcache_max_bytes_addr(self):
-        if get_libc_version() >= (2, 26):
-            return self.tcache_bins_addr + self.size_t.sizeof
-        else:
-            return None
-
-    @property
-    def tcache_count_addr(self):
-        if get_libc_version() >= (2, 26):
-            return self.tcache_max_bytes_addr + self.size_t.sizeof
-        else:
-            return None
-
-    @property
-    def tcache_unsorted_limit_addr(self):
-        if get_libc_version() >= (2, 26):
-            return self.tcache_count_addr + self.size_t.sizeof
-        else:
-            return None
-
-    @property
-    def sizeof(self):
-        if get_libc_version() >= (2, 26):
-            end = self.tcache_unsorted_limit_addr + self.size_t.sizeof
-        else:
-            end = self.sbrk_base_addr + self.char_t.pointer().sizeof
-        return end - self.__addr
-
-    # struct members
-    @property
-    def trim_threshold(self):
-        return self.get_long_t(self.trim_threshold_addr)
-
-    @property
-    def top_pad(self):
-        return self.get_size_t(self.top_pad_addr)
-
-    @property
-    def mmap_threshold(self):
-        return self.get_size_t(self.mmap_threshold_addr)
-
-    @property
-    def arena_test(self):
-        return self.get_size_t(self.arena_test_addr)
-
-    @property
-    def arena_max(self):
-        return self.get_size_t(self.arena_max_addr)
-
-    @property
-    def thp_pagesize(self):
-        if get_libc_version() >= (2, 35):
-            return self.get_size_t(self.thp_pagesize_addr)
-        else:
-            return None
-
-    @property
-    def hp_pagesize(self):
-        if get_libc_version() >= (2, 35):
-            return self.get_size_t(self.hp_pagesize_addr)
-        else:
-            return None
-
-    @property
-    def hp_flags(self):
-        if get_libc_version() >= (2, 35):
-            return self.get_int_t(self.hp_flags_addr)
-        else:
-            return None
-
-    @property
-    def n_mmaps(self):
-        return self.get_int_t(self.n_mmaps_addr)
-
-    @property
-    def n_mmaps_max(self):
-        return self.get_int_t(self.n_mmaps_max_addr)
-
-    @property
-    def max_n_mmaps(self):
-        return self.get_int_t(self.max_n_mmaps_addr)
-
-    @property
-    def no_dyn_threshold(self):
-        return self.get_int_t(self.no_dyn_threshold_addr)
-
-    @property
-    def pagesize(self):
-        if get_libc_version() >= (2, 15):
-            return None
-        else:
-            return self.get_int_t(self.pagesize_addr)
-
-    @property
-    def mmapped_mem(self):
-        return self.get_size_t(self.mmapped_mem_addr)
-
-    @property
-    def max_mmapped_mem(self):
-        return self.get_size_t(self.max_mmapped_mem_addr)
-
-    @property
-    def max_total_mem(self):
-        if get_libc_version() >= (2, 24):
-            return None
-        else:
-            return self.get_size_t(self.max_total_mem_addr)
-
-    @property
-    def sbrk_base(self):
-        return self.get_char_t_pointer(self.sbrk_base_addr)
-
-    @property
-    def tcache_bins(self):
-        if get_libc_version() >= (2, 26):
-            return self.get_size_t(self.tcache_bins_addr)
-        else:
-            return None
-
-    @property
-    def tcache_max_bytes(self):
-        if get_libc_version() >= (2, 26):
-            return self.get_size_t(self.tcache_max_bytes_addr)
-        else:
-            return None
-
-    @property
-    def tcache_count(self):
-        if get_libc_version() >= (2, 26):
-            return self.get_size_t(self.tcache_count_addr)
-        else:
-            return None
-        self.tcache_count # avoid to be detected as unused # noqa: B018
-
-    @property
-    def tcache_unsorted_limit(self):
-        if get_libc_version() >= (2, 26):
-            return self.get_size_t(self.tcache_unsorted_limit_addr)
-        else:
-            return None
-
-    # helper methods
-    def get_size_t(self, addr):
-        return dereference(addr).cast(self.size_t)
-
-    def get_int_t(self, addr):
-        return dereference(addr).cast(self.int_t)
-
-    def get_long_t(self, addr):
-        return dereference(addr).cast(self.long_t)
-
-    def get_char_t_pointer(self, addr):
-        char_t_pointer = self.char_t.pointer()
-        return dereference(addr).cast(char_t_pointer)
-
-    def __getitem__(self, item):
-        return getattr(self, item)
-
-
-@Cache.cache_until_next
-def search_for_mp_():
-    """search mp_ from main_arena, then return addr."""
-    main_arena_ptr = search_for_main_arena_from_tls()
-    if main_arena_ptr is None:
-        return None
-    main_arena = read_int_from_memory(main_arena_ptr)
-
-    heap_base = HeapbaseCommand.heap_base()
-    if heap_base is None:
-        return None
-
-    offsetof_sbrk_base = MallocPar(0).sbrk_base_addr
-    current = main_arena - MallocPar(0).sizeof
-    for _ in range(0, 500):
-        try:
-            x = read_int_from_memory(current)
-        except gdb.MemoryError:
-            return None
-        if x == heap_base:
-            mp_ = current - offsetof_sbrk_base
-            return mp_
-        current -= current_arch.ptrsize
-    return None
-
-
-class MallocStateStruct:
-    """GEF representation of malloc_state"""
-    def __init__(self, addr):
-        if (is_x86_32() or is_riscv32() or is_ppc32()) and get_libc_version() >= (2, 26):
-            # MALLOC_ALIGNMENT is changed from libc 2.26.
-            # for x86_32, MALLOC_ALIGNMENT = 16, so NFASTBINS = 11.
-            self.num_fastbins = 11
-        else:
-            self.num_fastbins = 10
-
-        self.num_bins = 254
-        self.num_binmap = 4
-        self.__addr = addr
-
-        self.int_t = cached_lookup_type("int")
-        self.size_t = cached_lookup_type("size_t")
-        if not self.size_t:
-            ptr_type = "unsigned long" if current_arch.ptrsize == 8 else "unsigned int"
-            self.size_t = cached_lookup_type(ptr_type)
-        return
-
-    # struct offsets
-    @property
-    def addr(self):
-        return self.__addr
-
-    @property
-    def mutex_addr(self):
-        return self.__addr
-
-    @property
-    def flags_addr(self):
-        return self.mutex_addr + self.int_t.sizeof
-
-    @property
-    def have_fastchunks_addr(self):
-        if get_libc_version() >= (2, 27):
-            return self.flags_addr + self.int_t.sizeof
-        else:
-            return None
-
-    @property
-    def fastbins_addr(self):
-        if get_libc_version() >= (2, 27):
-            fastbin_offset = align_address_to_size(self.int_t.sizeof * 3, self.size_t.sizeof)
-        else:
-            fastbin_offset = self.int_t.sizeof * 2
-        return self.__addr + fastbin_offset
-
-    @property
-    def top_addr(self):
-        return self.fastbins_addr + self.size_t.sizeof * self.num_fastbins
-
-    @property
-    def last_remainder_addr(self):
-        return self.top_addr + self.size_t.sizeof
-
-    @property
-    def bins_addr(self):
-        return self.last_remainder_addr + self.size_t.sizeof
-
-    @property
-    def binmap_addr(self):
-        return self.bins_addr + self.size_t.sizeof * self.num_bins
-
-    @property
-    def next_addr(self):
-        return self.binmap_addr + self.int_t.sizeof * self.num_binmap
-
-    @property
-    def next_free_addr(self):
-        if get_libc_version() >= (2, 19):
-            return self.next_addr + self.size_t.sizeof
-        else:
-            # before glibc 2.19, the existence of next_free depends on the environment.
-            # however, it seems that it is more likely that it does not exist, so I return None.
-            return None
-
-    @property
-    def attached_threads_addr(self):
-        if get_libc_version() >= (2, 23):
-            return self.next_free_addr + self.size_t.sizeof
-        else:
-            return None
-
-    @property
-    def system_mem_addr(self):
-        if get_libc_version() >= (2, 23):
-            return self.attached_threads_addr + self.size_t.sizeof
-        elif get_libc_version() >= (2, 19):
-            return self.next_free_addr + self.size_t.sizeof
-        else:
-            return self.next_addr + self.size_t.sizeof
-
-    @property
-    def max_system_mem_addr(self):
-        return self.system_mem_addr + self.size_t.sizeof
-
-    @property
-    def struct_size(self):
-        return self.max_system_mem_addr + self.size_t.sizeof - self.__addr
-
-    # struct members
-    @property
-    def mutex(self):
-        return self.get_int_t(self.mutex_addr)
-
-    @property
-    def flags(self):
-        return self.get_int_t(self.flags_addr)
-
-    @property
-    def have_fastchunks(self):
-        if get_libc_version() >= (2, 27):
-            return self.get_int_t(self.have_fastchunks_addr)
-        else:
-            return None
-
-    @property
-    def fastbinsY(self):
-        return self.get_size_t_array(self.fastbins_addr, self.num_fastbins)
-
-    @property
-    def top(self):
-        return self.get_size_t_pointer(self.top_addr)
-
-    @property
-    def last_remainder(self):
-        return self.get_size_t_pointer(self.last_remainder_addr)
-
-    @property
-    def bins(self):
-        return self.get_size_t_array(self.bins_addr, self.num_bins)
-
-    @property
-    def binmap(self):
-        return self.get_int_t_array(self.binmap_addr, self.num_binmap)
-
-    @property
-    def next(self):
-        return self.get_size_t_pointer(self.next_addr)
-
-    @property
-    def next_free(self):
-        if get_libc_version() >= (2, 19):
-            return self.get_size_t_pointer(self.next_free_addr)
-        else:
-            return None
-
-    @property
-    def attached_threads(self):
-        if get_libc_version() >= (2, 23):
-            return self.get_size_t(self.attached_threads_addr)
-        else:
-            return None
-
-    @property
-    def system_mem(self):
-        return self.get_size_t(self.system_mem_addr)
-
-    @property
-    def max_system_mem(self):
-        return self.get_size_t(self.max_system_mem_addr)
-
-    # helper methods
-    def get_size_t(self, addr):
-        return dereference(addr).cast(self.size_t)
-
-    def get_int_t(self, addr):
-        return dereference(addr).cast(self.int_t)
-
-    def get_size_t_pointer(self, addr):
-        size_t_pointer = self.size_t.pointer()
-        return dereference(addr).cast(size_t_pointer)
-
-    def get_size_t_array(self, addr, length):
-        size_t_array = self.size_t.array(length)
-        return dereference(addr).cast(size_t_array)
-
-    def get_int_t_array(self, addr, length):
-        int_t_array = self.int_t.array(length)
-        return dereference(addr).cast(int_t_array)
-
-    def __getitem__(self, item):
-        return getattr(self, item)
-
-
-@Cache.cache_until_next
-def search_for_main_arena_from_tls():
-    """search main arena from TLS, then return &addr."""
-
-    """
-    [x64]
-    0x7ffff7f986f8|+0x0038|007: 0x0000555555559010  ->  0x0000000000000000
-    0x7ffff7f98700|+0x0040|008: 0x0000000000000000
-    0x7ffff7f98708|+0x0048|009: 0x00007ffff7e19c80 <main_arena>  ->  0x0000000000000000
-    0x7ffff7f98710|+0x0050|010: 0x0000000000000000
-    0x7ffff7f98718|+0x0058|011: 0x0000000000000000
-    0x7ffff7f98720|+0x0060|012: 0x0000000000000000
-    0x7ffff7f98728|+0x0068|013: 0x0000000000000000
-    0x7ffff7f98730|+0x0070|014: 0x0000000000000000
-    0x7ffff7f98738|+0x0078|015: 0x0000000000000000
-    -- TLS --
-    0x7ffff7f98740|+0x0000|000: 0x00007ffff7f98740  ->  [loop detected]
-    0x7ffff7f98748|+0x0008|001: 0x00007ffff7f99160  ->  0x0000000000000001
-    0x7ffff7f98750|+0x0010|002: 0x00007ffff7f98740  ->  [loop detected]
-
-    [x86]
-    0xf7fbf4d0|+0x00d0|052: 0x5655a010  ->  0x00000000
-    0xf7fbf4d4|+0x00d4|053: 0x00000000
-    0xf7fbf4d8|+0x00d8|054: 0xf7e2a7c0 <main_arena>  ->  0x00000000
-    0xf7fbf4dc|+0x00dc|055: 0x00000000
-    0xf7fbf4e0|+0x00e0|056: 0x00000000
-    0xf7fbf4e4|+0x00e4|057: 0x00000000
-    0xf7fbf4e8|+0x00e8|058: 0x00000000
-    0xf7fbf4ec|+0x00ec|059: 0x00000000
-    0xf7fbf4f0|+0x00f0|060: 0x00000000
-    0xf7fbf4f4|+0x00f4|061: 0x00000000
-    0xf7fbf4f8|+0x00f8|062: 0x00000000
-    0xf7fbf4fc|+0x00fc|063: 0x00000000
-    -- TLS --
-    0xf7fbf500|+0x0100|064: 0xf7fbf500  ->  [loop detected]
-    0xf7fbf504|+0x0104|065: 0xf7fbfa88  ->  0x00000001
-    0xf7fbf508|+0x0108|066: 0xf7fbf500  ->  [loop detected]
-
-    [ARM]
-    -- TLS --
-    0x0007d580|+0x0000|000: 0x0007a3c8 <_dl_static_dtv+0x8>  ->  0x00000000
-    0x0007d584|+0x0004|001: 0x00000000
-    0x0007d588|+0x0008|002: 0x00079fa0 <_nl_global_locale>  ->  ...
-    0x0007d58c|+0x000c|003: 0x00079fa0 <_nl_global_locale>  ->  ...
-    0x0007d590|+0x0010|004: 0x00079fa4 <_nl_global_locale+0x4>  ->  ...
-    0x0007d594|+0x0014|005: 0x00079fb0 <_nl_global_locale+0x10>  ->  ...
-    0x0007d598|+0x0018|006: 0x00000000
-    0x0007d59c|+0x001c|007: 0x00079660 <main_arena>  ->  0x00000000
-    0x0007d5a0|+0x0020|008: 0x0007d908  ->  0x00000000
-    0x0007d5a4|+0x0024|009: 0x00000000
-    0x0007d5a8|+0x0028|010: 0x00000000
-
-    [ARM64]
-    -- TLS --
-    0x0000004997c0|+0x0000|000: 0x0000000000493078 <_dl_static_dtv+0x10>  ->  0x0000000000000000
-    0x0000004997c8|+0x0008|001: 0x0000000000000000
-    0x0000004997d0|+0x0010|002: 0x0000000000492838 <_nl_global_locale>  ->  ...
-    0x0000004997d8|+0x0018|003: 0x0000000000492840 <_nl_global_locale+0x8>  ->  ...
-    0x0000004997e0|+0x0020|004: 0x0000000000492838 <_nl_global_locale>  ->  ...
-    0x0000004997e8|+0x0028|005: 0x0000000000492858 <_nl_global_locale+0x20>  ->  ...
-    0x0000004997f0|+0x0030|006: 0x0000000000000000
-    0x0000004997f8|+0x0038|007: 0x0000000000491678 <main_arena>  ->  0x0000000000000000
-    0x000000499800|+0x0040|008: 0x0000000000499b90  ->  0x0000000000000000
-    0x000000499808|+0x0048|009: 0x0000000000000000
-    0x000000499810|+0x0050|010: 0x0000000000000000
-    0x000000499818|+0x0058|011: 0x000000000045e780 <_nl_C_LC_CTYPE_class+0x100>  ->  0x0002000200020002
-    0x000000499820|+0x0060|012: 0x000000000045de80 <_nl_C_LC_CTYPE_toupper+0x200>  ->  0x0000000100000000
-    0x000000499828|+0x0068|013: 0x000000000045d880 <_nl_C_LC_CTYPE_tolower+0x200>  ->  0x0000000100000000
-    0x000000499830|+0x0070|014: 0x0000000000000000
-    0x000000499838|+0x0078|015: 0x0000000000000000
-    """
-
-    selected_thread = gdb.selected_thread()
-    threads = gdb.selected_inferior().threads()
-    main_thread = [th for th in threads if th.num == 1][0]
-    main_thread.switch()
-
-    if is_x86() or is_sparc64() or is_s390x():
-        direction = -1
-    else:
-        direction = 1
-
-    tls = current_arch.get_tls()
-    if tls is None:
-        return None
-    for i in range(1, 500):
-        addr = tls + (current_arch.ptrsize * i) * direction
-
-        if is_m68k():
-            addr += 2
-
-        if not is_valid_addr(addr):
-            break
-
-        candidate_arena_addr = read_int_from_memory(addr)
-        if not is_valid_addr(candidate_arena_addr):
-            continue
-
-        candidate_arena = MallocStateStruct(candidate_arena_addr)
-        system_mem = candidate_arena.system_mem
-        if system_mem < gef_getpagesize():
-            continue
-
-        top = candidate_arena.top
-        if not is_valid_addr(top):
-            continue
-
-        _next = to_unsigned_long(candidate_arena.next)
-        while True:
-            if not is_valid_addr(_next):
-                break
-            if candidate_arena_addr == _next:
-                selected_thread.switch() # revert thread
-                return addr
-            _next = to_unsigned_long(MallocStateStruct(_next).next)
-
-    # not found
-    selected_thread.switch() # revert thread
-    return None
-
-
-class GlibcArena:
-    """Glibc arena class"""
-    TCACHE_MAX_BINS = 0x40
-
-    def __init__(self, arena_addr=None):
-        # get address
-        if arena_addr is None:
-            self.__addr = self.search_for_main_arena()
-            self.__is_main_arena = True
-        else:
-            self.__addr = arena_addr
-            self.__is_main_arena = arena_addr == self.search_for_main_arena()
-
-        # get type
-        try:
-            arena = gdb.parse_and_eval("*{:#x}".format(self.__addr))
-            malloc_state_t = cached_lookup_type("struct malloc_state")
-            self.__arena = arena.cast(malloc_state_t)
-            self.__size = malloc_state_t.sizeof
-        except RuntimeError:
-            self.__arena = MallocStateStruct(self.__addr)
-            self.__size = self.__arena.struct_size
-
-        # cache for frequent use (see __getattr__)
-        self.top = int(self.top)
-        self.last_remainder = int(self.last_remainder)
-        return
-
-    def __getitem__(self, item):
-        return self.__arena[item]
-
-    def __getattr__(self, item):
-        return self.__arena[item]
-
-    def __int__(self):
-        return self.__addr
-
-    def search_for_main_arena(self):
-        global __cached_main_arena__
-        if __cached_main_arena__:
-            return __cached_main_arena__
-
-        # plan 1 (directly)
-        try:
-            __cached_main_arena__ = parse_address("&main_arena")
-            return __cached_main_arena__
-        except gdb.error:
-            pass
-
-        # plan 2 (from __malloc_hook)
-        if get_libc_version() < (2, 34):
+        offsetof_sbrk_base = GlibcHeap.MallocPar(0).sbrk_base_addr
+        current = main_arena - GlibcHeap.MallocPar(0).sizeof
+        for _ in range(0, 500):
             try:
-                malloc_hook_addr = parse_address("(void *)&__malloc_hook")
-                if is_x86():
-                    __cached_main_arena__ = align_address_to_size(malloc_hook_addr + current_arch.ptrsize, 0x20)
-                elif is_arm64():
-                    __cached_main_arena__ = malloc_hook_addr - current_arch.ptrsize * 2 - MallocStateStruct("*0").struct_size
-                elif is_arm32():
-                    __cached_main_arena__ = malloc_hook_addr - current_arch.ptrsize - MallocStateStruct("*0").struct_size
-                else:
-                    raise
-                return __cached_main_arena__
+                x = read_int_from_memory(current)
+            except gdb.MemoryError:
+                return None
+            if x == heap_base:
+                mp_ = current - offsetof_sbrk_base
+                return mp_
+            current -= current_arch.ptrsize
+        return None
+
+    class MallocStateStruct:
+        """GEF representation of malloc_state"""
+        def __init__(self, addr):
+            if (is_x86_32() or is_riscv32() or is_ppc32()) and get_libc_version() >= (2, 26):
+                # MALLOC_ALIGNMENT is changed from libc 2.26.
+                # for x86_32, MALLOC_ALIGNMENT = 16, so NFASTBINS = 11.
+                self.num_fastbins = 11
+            else:
+                self.num_fastbins = 10
+
+            self.num_bins = 254
+            self.num_binmap = 4
+            self.__addr = addr
+
+            self.int_t = cached_lookup_type("int")
+            self.size_t = cached_lookup_type("size_t")
+            if not self.size_t:
+                ptr_type = "unsigned long" if current_arch.ptrsize == 8 else "unsigned int"
+                self.size_t = cached_lookup_type(ptr_type)
+            return
+
+        # struct offsets
+        @property
+        def addr(self):
+            return self.__addr
+
+        @property
+        def mutex_addr(self):
+            return self.__addr
+
+        @property
+        def flags_addr(self):
+            return self.mutex_addr + self.int_t.sizeof
+
+        @property
+        def have_fastchunks_addr(self):
+            if get_libc_version() >= (2, 27):
+                return self.flags_addr + self.int_t.sizeof
+            else:
+                return None
+
+        @property
+        def fastbins_addr(self):
+            if get_libc_version() >= (2, 27):
+                fastbin_offset = align_address_to_size(self.int_t.sizeof * 3, self.size_t.sizeof)
+            else:
+                fastbin_offset = self.int_t.sizeof * 2
+            return self.__addr + fastbin_offset
+
+        @property
+        def top_addr(self):
+            return self.fastbins_addr + self.size_t.sizeof * self.num_fastbins
+
+        @property
+        def last_remainder_addr(self):
+            return self.top_addr + self.size_t.sizeof
+
+        @property
+        def bins_addr(self):
+            return self.last_remainder_addr + self.size_t.sizeof
+
+        @property
+        def binmap_addr(self):
+            return self.bins_addr + self.size_t.sizeof * self.num_bins
+
+        @property
+        def next_addr(self):
+            return self.binmap_addr + self.int_t.sizeof * self.num_binmap
+
+        @property
+        def next_free_addr(self):
+            if get_libc_version() >= (2, 19):
+                return self.next_addr + self.size_t.sizeof
+            else:
+                # before glibc 2.19, the existence of next_free depends on the environment.
+                # however, it seems that it is more likely that it does not exist, so I return None.
+                return None
+
+        @property
+        def attached_threads_addr(self):
+            if get_libc_version() >= (2, 23):
+                return self.next_free_addr + self.size_t.sizeof
+            else:
+                return None
+
+        @property
+        def system_mem_addr(self):
+            if get_libc_version() >= (2, 23):
+                return self.attached_threads_addr + self.size_t.sizeof
+            elif get_libc_version() >= (2, 19):
+                return self.next_free_addr + self.size_t.sizeof
+            else:
+                return self.next_addr + self.size_t.sizeof
+
+        @property
+        def max_system_mem_addr(self):
+            return self.system_mem_addr + self.size_t.sizeof
+
+        @property
+        def struct_size(self):
+            return self.max_system_mem_addr + self.size_t.sizeof - self.__addr
+
+        # struct members
+        @property
+        def mutex(self):
+            return self.get_int_t(self.mutex_addr)
+
+        @property
+        def flags(self):
+            return self.get_int_t(self.flags_addr)
+
+        @property
+        def have_fastchunks(self):
+            if get_libc_version() >= (2, 27):
+                return self.get_int_t(self.have_fastchunks_addr)
+            else:
+                return None
+
+        @property
+        def fastbinsY(self):
+            return self.get_size_t_array(self.fastbins_addr, self.num_fastbins)
+
+        @property
+        def top(self):
+            return self.get_size_t_pointer(self.top_addr)
+
+        @property
+        def last_remainder(self):
+            return self.get_size_t_pointer(self.last_remainder_addr)
+
+        @property
+        def bins(self):
+            return self.get_size_t_array(self.bins_addr, self.num_bins)
+
+        @property
+        def binmap(self):
+            return self.get_int_t_array(self.binmap_addr, self.num_binmap)
+
+        @property
+        def next(self):
+            return self.get_size_t_pointer(self.next_addr)
+
+        @property
+        def next_free(self):
+            if get_libc_version() >= (2, 19):
+                return self.get_size_t_pointer(self.next_free_addr)
+            else:
+                return None
+
+        @property
+        def attached_threads(self):
+            if get_libc_version() >= (2, 23):
+                return self.get_size_t(self.attached_threads_addr)
+            else:
+                return None
+
+        @property
+        def system_mem(self):
+            return self.get_size_t(self.system_mem_addr)
+
+        @property
+        def max_system_mem(self):
+            return self.get_size_t(self.max_system_mem_addr)
+
+        # helper methods
+        def get_size_t(self, addr):
+            return dereference(addr).cast(self.size_t)
+
+        def get_int_t(self, addr):
+            return dereference(addr).cast(self.int_t)
+
+        def get_size_t_pointer(self, addr):
+            size_t_pointer = self.size_t.pointer()
+            return dereference(addr).cast(size_t_pointer)
+
+        def get_size_t_array(self, addr, length):
+            size_t_array = self.size_t.array(length)
+            return dereference(addr).cast(size_t_array)
+
+        def get_int_t_array(self, addr, length):
+            int_t_array = self.int_t.array(length)
+            return dereference(addr).cast(int_t_array)
+
+        def __getitem__(self, item):
+            return getattr(self, item)
+
+    @staticmethod
+    @Cache.cache_until_next
+    def search_for_main_arena_from_tls():
+        """search main arena from TLS, then return &addr."""
+
+        """
+        [x64]
+        0x7ffff7f986f8|+0x0038|007: 0x0000555555559010  ->  0x0000000000000000
+        0x7ffff7f98700|+0x0040|008: 0x0000000000000000
+        0x7ffff7f98708|+0x0048|009: 0x00007ffff7e19c80 <main_arena>  ->  0x0000000000000000
+        0x7ffff7f98710|+0x0050|010: 0x0000000000000000
+        0x7ffff7f98718|+0x0058|011: 0x0000000000000000
+        0x7ffff7f98720|+0x0060|012: 0x0000000000000000
+        0x7ffff7f98728|+0x0068|013: 0x0000000000000000
+        0x7ffff7f98730|+0x0070|014: 0x0000000000000000
+        0x7ffff7f98738|+0x0078|015: 0x0000000000000000
+        -- TLS --
+        0x7ffff7f98740|+0x0000|000: 0x00007ffff7f98740  ->  [loop detected]
+        0x7ffff7f98748|+0x0008|001: 0x00007ffff7f99160  ->  0x0000000000000001
+        0x7ffff7f98750|+0x0010|002: 0x00007ffff7f98740  ->  [loop detected]
+
+        [x86]
+        0xf7fbf4d0|+0x00d0|052: 0x5655a010  ->  0x00000000
+        0xf7fbf4d4|+0x00d4|053: 0x00000000
+        0xf7fbf4d8|+0x00d8|054: 0xf7e2a7c0 <main_arena>  ->  0x00000000
+        0xf7fbf4dc|+0x00dc|055: 0x00000000
+        0xf7fbf4e0|+0x00e0|056: 0x00000000
+        0xf7fbf4e4|+0x00e4|057: 0x00000000
+        0xf7fbf4e8|+0x00e8|058: 0x00000000
+        0xf7fbf4ec|+0x00ec|059: 0x00000000
+        0xf7fbf4f0|+0x00f0|060: 0x00000000
+        0xf7fbf4f4|+0x00f4|061: 0x00000000
+        0xf7fbf4f8|+0x00f8|062: 0x00000000
+        0xf7fbf4fc|+0x00fc|063: 0x00000000
+        -- TLS --
+        0xf7fbf500|+0x0100|064: 0xf7fbf500  ->  [loop detected]
+        0xf7fbf504|+0x0104|065: 0xf7fbfa88  ->  0x00000001
+        0xf7fbf508|+0x0108|066: 0xf7fbf500  ->  [loop detected]
+
+        [ARM]
+        -- TLS --
+        0x0007d580|+0x0000|000: 0x0007a3c8 <_dl_static_dtv+0x8>  ->  0x00000000
+        0x0007d584|+0x0004|001: 0x00000000
+        0x0007d588|+0x0008|002: 0x00079fa0 <_nl_global_locale>  ->  ...
+        0x0007d58c|+0x000c|003: 0x00079fa0 <_nl_global_locale>  ->  ...
+        0x0007d590|+0x0010|004: 0x00079fa4 <_nl_global_locale+0x4>  ->  ...
+        0x0007d594|+0x0014|005: 0x00079fb0 <_nl_global_locale+0x10>  ->  ...
+        0x0007d598|+0x0018|006: 0x00000000
+        0x0007d59c|+0x001c|007: 0x00079660 <main_arena>  ->  0x00000000
+        0x0007d5a0|+0x0020|008: 0x0007d908  ->  0x00000000
+        0x0007d5a4|+0x0024|009: 0x00000000
+        0x0007d5a8|+0x0028|010: 0x00000000
+
+        [ARM64]
+        -- TLS --
+        0x0000004997c0|+0x0000|000: 0x0000000000493078 <_dl_static_dtv+0x10>  ->  0x0000000000000000
+        0x0000004997c8|+0x0008|001: 0x0000000000000000
+        0x0000004997d0|+0x0010|002: 0x0000000000492838 <_nl_global_locale>  ->  ...
+        0x0000004997d8|+0x0018|003: 0x0000000000492840 <_nl_global_locale+0x8>  ->  ...
+        0x0000004997e0|+0x0020|004: 0x0000000000492838 <_nl_global_locale>  ->  ...
+        0x0000004997e8|+0x0028|005: 0x0000000000492858 <_nl_global_locale+0x20>  ->  ...
+        0x0000004997f0|+0x0030|006: 0x0000000000000000
+        0x0000004997f8|+0x0038|007: 0x0000000000491678 <main_arena>  ->  0x0000000000000000
+        0x000000499800|+0x0040|008: 0x0000000000499b90  ->  0x0000000000000000
+        0x000000499808|+0x0048|009: 0x0000000000000000
+        0x000000499810|+0x0050|010: 0x0000000000000000
+        0x000000499818|+0x0058|011: 0x000000000045e780 <_nl_C_LC_CTYPE_class+0x100>  ->  0x0002000200020002
+        0x000000499820|+0x0060|012: 0x000000000045de80 <_nl_C_LC_CTYPE_toupper+0x200>  ->  0x0000000100000000
+        0x000000499828|+0x0068|013: 0x000000000045d880 <_nl_C_LC_CTYPE_tolower+0x200>  ->  0x0000000100000000
+        0x000000499830|+0x0070|014: 0x0000000000000000
+        0x000000499838|+0x0078|015: 0x0000000000000000
+        """
+
+        selected_thread = gdb.selected_thread()
+        threads = gdb.selected_inferior().threads()
+        main_thread = [th for th in threads if th.num == 1][0]
+        main_thread.switch()
+
+        if is_x86() or is_sparc64() or is_s390x():
+            direction = -1
+        else:
+            direction = 1
+
+        tls = current_arch.get_tls()
+        if tls is None:
+            return None
+        for i in range(1, 500):
+            addr = tls + (current_arch.ptrsize * i) * direction
+
+            if is_m68k():
+                addr += 2
+
+            if not is_valid_addr(addr):
+                break
+
+            candidate_arena_addr = read_int_from_memory(addr)
+            if not is_valid_addr(candidate_arena_addr):
+                continue
+
+            candidate_arena = GlibcHeap.MallocStateStruct(candidate_arena_addr)
+            system_mem = candidate_arena.system_mem
+            if system_mem < gef_getpagesize():
+                continue
+
+            top = candidate_arena.top
+            if not is_valid_addr(top):
+                continue
+
+            _next = to_unsigned_long(candidate_arena.next)
+            while True:
+                if not is_valid_addr(_next):
+                    break
+                if candidate_arena_addr == _next:
+                    selected_thread.switch() # revert thread
+                    return addr
+                _next = to_unsigned_long(GlibcHeap.MallocStateStruct(_next).next)
+
+        # not found
+        selected_thread.switch() # revert thread
+        return None
+
+    class GlibcArena:
+        """Glibc arena class"""
+        TCACHE_MAX_BINS = 0x40
+
+        def __init__(self, arena_addr=None):
+            # get address
+            if arena_addr is None:
+                self.__addr = self.search_for_main_arena()
+                self.__is_main_arena = True
+            else:
+                self.__addr = arena_addr
+                self.__is_main_arena = arena_addr == self.search_for_main_arena()
+
+            # get type
+            try:
+                arena = gdb.parse_and_eval("*{:#x}".format(self.__addr))
+                malloc_state_t = cached_lookup_type("struct malloc_state")
+                self.__arena = arena.cast(malloc_state_t)
+                self.__size = malloc_state_t.sizeof
+            except RuntimeError:
+                self.__arena = GlibcHeap.MallocStateStruct(self.__addr)
+                self.__size = self.__arena.struct_size
+
+            # cache for frequent use (see __getattr__)
+            self.top = int(self.top)
+            self.last_remainder = int(self.last_remainder)
+            return
+
+        def __getitem__(self, item):
+            return self.__arena[item]
+
+        def __getattr__(self, item):
+            return self.__arena[item]
+
+        def __int__(self):
+            return self.__addr
+
+        def search_for_main_arena(self):
+            if Cache.cached_main_arena:
+                return Cache.cached_main_arena
+
+            # plan 1 (directly)
+            try:
+                Cache.cached_main_arena = parse_address("&main_arena")
+                return Cache.cached_main_arena
             except gdb.error:
                 pass
 
-        # plan 3 (from TLS)
-        ptr = search_for_main_arena_from_tls()
-        if ptr:
-            __cached_main_arena__ = read_int_from_memory(ptr)
-            return __cached_main_arena__
+            # plan 2 (from __malloc_hook)
+            if get_libc_version() < (2, 34):
+                try:
+                    malloc_hook_addr = parse_address("(void *)&__malloc_hook")
+                    if is_x86():
+                        Cache.cached_main_arena = align_address_to_size(malloc_hook_addr + current_arch.ptrsize, 0x20)
+                    elif is_arm64():
+                        mstate_size = GlibcHeap.MallocStateStruct("*0").struct_size
+                        Cache.cached_main_arena = malloc_hook_addr - current_arch.ptrsize * 2 - mstate_size
+                    elif is_arm32():
+                        mstate_size = GlibcHeap.MallocStateStruct("*0").struct_size
+                        Cache.cached_main_arena = malloc_hook_addr - current_arch.ptrsize - mstate_size
+                    else:
+                        raise
+                    return Cache.cached_main_arena
+                except gdb.error:
+                    pass
 
-        raise OSError("Cannot find main_arena for {}".format(current_arch.arch))
+            # plan 3 (from TLS)
+            ptr = GlibcHeap.search_for_main_arena_from_tls()
+            if ptr:
+                Cache.cached_main_arena = read_int_from_memory(ptr)
+                return Cache.cached_main_arena
 
-    @property
-    def is_main_arena(self):
-        return self.__is_main_arena
+            raise OSError("Cannot find main_arena for {}".format(current_arch.arch))
 
-    @property
-    def addr(self):
-        return self.__addr
+        @property
+        def is_main_arena(self):
+            return self.__is_main_arena
 
-    @property
-    def name(self):
-        if self.is_main_arena:
-            return "main_arena"
-        else:
-            return "*{:#x}".format(self.__addr)
+        @property
+        def addr(self):
+            return self.__addr
 
-    @property
-    def size(self):
-        # arena aligned_size
-        if current_arch.ptrsize == 4:
-            aligned_size = (self.__size + 7) & ~0b111
-        else:
-            aligned_size = (self.__size + 15) & ~0b1111
-        return aligned_size
+        @property
+        def name(self):
+            if self.is_main_arena:
+                return "main_arena"
+            else:
+                return "*{:#x}".format(self.__addr)
 
-    @property
-    def heap_base(self):
-        if self.is_main_arena:
-            return HeapbaseCommand.heap_base()
-        else:
-            return self.addr + self.size
+        @property
+        def size(self):
+            # arena aligned_size
+            if current_arch.ptrsize == 4:
+                aligned_size = (self.__size + 7) & ~0b111
+            else:
+                aligned_size = (self.__size + 15) & ~0b1111
+            return aligned_size
 
-    def tcachebins_addr(self, i):
-        if self.heap_base is None:
-            return None
+        @property
+        def heap_base(self):
+            if self.is_main_arena:
+                return HeapbaseCommand.heap_base()
+            else:
+                return self.addr + self.size
 
-        if (is_x86_32() or is_riscv32() or is_ppc32()) and not self.is_main_arena:
-            arch_offset = 0
-        elif is_32bit():
-            arch_offset = 0
-        else:
-            arch_offset = 0x10
-
-        if get_libc_version() < (2, 30):
-            offset = self.TCACHE_MAX_BINS + i * current_arch.ptrsize
-        else:
-            offset = 2 * self.TCACHE_MAX_BINS + i * current_arch.ptrsize
-        return self.heap_base + arch_offset + offset
-
-    def fastbins_addr(self, i):
-        if hasattr(self.__arena, "fastbins_addr"):
-            fastbins_addr = self.__arena.fastbins_addr
-        else:
-            fastbins_type = [x for x in self.__arena.type.fields() if x.name == "fastbinsY"][0]
-            fastbins_addr = self.__addr + fastbins_type.bitpos // 8
-        return fastbins_addr + i * current_arch.ptrsize
-
-    def top_addr(self):
-        if hasattr(self.__arena, "top_addr"):
-            top_addr = self.__arena.top_addr
-        else:
-            top_type = [x for x in self.__arena.type.fields() if x.name == "top"][0]
-            top_addr = self.__addr + top_type.bitpos // 8
-        return top_addr
-
-    def last_remainder_addr(self):
-        if hasattr(self.__arena, "last_remainder_addr"):
-            last_remainder_addr = self.__arena.last_remainder_addr
-        else:
-            last_remainder_type = [x for x in self.__arena.type.fields() if x.name == "last_remainder"][0]
-            last_remainder_addr = self.__addr + last_remainder_type.bitpos // 8
-        return last_remainder_addr
-
-    def bins_addr(self, i):
-        if hasattr(self.__arena, "bins_addr"):
-            bins_addr = self.__arena.bins_addr
-        else:
-            bins_type = [x for x in self.__arena.type.fields() if x.name == "bins"][0]
-            bins_addr = self.__addr + bins_type.bitpos // 8
-        return bins_addr + i * current_arch.ptrsize * 2
-
-    def next_addr(self):
-        if hasattr(self.__arena, "next_addr"):
-            next_addr = self.__arena.next_addr
-        else:
-            next_type = [x for x in self.__arena.type.fields() if x.name == "next"][0]
-            next_addr = self.__addr + next_type.bitpos // 8
-        return next_addr
-
-    def next_free_addr(self):
-        if hasattr(self.__arena, "next_free_addr"):
-            next_free_addr = self.__arena.next_free_addr
-        else:
-            next_free_type = [x for x in self.__arena.type.fields() if x.name == "next_free"][0]
-            next_free_addr = self.__addr + next_free_type.bitpos // 8
-        return next_free_addr
-
-    def system_mem_addr(self):
-        if hasattr(self.__arena, "system_mem_addr"):
-            system_mem_addr = self.__arena.system_mem_addr
-        else:
-            system_mem_type = [x for x in self.__arena.type.fields() if x.name == "system_mem"][0]
-            system_mem_addr = self.__addr + system_mem_type.bitpos // 8
-        return system_mem_addr
-
-    def tcachebin(self, i):
-        """Return head chunk in tcache[i]."""
-        tcache_i_head = self.tcachebins_addr(i)
-        if not tcache_i_head:
-            return None
-        addr = dereference(tcache_i_head)
-        if not addr:
-            return None
-        return GlibcChunk(int(addr))
-
-    def fastbin(self, i):
-        """Return head chunk in fastbinsY[i]."""
-        addr = int(self.fastbinsY[i])
-        if addr == 0:
-            return None
-        return GlibcChunk(addr + 2 * current_arch.ptrsize)
-
-    def bin(self, i):
-        idx = i * 2
-        fd = int(self.bins[idx])
-        bw = int(self.bins[idx + 1])
-        return fd, bw
-
-    def get_next(self):
-        try:
-            addr_next = int(self.next)
-            if addr_next == 0:
+        def tcachebins_addr(self, i):
+            if self.heap_base is None:
                 return None
-            if addr_next == get_main_arena().addr:
+
+            if (is_x86_32() or is_riscv32() or is_ppc32()) and not self.is_main_arena:
+                arch_offset = 0
+            elif is_32bit():
+                arch_offset = 0
+            else:
+                arch_offset = 0x10
+
+            if get_libc_version() < (2, 30):
+                offset = self.TCACHE_MAX_BINS + i * current_arch.ptrsize
+            else:
+                offset = 2 * self.TCACHE_MAX_BINS + i * current_arch.ptrsize
+            return self.heap_base + arch_offset + offset
+
+        def fastbins_addr(self, i):
+            if hasattr(self.__arena, "fastbins_addr"):
+                fastbins_addr = self.__arena.fastbins_addr
+            else:
+                fastbins_type = [x for x in self.__arena.type.fields() if x.name == "fastbinsY"][0]
+                fastbins_addr = self.__addr + fastbins_type.bitpos // 8
+            return fastbins_addr + i * current_arch.ptrsize
+
+        def top_addr(self):
+            if hasattr(self.__arena, "top_addr"):
+                top_addr = self.__arena.top_addr
+            else:
+                top_type = [x for x in self.__arena.type.fields() if x.name == "top"][0]
+                top_addr = self.__addr + top_type.bitpos // 8
+            return top_addr
+
+        def last_remainder_addr(self):
+            if hasattr(self.__arena, "last_remainder_addr"):
+                last_remainder_addr = self.__arena.last_remainder_addr
+            else:
+                last_remainder_type = [x for x in self.__arena.type.fields() if x.name == "last_remainder"][0]
+                last_remainder_addr = self.__addr + last_remainder_type.bitpos // 8
+            return last_remainder_addr
+
+        def bins_addr(self, i):
+            if hasattr(self.__arena, "bins_addr"):
+                bins_addr = self.__arena.bins_addr
+            else:
+                bins_type = [x for x in self.__arena.type.fields() if x.name == "bins"][0]
+                bins_addr = self.__addr + bins_type.bitpos // 8
+            return bins_addr + i * current_arch.ptrsize * 2
+
+        def next_addr(self):
+            if hasattr(self.__arena, "next_addr"):
+                next_addr = self.__arena.next_addr
+            else:
+                next_type = [x for x in self.__arena.type.fields() if x.name == "next"][0]
+                next_addr = self.__addr + next_type.bitpos // 8
+            return next_addr
+
+        def next_free_addr(self):
+            if hasattr(self.__arena, "next_free_addr"):
+                next_free_addr = self.__arena.next_free_addr
+            else:
+                next_free_type = [x for x in self.__arena.type.fields() if x.name == "next_free"][0]
+                next_free_addr = self.__addr + next_free_type.bitpos // 8
+            return next_free_addr
+
+        def system_mem_addr(self):
+            if hasattr(self.__arena, "system_mem_addr"):
+                system_mem_addr = self.__arena.system_mem_addr
+            else:
+                system_mem_type = [x for x in self.__arena.type.fields() if x.name == "system_mem"][0]
+                system_mem_addr = self.__addr + system_mem_type.bitpos // 8
+            return system_mem_addr
+
+        def tcachebin(self, i):
+            """Return head chunk in tcache[i]."""
+            tcache_i_head = self.tcachebins_addr(i)
+            if not tcache_i_head:
                 return None
-            next_arena = GlibcArena(addr_next)
-            str(next_arena) # check memory error
-            return next_arena
-        except gdb.error:
-            return None
+            addr = dereference(tcache_i_head)
+            if not addr:
+                return None
+            return GlibcHeap.GlibcChunk(int(addr))
 
-    def __str__(self):
-        arena = Color.colorify("Arena", get_gef_setting("theme.heap_arena_label"))
-        if self.heap_base is None:
-            heap_base = "uninitialized"
-        else:
-            heap_base = str(lookup_address(self.heap_base))
-        arena_addr = str(lookup_address(self.__addr))
-        top = str(lookup_address(self.top))
-        last_remainder = str(lookup_address(self.last_remainder))
-        next = str(lookup_address(int(self.next)))
-        system_mem = int(self.system_mem)
-        try:
-            next_free = int(self.next_free)
-            fmt = "{:s}(addr={:s}, heap_base={:s}, top={:s}, last_remainder={:s}, next={:s}, next_free={:#x}, system_mem={:#x})"
-            args = (arena, arena_addr, heap_base, top, last_remainder, next, next_free, system_mem)
-        except gdb.error:
-            fmt = "{:s}(addr={:s}, heap_base={:s}, top={:s}, last_remainder={:s}, next={:s}, system_mem={:#x})"
-            args = (arena, arena_addr, heap_base, top, last_remainder, next, system_mem)
-        return fmt.format(*args)
+        def fastbin(self, i):
+            """Return head chunk in fastbinsY[i]."""
+            addr = int(self.fastbinsY[i])
+            if addr == 0:
+                return None
+            return GlibcHeap.GlibcChunk(addr + 2 * current_arch.ptrsize)
 
-    def tcache_list(self):
-        if get_libc_version() < (2, 26):
-            info("No Tcache in this version of libc")
-            return {}
-        if self.heap_base is None:
-            return {}
+        def bin(self, i):
+            idx = i * 2
+            fd = int(self.bins[idx])
+            bw = int(self.bins[idx + 1])
+            return fd, bw
 
-        chunks_all = {}
-        for i in range(self.TCACHE_MAX_BINS):
+        def get_next(self):
             try:
-                chunk = self.tcachebin(i)
-            except gdb.MemoryError:
-                err("tcache[{:d}] is corrupted.".format(i))
-                continue
-            chunks = []
-            while True:
-                if chunk is None:
-                    break
-                if chunk.address in chunks:
-                    err("tcache[{:d}] has a loop.".format(i))
-                    break # loop detected
-                chunks.append(chunk.address)
-                next_chunk = chunk.get_fwd_ptr(True)
-                if next_chunk == 0:
-                    break
-                if next_chunk is None:
+                addr_next = int(self.next)
+                if addr_next == 0:
+                    return None
+                if addr_next == GlibcHeap.get_main_arena().addr:
+                    return None
+                next_arena = GlibcHeap.GlibcArena(addr_next)
+                str(next_arena) # check memory error
+                return next_arena
+            except gdb.error:
+                return None
+
+        def __str__(self):
+            arena = Color.colorify("Arena", get_gef_setting("theme.heap_arena_label"))
+            if self.heap_base is None:
+                heap_base = "uninitialized"
+            else:
+                heap_base = str(lookup_address(self.heap_base))
+            arena_addr = str(lookup_address(self.__addr))
+            top = str(lookup_address(self.top))
+            last_remainder = str(lookup_address(self.last_remainder))
+            next = str(lookup_address(int(self.next)))
+            system_mem = int(self.system_mem)
+            try:
+                next_free = int(self.next_free)
+                fmt = "{:s}(addr={:s}, heap_base={:s}, top={:s}, last_remainder={:s}, next={:s}, next_free={:#x}, system_mem={:#x})"
+                args = (arena, arena_addr, heap_base, top, last_remainder, next, next_free, system_mem)
+            except gdb.error:
+                fmt = "{:s}(addr={:s}, heap_base={:s}, top={:s}, last_remainder={:s}, next={:s}, system_mem={:#x})"
+                args = (arena, arena_addr, heap_base, top, last_remainder, next, system_mem)
+            return fmt.format(*args)
+
+        def tcache_list(self):
+            if get_libc_version() < (2, 26):
+                info("No Tcache in this version of libc")
+                return {}
+            if self.heap_base is None:
+                return {}
+
+            chunks_all = {}
+            for i in range(self.TCACHE_MAX_BINS):
+                try:
+                    chunk = self.tcachebin(i)
+                except gdb.MemoryError:
                     err("tcache[{:d}] is corrupted.".format(i))
-                    break
-                chunk = GlibcChunk(next_chunk)
-            chunks_all[i] = chunks
-        return chunks_all
+                    continue
+                chunks = []
+                while True:
+                    if chunk is None:
+                        break
+                    if chunk.address in chunks:
+                        err("tcache[{:d}] has a loop.".format(i))
+                        break # loop detected
+                    chunks.append(chunk.address)
+                    next_chunk = chunk.get_fwd_ptr(True)
+                    if next_chunk == 0:
+                        break
+                    if next_chunk is None:
+                        err("tcache[{:d}] is corrupted.".format(i))
+                        break
+                    chunk = GlibcHeap.GlibcChunk(next_chunk)
+                chunks_all[i] = chunks
+            return chunks_all
 
-    def fastbins_list(self):
-        def fastbin_index(sz):
-            return (sz >> 4) - 2 if SIZE_SZ == 8 else (sz >> 3) - 2
+        def fastbins_list(self):
+            def fastbin_index(sz):
+                return (sz >> 4) - 2 if SIZE_SZ == 8 else (sz >> 3) - 2
 
-        SIZE_SZ = current_arch.ptrsize
-        MAX_FAST_SIZE = (80 * SIZE_SZ // 4)
-        NFASTBINS = fastbin_index(MAX_FAST_SIZE) - 1
-        chunks_all = {}
-        for i in range(NFASTBINS):
-            try:
-                chunk = self.fastbin(i)
-            except gdb.MemoryError:
-                err("fastbins[{:d}] is corrupted.".format(i))
-                continue
-            chunks = []
-            while True:
-                if chunk is None:
-                    break
-                if chunk.address in chunks:
-                    err("fastbins[{:d}] has a loop.".format(i))
-                    break # loop detected
-                chunks.append(chunk.address)
-                next_chunk = chunk.get_fwd_ptr(True)
-                if next_chunk == 0:
-                    break
-                if next_chunk is None:
+            SIZE_SZ = current_arch.ptrsize
+            MAX_FAST_SIZE = (80 * SIZE_SZ // 4)
+            NFASTBINS = fastbin_index(MAX_FAST_SIZE) - 1
+            chunks_all = {}
+            for i in range(NFASTBINS):
+                try:
+                    chunk = self.fastbin(i)
+                except gdb.MemoryError:
                     err("fastbins[{:d}] is corrupted.".format(i))
+                    continue
+                chunks = []
+                while True:
+                    if chunk is None:
+                        break
+                    if chunk.address in chunks:
+                        err("fastbins[{:d}] has a loop.".format(i))
+                        break # loop detected
+                    chunks.append(chunk.address)
+                    next_chunk = chunk.get_fwd_ptr(True)
+                    if next_chunk == 0:
+                        break
+                    if next_chunk is None:
+                        err("fastbins[{:d}] is corrupted.".format(i))
+                        break
+                    chunk = GlibcHeap.GlibcChunk(next_chunk, from_base=True)
+                chunks_all[i] = chunks
+            return chunks_all
+
+        def bins_list(self, index):
+            try:
+                fw, bk = self.bin(index)
+            except gdb.MemoryError:
+                return [] # invalid
+            if bk == 0x00 and fw == 0x00:
+                return [] # invalid
+            head = GlibcHeap.GlibcChunk(bk, from_base=True).fwd
+            if fw == head:
+                return [] # no entry
+            chunks = []
+            while fw != head:
+                chunk = GlibcHeap.GlibcChunk(fw, from_base=True)
+                if chunk.chunk_base_address in chunks:
+                    err("bins[{:d}] has a loop.".format(index))
                     break
-                chunk = GlibcChunk(next_chunk, from_base=True)
-            chunks_all[i] = chunks
-        return chunks_all
+                chunks.append(chunk.chunk_base_address)
+                fw = chunk.fwd
+                if fw is None:
+                    err("bins[{:d}] is corrupted.".format(index))
+                    break
+            return chunks
 
-    def bins_list(self, index):
-        try:
-            fw, bk = self.bin(index)
-        except gdb.MemoryError:
-            return [] # invalid
-        if bk == 0x00 and fw == 0x00:
-            return [] # invalid
-        head = GlibcChunk(bk, from_base=True).fwd
-        if fw == head:
-            return [] # no entry
-        chunks = []
-        while fw != head:
-            chunk = GlibcChunk(fw, from_base=True)
-            if chunk.chunk_base_address in chunks:
-                err("bins[{:d}] has a loop.".format(index))
-                break
-            chunks.append(chunk.chunk_base_address)
-            fw = chunk.fwd
-            if fw is None:
-                err("bins[{:d}] is corrupted.".format(index))
-                break
-        return chunks
+        def unsortedbin_list(self):
+            chunks_all = {}
+            chunks_all[0] = self.bins_list(0)
+            return chunks_all
 
-    def unsortedbin_list(self):
-        chunks_all = {}
-        chunks_all[0] = self.bins_list(0)
-        return chunks_all
+        def smallbins_list(self):
+            chunks_all = {}
+            for i in range(1, 63):
+                chunks_all[i] = self.bins_list(i)
+            return chunks_all
 
-    def smallbins_list(self):
-        chunks_all = {}
-        for i in range(1, 63):
-            chunks_all[i] = self.bins_list(i)
-        return chunks_all
+        def largebins_list(self):
+            chunks_all = {}
+            for i in range(63, 126):
+                chunks_all[i] = self.bins_list(i)
+            return chunks_all
 
-    def largebins_list(self):
-        chunks_all = {}
-        for i in range(63, 126):
-            chunks_all[i] = self.bins_list(i)
-        return chunks_all
+        def reset_bins_info(self):
+            self.cached_tcache_list = self.tcache_list()
+            self.cached_tcache_addr_list = set().union(*self.cached_tcache_list.values())
 
-    def reset_bins_info(self):
-        self.cached_tcache_list = self.tcache_list()
-        self.cached_tcache_addr_list = set().union(*self.cached_tcache_list.values())
+            self.cached_fastbins_list = self.fastbins_list()
+            self.cached_fastbins_addr_list = set().union(*self.cached_fastbins_list.values())
 
-        self.cached_fastbins_list = self.fastbins_list()
-        self.cached_fastbins_addr_list = set().union(*self.cached_fastbins_list.values())
+            self.cached_unsortedbin_list = self.unsortedbin_list()
+            self.cached_unsortedbin_addr_list = self.cached_unsortedbin_list[0]
 
-        self.cached_unsortedbin_list = self.unsortedbin_list()
-        self.cached_unsortedbin_addr_list = self.cached_unsortedbin_list[0]
+            self.cached_smallbins_list = self.smallbins_list()
+            self.cached_smallbins_addr_list = set().union(*self.cached_smallbins_list.values())
 
-        self.cached_smallbins_list = self.smallbins_list()
-        self.cached_smallbins_addr_list = set().union(*self.cached_smallbins_list.values())
+            self.cached_largebins_list = self.largebins_list()
+            self.cached_largebins_addr_list = set().union(*self.cached_largebins_list.values())
 
-        self.cached_largebins_list = self.largebins_list()
-        self.cached_largebins_addr_list = set().union(*self.cached_largebins_list.values())
+            self.bins_dict_for_address = {}
+            for tcache_idx, tcache_list in self.cached_tcache_list.items():
+                for address in set(tcache_list):
+                    pos = ",".join([str(i + 1) for i, x in enumerate(tcache_list) if x == address])
+                    sz = GlibcHeap.get_binsize_table()["tcache"][tcache_idx]["size"]
+                    m = "tcache[idx={:d},sz={:#x}][{:s}/{:d}]".format(tcache_idx, sz, pos, len(tcache_list))
+                    self.bins_dict_for_address[address] = self.bins_dict_for_address.get(address, []) + [m]
+            for fastbin_idx, fastbin_list in self.cached_fastbins_list.items():
+                for address in set(fastbin_list):
+                    pos = ",".join([str(i + 1) for i, x in enumerate(fastbin_list) if x == address])
+                    sz = GlibcHeap.get_binsize_table()["fastbins"][fastbin_idx]["size"]
+                    m = "fastbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(fastbin_idx, sz, pos, len(fastbin_list))
+                    self.bins_dict_for_address[address] = self.bins_dict_for_address.get(address, []) + [m]
 
-        self.bins_dict_for_address = {}
-        for tcache_idx, tcache_list in self.cached_tcache_list.items():
-            for address in set(tcache_list):
-                pos = ",".join([str(i + 1) for i, x in enumerate(tcache_list) if x == address])
-                sz = get_binsize_table()["tcache"][tcache_idx]["size"]
-                m = "tcache[idx={:d},sz={:#x}][{:s}/{:d}]".format(tcache_idx, sz, pos, len(tcache_list))
-                self.bins_dict_for_address[address] = self.bins_dict_for_address.get(address, []) + [m]
-        for fastbin_idx, fastbin_list in self.cached_fastbins_list.items():
-            for address in set(fastbin_list):
-                pos = ",".join([str(i + 1) for i, x in enumerate(fastbin_list) if x == address])
-                sz = get_binsize_table()["fastbins"][fastbin_idx]["size"]
-                m = "fastbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(fastbin_idx, sz, pos, len(fastbin_list))
-                self.bins_dict_for_address[address] = self.bins_dict_for_address.get(address, []) + [m]
+            self.bins_dict_for_base_address = {}
+            for _, unsortedbin_list in self.cached_unsortedbin_list.items():
+                for base_address in set(unsortedbin_list):
+                    pos = ",".join([str(i + 1) for i, x in enumerate(unsortedbin_list) if x == base_address])
+                    m = "unsortedbins[{:s}/{:d}]".format(pos, len(unsortedbin_list))
+                    self.bins_dict_for_base_address[base_address] = self.bins_dict_for_base_address.get(base_address, []) + [m]
+            for smallbin_idx, smallbin_list in self.cached_smallbins_list.items():
+                for base_address in set(smallbin_list):
+                    pos = ",".join([str(i + 1) for i, x in enumerate(smallbin_list) if x == base_address])
+                    sz = GlibcHeap.get_binsize_table()["small_bins"][smallbin_idx]["size"]
+                    m = "smallbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(smallbin_idx, sz, pos, len(smallbin_list))
+                    self.bins_dict_for_base_address[base_address] = self.bins_dict_for_base_address.get(base_address, []) + [m]
+            for largebin_idx, largebin_list in self.cached_largebins_list.items():
+                for base_address in set(largebin_list):
+                    pos = ",".join([str(i + 1) for i, x in enumerate(largebin_list) if x == base_address])
+                    sz_min = GlibcHeap.get_binsize_table()["large_bins"][largebin_idx]["size_min"]
+                    sz_max = GlibcHeap.get_binsize_table()["large_bins"][largebin_idx]["size_max"]
+                    m = "largebins[idx={:d},sz={:#x}-{:#x}][{:s}/{:d}]".format(largebin_idx, sz_min, sz_max, pos, len(largebin_list))
+                    self.bins_dict_for_base_address[base_address] = self.bins_dict_for_base_address.get(base_address, []) + [m]
+            return
 
-        self.bins_dict_for_base_address = {}
-        for _, unsortedbin_list in self.cached_unsortedbin_list.items():
-            for base_address in set(unsortedbin_list):
-                pos = ",".join([str(i + 1) for i, x in enumerate(unsortedbin_list) if x == base_address])
-                m = "unsortedbins[{:s}/{:d}]".format(pos, len(unsortedbin_list))
-                self.bins_dict_for_base_address[base_address] = self.bins_dict_for_base_address.get(base_address, []) + [m]
-        for smallbin_idx, smallbin_list in self.cached_smallbins_list.items():
-            for base_address in set(smallbin_list):
-                pos = ",".join([str(i + 1) for i, x in enumerate(smallbin_list) if x == base_address])
-                sz = get_binsize_table()["small_bins"][smallbin_idx]["size"]
-                m = "smallbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(smallbin_idx, sz, pos, len(smallbin_list))
-                self.bins_dict_for_base_address[base_address] = self.bins_dict_for_base_address.get(base_address, []) + [m]
-        for largebin_idx, largebin_list in self.cached_largebins_list.items():
-            for base_address in set(largebin_list):
-                pos = ",".join([str(i + 1) for i, x in enumerate(largebin_list) if x == base_address])
-                sz_min = get_binsize_table()["large_bins"][largebin_idx]["size_min"]
-                sz_max = get_binsize_table()["large_bins"][largebin_idx]["size_max"]
-                m = "largebins[idx={:d},sz={:#x}-{:#x}][{:s}/{:d}]".format(largebin_idx, sz_min, sz_max, pos, len(largebin_list))
-                self.bins_dict_for_base_address[base_address] = self.bins_dict_for_base_address.get(base_address, []) + [m]
-        return
+        def is_chunk_in_tcache(self, chunk):
+            return chunk.address in self.cached_tcache_addr_list
 
-    def is_chunk_in_tcache(self, chunk):
-        return chunk.address in self.cached_tcache_addr_list
+        def is_chunk_in_fastbins(self, chunk):
+            return chunk.address in self.cached_fastbins_addr_list
 
-    def is_chunk_in_fastbins(self, chunk):
-        return chunk.address in self.cached_fastbins_addr_list
+        def is_chunk_in_unsortedbin(self, chunk):
+            return chunk.chunk_base_address in self.cached_unsortedbin_addr_list
 
-    def is_chunk_in_unsortedbin(self, chunk):
-        return chunk.chunk_base_address in self.cached_unsortedbin_addr_list
+        def is_chunk_in_smallbins(self, chunk):
+            return chunk.chunk_base_address in self.cached_smallbins_addr_list
 
-    def is_chunk_in_smallbins(self, chunk):
-        return chunk.chunk_base_address in self.cached_smallbins_addr_list
+        def is_chunk_in_largebins(self, chunk):
+            return chunk.chunk_base_address in self.cached_largebins_addr_list
 
-    def is_chunk_in_largebins(self, chunk):
-        return chunk.chunk_base_address in self.cached_largebins_addr_list
+        def make_bins_info(self, address_or_chunk, skip_top=False):
+            if isinstance(address_or_chunk, GlibcHeap.GlibcChunk):
+                address = address_or_chunk.address
+                base_address = address_or_chunk.chunk_base_address
+            elif isinstance(address_or_chunk, int):
+                address = address_or_chunk
+                base_address = address_or_chunk
 
-    def make_bins_info(self, address_or_chunk, skip_top=False):
-        if isinstance(address_or_chunk, GlibcChunk):
-            address = address_or_chunk.address
-            base_address = address_or_chunk.chunk_base_address
-        elif isinstance(address_or_chunk, int):
-            address = address_or_chunk
-            base_address = address_or_chunk
+            info = []
+            info.extend(self.bins_dict_for_address.get(address, []))
+            info.extend(self.bins_dict_for_base_address.get(base_address, []))
+            if not skip_top:
+                if base_address == self.top:
+                    info.append("top")
+            return info
 
-        info = []
-        info.extend(self.bins_dict_for_address.get(address, []))
-        info.extend(self.bins_dict_for_base_address.get(base_address, []))
-        if not skip_top:
-            if base_address == self.top:
-                info.append("top")
-        return info
-
-
-def get_arena(address):
-    if address is None or is_valid_addr(address):
-        try:
-            arena = GlibcArena(address)
-            str(arena) # check memory error
-            return arena
-        except (OSError, AttributeError, gdb.MemoryError):
-            err("Failed to get the arena, heap commands may not work properly.")
-            return None
-    else:
-        # interpret `address` as the number following next from main_arena, not the address of arena.
-        arena_number = address
-
-        # main_arena
-        arenas = []
-        arena = get_main_arena()
-        while arena:
-            arenas.append(arena)
-            arena = arena.get_next()
-
-        if arena_number >= len(arenas):
-            err("Failed to get the arena, heap commands may not work properly.")
-            return None
-
-        return arenas[arena_number]
-
-
-def get_main_arena():
-    return get_arena(None)
-
-
-class GlibcChunk:
-    """Glibc chunk class.
-    Ref: https://sploitfun.wordpress.com/2015/02/10/understanding-glibc-malloc/."""
-    def __init__(self, addr, from_base=False):
-        self.ptrsize = current_arch.ptrsize
-        if from_base:
-            self.chunk_base_address = addr
-            self.address = addr + 2 * self.ptrsize
+    @staticmethod
+    def get_arena(address):
+        if address is None or is_valid_addr(address):
+            try:
+                arena = GlibcHeap.GlibcArena(address)
+                str(arena) # check memory error
+                return arena
+            except (OSError, AttributeError, gdb.MemoryError):
+                err("Failed to get the arena, heap commands may not work properly.")
+                return None
         else:
-            self.chunk_base_address = align_address(addr - 2 * self.ptrsize)
-            self.address = addr
+            # interpret `address` as the number following next from main_arena, not the address of arena.
+            arena_number = address
 
-        self.size_addr = align_address(self.address - self.ptrsize)
-        self.prev_size_addr = self.chunk_base_address
-        return
+            # main_arena
+            arenas = []
+            arena = GlibcHeap.get_main_arena()
+            while arena:
+                arenas.append(arena)
+                arena = arena.get_next()
 
-    def get_chunk_size(self):
-        return read_int_from_memory(self.size_addr) & (~0x07)
+            if arena_number >= len(arenas):
+                err("Failed to get the arena, heap commands may not work properly.")
+                return None
 
-    @property
-    def size(self):
-        return self.get_chunk_size()
+            return arenas[arena_number]
 
-    def get_usable_size(self):
-        # https://github.com/sploitfun/lsploits/blob/master/glibc/malloc/malloc.c#L4537
-        cursz = self.get_chunk_size()
-        if cursz == 0:
-            return cursz
-        if self.has_m_bit():
-            return cursz - 2 * self.ptrsize
-        return cursz - self.ptrsize
+    @staticmethod
+    def get_main_arena():
+        return GlibcHeap.get_arena(None)
 
-    def get_prev_chunk_size(self):
-        return read_int_from_memory(self.prev_size_addr)
-
-    def get_next_chunk(self):
-        try:
-            addr = self.address + self.get_chunk_size()
-            return GlibcChunk(addr)
-        except gdb.MemoryError:
-            return None
-
-    # if freed functions
-    def get_fwd_ptr(self, sll):
-        try:
-            # Not a single-linked-list (sll) or no Safe-Linking support yet
-            if not sll or get_libc_version() < (2, 32):
-                return read_int_from_memory(self.address)
-            # Unmask ("reveal") the Safe-Linking pointer
+    class GlibcChunk:
+        """Glibc chunk class.
+        Ref: https://sploitfun.wordpress.com/2015/02/10/understanding-glibc-malloc/."""
+        def __init__(self, addr, from_base=False):
+            self.ptrsize = current_arch.ptrsize
+            if from_base:
+                self.chunk_base_address = addr
+                self.address = addr + 2 * self.ptrsize
             else:
-                return read_int_from_memory(self.address) ^ (self.address >> 12)
-        except gdb.MemoryError:
-            return None
+                self.chunk_base_address = align_address(addr - 2 * self.ptrsize)
+                self.address = addr
 
-    @property
-    def fwd(self):
-        return self.get_fwd_ptr(False)
+            self.size_addr = align_address(self.address - self.ptrsize)
+            self.prev_size_addr = self.chunk_base_address
+            return
 
-    fd = fwd # for compat
+        def get_chunk_size(self):
+            return read_int_from_memory(self.size_addr) & (~0x07)
 
-    def get_bkw_ptr(self):
-        return read_int_from_memory(self.address + self.ptrsize)
+        @property
+        def size(self):
+            return self.get_chunk_size()
 
-    @property
-    def bck(self):
-        return self.get_bkw_ptr()
+        def get_usable_size(self):
+            # https://github.com/sploitfun/lsploits/blob/master/glibc/malloc/malloc.c#L4537
+            cursz = self.get_chunk_size()
+            if cursz == 0:
+                return cursz
+            if self.has_m_bit():
+                return cursz - 2 * self.ptrsize
+            return cursz - self.ptrsize
 
-    bk = bck # for compat
+        def get_prev_chunk_size(self):
+            return read_int_from_memory(self.prev_size_addr)
 
-    def get_fd_nextsize_ptr(self):
-        return read_int_from_memory(self.address + self.ptrsize * 2)
+        def get_next_chunk(self):
+            try:
+                addr = self.address + self.get_chunk_size()
+                return GlibcHeap.GlibcChunk(addr)
+            except gdb.MemoryError:
+                return None
 
-    @property
-    def fd_nextsize(self):
-        return self.get_fd_nextsize_ptr()
+        # if freed functions
+        def get_fwd_ptr(self, sll):
+            try:
+                # Not a single-linked-list (sll) or no Safe-Linking support yet
+                if not sll or get_libc_version() < (2, 32):
+                    return read_int_from_memory(self.address)
+                # Unmask ("reveal") the Safe-Linking pointer
+                else:
+                    return read_int_from_memory(self.address) ^ (self.address >> 12)
+            except gdb.MemoryError:
+                return None
 
-    def get_bk_nextsize_ptr(self):
-        return read_int_from_memory(self.address + self.ptrsize * 3)
+        @property
+        def fwd(self):
+            return self.get_fwd_ptr(False)
 
-    @property
-    def bk_nextsize(self):
-        return self.get_bk_nextsize_ptr()
-    # endif freed functions
+        fd = fwd # for compat
 
-    def has_p_bit(self):
-        return read_int_from_memory(self.size_addr) & 0x01
+        def get_bkw_ptr(self):
+            return read_int_from_memory(self.address + self.ptrsize)
 
-    def has_m_bit(self):
-        return read_int_from_memory(self.size_addr) & 0x02
+        @property
+        def bck(self):
+            return self.get_bkw_ptr()
 
-    def has_n_bit(self):
-        return read_int_from_memory(self.size_addr) & 0x04
+        bk = bck # for compat
 
-    def is_used(self):
-        """Check if the current block is used by:
-        - checking the M bit is true
-        - or checking that next chunk PREV_INUSE flag is true"""
-        if self.has_m_bit():
-            return True
-        next_chunk = self.get_next_chunk()
-        try:
-            return True if next_chunk.has_p_bit() else False
-        except gdb.MemoryError as e:
-            # top?
-            if (next_chunk.chunk_base_address & 0xfff) == 0:
-                if is_valid_addr(next_chunk.chunk_base_address - 1):
-                    return False
-            raise gdb.MemoryError from e
+        def get_fd_nextsize_ptr(self):
+            return read_int_from_memory(self.address + self.ptrsize * 2)
 
-    def str_chunk_size_flag(self):
-        msg = []
-        if self.has_p_bit():
-            msg.append("  PREV_INUSE flag: {}".format(Color.greenify("On")))
-        else:
-            msg.append("  PREV_INUSE flag: {}".format(Color.redify("Off")))
-        if self.has_m_bit():
-            msg.append("  IS_MMAPPED flag: {}".format(Color.greenify("On")))
-        else:
-            msg.append("  IS_MMAPPED flag: {}".format(Color.redify("Off")))
-        if self.has_n_bit():
-            msg.append("  NON_MAIN_ARENA flag: {}".format(Color.greenify("On")))
-        else:
-            msg.append("  NON_MAIN_ARENA flag: {}".format(Color.redify("Off")))
-        return "\n".join(msg)
+        @property
+        def fd_nextsize(self):
+            return self.get_fd_nextsize_ptr()
 
-    def _str_sizes(self):
-        msg = []
-        failed = False
+        def get_bk_nextsize_ptr(self):
+            return read_int_from_memory(self.address + self.ptrsize * 3)
 
-        try:
-            msg.append("  Chunk size: {0:d} ({0:#x})".format(self.get_chunk_size()))
-            msg.append("  Usable size: {0:d} ({0:#x})".format(self.get_usable_size()))
-        except gdb.MemoryError:
-            msg.append("  Chunk size: Cannot read at {:#x} (corrupted?)".format(self.size_addr))
-            failed = True
+        @property
+        def bk_nextsize(self):
+            return self.get_bk_nextsize_ptr()
+        # endif freed functions
 
-        try:
-            msg.append("  Previous chunk size: {0:d} ({0:#x})".format(self.get_prev_chunk_size()))
-        except gdb.MemoryError:
-            msg.append("  Previous chunk size: Cannot read at {:#x} (corrupted?)".format(self.chunk_base_address))
-            failed = True
+        def has_p_bit(self):
+            return read_int_from_memory(self.size_addr) & 0x01
 
-        if not failed:
-            msg.append(self.str_chunk_size_flag())
+        def has_m_bit(self):
+            return read_int_from_memory(self.size_addr) & 0x02
 
-        return "\n".join(msg)
+        def has_n_bit(self):
+            return read_int_from_memory(self.size_addr) & 0x04
 
-    def _str_pointers(self):
-        fwd = self.address
-        bkw = self.address + self.ptrsize
+        def is_used(self):
+            """Check if the current block is used by:
+            - checking the M bit is true
+            - or checking that next chunk PREV_INUSE flag is true"""
+            if self.has_m_bit():
+                return True
+            next_chunk = self.get_next_chunk()
+            try:
+                return True if next_chunk.has_p_bit() else False
+            except gdb.MemoryError as e:
+                # top?
+                if (next_chunk.chunk_base_address & 0xfff) == 0:
+                    if is_valid_addr(next_chunk.chunk_base_address - 1):
+                        return False
+                raise gdb.MemoryError from e
 
-        msg = []
-        try:
-            msg.append("  Forward pointer: {:#x}".format(self.get_fwd_ptr(False)))
-        except gdb.MemoryError:
-            msg.append("  Forward pointer: {:#x} (corrupted?)".format(fwd))
-
-        try:
-            msg.append("  Backward pointer: {:#x}".format(self.get_bkw_ptr()))
-        except gdb.MemoryError:
-            msg.append("  Backward pointer: {:#x} (corrupted?)".format(bkw))
-
-        return "\n".join(msg)
-
-    def str_as_alloced(self):
-        return self._str_sizes()
-
-    def str_as_freed(self):
-        return "{}\n\n{}".format(self._str_sizes(), self._str_pointers())
-
-    def flags_as_string(self):
-        flags = []
-        if self.has_p_bit():
-            flags.append(Color.colorify("PREV_INUSE", get_gef_setting("theme.heap_chunk_flag_prev_inuse")))
-        if self.has_m_bit():
-            flags.append(Color.colorify("IS_MMAPPED", get_gef_setting("theme.heap_chunk_flag_is_mmapped")))
-        if self.has_n_bit():
-            flags.append(Color.colorify("NON_MAIN_ARENA", get_gef_setting("theme.heap_chunk_flag_non_main_arena")))
-        return "|".join(flags)
-
-    def to_str(self, arena):
-        chunk_c = Color.colorify("Chunk", get_gef_setting("theme.heap_chunk_label"))
-        size_c = Color.colorify_hex(self.get_chunk_size(), get_gef_setting("theme.heap_chunk_size"))
-        base_c = Color.colorify_hex(self.chunk_base_address, get_gef_setting("theme.heap_chunk_address_freed"))
-        addr_c = Color.colorify_hex(self.address, get_gef_setting("theme.heap_chunk_address_freed"))
-        flags = self.flags_as_string()
-
-        # large bins
-        if arena.is_chunk_in_largebins(self):
-            fd = lookup_address(self.fd)
-            bk = lookup_address(self.bk)
-            if is_valid_addr(self.fd_nextsize) or is_valid_addr(self.bk_nextsize):
-                # largebin and valid (fd|bk)_nextsize
-                fd_nextsize = lookup_address(self.fd_nextsize)
-                bk_nextsize = lookup_address(self.bk_nextsize)
-                fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s}, fd_nextsize={!s}, bk_nextsize={!s})"
-                msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk, fd_nextsize, bk_nextsize)
+        def str_chunk_size_flag(self):
+            msg = []
+            if self.has_p_bit():
+                msg.append("  PREV_INUSE flag: {}".format(Color.greenify("On")))
             else:
+                msg.append("  PREV_INUSE flag: {}".format(Color.redify("Off")))
+            if self.has_m_bit():
+                msg.append("  IS_MMAPPED flag: {}".format(Color.greenify("On")))
+            else:
+                msg.append("  IS_MMAPPED flag: {}".format(Color.redify("Off")))
+            if self.has_n_bit():
+                msg.append("  NON_MAIN_ARENA flag: {}".format(Color.greenify("On")))
+            else:
+                msg.append("  NON_MAIN_ARENA flag: {}".format(Color.redify("Off")))
+            return "\n".join(msg)
+
+        def _str_sizes(self):
+            msg = []
+            failed = False
+
+            try:
+                msg.append("  Chunk size: {:#x}".format(self.get_chunk_size()))
+                msg.append("  Usable size: {:#x}".format(self.get_usable_size()))
+            except gdb.MemoryError:
+                msg.append("  Chunk size: Cannot read at {:#x} (corrupted?)".format(self.size_addr))
+                failed = True
+
+            if self.has_p_bit():
+                msg.append("  Previous chunk size: ??? (PREV_INUSE flag: On)")
+            else:
+                try:
+                    msg.append("  Previous chunk size: {:#x}".format(self.get_prev_chunk_size()))
+                except gdb.MemoryError:
+                    msg.append("  Previous chunk size: Cannot read at {:#x} (corrupted?)".format(self.chunk_base_address))
+                    failed = True
+
+            if not failed:
+                msg.append(self.str_chunk_size_flag())
+
+            return "\n".join(msg)
+
+        def _str_pointers(self):
+            fwd = self.address
+            bkw = self.address + self.ptrsize
+
+            msg = []
+            try:
+                msg.append("  Forward pointer: {:#x}".format(self.get_fwd_ptr(False)))
+            except gdb.MemoryError:
+                msg.append("  Forward pointer: {:#x} (corrupted?)".format(fwd))
+
+            try:
+                msg.append("  Backward pointer: {:#x}".format(self.get_bkw_ptr()))
+            except gdb.MemoryError:
+                msg.append("  Backward pointer: {:#x} (corrupted?)".format(bkw))
+
+            return "\n".join(msg)
+
+        def str_as_alloced(self):
+            return self._str_sizes()
+
+        def str_as_freed(self):
+            return "{}\n\n{}".format(self._str_sizes(), self._str_pointers())
+
+        def flags_as_string(self):
+            flags = []
+            if self.has_p_bit():
+                flags.append(Color.colorify("PREV_INUSE", get_gef_setting("theme.heap_chunk_flag_prev_inuse")))
+            if self.has_m_bit():
+                flags.append(Color.colorify("IS_MMAPPED", get_gef_setting("theme.heap_chunk_flag_is_mmapped")))
+            if self.has_n_bit():
+                flags.append(Color.colorify("NON_MAIN_ARENA", get_gef_setting("theme.heap_chunk_flag_non_main_arena")))
+            return "|".join(flags)
+
+        def to_str(self, arena):
+            chunk_c = Color.colorify("Chunk", get_gef_setting("theme.heap_chunk_label"))
+            size_c = Color.colorify_hex(self.get_chunk_size(), get_gef_setting("theme.heap_chunk_size"))
+            base_c = Color.colorify_hex(self.chunk_base_address, get_gef_setting("theme.heap_chunk_address_freed"))
+            addr_c = Color.colorify_hex(self.address, get_gef_setting("theme.heap_chunk_address_freed"))
+            flags = self.flags_as_string()
+
+            # large bins
+            if arena.is_chunk_in_largebins(self):
+                fd = lookup_address(self.fd)
+                bk = lookup_address(self.bk)
+                if is_valid_addr(self.fd_nextsize) or is_valid_addr(self.bk_nextsize):
+                    # largebin and valid (fd|bk)_nextsize
+                    fd_nextsize = lookup_address(self.fd_nextsize)
+                    bk_nextsize = lookup_address(self.bk_nextsize)
+                    fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s}, fd_nextsize={!s}, bk_nextsize={!s})"
+                    msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk, fd_nextsize, bk_nextsize)
+                else:
+                    fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
+                    msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk)
+
+            # small bins / unsorted bin
+            elif arena.is_chunk_in_smallbins(self) or arena.is_chunk_in_unsortedbin(self):
+                fd = lookup_address(self.fd)
+                bk = lookup_address(self.bk)
                 fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
                 msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk)
 
-        # small bins / unsorted bin
-        elif arena.is_chunk_in_smallbins(self) or arena.is_chunk_in_unsortedbin(self):
-            fd = lookup_address(self.fd)
-            bk = lookup_address(self.bk)
-            fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
-            msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk)
+            # tcache / fastbins
+            elif arena.is_chunk_in_fastbins(self) or arena.is_chunk_in_tcache(self):
+                fd = self.get_fwd_ptr(sll=False)
+                if get_libc_version() < (2, 32):
+                    fd = lookup_address(fd)
+                    fmt = "{:s}(base={:s}. addr={:s}, size={:s}, flags={:s}, fd={!s})"
+                    msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd)
+                else:
+                    decoded_fd = lookup_address(self.get_fwd_ptr(sll=True))
+                    fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={:#x}(={!s}))"
+                    msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, decoded_fd)
 
-        # tcache / fastbins
-        elif arena.is_chunk_in_fastbins(self) or arena.is_chunk_in_tcache(self):
-            fd = self.get_fwd_ptr(sll=False)
-            if get_libc_version() < (2, 32):
-                fd = lookup_address(fd)
-                fmt = "{:s}(base={:s}. addr={:s}, size={:s}, flags={:s}, fd={!s})"
-                msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd)
+            # top
+            elif arena.top == self.chunk_base_address:
+                fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s})"
+                msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags)
+
+            # used chunk
             else:
-                decoded_fd = lookup_address(self.get_fwd_ptr(sll=True))
-                fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={:#x}(={!s}))"
-                msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, decoded_fd)
+                base_c = Color.colorify_hex(self.chunk_base_address, get_gef_setting("theme.heap_chunk_address_used"))
+                addr_c = Color.colorify_hex(self.address, get_gef_setting("theme.heap_chunk_address_used"))
+                fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s})"
+                msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags)
+            return msg
 
-        # top
-        elif arena.top == self.chunk_base_address:
-            fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s})"
-            msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags)
+        def psprint(self, arena):
+            arena.reset_bins_info()
+            msg = []
+            msg.append(self.to_str(arena))
+            if self.is_used():
+                msg.append(self.str_as_alloced())
+            else:
+                msg.append(self.str_as_freed())
+            return "\n".join(msg)
 
-        # used chunk
+    @staticmethod
+    @Cache.cache_this_session
+    def get_binsize_table():
+        table = {
+            "tcache": {},
+            "fastbins": {},
+            "unsorted_bin": {},
+            "small_bins": {},
+            "large_bins": {},
+        }
+
+        if is_64bit():
+            MIN_SIZE = 0x20
         else:
-            base_c = Color.colorify_hex(self.chunk_base_address, get_gef_setting("theme.heap_chunk_address_used"))
-            addr_c = Color.colorify_hex(self.address, get_gef_setting("theme.heap_chunk_address_used"))
-            fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s})"
-            msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags)
-        return msg
+            MIN_SIZE = 0x10
 
-    def psprint(self, arena):
-        arena.reset_bins_info()
-        msg = []
-        msg.append(self.to_str(arena))
-        if self.is_used():
-            msg.append(self.str_as_alloced())
+        # tcache
+        for i in range(64):
+            # MALLOC_ALIGNMENT is changed from libc 2.26.
+            # for x86_32, tcache 0x8 align is no longer used.
+            # but for ARM32, or maybe other arch, still 0x8 align is used.
+            if is_64bit():
+                size = MIN_SIZE + i * 0x10
+            elif (is_x86_32() or is_riscv32() or is_ppc32()) and get_libc_version() >= (2, 26):
+                size = MIN_SIZE + i * 0x10
+            else:
+                size = MIN_SIZE + i * 0x8
+            table["tcache"][i] = {"size": size}
+
+        # fastbins
+        if is_64bit():
+            for i in range(7):
+                size = MIN_SIZE + i * 0x10
+                table["fastbins"][i] = {"size": size}
+        elif (is_x86_32() or is_riscv32() or is_ppc32()) and get_libc_version() >= (2, 26):
+            # MALLOC_ALIGNMENT is changed from libc 2.26.
+            # for x86_32, fastbin exists every 8 bytes, but only used every 16 bytes.
+            table["fastbins"][0] = {"size": 0x10}
+            table["fastbins"][2] = {"size": 0x20}
+            table["fastbins"][4] = {"size": 0x30}
+            table["fastbins"][6] = {"size": 0x40}
         else:
-            msg.append(self.str_as_freed())
-        return "\n".join(msg)
+            for i in range(7):
+                size = MIN_SIZE + i * 8
+                table["fastbins"][i] = {"size": size}
+
+        # unsorted bins
+        table["unsorted_bin"][0] = {}
+
+        # smallbins
+        for i in range(1, 63):
+            if is_64bit() or (is_x86_32() and get_libc_version() >= (2, 26)):
+                size = MIN_SIZE + (i - 1) * 0x10
+            else:
+                size = MIN_SIZE + (i - 1) * 0x8
+            table["small_bins"][i] = {"size": size}
+
+        # largebins
+        if is_64bit():
+            table["large_bins"][63] = {"size_min": 0x400, "size_max": 0x440}
+            table["large_bins"][64] = {"size_min": 0x440, "size_max": 0x480}
+            table["large_bins"][65] = {"size_min": 0x480, "size_max": 0x4c0}
+            table["large_bins"][66] = {"size_min": 0x4c0, "size_max": 0x500}
+            table["large_bins"][67] = {"size_min": 0x500, "size_max": 0x540}
+            table["large_bins"][68] = {"size_min": 0x540, "size_max": 0x580}
+            table["large_bins"][69] = {"size_min": 0x580, "size_max": 0x5c0}
+            table["large_bins"][70] = {"size_min": 0x5c0, "size_max": 0x600}
+            table["large_bins"][71] = {"size_min": 0x600, "size_max": 0x640}
+            table["large_bins"][72] = {"size_min": 0x640, "size_max": 0x680}
+            table["large_bins"][73] = {"size_min": 0x680, "size_max": 0x6c0}
+            table["large_bins"][74] = {"size_min": 0x6c0, "size_max": 0x700}
+            table["large_bins"][75] = {"size_min": 0x700, "size_max": 0x740}
+            table["large_bins"][76] = {"size_min": 0x740, "size_max": 0x780}
+            table["large_bins"][77] = {"size_min": 0x780, "size_max": 0x7c0}
+            table["large_bins"][78] = {"size_min": 0x7c0, "size_max": 0x800}
+            table["large_bins"][79] = {"size_min": 0x800, "size_max": 0x840}
+            table["large_bins"][80] = {"size_min": 0x840, "size_max": 0x880}
+            table["large_bins"][81] = {"size_min": 0x880, "size_max": 0x8c0}
+            table["large_bins"][82] = {"size_min": 0x8c0, "size_max": 0x900}
+            table["large_bins"][83] = {"size_min": 0x900, "size_max": 0x940}
+            table["large_bins"][84] = {"size_min": 0x940, "size_max": 0x980}
+            table["large_bins"][85] = {"size_min": 0x980, "size_max": 0x9c0}
+            table["large_bins"][86] = {"size_min": 0x9c0, "size_max": 0xa00}
+            table["large_bins"][87] = {"size_min": 0xa00, "size_max": 0xa40}
+            table["large_bins"][88] = {"size_min": 0xa40, "size_max": 0xa80}
+            table["large_bins"][89] = {"size_min": 0xa80, "size_max": 0xac0}
+            table["large_bins"][90] = {"size_min": 0xac0, "size_max": 0xb00}
+            table["large_bins"][91] = {"size_min": 0xb00, "size_max": 0xb40}
+            table["large_bins"][92] = {"size_min": 0xb40, "size_max": 0xb80}
+            table["large_bins"][93] = {"size_min": 0xb80, "size_max": 0xbc0}
+            table["large_bins"][94] = {"size_min": 0xbc0, "size_max": 0xc00}
+            table["large_bins"][95] = {"size_min": 0xc00, "size_max": 0xc40}
+            table["large_bins"][96] = {"size_min": 0xc40, "size_max": 0xe00}
+        elif is_x86_32() and get_libc_version() >= (2, 26):
+            table["large_bins"][63] = {"size_min": 0x3f0, "size_max": 0x400}
+            table["large_bins"][64] = {"size_min": 0x400, "size_max": 0x440}
+            table["large_bins"][65] = {"size_min": 0x440, "size_max": 0x480}
+            table["large_bins"][66] = {"size_min": 0x480, "size_max": 0x4c0}
+            table["large_bins"][67] = {"size_min": 0x4c0, "size_max": 0x500}
+            table["large_bins"][68] = {"size_min": 0x500, "size_max": 0x540}
+            table["large_bins"][69] = {"size_min": 0x540, "size_max": 0x580}
+            table["large_bins"][70] = {"size_min": 0x580, "size_max": 0x5c0}
+            table["large_bins"][71] = {"size_min": 0x5c0, "size_max": 0x600}
+            table["large_bins"][72] = {"size_min": 0x600, "size_max": 0x640}
+            table["large_bins"][73] = {"size_min": 0x640, "size_max": 0x680}
+            table["large_bins"][74] = {"size_min": 0x680, "size_max": 0x6c0}
+            table["large_bins"][75] = {"size_min": 0x6c0, "size_max": 0x700}
+            table["large_bins"][76] = {"size_min": 0x700, "size_max": 0x740}
+            table["large_bins"][77] = {"size_min": 0x740, "size_max": 0x780}
+            table["large_bins"][78] = {"size_min": 0x780, "size_max": 0x7c0}
+            table["large_bins"][79] = {"size_min": 0x7c0, "size_max": 0x800}
+            table["large_bins"][80] = {"size_min": 0x800, "size_max": 0x840}
+            table["large_bins"][81] = {"size_min": 0x840, "size_max": 0x880}
+            table["large_bins"][82] = {"size_min": 0x880, "size_max": 0x8c0}
+            table["large_bins"][83] = {"size_min": 0x8c0, "size_max": 0x900}
+            table["large_bins"][84] = {"size_min": 0x900, "size_max": 0x940}
+            table["large_bins"][85] = {"size_min": 0x940, "size_max": 0x980}
+            table["large_bins"][86] = {"size_min": 0x980, "size_max": 0x9c0}
+            table["large_bins"][87] = {"size_min": 0x9c0, "size_max": 0xa00}
+            table["large_bins"][88] = {"size_min": 0xa00, "size_max": 0xa40}
+            table["large_bins"][89] = {"size_min": 0xa40, "size_max": 0xa80}
+            table["large_bins"][90] = {"size_min": 0xa80, "size_max": 0xac0}
+            table["large_bins"][91] = {"size_min": 0xac0, "size_max": 0xb00}
+            table["large_bins"][92] = {"size_min": 0xb00, "size_max": 0xb40}
+            table["large_bins"][93] = {"size_min": 0xb40, "size_max": 0xb80}
+            # table["large_bins"][94] is unused
+            table["large_bins"][95] = {"size_min": 0xb80, "size_max": 0xc00}
+            table["large_bins"][96] = {"size_min": 0xc00, "size_max": 0xe00}
+        else:
+            table["large_bins"][63] = {"size_min": 0x200, "size_max": 0x240}
+            table["large_bins"][64] = {"size_min": 0x240, "size_max": 0x280}
+            table["large_bins"][65] = {"size_min": 0x280, "size_max": 0x2c0}
+            table["large_bins"][66] = {"size_min": 0x2c0, "size_max": 0x300}
+            table["large_bins"][67] = {"size_min": 0x300, "size_max": 0x340}
+            table["large_bins"][68] = {"size_min": 0x340, "size_max": 0x380}
+            table["large_bins"][69] = {"size_min": 0x380, "size_max": 0x3c0}
+            table["large_bins"][70] = {"size_min": 0x3c0, "size_max": 0x400}
+            table["large_bins"][71] = {"size_min": 0x400, "size_max": 0x440}
+            table["large_bins"][72] = {"size_min": 0x440, "size_max": 0x480}
+            table["large_bins"][73] = {"size_min": 0x480, "size_max": 0x4c0}
+            table["large_bins"][74] = {"size_min": 0x4c0, "size_max": 0x500}
+            table["large_bins"][75] = {"size_min": 0x500, "size_max": 0x540}
+            table["large_bins"][76] = {"size_min": 0x540, "size_max": 0x580}
+            table["large_bins"][77] = {"size_min": 0x580, "size_max": 0x5c0}
+            table["large_bins"][78] = {"size_min": 0x5c0, "size_max": 0x600}
+            table["large_bins"][79] = {"size_min": 0x600, "size_max": 0x640}
+            table["large_bins"][80] = {"size_min": 0x640, "size_max": 0x680}
+            table["large_bins"][81] = {"size_min": 0x680, "size_max": 0x6c0}
+            table["large_bins"][82] = {"size_min": 0x6c0, "size_max": 0x700}
+            table["large_bins"][83] = {"size_min": 0x700, "size_max": 0x740}
+            table["large_bins"][84] = {"size_min": 0x740, "size_max": 0x780}
+            table["large_bins"][85] = {"size_min": 0x780, "size_max": 0x7c0}
+            table["large_bins"][86] = {"size_min": 0x7c0, "size_max": 0x800}
+            table["large_bins"][87] = {"size_min": 0x800, "size_max": 0x840}
+            table["large_bins"][88] = {"size_min": 0x840, "size_max": 0x880}
+            table["large_bins"][89] = {"size_min": 0x880, "size_max": 0x8c0}
+            table["large_bins"][90] = {"size_min": 0x8c0, "size_max": 0x900}
+            table["large_bins"][91] = {"size_min": 0x900, "size_max": 0x940}
+            table["large_bins"][92] = {"size_min": 0x940, "size_max": 0x980}
+            table["large_bins"][93] = {"size_min": 0x980, "size_max": 0x9c0}
+            table["large_bins"][94] = {"size_min": 0x9c0, "size_max": 0xa00}
+            table["large_bins"][95] = {"size_min": 0xa00, "size_max": 0xc00}
+            table["large_bins"][96] = {"size_min": 0xc00, "size_max": 0xe00}
+
+        table["large_bins"][97] = {"size_min": 0xe00, "size_max": 0x1000}
+        table["large_bins"][98] = {"size_min": 0x1000, "size_max": 0x1200}
+        table["large_bins"][99] = {"size_min": 0x1200, "size_max": 0x1400}
+        table["large_bins"][100] = {"size_min": 0x1400, "size_max": 0x1600}
+        table["large_bins"][101] = {"size_min": 0x1600, "size_max": 0x1800}
+        table["large_bins"][102] = {"size_min": 0x1800, "size_max": 0x1a00}
+        table["large_bins"][103] = {"size_min": 0x1a00, "size_max": 0x1c00}
+        table["large_bins"][104] = {"size_min": 0x1c00, "size_max": 0x1e00}
+        table["large_bins"][105] = {"size_min": 0x1e00, "size_max": 0x2000}
+        table["large_bins"][106] = {"size_min": 0x2000, "size_max": 0x2200}
+        table["large_bins"][107] = {"size_min": 0x2200, "size_max": 0x2400}
+        table["large_bins"][108] = {"size_min": 0x2400, "size_max": 0x2600}
+        table["large_bins"][109] = {"size_min": 0x2600, "size_max": 0x2800}
+        table["large_bins"][110] = {"size_min": 0x2800, "size_max": 0x2a00}
+        table["large_bins"][111] = {"size_min": 0x2a00, "size_max": 0x3000}
+        table["large_bins"][112] = {"size_min": 0x3000, "size_max": 0x4000}
+        table["large_bins"][113] = {"size_min": 0x4000, "size_max": 0x5000}
+        table["large_bins"][114] = {"size_min": 0x5000, "size_max": 0x6000}
+        table["large_bins"][115] = {"size_min": 0x6000, "size_max": 0x7000}
+        table["large_bins"][116] = {"size_min": 0x7000, "size_max": 0x8000}
+        table["large_bins"][117] = {"size_min": 0x8000, "size_max": 0x9000}
+        table["large_bins"][118] = {"size_min": 0x9000, "size_max": 0xa000}
+        table["large_bins"][119] = {"size_min": 0xa000, "size_max": 0x10000}
+        table["large_bins"][120] = {"size_min": 0x10000, "size_max": 0x18000}
+        table["large_bins"][121] = {"size_min": 0x18000, "size_max": 0x20000}
+        table["large_bins"][122] = {"size_min": 0x20000, "size_max": 0x28000}
+        table["large_bins"][123] = {"size_min": 0x28000, "size_max": 0x40000}
+        table["large_bins"][124] = {"size_min": 0x40000, "size_max": 0x80000}
+        table["large_bins"][125] = {"size_min": 0x80000, "size_max": 0x0}
+        table["large_bins"][126] = {"size_min": 0x0, "size_max": 0x0} # maybe unused
+        return table
 
 
 def get_libc_version():
@@ -19100,7 +19294,7 @@ class GlibcHeapTopCommand(GenericCommand):
         self.dont_repeat()
 
         # parse arena
-        arena = get_arena(args.arena_addr)
+        arena = GlibcHeap.get_arena(args.arena_addr)
 
         if arena is None:
             err("No valid arena")
@@ -19124,7 +19318,7 @@ class GlibcHeapTopCommand(GenericCommand):
         top = int(m.group(1), 16)
         info("arena.top: {:#x}".format(top))
         top += current_arch.ptrsize * 2
-        gef_print(GlibcChunk(top).psprint(arena))
+        gef_print(GlibcHeap.GlibcChunk(top).psprint(arena))
         return
 
 
@@ -19145,7 +19339,7 @@ class GlibcHeapArenasCommand(GenericCommand):
         self.dont_repeat()
 
         # main_arena
-        arena = get_main_arena()
+        arena = GlibcHeap.get_main_arena()
         if arena is None:
             err("Could not find Glibc main arena")
             return
@@ -19223,7 +19417,7 @@ class GlibcHeapArenaCommand(GenericCommand):
         try:
             mp = parse_address("&mp_")
         except gdb.error:
-            mp = search_for_mp_()
+            mp = GlibcHeap.search_for_mp_()
             if mp is None:
                 return [titlify("[mp_]"), "Not found &mp_"]
 
@@ -19236,7 +19430,7 @@ class GlibcHeapArenaCommand(GenericCommand):
             out.append(result)
         except gdb.error:
             out = []
-            mp = MallocPar(mp)
+            mp = GlibcHeap.MallocParMallocPar(mp)
             title = titlify("[mp_] ----- {:#x}".format(mp.addr))
             out.append(title)
             out.append("$1 = {")
@@ -19285,7 +19479,7 @@ class GlibcHeapArenaCommand(GenericCommand):
             out.append(result)
         except gdb.error:
             out = []
-            heap_info = HeapInfo(heap_info)
+            heap_info = GlibcHeap.HeapInfo(heap_info)
             title = titlify("[heap_info] ----- {:#x}".format(heap_info.addr))
             out.append(title)
             out.append("$1 = {")
@@ -19307,7 +19501,7 @@ class GlibcHeapArenaCommand(GenericCommand):
         out = []
 
         # parse arena
-        arena = get_arena(args.arena_addr)
+        arena = GlibcHeap.get_arena(args.arena_addr)
 
         ret = self.parse_arena(arena)
         out.extend(ret)
@@ -19357,7 +19551,7 @@ class GlibcHeapChunkCommand(GenericCommand):
         self.dont_repeat()
 
         # parse arena
-        arena = get_arena(args.arena_addr)
+        arena = GlibcHeap.get_arena(args.arena_addr)
 
         if arena is None:
             err("No valid arena")
@@ -19369,9 +19563,9 @@ class GlibcHeapChunkCommand(GenericCommand):
 
         # get chunk
         if args.as_base:
-            chunk = GlibcChunk(args.location, from_base=True)
+            chunk = GlibcHeap.GlibcChunk(args.location, from_base=True)
         else:
-            chunk = GlibcChunk(args.location)
+            chunk = GlibcHeap.GlibcChunk(args.location)
 
         # dump
         try:
@@ -19445,7 +19639,7 @@ class GlibcHeapChunksCommand(GenericCommand):
             self.warn("arena.last_remainder is corrupted")
 
         freelist_hint_color = get_gef_setting("theme.heap_freelist_hint")
-        current_chunk = GlibcChunk(dump_start, from_base=True)
+        current_chunk = GlibcHeap.GlibcChunk(dump_start, from_base=True)
 
         arena.reset_bins_info()
         while True:
@@ -19493,7 +19687,7 @@ class GlibcHeapChunksCommand(GenericCommand):
         self.dont_repeat()
 
         # parse arena
-        arena = get_arena(args.arena_addr)
+        arena = GlibcHeap.get_arena(args.arena_addr)
 
         if arena is None:
             err("No valid arena")
@@ -19561,7 +19755,7 @@ class GlibcHeapBinsCommand(GenericCommand):
         if fw == head and not verbose:
             return 0
 
-        bin_table = get_binsize_table()[bin_name]
+        bin_table = GlibcHeap.get_binsize_table()[bin_name]
         if index not in bin_table:
             return 0
 
@@ -19584,7 +19778,7 @@ class GlibcHeapBinsCommand(GenericCommand):
         seen = []
         nb_chunk = 0
         while fw != head:
-            chunk = GlibcChunk(fw, from_base=True)
+            chunk = GlibcHeap.GlibcChunk(fw, from_base=True)
             if chunk.address in seen:
                 fmt = "{:s}{:#x} [loop detected]"
                 m.append(Color.colorify(fmt.format(RIGHT_ARROW, chunk.chunk_base_address), corrupted_msg_color))
@@ -19609,7 +19803,7 @@ class GlibcHeapBinsCommand(GenericCommand):
         self.dont_repeat()
 
         # parse arena
-        arena = get_arena(args.arena_addr)
+        arena = GlibcHeap.get_arena(args.arena_addr)
 
         if arena is None:
             err("No valid arena")
@@ -19695,7 +19889,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
         corrupted_msg_color = get_gef_setting("theme.heap_corrupted_msg")
 
         nb_chunk = 0
-        for i in range(GlibcArena.TCACHE_MAX_BINS):
+        for i in range(GlibcHeap.GlibcArena.TCACHE_MAX_BINS):
             chunk = arena.tcachebin(i)
             chunks = []
             m = []
@@ -19717,7 +19911,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
                     if next_chunk == 0 or next_chunk is None:
                         break
 
-                    chunk = GlibcChunk(next_chunk)
+                    chunk = GlibcHeap.GlibcChunk(next_chunk)
                 except gdb.MemoryError:
                     fmt = "{:s}{:#x} [Corrupted chunk]"
                     m.append(Color.colorify(fmt.format(RIGHT_ARROW, chunk.address), corrupted_msg_color))
@@ -19728,7 +19922,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
                     count = ord(read_memory(tcache_perthread_struct + i, 1))
                 else:
                     count = u16(read_memory(tcache_perthread_struct + 2 * i, 2))
-                size = get_binsize_table()["tcache"][i]["size"]
+                size = GlibcHeap.get_binsize_table()["tcache"][i]["size"]
                 bins_addr = lookup_address(arena.tcachebins_addr(i))
                 fd = lookup_address(read_int_from_memory(bins_addr.value))
                 gef_print("tcachebins[idx={:d}, size={:#x}, @{!s}]: fd={!s} count={:d}".format(i, size, bins_addr, fd, count))
@@ -19750,7 +19944,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
             return
 
         # parse arena
-        arena = get_arena(args.arena_addr)
+        arena = GlibcHeap.get_arena(args.arena_addr)
 
         if arena is None:
             err("No valid arena")
@@ -19830,14 +20024,14 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
                     if next_chunk == 0 or next_chunk is None:
                         break
 
-                    chunk = GlibcChunk(next_chunk, from_base=True)
+                    chunk = GlibcHeap.GlibcChunk(next_chunk, from_base=True)
                 except gdb.MemoryError:
                     fmt = "{:s}{:#x} [Corrupted chunk]"
                     m.append(Color.colorify(fmt.format(RIGHT_ARROW, chunk.chunk_base_address), corrupted_msg_color))
                     break
 
             if m or verbose:
-                bin_table = get_binsize_table()["fastbins"]
+                bin_table = GlibcHeap.get_binsize_table()["fastbins"]
                 if i in bin_table:
                     size = bin_table[i]["size"]
                     bins_addr = lookup_address(arena.fastbins_addr(i))
@@ -19856,7 +20050,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
         self.dont_repeat()
 
         # parse arena
-        arena = get_arena(args.arena_addr)
+        arena = GlibcHeap.get_arena(args.arena_addr)
 
         if arena is None:
             err("No valid arena")
@@ -19905,7 +20099,7 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
         self.dont_repeat()
 
         # parse arena
-        arena = get_arena(args.arena_addr)
+        arena = GlibcHeap.get_arena(args.arena_addr)
 
         if arena is None:
             err("No valid arena")
@@ -19956,7 +20150,7 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
         self.dont_repeat()
 
         # parse arena
-        arena = get_arena(args.arena_addr)
+        arena = GlibcHeap.get_arena(args.arena_addr)
 
         if arena is None:
             err("No valid arena")
@@ -20013,7 +20207,7 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
         self.dont_repeat()
 
         # parse arena
-        arena = get_arena(args.arena_addr)
+        arena = GlibcHeap.get_arena(args.arena_addr)
 
         if arena is None:
             err("No valid arena")
@@ -20043,202 +20237,6 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
                     bins[i] = nb_chunk
             info("Found {:d} valid chunks in {:d} large bins.".format(sum(bins.values()), len(bins)))
         return
-
-
-@Cache.cache_this_session
-def get_binsize_table():
-    table = {
-        "tcache": {},
-        "fastbins": {},
-        "unsorted_bin": {},
-        "small_bins": {},
-        "large_bins": {},
-    }
-
-    if is_64bit():
-        MIN_SIZE = 0x20
-    else:
-        MIN_SIZE = 0x10
-
-    # tcache
-    for i in range(64):
-        # MALLOC_ALIGNMENT is changed from libc 2.26.
-        # for x86_32, tcache 0x8 align is no longer used.
-        # but for ARM32, or maybe other arch, still 0x8 align is used.
-        if is_64bit():
-            size = MIN_SIZE + i * 0x10
-        elif (is_x86_32() or is_riscv32() or is_ppc32()) and get_libc_version() >= (2, 26):
-            size = MIN_SIZE + i * 0x10
-        else:
-            size = MIN_SIZE + i * 0x8
-        table["tcache"][i] = {"size": size}
-
-    # fastbins
-    if is_64bit():
-        for i in range(7):
-            size = MIN_SIZE + i * 0x10
-            table["fastbins"][i] = {"size": size}
-    elif (is_x86_32() or is_riscv32() or is_ppc32()) and get_libc_version() >= (2, 26):
-        # MALLOC_ALIGNMENT is changed from libc 2.26.
-        # for x86_32, fastbin exists every 8 bytes, but only used every 16 bytes.
-        table["fastbins"][0] = {"size": 0x10}
-        table["fastbins"][2] = {"size": 0x20}
-        table["fastbins"][4] = {"size": 0x30}
-        table["fastbins"][6] = {"size": 0x40}
-    else:
-        for i in range(7):
-            size = MIN_SIZE + i * 8
-            table["fastbins"][i] = {"size": size}
-
-    # unsorted bins
-    table["unsorted_bin"][0] = {}
-
-    # smallbins
-    for i in range(1, 63):
-        if is_64bit() or (is_x86_32() and get_libc_version() >= (2, 26)):
-            size = MIN_SIZE + (i - 1) * 0x10
-        else:
-            size = MIN_SIZE + (i - 1) * 0x8
-        table["small_bins"][i] = {"size": size}
-
-    # largebins
-    if is_64bit():
-        table["large_bins"][63] = {"size_min": 0x400, "size_max": 0x440}
-        table["large_bins"][64] = {"size_min": 0x440, "size_max": 0x480}
-        table["large_bins"][65] = {"size_min": 0x480, "size_max": 0x4c0}
-        table["large_bins"][66] = {"size_min": 0x4c0, "size_max": 0x500}
-        table["large_bins"][67] = {"size_min": 0x500, "size_max": 0x540}
-        table["large_bins"][68] = {"size_min": 0x540, "size_max": 0x580}
-        table["large_bins"][69] = {"size_min": 0x580, "size_max": 0x5c0}
-        table["large_bins"][70] = {"size_min": 0x5c0, "size_max": 0x600}
-        table["large_bins"][71] = {"size_min": 0x600, "size_max": 0x640}
-        table["large_bins"][72] = {"size_min": 0x640, "size_max": 0x680}
-        table["large_bins"][73] = {"size_min": 0x680, "size_max": 0x6c0}
-        table["large_bins"][74] = {"size_min": 0x6c0, "size_max": 0x700}
-        table["large_bins"][75] = {"size_min": 0x700, "size_max": 0x740}
-        table["large_bins"][76] = {"size_min": 0x740, "size_max": 0x780}
-        table["large_bins"][77] = {"size_min": 0x780, "size_max": 0x7c0}
-        table["large_bins"][78] = {"size_min": 0x7c0, "size_max": 0x800}
-        table["large_bins"][79] = {"size_min": 0x800, "size_max": 0x840}
-        table["large_bins"][80] = {"size_min": 0x840, "size_max": 0x880}
-        table["large_bins"][81] = {"size_min": 0x880, "size_max": 0x8c0}
-        table["large_bins"][82] = {"size_min": 0x8c0, "size_max": 0x900}
-        table["large_bins"][83] = {"size_min": 0x900, "size_max": 0x940}
-        table["large_bins"][84] = {"size_min": 0x940, "size_max": 0x980}
-        table["large_bins"][85] = {"size_min": 0x980, "size_max": 0x9c0}
-        table["large_bins"][86] = {"size_min": 0x9c0, "size_max": 0xa00}
-        table["large_bins"][87] = {"size_min": 0xa00, "size_max": 0xa40}
-        table["large_bins"][88] = {"size_min": 0xa40, "size_max": 0xa80}
-        table["large_bins"][89] = {"size_min": 0xa80, "size_max": 0xac0}
-        table["large_bins"][90] = {"size_min": 0xac0, "size_max": 0xb00}
-        table["large_bins"][91] = {"size_min": 0xb00, "size_max": 0xb40}
-        table["large_bins"][92] = {"size_min": 0xb40, "size_max": 0xb80}
-        table["large_bins"][93] = {"size_min": 0xb80, "size_max": 0xbc0}
-        table["large_bins"][94] = {"size_min": 0xbc0, "size_max": 0xc00}
-        table["large_bins"][95] = {"size_min": 0xc00, "size_max": 0xc40}
-        table["large_bins"][96] = {"size_min": 0xc40, "size_max": 0xe00}
-    elif is_x86_32() and get_libc_version() >= (2, 26):
-        table["large_bins"][63] = {"size_min": 0x3f0, "size_max": 0x400}
-        table["large_bins"][64] = {"size_min": 0x400, "size_max": 0x440}
-        table["large_bins"][65] = {"size_min": 0x440, "size_max": 0x480}
-        table["large_bins"][66] = {"size_min": 0x480, "size_max": 0x4c0}
-        table["large_bins"][67] = {"size_min": 0x4c0, "size_max": 0x500}
-        table["large_bins"][68] = {"size_min": 0x500, "size_max": 0x540}
-        table["large_bins"][69] = {"size_min": 0x540, "size_max": 0x580}
-        table["large_bins"][70] = {"size_min": 0x580, "size_max": 0x5c0}
-        table["large_bins"][71] = {"size_min": 0x5c0, "size_max": 0x600}
-        table["large_bins"][72] = {"size_min": 0x600, "size_max": 0x640}
-        table["large_bins"][73] = {"size_min": 0x640, "size_max": 0x680}
-        table["large_bins"][74] = {"size_min": 0x680, "size_max": 0x6c0}
-        table["large_bins"][75] = {"size_min": 0x6c0, "size_max": 0x700}
-        table["large_bins"][76] = {"size_min": 0x700, "size_max": 0x740}
-        table["large_bins"][77] = {"size_min": 0x740, "size_max": 0x780}
-        table["large_bins"][78] = {"size_min": 0x780, "size_max": 0x7c0}
-        table["large_bins"][79] = {"size_min": 0x7c0, "size_max": 0x800}
-        table["large_bins"][80] = {"size_min": 0x800, "size_max": 0x840}
-        table["large_bins"][81] = {"size_min": 0x840, "size_max": 0x880}
-        table["large_bins"][82] = {"size_min": 0x880, "size_max": 0x8c0}
-        table["large_bins"][83] = {"size_min": 0x8c0, "size_max": 0x900}
-        table["large_bins"][84] = {"size_min": 0x900, "size_max": 0x940}
-        table["large_bins"][85] = {"size_min": 0x940, "size_max": 0x980}
-        table["large_bins"][86] = {"size_min": 0x980, "size_max": 0x9c0}
-        table["large_bins"][87] = {"size_min": 0x9c0, "size_max": 0xa00}
-        table["large_bins"][88] = {"size_min": 0xa00, "size_max": 0xa40}
-        table["large_bins"][89] = {"size_min": 0xa40, "size_max": 0xa80}
-        table["large_bins"][90] = {"size_min": 0xa80, "size_max": 0xac0}
-        table["large_bins"][91] = {"size_min": 0xac0, "size_max": 0xb00}
-        table["large_bins"][92] = {"size_min": 0xb00, "size_max": 0xb40}
-        table["large_bins"][93] = {"size_min": 0xb40, "size_max": 0xb80}
-        # table["large_bins"][94] is unused
-        table["large_bins"][95] = {"size_min": 0xb80, "size_max": 0xc00}
-        table["large_bins"][96] = {"size_min": 0xc00, "size_max": 0xe00}
-    else:
-        table["large_bins"][63] = {"size_min": 0x200, "size_max": 0x240}
-        table["large_bins"][64] = {"size_min": 0x240, "size_max": 0x280}
-        table["large_bins"][65] = {"size_min": 0x280, "size_max": 0x2c0}
-        table["large_bins"][66] = {"size_min": 0x2c0, "size_max": 0x300}
-        table["large_bins"][67] = {"size_min": 0x300, "size_max": 0x340}
-        table["large_bins"][68] = {"size_min": 0x340, "size_max": 0x380}
-        table["large_bins"][69] = {"size_min": 0x380, "size_max": 0x3c0}
-        table["large_bins"][70] = {"size_min": 0x3c0, "size_max": 0x400}
-        table["large_bins"][71] = {"size_min": 0x400, "size_max": 0x440}
-        table["large_bins"][72] = {"size_min": 0x440, "size_max": 0x480}
-        table["large_bins"][73] = {"size_min": 0x480, "size_max": 0x4c0}
-        table["large_bins"][74] = {"size_min": 0x4c0, "size_max": 0x500}
-        table["large_bins"][75] = {"size_min": 0x500, "size_max": 0x540}
-        table["large_bins"][76] = {"size_min": 0x540, "size_max": 0x580}
-        table["large_bins"][77] = {"size_min": 0x580, "size_max": 0x5c0}
-        table["large_bins"][78] = {"size_min": 0x5c0, "size_max": 0x600}
-        table["large_bins"][79] = {"size_min": 0x600, "size_max": 0x640}
-        table["large_bins"][80] = {"size_min": 0x640, "size_max": 0x680}
-        table["large_bins"][81] = {"size_min": 0x680, "size_max": 0x6c0}
-        table["large_bins"][82] = {"size_min": 0x6c0, "size_max": 0x700}
-        table["large_bins"][83] = {"size_min": 0x700, "size_max": 0x740}
-        table["large_bins"][84] = {"size_min": 0x740, "size_max": 0x780}
-        table["large_bins"][85] = {"size_min": 0x780, "size_max": 0x7c0}
-        table["large_bins"][86] = {"size_min": 0x7c0, "size_max": 0x800}
-        table["large_bins"][87] = {"size_min": 0x800, "size_max": 0x840}
-        table["large_bins"][88] = {"size_min": 0x840, "size_max": 0x880}
-        table["large_bins"][89] = {"size_min": 0x880, "size_max": 0x8c0}
-        table["large_bins"][90] = {"size_min": 0x8c0, "size_max": 0x900}
-        table["large_bins"][91] = {"size_min": 0x900, "size_max": 0x940}
-        table["large_bins"][92] = {"size_min": 0x940, "size_max": 0x980}
-        table["large_bins"][93] = {"size_min": 0x980, "size_max": 0x9c0}
-        table["large_bins"][94] = {"size_min": 0x9c0, "size_max": 0xa00}
-        table["large_bins"][95] = {"size_min": 0xa00, "size_max": 0xc00}
-        table["large_bins"][96] = {"size_min": 0xc00, "size_max": 0xe00}
-
-    table["large_bins"][97] = {"size_min": 0xe00, "size_max": 0x1000}
-    table["large_bins"][98] = {"size_min": 0x1000, "size_max": 0x1200}
-    table["large_bins"][99] = {"size_min": 0x1200, "size_max": 0x1400}
-    table["large_bins"][100] = {"size_min": 0x1400, "size_max": 0x1600}
-    table["large_bins"][101] = {"size_min": 0x1600, "size_max": 0x1800}
-    table["large_bins"][102] = {"size_min": 0x1800, "size_max": 0x1a00}
-    table["large_bins"][103] = {"size_min": 0x1a00, "size_max": 0x1c00}
-    table["large_bins"][104] = {"size_min": 0x1c00, "size_max": 0x1e00}
-    table["large_bins"][105] = {"size_min": 0x1e00, "size_max": 0x2000}
-    table["large_bins"][106] = {"size_min": 0x2000, "size_max": 0x2200}
-    table["large_bins"][107] = {"size_min": 0x2200, "size_max": 0x2400}
-    table["large_bins"][108] = {"size_min": 0x2400, "size_max": 0x2600}
-    table["large_bins"][109] = {"size_min": 0x2600, "size_max": 0x2800}
-    table["large_bins"][110] = {"size_min": 0x2800, "size_max": 0x2a00}
-    table["large_bins"][111] = {"size_min": 0x2a00, "size_max": 0x3000}
-    table["large_bins"][112] = {"size_min": 0x3000, "size_max": 0x4000}
-    table["large_bins"][113] = {"size_min": 0x4000, "size_max": 0x5000}
-    table["large_bins"][114] = {"size_min": 0x5000, "size_max": 0x6000}
-    table["large_bins"][115] = {"size_min": 0x6000, "size_max": 0x7000}
-    table["large_bins"][116] = {"size_min": 0x7000, "size_max": 0x8000}
-    table["large_bins"][117] = {"size_min": 0x8000, "size_max": 0x9000}
-    table["large_bins"][118] = {"size_min": 0x9000, "size_max": 0xa000}
-    table["large_bins"][119] = {"size_min": 0xa000, "size_max": 0x10000}
-    table["large_bins"][120] = {"size_min": 0x10000, "size_max": 0x18000}
-    table["large_bins"][121] = {"size_min": 0x18000, "size_max": 0x20000}
-    table["large_bins"][122] = {"size_min": 0x20000, "size_max": 0x28000}
-    table["large_bins"][123] = {"size_min": 0x28000, "size_max": 0x40000}
-    table["large_bins"][124] = {"size_min": 0x40000, "size_max": 0x80000}
-    table["large_bins"][125] = {"size_min": 0x80000, "size_max": 0x0}
-    table["large_bins"][126] = {"size_min": 0x0, "size_max": 0x0} # maybe unused
-    return table
 
 
 @register_command
@@ -25533,21 +25531,19 @@ class ContextCommand(GenericCommand):
         return
 
     def show_legend(self):
-        global __cached_context_legend__
-
         # use cache
-        if __cached_context_legend__ is not None:
-            if __cached_context_legend__:
-                gef_print(__cached_context_legend__)
+        if Cache.cached_context_legend is not None:
+            if Cache.cached_context_legend:
+                gef_print(Cache.cached_context_legend)
             return
 
         # slow path
         if is_qemu_system() or is_kgdb() or is_vmware():
-            __cached_context_legend__ = False
+            Cache.cached_context_legend = False
             return
 
         if get_gef_setting("gef.disable_color") is True:
-            __cached_context_legend__ = False
+            Cache.cached_context_legend = False
             return
 
         legend = "[ Legend: {} | {} | {} | {} | {} | {} | {} | {} | {} ]".format(
@@ -25562,7 +25558,7 @@ class ContextCommand(GenericCommand):
             Color.colorify("String", get_gef_setting("theme.dereference_string"))
         )
         gef_print(legend)
-        __cached_context_legend__ = legend
+        Cache.cached_context_legend = legend
         return
 
     def context_title(self, m):
@@ -30443,7 +30439,7 @@ class DestructorDumpCommand(GenericCommand):
         # Therefore, identify it from the output of the msymbols command and the offset of thread_arena.
 
         # thread_arena address of main thread
-        main_thread_main_arena = search_for_main_arena_from_tls()
+        main_thread_main_arena = GlibcHeap.search_for_main_arena_from_tls()
         if main_thread_main_arena is None:
             return None
 
@@ -31701,7 +31697,7 @@ class TraceMallocRetBreakpoint(gdb.FinishBreakpoint):
             msg = []
             align = get_memory_alignment()
             for chunk_addr, _ in __heap_allocated_list__:
-                current_chunk = GlibcChunk(chunk_addr)
+                current_chunk = GlibcHeap.GlibcChunk(chunk_addr)
                 current_chunk_size = current_chunk.get_chunk_size()
 
                 if not (chunk_addr <= loc < chunk_addr + current_chunk_size):
@@ -45402,9 +45398,8 @@ class HeapbaseCommand(GenericCommand):
 
     @staticmethod
     def heap_base():
-        global __cached_heap_base__
-        if __cached_heap_base__:
-            return __cached_heap_base__
+        if Cache.cached_heap_base:
+            return Cache.cached_heap_base
 
         # fast path
         # The value of mp_->sbrk_base is correct in x86 or x64.
@@ -45414,15 +45409,15 @@ class HeapbaseCommand(GenericCommand):
         if is_x86():
             try:
                 # symbol and type are defined
-                __cached_heap_base__ = parse_address("mp_->sbrk_base")
-                return __cached_heap_base__
+                Cache.cached_heap_base = parse_address("mp_->sbrk_base")
+                return Cache.cached_heap_base
             except gdb.error:
                 pass
 
         # slow path
         # If glibc has tcache, there is tcache_perthread_struct* in TLS.
         if get_libc_version() >= (2, 26) and current_arch.tls_supported:
-            main_arena_ptr = search_for_main_arena_from_tls()
+            main_arena_ptr = GlibcHeap.search_for_main_arena_from_tls()
 
             if main_arena_ptr:
                 # get first_chunk (=tcache_perthread_struct*)
@@ -45446,12 +45441,12 @@ class HeapbaseCommand(GenericCommand):
                     heap_base = first_chunk - first_chunk_offset
 
                     # save cache
-                    __cached_heap_base__ = heap_base
-                    return __cached_heap_base__
+                    Cache.cached_heap_base = heap_base
+                    return Cache.cached_heap_base
 
         # fall through
-        __cached_heap_base__ = get_section_base_address("[heap]")
-        return __cached_heap_base__
+        Cache.cached_heap_base = get_section_base_address("[heap]")
+        return Cache.cached_heap_base
 
     @parse_args
     @only_if_gdb_running
@@ -47228,7 +47223,7 @@ class VisualHeapCommand(GenericCommand):
             # This is fast, but does not return an accurate list in some cases.
             # For example, sparc64 may not include the heap area.
             # So it detects the end of the page from arena.top.
-            end = arena.top + GlibcChunk(arena.top, from_base=True).size
+            end = arena.top + GlibcHeap.GlibcChunk(arena.top, from_base=True).size
 
         try:
             from tqdm import tqdm
@@ -47240,7 +47235,7 @@ class VisualHeapCommand(GenericCommand):
         addr = dump_start
         i = 0
         while addr < end:
-            chunk = GlibcChunk(addr + current_arch.ptrsize * 2)
+            chunk = GlibcHeap.GlibcChunk(addr + current_arch.ptrsize * 2)
             # corrupt check
             if chunk.size == 0:
                 msg = "{} Corrupted (chunk.size == 0)".format(Color.colorify("[!]", "bold red"))
@@ -47290,7 +47285,7 @@ class VisualHeapCommand(GenericCommand):
         self.safe_linking_decode = args.safe_linking_decode
 
         # parse arena
-        arena = get_arena(args.arena_addr)
+        arena = GlibcHeap.get_arena(args.arena_addr)
 
         if arena is None:
             err("No valid arena")
@@ -73162,7 +73157,7 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
         i = 0
 
         while addr < end:
-            chunk = GlibcChunk(addr + current_arch.ptrsize * 2)
+            chunk = GlibcHeap.GlibcChunk(addr + current_arch.ptrsize * 2)
             # corrupt check
             if chunk.size == 0:
                 msg = "{} Corrupted (chunk.size == 0)".format(Color.colorify("[!]", "bold red"))
