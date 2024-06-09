@@ -186,9 +186,6 @@ __context_comments__            = {} # keep user comments for context
 __context_messages__            = [] # keep additional messages for context
 __context_extra_commands__      = [] # keep extra commands for context
 __highlight_table__             = {} # keep highlight settings
-__heap_allocated_list__         = [] # for heap-analysis-helper command
-__heap_freed_list__             = [] # for heap-analysis-helper command
-__heap_uaf_watchpoints__        = [] # for heap-analysis-helper command
 __patch_history__               = [] # keep patched information
 current_elf                     = None # keep Elf instance
 current_arch                    = None # keep Architecture instance
@@ -31633,7 +31630,7 @@ class TraceMallocBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
-        # The first call to malloc calls malloc twice internally, like malloc-> malloc_hook_ini-> malloc.
+        # The first call to malloc calls malloc twice internally, like malloc -> malloc_hook_ini -> malloc.
         # You need to prevent the breakpoint from being set twice.
         if hasattr(self, "retbp"):
             # The retbp is `gdb.FinishBreakpoint`, not `gdb.Breakpoint`.
@@ -31656,45 +31653,41 @@ class TraceMallocRetBreakpoint(gdb.FinishBreakpoint):
         return
 
     def stop(self):
-        global __heap_uaf_watchpoints__, __heap_freed_list__, __heap_allocated_list__
-
         if self.return_value:
             loc = int(self.return_value)
         else:
             loc = parse_address(current_arch.return_register)
 
-        size = self.size
-        ok("{} - {}({})={:#x}".format(Color.colorify("Heap-Analysis", "bold yellow"), self.name, size, loc))
+        ok("{:s} - {:s}({:#6x})={:#x}".format(Color.colorify("Heap-Analysis", "bold yellow"), self.name, self.size, loc))
         check_heap_overlap = get_gef_setting("heap_analysis_helper.check_heap_overlap")
 
         # pop from freed list if it was in it
-        if __heap_freed_list__:
+        if HeapAnalysisCommand.heap_freed_list:
             idx = 0
-            for item in __heap_freed_list__:
+            for item in HeapAnalysisCommand.heap_freed_list:
                 addr = item[0]
                 if addr == loc:
-                    __heap_freed_list__.remove(item)
+                    HeapAnalysisCommand.heap_freed_list.remove(item)
                     continue
                 idx += 1
 
         # pop from uaf watchlist
-        if __heap_uaf_watchpoints__:
+        if HeapAnalysisCommand.heap_uaf_watchpoints:
             idx = 0
-            for wp in __heap_uaf_watchpoints__:
-                wp_addr = wp.address
-                if loc <= wp_addr < loc + size:
-                    __heap_uaf_watchpoints__.remove(wp)
+            for wp in HeapAnalysisCommand.heap_uaf_watchpoints:
+                if loc <= wp.address < loc + self.size:
+                    HeapAnalysisCommand.heap_uaf_watchpoints.remove(wp)
                     wp.enabled = False
                     continue
                 idx += 1
 
-        item = (loc, size)
+        item = (loc, self.size)
 
         if check_heap_overlap:
             # seek all the currently allocated chunks, read their effective size and check for overlap
             msg = []
             align = get_memory_alignment()
-            for chunk_addr, _ in __heap_allocated_list__:
+            for chunk_addr, _ in HeapAnalysisCommand.heap_allocated_list:
                 current_chunk = GlibcHeap.GlibcChunk(chunk_addr)
                 current_chunk_size = current_chunk.get_chunk_size()
 
@@ -31706,17 +31699,22 @@ class TraceMallocRetBreakpoint(gdb.FinishBreakpoint):
 
                 msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
                 msg.append("Possible heap overlap detected")
-                fmt = "Reason {} new allocated chunk {:#x} (of size {:d}) overlaps in-used chunk {:#x} (of size {:#x})"
-                msg.append(fmt.format(RIGHT_ARROW, loc, size, chunk_addr, current_chunk_size))
-                msg.append("Writing {0:d} bytes from {1:#x} will reach chunk {2:#x}".format(offset, chunk_addr, loc))
-                msg.append("Payload example for chunk {1:#x} (to overwrite {0:#x} headers):".format(loc, chunk_addr))
+                msg.append("Reason {:s} new allocated chunk {:#x} (of size {:d}) overlaps in-used chunk {:#x} (of size {:#x})".format(
+                    RIGHT_ARROW, loc, self.size, chunk_addr, current_chunk_size,
+                ))
+                msg.append("Writing {:d} bytes from {:#x} will reach chunk {:#x}".format(offset, chunk_addr, loc))
+                msg.append("Payload example for chunk {:#x} (to overwrite {:#x} headers):".format(chunk_addr, loc))
                 msg.append("  data = 'A'*{0:d} + 'B'*{1:d} + 'C'*{1:d}".format(offset, align))
                 push_context_message("warn", "\n".join(msg))
                 return True
 
         # add it to alloc-ed list
-        __heap_allocated_list__.append(item)
+        HeapAnalysisCommand.heap_allocated_list.append(item)
         return False
+
+    def out_of_scope(self):
+        print("{:s}: abnormal finish".format(self.name))
+        return
 
 
 class TraceReallocBreakpoint(gdb.Breakpoint):
@@ -31743,37 +31741,40 @@ class TraceReallocRetBreakpoint(gdb.FinishBreakpoint):
         return
 
     def stop(self):
-        global __heap_uaf_watchpoints__, __heap_freed_list__, __heap_allocated_list__
-
         if self.return_value:
             newloc = int(self.return_value)
         else:
             newloc = parse_address(current_arch.return_register)
 
-        if newloc != self.ptr:
+        if self.ptr == 0:
+            msg = Color.yellowify("{:#x} (return new chunk)".format(newloc))
+        elif newloc != self.ptr:
             msg = Color.redify("{:#x} (return another chunk)".format(newloc))
         else:
             msg = Color.greenify("{:#x} (return same chunk)".format(newloc))
-        args = [
-            Color.colorify("Heap-Analysis", "bold yellow"),
-            self.ptr, self.size, msg,
-        ]
-        ok("{} - realloc({:#x}, {})={}".format(*args))
+        ok("{:s} - realloc({:#x}, {:#6x})={:s}".format(
+            Color.colorify("Heap-Analysis", "bold yellow"), self.ptr, self.size, msg,
+        ))
 
         item = (newloc, self.size)
 
         try:
             # check if item was in alloc-ed list
-            idx = [x for x, y in __heap_allocated_list__].index(self.ptr)
+            idx = [x for x, y in HeapAnalysisCommand.heap_allocated_list].index(self.ptr)
             # if so pop it out
-            item = __heap_allocated_list__.pop(idx)
+            item = HeapAnalysisCommand.heap_allocated_list.pop(idx)
         except ValueError:
-            warn("Chunk {:#x} was not in tracking list".format(self.ptr))
+            if self.ptr != 0:
+                warn("Chunk {:#x} was not in tracking list".format(self.ptr))
         finally:
             # add new item to alloc-ed list
-            __heap_allocated_list__.append(item)
+            HeapAnalysisCommand.heap_allocated_list.append(item)
 
         return False
+
+    def out_of_scope(self):
+        print("realloc: abnormal finish")
+        return
 
 
 class TraceFreeBreakpoint(gdb.Breakpoint):
@@ -31792,7 +31793,7 @@ class TraceFreeBreakpoint(gdb.Breakpoint):
         check_weird_free = get_gef_setting("heap_analysis_helper.check_weird_free")
         check_uaf = get_gef_setting("heap_analysis_helper.check_uaf")
 
-        ok("{} - free({:#x})".format(Color.colorify("Heap-Analysis", "bold yellow"), addr))
+        ok("{:s} - free({:#x})".format(Color.colorify("Heap-Analysis", "bold yellow"), addr))
         if addr == 0:
             if check_free_null:
                 msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
@@ -31802,11 +31803,12 @@ class TraceFreeBreakpoint(gdb.Breakpoint):
                 return True
             return False
 
-        if addr in [x for (x, y) in __heap_freed_list__]:
+        if addr in [x for (x, y) in HeapAnalysisCommand.heap_freed_list]:
             if check_double_free:
                 msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
-                fmt = "Double-free detected {} free({:#x}) is called at {:#x} but is already in the freed list"
-                msg.append(fmt.format(RIGHT_ARROW, addr, current_arch.pc))
+                msg.append("Double-free detected {:s} free({:#x}) is called at {:#x} but is already in the freed list".format(
+                    RIGHT_ARROW, addr, current_arch.pc,
+                ))
                 msg.append("Execution will likely crash...")
                 push_context_message("warn", "\n".join(msg))
                 return True
@@ -31816,8 +31818,8 @@ class TraceFreeBreakpoint(gdb.Breakpoint):
         # 1. move alloc-ed item to free list
         try:
             # pop from alloc-ed list
-            idx = [x for x, y in __heap_allocated_list__].index(addr)
-            item = __heap_allocated_list__.pop(idx)
+            idx = [x for x, y in HeapAnalysisCommand.heap_allocated_list].index(addr)
+            item = HeapAnalysisCommand.heap_allocated_list.pop(idx)
 
         except ValueError:
             if check_weird_free:
@@ -31829,7 +31831,7 @@ class TraceFreeBreakpoint(gdb.Breakpoint):
             return False
 
         # 2. add it to freed list
-        __heap_freed_list__.append(item)
+        HeapAnalysisCommand.heap_freed_list.append(item)
 
         self.retbp = None
         if check_uaf:
@@ -31849,8 +31851,12 @@ class TraceFreeRetBreakpoint(gdb.FinishBreakpoint):
     def stop(self):
         Cache.reset_gef_caches()
         wp = UafWatchpoint(self.addr)
-        __heap_uaf_watchpoints__.append(wp)
+        HeapAnalysisCommand.heap_uaf_watchpoints.append(wp)
         return False
+
+    def out_of_scope(self):
+        print("free: abnormal finish")
+        return
 
 
 class UafWatchpoint(gdb.Breakpoint):
@@ -31872,16 +31878,16 @@ class UafWatchpoint(gdb.Breakpoint):
         if frame.name() in ("_int_malloc", "malloc_consolidate", "__libc_calloc",):
             return False
 
-        # software watchpoints stop after the next statement (see
-        # https://sourceware.org/gdb/onlinedocs/gdb/Set-Watchpoints.html)
+        # software watchpoints stop after the next statement
+        # see https://sourceware.org/gdb/onlinedocs/gdb/Set-Watchpoints.html
         pc = gdb_get_nth_previous_instruction_address(current_arch.pc, 2)
         insn = get_insn()
         msg = []
         msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
-        fmt = "Possible Use-after-Free in '{:s}': pointer {:#x} was freed, but is attempted to be used at {:#x}"
-        msg.append(fmt.format(get_filepath(), self.address, pc))
-        fmt = "{:#x}   {:s} {:s}"
-        msg.append(fmt.format(insn.address, insn.mnemonic, Color.yellowify(", ".join(insn.operands))))
+        msg.append("Possible Use-after-Free in '{:s}': pointer {:#x} was freed, but is attempted to be used at {:#x}".format(
+            get_filepath(), self.address, pc,
+        ))
+        msg.append("{:#x}   {:s} {:s}".format(insn.address, insn.mnemonic, Color.yellowify(", ".join(insn.operands))))
         push_context_message("warn", "\n".join(msg))
         return True
 
@@ -31896,6 +31902,12 @@ class HeapAnalysisCommand(GenericCommand):
     parser.add_argument("--show", action="store_true", help="show the tracked allocations.")
     parser.add_argument("--config", action="store_true", help="show the config for settings.")
     _syntax_ = parser.format_help()
+
+    _note_ = "It doesn't seem to work well on Ubuntu 24.04 (glibc 2.39). Currently it is in investigating the cause."
+
+    heap_allocated_list = []
+    heap_freed_list = []
+    heap_uaf_watchpoints = []
 
     def __init__(self, *args, **kwargs):
         super().__init__()
@@ -31944,35 +31956,30 @@ class HeapAnalysisCommand(GenericCommand):
         gdb.execute("set can-use-hw-watchpoints 0")
 
         info("Dynamic breakpoints correctly setup, GEF will break execution if a possible vulnerabity is found.")
-        msg = "{}: The heap analysis slows down the execution noticeably."
-        warn(msg.format(Color.colorify("Note", "bold underline yellow")))
+        warn("{:s}: The heap analysis slows down the execution noticeably.".format(Color.colorify("Note", "bold underline yellow")))
 
         # when inferior quits, we need to clean everything for a next execution
         gef_on_exit_hook(self.clean)
         return
 
     def dump_tracked_allocations(self):
-        global __heap_allocated_list__, __heap_freed_list__, __heap_uaf_watchpoints__
-
-        if __heap_allocated_list__:
+        if HeapAnalysisCommand.heap_allocated_list:
             ok("Tracked as in-use chunks:")
-            for addr, sz in __heap_allocated_list__:
-                gef_print("{:#x} = malloc({:d})".format(addr, sz))
+            for addr, sz in HeapAnalysisCommand.heap_allocated_list:
+                gef_print("{:#x} = malloc({:#x})".format(addr, sz))
         else:
             ok("No malloc() chunk tracked")
 
-        if __heap_freed_list__:
+        if HeapAnalysisCommand.heap_freed_list:
             ok("Tracked as freed chunks:")
-            for addr, _sz in __heap_freed_list__:
+            for addr, _sz in HeapAnalysisCommand.heap_freed_list:
                 gef_print("free({:#x})".format(addr))
         else:
             ok("No free() chunk tracked")
         return
 
     def clean(self, _event):
-        global __heap_allocated_list__, __heap_freed_list__, __heap_uaf_watchpoints__
-
-        ok("{} - Cleaning up".format(Color.colorify("Heap-Analysis", "bold yellow")))
+        ok("{:s} - Cleaning up".format(Color.colorify("Heap-Analysis", "bold yellow")))
         for bp in [self.bp_malloc, self.bp_calloc, self.bp_free, self.bp_realloc]:
             if hasattr(bp, "retbp") and bp.retbp:
                 try:
@@ -31984,14 +31991,14 @@ class HeapAnalysisCommand(GenericCommand):
 
             bp.delete()
 
-        for wp in __heap_uaf_watchpoints__:
+        for wp in HeapAnalysisCommand.heap_uaf_watchpoints:
             wp.delete()
 
-        __heap_allocated_list__ = []
-        __heap_freed_list__ = []
-        __heap_uaf_watchpoints__ = []
+        HeapAnalysisCommand.heap_allocated_list = []
+        HeapAnalysisCommand.heap_freed_list = []
+        HeapAnalysisCommand.heap_uaf_watchpoints = []
 
-        ok("{} - Re-enabling hardware watchpoints".format(Color.colorify("Heap-Analysis", "bold yellow")))
+        ok("{:s} - Re-enabling hardware watchpoints".format(Color.colorify("Heap-Analysis", "bold yellow")))
         gdb.execute("set can-use-hw-watchpoints 1")
 
         gef_on_exit_unhook(self.clean)
