@@ -178,7 +178,6 @@ __gef_convenience_vars_index__  = 0 # $_gef1, $_gef2, ...
 __gef_libc_args_definitions__   = {} # libc arguments definition
 __gef_prev_arch__               = None # previous valid result of edb.selected_frame().architecture()
 __gef_check_once__              = True # the flag to process only once at startup
-__gef_context_hidden__          = False # the flag to skip displaying context
 __gef_delayed_breakpoints__     = set() # for break-rva command
 __gef_delayed_bp_set__          = False # for break-rva command
 __gef_use_info_proc_mappings__  = None # the flag to use `info proc mappings`
@@ -4467,18 +4466,6 @@ def hexdump(source, length=0x10, separator=".", color=True, show_symbol=True, ba
         fmt = "{addr:#0{aw}x}:{sym:<{sym_width}}    {data}    |  {text}  |"
         result.append(fmt.format(aw=align, addr=addr, sym=sym, sym_width=max_sym_width, data=data, text=text))
     return "\n".join(result)
-
-
-def hide_context():
-    global __gef_context_hidden__
-    __gef_context_hidden__ = True
-    return
-
-
-def unhide_context():
-    global __gef_context_hidden__
-    __gef_context_hidden__ = False
-    return
 
 
 @Cache.cache_until_next
@@ -25148,9 +25135,9 @@ class MainBreakCommand(GenericCommand):
                     return None
                 entry += codebase
             EntryBreakBreakpoint("*{:#x}".format(entry))
-            hide_context()
+            ContextCommand.hide_context()
             gdb.execute("c") # use c wrapper
-            unhide_context()
+            ContextCommand.unhide_context()
             libc_start_main = self.get_libc_start_main()
 
         if libc_start_main == 0:
@@ -25158,9 +25145,9 @@ class MainBreakCommand(GenericCommand):
             return None
 
         EntryBreakBreakpoint("*{:#x}".format(libc_start_main))
-        hide_context()
+        ContextCommand.hide_context()
         gdb.execute("c") # use c wrapper
-        unhide_context()
+        ContextCommand.unhide_context()
 
         # get first arg when break at __libc_start_main
         _, val = current_arch.get_ith_parameter(0)
@@ -25182,14 +25169,14 @@ class MainBreakCommand(GenericCommand):
             return
 
         EntryBreakBreakpoint("*{:#x}".format(main_address))
-        hide_context()
+        ContextCommand.hide_context()
         try:
             gdb.execute("c") # use c wrapper
         except gdb.error as e:
             err(str(e))
-            unhide_context()
+            ContextCommand.unhide_context()
             return
-        unhide_context()
+        ContextCommand.unhide_context()
         gdb.execute("context")
         return
 
@@ -25286,7 +25273,7 @@ class EntryPointBreakCommand(GenericCommand):
         # So use gef_on_new_hook (use gdb.events.new_objfile internally),
         # instead of `set stop-on-solib-events 1` because shared object are never loaded.
         # At least gdb 10.1 (Ubuntu 18.04) supports gdb.events.new_objfile.
-        hide_context()
+        ContextCommand.hide_context()
         gef_on_new_hook(EntryPointBreakCommand.stop_callback)
         gdb.execute("run {}".format(" ".join(argv)))
         return
@@ -25295,7 +25282,7 @@ class EntryPointBreakCommand(GenericCommand):
     def stop_callback(_):
         # unhook
         gef_on_new_unhook(EntryPointBreakCommand.stop_callback)
-        unhide_context()
+        ContextCommand.unhide_context()
 
         # get section
         fpath = get_filepath()
@@ -25481,6 +25468,17 @@ class ContextCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     old_registers = {}
+    context_hidden = False
+
+    @staticmethod
+    def hide_context():
+        ContextCommand.context_hidden = True
+        return
+
+    @staticmethod
+    def unhide_context():
+        ContextCommand.context_hidden = False
+        return
 
     def __init__(self):
         super().__init__()
@@ -26763,7 +26761,7 @@ class ContextCommand(GenericCommand):
             gdb.execute("gef config context.enable False")
             return
 
-        if not self.get_setting("enable") or __gef_context_hidden__:
+        if not self.get_setting("enable") or ContextCommand.context_hidden:
             return
 
         if len(args.commands) > 0:
