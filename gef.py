@@ -182,7 +182,6 @@ __gef_context_hidden__          = False # the flag to skip displaying context
 __gef_delayed_breakpoints__     = set() # for break-rva command
 __gef_delayed_bp_set__          = False # for break-rva command
 __gef_use_info_proc_mappings__  = None # the flag to use `info proc mappings`
-__gef_global_cache__            = {} # for caching (replaced from functools.lru_cache)
 __gef_check_disabled_bp__       = False # the flag to remove unnecessary breakpoints
 __context_comments__            = {} # keep user comments for context
 __context_messages__            = [] # keep additional messages for context
@@ -356,79 +355,79 @@ def hexoff():
     return
 
 
-def cache_until_next(f):
-    """Decorator for short-term caching until si or ni is executed."""
+class Cache:
+    gef_caches = {
+        "until_next": {},
+        "this_session": {},
+    }
 
-    LIFE_TIME = "until_next"
+    @staticmethod
+    def cache_until_next(f):
+        """Decorator for short-term caching until si or ni is executed."""
 
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        global __gef_global_cache__
+        LIFE_TIME = "until_next"
 
-        kw = tuple(kwargs.items())
-        _id = id(f)
+        @functools.wraps(f)
+        def wrapper(*args, **kwargs):
+            kw = tuple(kwargs.items())
+            _id = id(f)
 
-        try:
-            return __gef_global_cache__[LIFE_TIME][f.__name__, _id][args, kw]
-        except KeyError:
-            ret = f(*args, **kwargs)
-            if LIFE_TIME not in __gef_global_cache__:
-                __gef_global_cache__[LIFE_TIME] = {}
-            if (f.__name__, _id) not in __gef_global_cache__[LIFE_TIME]:
-                __gef_global_cache__[LIFE_TIME][f.__name__, _id] = {}
-            __gef_global_cache__[LIFE_TIME][f.__name__, _id][args, kw] = ret
-            return ret
-
-    return wrapper
-
-
-def cache_this_session(f):
-    """Decorator for long-term caching for the duration of the session."""
-
-    LIFE_TIME = "this_session"
-
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        global __gef_global_cache__
-
-        kw = tuple(kwargs.items())
-        _id = id(f)
-
-        try:
-            return __gef_global_cache__[LIFE_TIME][f.__name__, _id][args, kw]
-        except KeyError:
-            ret = f(*args, **kwargs)
-            if LIFE_TIME not in __gef_global_cache__:
-                __gef_global_cache__[LIFE_TIME] = {}
-            if (f.__name__, _id) not in __gef_global_cache__[LIFE_TIME]:
-                __gef_global_cache__[LIFE_TIME][f.__name__, _id] = {}
-            __gef_global_cache__[LIFE_TIME][f.__name__, _id][args, kw] = ret
-            return ret
-
-    return wrapper
-
-
-def reset_gef_caches(function=None, all=False):
-    if function:
-        for v in __gef_global_cache__.values():
             try:
-                del v[function.__name__, id(function)]
+                return Cache.gef_caches[LIFE_TIME][f.__name__, _id][args, kw]
             except KeyError:
-                pass
+                ret = f(*args, **kwargs)
+                if (f.__name__, _id) not in Cache.gef_caches[LIFE_TIME]:
+                    Cache.gef_caches[LIFE_TIME][f.__name__, _id] = {}
+                Cache.gef_caches[LIFE_TIME][f.__name__, _id][args, kw] = ret
+                return ret
+
+        return wrapper
+
+    @staticmethod
+    def cache_this_session(f):
+        """Decorator for long-term caching for the duration of the session."""
+
+        LIFE_TIME = "this_session"
+
+        @functools.wraps(f)
+        def wrapper(*args, **kwargs):
+            kw = tuple(kwargs.items())
+            _id = id(f)
+
+            try:
+                return Cache.gef_caches[LIFE_TIME][f.__name__, _id][args, kw]
+            except KeyError:
+                ret = f(*args, **kwargs)
+                if (f.__name__, _id) not in Cache.gef_caches[LIFE_TIME]:
+                    Cache.gef_caches[LIFE_TIME][f.__name__, _id] = {}
+                Cache.gef_caches[LIFE_TIME][f.__name__, _id][args, kw] = ret
+                return ret
+
+        return wrapper
+
+    @staticmethod
+    def reset_gef_caches(function=None, all=False):
+        if function:
+            for v in Cache.gef_caches.values():
+                try:
+                    del v[function.__name__, id(function)]
+                except KeyError:
+                    pass
+            return
+
+        Cache.gef_caches["until_next"] = {}
+
+        if all:
+            Cache.gef_caches["this_session"] = {}
+
+        if all:
+            global __cached_context_legend__
+            __cached_context_legend__ = None
+            global __cached_heap_base__
+            __cached_heap_base__ = None
+            global __cached_main_arena__
+            __cached_main_arena__ = None
         return
-
-    __gef_global_cache__["until_next"] = {}
-
-    if all:
-        __gef_global_cache__["this_session"] = {}
-
-        global __cached_context_legend__
-        __cached_context_legend__ = None
-        global __cached_heap_base__
-        __cached_heap_base__ = None
-        global __cached_main_arena__
-        __cached_main_arena__ = None
-    return
 
 
 def highlight_text(text):
@@ -2878,7 +2877,7 @@ class MallocPar:
         return getattr(self, item)
 
 
-@cache_until_next
+@Cache.cache_until_next
 def search_for_mp_():
     """search mp_ from main_arena, then return addr."""
     main_arena_ptr = search_for_main_arena_from_tls()
@@ -3091,7 +3090,7 @@ class MallocStateStruct:
         return getattr(self, item)
 
 
-@cache_until_next
+@Cache.cache_until_next
 def search_for_main_arena_from_tls():
     """search main arena from TLS, then return &addr."""
 
@@ -3912,7 +3911,7 @@ def get_libc_version():
     RE_GLIBC_VERSION = re.compile(rb"glibc (\d+)\.(\d+)")
 
     def get_libc_version_from_path():
-        reset_gef_caches(all=True) # get_process_maps may be caching old information
+        Cache.reset_gef_caches(all=True) # get_process_maps may be caching old information
 
         sections = get_process_maps()
         for section in sections:
@@ -4183,7 +4182,7 @@ def rol(val, bits, arch_bits=64):
     return new_val & mask
 
 
-@cache_this_session
+@Cache.cache_this_session
 def which(program):
     """Locate a command on the filesystem."""
     def is_exe(fpath):
@@ -4288,7 +4287,7 @@ def unhide_context():
     return
 
 
-@cache_until_next
+@Cache.cache_until_next
 def get_gef_setting(name):
     """Read global gef settings.
     Return None if not found. A valid config setting can never return None, but False, 0 or ""."""
@@ -4302,7 +4301,7 @@ def get_gef_setting(name):
 def set_gef_setting(name, value, _type=None, _desc=None):
     """Set global gef settings.
     Raise ValueError if `name` doesn't exist and `type` and `desc` are not provided."""
-    reset_gef_caches()
+    Cache.reset_gef_caches()
 
     global __gef_config__
     if name not in __gef_config__:
@@ -4320,10 +4319,10 @@ def set_gef_setting(name, value, _type=None, _desc=None):
 
 # `info symbol` called from gdb_get_location is heavy processing.
 # Moreover, dereference_from causes each address to be resolved every time.
-# cache_until_next is not effective as-is, as it is cleared by reset_gef_caches() each time the `stepi` runs.
+# Cache.cache_until_next is not effective as-is, as it is cleared by Cache.reset_gef_caches() each time the `stepi` runs.
 # Fortunately, symbol information rarely changes.
 # I decided to keep the cache until it is explicitly cleared.
-@cache_this_session
+@Cache.cache_this_session
 def gdb_get_location(address):
     """Retrieve the location of the `address` argument from the symbol table.
     Return a tuple with the name and offset if found, None otherwise."""
@@ -4351,7 +4350,7 @@ def gdb_get_location(address):
     return name, offset
 
 
-@cache_this_session
+@Cache.cache_this_session
 def get_symbol_string(addr, nosymbol_string=""):
     try:
         if isinstance(addr, str):
@@ -4756,7 +4755,7 @@ def gef_execute_gdb_script(commands):
     return
 
 
-@cache_until_next
+@Cache.cache_until_next
 def get_cet_status_old_interface():
     # https://lore.kernel.org/lkml/1531342544.15351.37.camel@intel.com/
     sp = current_arch.sp
@@ -4786,7 +4785,7 @@ def get_cet_status_old_interface():
     return sp_value
 
 
-@cache_until_next
+@Cache.cache_until_next
 def get_cet_status_new_interface():
     # https://www.kernel.org/doc/html/next/arch/x86/shstk.html
     sp = current_arch.sp
@@ -4813,7 +4812,7 @@ def get_cet_status_new_interface():
     return sp_value
 
 
-@cache_until_next
+@Cache.cache_until_next
 def get_cet_status_via_procfs():
     # https://www.kernel.org/doc/html/next/arch/x86/shstk.html
     dic = {}
@@ -4869,7 +4868,7 @@ def get_pac_status():
     return u2i(ret)
 
 
-@cache_this_session
+@Cache.cache_this_session
 def get_endian():
     """Return the binary endianness."""
     endian = gdb.execute("show endian", to_string=True).strip().lower()
@@ -4880,7 +4879,7 @@ def get_endian():
     raise EnvironmentError("Invalid endianness")
 
 
-@cache_this_session
+@Cache.cache_this_session
 def get_entry_point(fpath=None):
     """Return the binary entry point."""
     if fpath:
@@ -10557,7 +10556,7 @@ def read_memory(addr, length):
     return gdb.selected_inferior().read_memory(addr, length).tobytes()
 
 
-@cache_this_session
+@Cache.cache_this_session
 def get_gic_addrs():
     """Return physical addresses of ARM GIC(General Interrupt Controller)."""
     if not is_qemu_system():
@@ -10591,7 +10590,7 @@ def get_gic_addrs():
     return gic_list
 
 
-@cache_until_next
+@Cache.cache_until_next
 def check_gic_address(vaddr):
     gic_addrs = get_gic_addrs()
     if not gic_addrs:
@@ -10612,7 +10611,7 @@ def check_gic_address(vaddr):
     return False
 
 
-@cache_until_next
+@Cache.cache_until_next
 def is_valid_addr(addr):
     if addr < 0:
         return False
@@ -10843,7 +10842,7 @@ def is_kvm_enabled():
         return False
 
 
-@cache_until_next
+@Cache.cache_until_next
 def p8(x, s=False):
     """Pack one byte respecting the current architecture endianness."""
     if not s:
@@ -10852,7 +10851,7 @@ def p8(x, s=False):
         return struct.pack("{}b".format(endian_str()), x)
 
 
-@cache_until_next
+@Cache.cache_until_next
 def p16(x, s=False):
     """Pack one word respecting the current architecture endianness."""
     if not s:
@@ -10861,7 +10860,7 @@ def p16(x, s=False):
         return struct.pack("{}h".format(endian_str()), x)
 
 
-@cache_until_next
+@Cache.cache_until_next
 def p32(x, s=False):
     """Pack one dword respecting the current architecture endianness."""
     if not s:
@@ -10870,7 +10869,7 @@ def p32(x, s=False):
         return struct.pack("{}i".format(endian_str()), x)
 
 
-@cache_until_next
+@Cache.cache_until_next
 def p64(x, s=False):
     """Pack one qword respecting the current architecture endianness."""
     if not s:
@@ -10879,7 +10878,7 @@ def p64(x, s=False):
         return struct.pack("{}q".format(endian_str()), x)
 
 
-@cache_until_next
+@Cache.cache_until_next
 def u8(x, s=False):
     """Unpack one byte respecting the current architecture endianness."""
     if not s:
@@ -10888,7 +10887,7 @@ def u8(x, s=False):
         return struct.unpack("{}b".format(endian_str()), x)[0]
 
 
-@cache_until_next
+@Cache.cache_until_next
 def u16(x, s=False):
     """Unpack one word respecting the current architecture endianness."""
     if not s:
@@ -10897,7 +10896,7 @@ def u16(x, s=False):
         return struct.unpack("{}h".format(endian_str()), x)[0]
 
 
-@cache_until_next
+@Cache.cache_until_next
 def u32(x, s=False):
     """Unpack one dword respecting the current architecture endianness."""
     if not s:
@@ -10906,7 +10905,7 @@ def u32(x, s=False):
         return struct.unpack("{}i".format(endian_str()), x)[0]
 
 
-@cache_until_next
+@Cache.cache_until_next
 def u64(x, s=False):
     """Unpack one qword respecting the current architecture endianness."""
     if not s:
@@ -10915,7 +10914,7 @@ def u64(x, s=False):
         return struct.unpack("{}q".format(endian_str()), x)[0]
 
 
-@cache_until_next
+@Cache.cache_until_next
 def u128(x):
     """Unpack one oword respecting the current architecture endianness."""
     upper = struct.unpack("{}Q".format(endian_str()), x[8:])[0]
@@ -11324,7 +11323,7 @@ def get_path_from_info_proc():
     return None
 
 
-@cache_this_session
+@Cache.cache_this_session
 def is_remote_debug():
     """"Return True is the current debugging session is running through GDB remote session."""
     try:
@@ -11341,13 +11340,13 @@ def is_remote_debug():
 # However, it cannot detect that traffic is being redirected to another host.
 
 
-@cache_this_session
+@Cache.cache_this_session
 def is_normal_run():
     ret = gdb.execute("info files", to_string=True)
     return "Using the running image of child" in ret
 
 
-@cache_this_session
+@Cache.cache_this_session
 def is_attach():
     try:
         return gdb.selected_inferior().was_attached
@@ -11356,12 +11355,12 @@ def is_attach():
         return "Using the running image of attached" in ret
 
 
-@cache_this_session
+@Cache.cache_this_session
 def is_container_attach():
     return not is_remote_debug() and is_attach() and gdb.current_progspace().filename.startswith("target:")
 
 
-@cache_this_session
+@Cache.cache_this_session
 def is_pin():
     if not is_remote_debug():
         return False
@@ -11373,7 +11372,7 @@ def is_pin():
     return "intel.name=" in response
 
 
-@cache_this_session
+@Cache.cache_this_session
 def is_qemu():
     if not is_remote_debug():
         return False
@@ -11385,7 +11384,7 @@ def is_qemu():
     return "ENABLE=" in response
 
 
-@cache_this_session
+@Cache.cache_this_session
 def is_qemu_user():
     if is_qemu() is False:
         return False
@@ -11397,7 +11396,7 @@ def is_qemu_user():
     return "Text=" in response
 
 
-@cache_this_session
+@Cache.cache_this_session
 def is_qemu_system():
     if is_qemu() is False:
         return False
@@ -11409,7 +11408,7 @@ def is_qemu_system():
     return 'received: ""' in response
 
 
-@cache_this_session
+@Cache.cache_this_session
 def is_over_serial():
     if not is_remote_debug():
         return False
@@ -11425,7 +11424,7 @@ def is_kgdb():
     return is_x86_64() and is_over_serial()
 
 
-@cache_this_session
+@Cache.cache_this_session
 def is_vmware():
     if not is_remote_debug():
         return False
@@ -11437,7 +11436,7 @@ def is_vmware():
         return False
 
 
-@cache_this_session
+@Cache.cache_this_session
 def is_qiling():
     if not is_remote_debug():
         return False
@@ -11450,12 +11449,12 @@ def is_qiling():
     return False
 
 
-@cache_this_session
+@Cache.cache_this_session
 def is_rr():
     return get_pid_from_tcp_session(filepath="rr") is not None
 
 
-@cache_this_session
+@Cache.cache_this_session
 def is_wine():
     return get_pid_from_tcp_session(filepath="wineserver") is not None
 
@@ -11555,7 +11554,7 @@ def get_pid_wine():
 # Under pin and qemu, it is necessary to parse the TCP information for obtaining the pid.
 # This operation is expensive, but once known, it never changes.
 # I decided to keep the cache until it is explicitly cleared.
-@cache_this_session
+@Cache.cache_this_session
 def get_pid(remote=False):
     """Return the PID of the debuggee process."""
 
@@ -11587,7 +11586,7 @@ def append_proc_root(filepath):
     return os.path.join(prefix, relative_path)
 
 
-@cache_this_session
+@Cache.cache_this_session
 def get_filepath(append_proc_root_prefix=True):
     """Return the local absolute path of the file currently debugged."""
     filepath = gdb.current_progspace().filename
@@ -11619,7 +11618,7 @@ def get_filepath(append_proc_root_prefix=True):
         return filepath
 
 
-@cache_this_session
+@Cache.cache_this_session
 def get_filename():
     """Return the full filename of the file currently debugged."""
     filename = get_filepath()
@@ -11707,10 +11706,10 @@ def get_process_maps_linux(pid, remote=False):
 
 # get_explored_regions (used at qemu-user mode) is very slow,
 # Because it repeats read_memory many times to find the upper and lower bounds of the page.
-# cache_until_next is not effective as-is, as it is cleared by reset_gef_caches() each time the `stepi` runs.
+# Cache.cache_until_next is not effective as-is, as it is cleared by Cache.reset_gef_caches() each time the `stepi` runs.
 # Fortunately, memory maps rarely change.
 # I decided to clear and recheck the cache when the `vmmap` command is called explicitly.
-@cache_this_session
+@Cache.cache_this_session
 def get_explored_regions():
     """Return sections from auxv exploring"""
 
@@ -12090,7 +12089,7 @@ def get_process_maps_heuristic():
     return get_explored_regions() # use cache
 
 
-@cache_until_next
+@Cache.cache_until_next
 def get_process_maps(outer=False):
     """Return the mapped memory sections"""
     if is_qemu_user():
@@ -12138,10 +12137,10 @@ def get_process_maps(outer=False):
 
 # `info files` called from get_info_files is heavy processing.
 # Moreover, dereference_from causes each address to be resolved every time.
-# cache_until_next is not effective as-is, as it is cleared by reset_gef_caches() each time the `stepi` runs.
+# Cache.cache_until_next is not effective as-is, as it is cleared by Cache.reset_gef_caches() each time the `stepi` runs.
 # Fortunately, zone information rarely changes.
 # I decided to keep the cache until it is explicitly cleared.
-@cache_this_session
+@Cache.cache_this_session
 def get_info_files():
     """Retrieve all the files loaded by debuggee."""
     lines = gdb.execute("info files", to_string=True).splitlines()
@@ -12168,7 +12167,7 @@ def get_info_files():
     return info_files
 
 
-@cache_until_next
+@Cache.cache_until_next
 def process_lookup_address(addr):
     """Look up for an address in memory. Return an Address object if found, None otherwise."""
     if not is_alive():
@@ -12182,7 +12181,7 @@ def process_lookup_address(addr):
     return None
 
 
-@cache_until_next
+@Cache.cache_until_next
 def process_lookup_path(names, perm_mask=Permission.ALL):
     """Look up for paths in the process memory mapping.
     Return a Section object of load base if found, None otherwise."""
@@ -12198,7 +12197,7 @@ def process_lookup_path(names, perm_mask=Permission.ALL):
     return None
 
 
-@cache_until_next
+@Cache.cache_until_next
 def file_lookup_address(addr):
     """Look up for a file by its address. Return a Zone object if found, None otherwise."""
     if is_qemu_system() or is_vmware() or is_kgdb():
@@ -12210,7 +12209,7 @@ def file_lookup_address(addr):
     return None
 
 
-@cache_until_next
+@Cache.cache_until_next
 def lookup_address(addr):
     """Try to find the address in the process address space.
     Return an Address object, with validity flag set based on success."""
@@ -12243,7 +12242,7 @@ def continue_handler(_event):
 
 def hook_stop_handler(event):
     """GDB event handler for stop cases."""
-    reset_gef_caches()
+    Cache.reset_gef_caches()
 
     # There seems to be a bug in some architecture (e.g. i386) where temporary breakpoints are not deleted even if they are hit.
     # I don't know the conditions under which this happens, but if remains, gef would manually remove them.
@@ -12266,7 +12265,7 @@ def hook_stop_handler(event):
                 gdb.execute("set architecture armv7", to_string=True)
             else:
                 raise
-            reset_gef_caches()
+            Cache.reset_gef_caches()
 
     # set `c`, `ni` and `si` command hooks for qemu-user and pin
     if __gef_check_once__:
@@ -12302,7 +12301,7 @@ def hook_stop_handler(event):
 
 def new_objfile_handler(_event):
     """GDB event handler for new object file cases."""
-    reset_gef_caches(all=True)
+    Cache.reset_gef_caches(all=True)
     if current_arch is None:
         set_arch(get_arch())
     load_libc_args()
@@ -12323,19 +12322,19 @@ def new_objfile_handler(_event):
 
 def exit_handler(_event):
     """GDB event handler for exit cases."""
-    reset_gef_caches(all=True)
+    Cache.reset_gef_caches(all=True)
     return
 
 
 def memchanged_handler(_event):
     """GDB event handler for mem changes cases."""
-    reset_gef_caches()
+    Cache.reset_gef_caches()
     return
 
 
 def regchanged_handler(_event):
     """GDB event handler for reg changes cases."""
-    reset_gef_caches()
+    Cache.reset_gef_caches()
     return
 
 
@@ -12579,7 +12578,7 @@ def keystone_assemble(code, arch, mode, *args, **kwargs):
     return enc
 
 
-@cache_until_next
+@Cache.cache_until_next
 def get_elf_headers(filepath=None):
     """Return an Elf object with info from `filename`. If not provided, will return
     the currently debugged file."""
@@ -12590,7 +12589,7 @@ def get_elf_headers(filepath=None):
     return Elf(filepath)
 
 
-@cache_this_session
+@Cache.cache_this_session
 def ptr_width():
     void = cached_lookup_type("void")
     if void is None:
@@ -12791,7 +12790,7 @@ def is_csky():
     return current_arch and current_arch.arch == "CSKY"
 
 
-@cache_until_next
+@Cache.cache_until_next
 def get_arch():
     """Return the binary's architecture."""
     if is_alive():
@@ -12876,11 +12875,11 @@ def set_arch(arch_str=None):
     except KeyError as err:
         raise OSError("Specified arch {!s} is not supported".format(key)) from err
 
-    reset_gef_caches(all=True)
+    Cache.reset_gef_caches(all=True)
     return
 
 
-@cache_until_next
+@Cache.cache_until_next
 def cached_lookup_type(_type):
     try:
         return gdb.lookup_type(_type).strip_typedefs()
@@ -12888,7 +12887,7 @@ def cached_lookup_type(_type):
         return None
 
 
-@cache_this_session
+@Cache.cache_this_session
 def get_memory_alignment(in_bits=False):
     """Try to determine the size of a pointer on this system.
     First, try to parse it out of the ELF header.
@@ -12925,7 +12924,7 @@ def clear_screen():
     return
 
 
-@cache_until_next
+@Cache.cache_until_next
 def is_in_kernel():
     if not is_alive():
         return False
@@ -12945,7 +12944,7 @@ def is_in_kernel():
         return False
 
 
-@cache_until_next
+@Cache.cache_until_next
 def is_double_link_list(addr):
     # list up next pointer
     seen = []
@@ -13064,7 +13063,7 @@ def get_ksysctl(sym):
         return None
 
 
-@cache_this_session
+@Cache.cache_this_session
 def endian_str():
     return "<" if is_little_endian() else ">"
 
@@ -13103,7 +13102,7 @@ def generate_cyclic_pattern(length, charset=None):
     return bytearray(itertools.islice(de_bruijn(charset, cycle), length))
 
 
-@cache_until_next
+@Cache.cache_until_next
 def dereference(addr):
     """GEF wrapper for gdb dereference function."""
 
@@ -13247,10 +13246,10 @@ def get_auxiliary_walk(offset=0):
 
 # gef_get_auxiliary_values (under qemu-user mode) is very slow,
 # Because it may call get_auxiliary_walk that repeats read_memory many times to find the auxv value.
-# cache_until_next is not effective as-is, as it is cleared by reset_gef_caches() each time the `stepi` runs.
+# Cache.cache_until_next is not effective as-is, as it is cleared by Cache.reset_gef_caches() each time the `stepi` runs.
 # Fortunately, auxv rarely changes.
 # I decided to keep the cache until it is explicitly cleared.
-@cache_this_session
+@Cache.cache_this_session
 def gef_get_auxiliary_values(force_heuristic=False):
     """Retrieves the auxiliary values of the current execution.
     Returns None if not running, or a dict() of values."""
@@ -13290,7 +13289,7 @@ def gef_get_auxiliary_values(force_heuristic=False):
     return fast_path() or slow_path()
 
 
-@cache_this_session
+@Cache.cache_this_session
 def gef_read_canary():
     """Read the canary of a running process using Auxiliary Vector.
     Return a tuple of (canary, location) if found, None otherwise."""
@@ -13307,7 +13306,7 @@ def gef_read_canary():
         return None
 
 
-@cache_this_session
+@Cache.cache_this_session
 def gef_getpagesize():
     """Get the page size from auxiliary values."""
     auxval = gef_get_auxiliary_values()
@@ -13316,7 +13315,7 @@ def gef_getpagesize():
     return auxval["AT_PAGESZ"]
 
 
-@cache_this_session
+@Cache.cache_this_session
 def gef_getpagesize_mask_low():
     """Get the page size mask from auxiliary values."""
     auxval = gef_get_auxiliary_values()
@@ -13325,7 +13324,7 @@ def gef_getpagesize_mask_low():
     return auxval["AT_PAGESZ"] - 1
 
 
-@cache_this_session
+@Cache.cache_this_session
 def gef_getpagesize_mask_high():
     """Get the page size mask from auxiliary values."""
     auxval = gef_get_auxiliary_values()
@@ -13569,7 +13568,7 @@ class GenericCommand(gdb.Command):
             return
         key = self.__get_setting_name(name)
         __gef_config__[key] = [value, type(value), description]
-        reset_gef_caches(function=get_gef_setting)
+        Cache.reset_gef_caches(function=get_gef_setting)
         return
 
     def __set_repeat_count(self, argv, from_tty):
@@ -13611,7 +13610,7 @@ class GenericCommand(gdb.Command):
 
 @register_command
 class ResetCacheCommand(GenericCommand):
-    """Reset all caches (both cache_until_next and cache_this_session)."""
+    """Reset all caches (both Cache.cache_until_next and Cache.cache_this_session)."""
     _cmdline_ = "reset-cache"
     _category_ = "99. GEF Maintenance Command"
 
@@ -13622,7 +13621,7 @@ class ResetCacheCommand(GenericCommand):
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
-        reset_gef_caches(all=True)
+        Cache.reset_gef_caches(all=True)
 
         if args.hard:
             for root, _dirs, files in os.walk(GEF_TEMP_DIR, followlinks=False):
@@ -14154,7 +14153,7 @@ class SimpleInternalTemporaryBreakpoint(gdb.Breakpoint):
         __gef_check_disabled_bp__ = True
         self.enabled = False
 
-        reset_gef_caches()
+        Cache.reset_gef_caches()
         return True
 
 
@@ -14170,7 +14169,7 @@ class SecondBreakpoint(gdb.Breakpoint):
         __gef_check_disabled_bp__ = True
         self.enabled = False
 
-        reset_gef_caches()
+        Cache.reset_gef_caches()
         SimpleInternalTemporaryBreakpoint(loc=self.second_loc)
         return True
 
@@ -16868,7 +16867,7 @@ class PtrDemangleCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     @staticmethod
-    @cache_until_next
+    @Cache.cache_until_next
     def get_cookie():
         if is_qiling():
             return None
@@ -16893,7 +16892,7 @@ class PtrDemangleCommand(GenericCommand):
         try:
             auxv = gef_get_auxiliary_values()
             if auxv is None:
-                reset_gef_caches(function=gef_get_auxiliary_values)
+                Cache.reset_gef_caches(function=gef_get_auxiliary_values)
                 auxv = gef_get_auxiliary_values()
             if auxv and "AT_RANDOM" in auxv:
                 if is_s390x():
@@ -17793,7 +17792,7 @@ class MmapMemoryCommand(GenericCommand):
         # doit
         cmd = "call-syscall {:s} {:#x} {:#x} {:#x} {:#x} -1 0".format(mmap_syscall_name, args.location, args.size, perm, flags)
         gdb.execute(cmd)
-        reset_gef_caches()
+        Cache.reset_gef_caches()
         return
 
 
@@ -18794,7 +18793,7 @@ class UnicornEmulateCommand(GenericCommand):
                     content += "    emu.reg_write({:s}, {:#x})\n".format(unicorn_registers[reg], gregval)
         content += "\n"
 
-        reset_gef_caches(all=True)
+        Cache.reset_gef_caches(all=True)
 
         vmmap = get_process_maps()
         if not vmmap:
@@ -20046,7 +20045,7 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
         return
 
 
-@cache_this_session
+@Cache.cache_this_session
 def get_binsize_table():
     table = {
         "tcache": {},
@@ -25209,7 +25208,7 @@ class EntryBreakBreakpoint(gdb.Breakpoint):
         __gef_check_disabled_bp__ = True
         self.enabled = False
 
-        reset_gef_caches()
+        Cache.reset_gef_caches()
         return True
 
 
@@ -25331,7 +25330,7 @@ class NamedBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
-        reset_gef_caches()
+        Cache.reset_gef_caches()
         msg = "Hit breakpoint {} ({})".format(self.loc, Color.colorify(self.name, "bold red"))
         push_context_message("info", msg)
         return True
@@ -25372,7 +25371,7 @@ class CommandBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
-        reset_gef_caches()
+        Cache.reset_gef_caches()
         gdb.execute(self.cmd)
         return False
 
@@ -25416,7 +25415,7 @@ class TakenOrNotBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
-        reset_gef_caches()
+        Cache.reset_gef_caches()
         insn = get_insn()
 
         if not current_arch.is_conditional_branch(insn):
@@ -28020,12 +28019,12 @@ class PatchRevertCommand(PatchCommand):
         return
 
 
-@cache_this_session
+@Cache.cache_this_session
 def get_dereference_from_blacklist():
     return eval(get_gef_setting("dereference.blacklist")) or []
 
 
-@cache_until_next
+@Cache.cache_until_next
 def dereference_from(addr, phys=False):
     """Create dereference array."""
 
@@ -28075,7 +28074,7 @@ def dereference_from(addr, phys=False):
     return addr_list, error
 
 
-@cache_until_next
+@Cache.cache_until_next
 def to_string_dereference_from(value, skip_idx=0, phys=False):
     """Create string from dereference array"""
     string_color = get_gef_setting("theme.dereference_string")
@@ -28197,7 +28196,7 @@ class DereferenceCommand(GenericCommand):
         return
 
     @staticmethod
-    @cache_until_next
+    @Cache.cache_until_next
     def get_frame_pcs():
         frames = []
         try:
@@ -28216,7 +28215,7 @@ class DereferenceCommand(GenericCommand):
         return frames
 
     @staticmethod
-    @cache_this_session
+    @Cache.cache_this_session
     def get_target_registers():
         regs = []
         for reg in current_arch.all_registers:
@@ -28229,7 +28228,7 @@ class DereferenceCommand(GenericCommand):
         return regs
 
     @staticmethod
-    @cache_until_next
+    @Cache.cache_until_next
     def get_target_registers_value():
         regs = []
         for regname in DereferenceCommand.get_target_registers():
@@ -28815,7 +28814,7 @@ class VMMapCommand(GenericCommand):
 
         if is_qemu_user():
             # the memory map may be changed, so retry memory exploring in get_process_maps()
-            reset_gef_caches(all=True)
+            Cache.reset_gef_caches(all=True)
 
         vmmap = get_process_maps(args.outer)
         if not vmmap:
@@ -29948,7 +29947,7 @@ class LinkMapCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        reset_gef_caches(all=True)
+        Cache.reset_gef_caches(all=True)
 
         self.verbose = args.verbose
 
@@ -30883,7 +30882,7 @@ class DestructorDumpCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        reset_gef_caches(all=True)
+        Cache.reset_gef_caches(all=True)
 
         # init
         self.remote = args.remote
@@ -31497,7 +31496,7 @@ class FormatStringBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
-        reset_gef_caches()
+        Cache.reset_gef_caches()
         msg = []
         ptr, addr = current_arch.get_ith_parameter(self.num_args)
         addr = lookup_address(addr)
@@ -31647,7 +31646,7 @@ class TraceMallocBreakpoint(gdb.Breakpoint):
             # so it is deleted automatically if out of scope, so it must be checked by is_valid().
             if self.retbp.is_valid() and self.retbp.enabled:
                 return False
-        reset_gef_caches()
+        Cache.reset_gef_caches()
         _, size = current_arch.get_ith_parameter(0)
         self.retbp = TraceMallocRetBreakpoint(size, self.name)
         return False
@@ -31791,7 +31790,7 @@ class TraceFreeBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
-        reset_gef_caches()
+        Cache.reset_gef_caches()
         _, addr = current_arch.get_ith_parameter(0)
         msg = []
         check_free_null = get_gef_setting("heap_analysis_helper.check_free_null")
@@ -31854,7 +31853,7 @@ class TraceFreeRetBreakpoint(gdb.FinishBreakpoint):
         return
 
     def stop(self):
-        reset_gef_caches()
+        Cache.reset_gef_caches()
         wp = UafWatchpoint(self.addr)
         __heap_uaf_watchpoints__.append(wp)
         return False
@@ -31871,7 +31870,7 @@ class UafWatchpoint(gdb.Breakpoint):
 
     def stop(self):
         """If this method is triggered, we likely have a UaF. Break the execution and report it."""
-        reset_gef_caches()
+        Cache.reset_gef_caches()
         try:
             frame = gdb.selected_frame()
         except gdb.error:
@@ -43385,7 +43384,7 @@ def get_syscall_table(arch=None, mode=None):
     return __get_syscall_table(arch, mode)
 
 
-@cache_this_session
+@Cache.cache_this_session
 def __get_syscall_table(arch, mode):
     if arch == "X86" and mode == "64":
         return_register = X86_64.return_register
@@ -45332,7 +45331,7 @@ class SyscallSampleCommand(GenericCommand):
         return
 
 
-@cache_until_next
+@Cache.cache_until_next
 def get_section_base_address(name):
     if name is None:
         return None
@@ -45485,7 +45484,7 @@ class LibcCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
         self.dont_repeat()
-        reset_gef_caches(all=True) # get_process_maps may be caching old information
+        Cache.reset_gef_caches(all=True) # get_process_maps may be caching old information
 
         libc_targets = ("libc-2.", "libc.so.6", "libuClibc-")
 
@@ -45555,7 +45554,7 @@ class LdCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
         self.dont_repeat()
-        reset_gef_caches(all=True) # get_process_maps may be caching old information
+        Cache.reset_gef_caches(all=True) # get_process_maps may be caching old information
 
         ld_targets = ("ld-2.", "ld-linux-", "ld-linux.", "ld64-uClibc-", "ld-uClibc-")
 
@@ -47311,7 +47310,7 @@ class VisualHeapCommand(GenericCommand):
             dump_start = args.location
 
         self.out = []
-        reset_gef_caches(all=True)
+        Cache.reset_gef_caches(all=True)
         arena.reset_bins_info()
         self.generate_visual_heap(arena, dump_start, args.max_count)
         gef_print("\n".join(self.out), less=not args.no_pager)
@@ -51248,7 +51247,7 @@ class KernelbaseCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     @staticmethod
-    @cache_until_next
+    @Cache.cache_until_next
     def get_maps():
         maps = []
         res = get_maps_by_pagewalk("pagewalk --quiet --no-pager --simple")
@@ -51301,7 +51300,7 @@ class KernelbaseCommand(GenericCommand):
             return maps
 
     @staticmethod
-    @cache_this_session
+    @Cache.cache_this_session
     def get_kernel_base():
         dic = {
             "maps": KernelbaseCommand.get_maps(),
@@ -51483,7 +51482,7 @@ class KernelbaseCommand(GenericCommand):
         self.dont_repeat()
 
         if args.reparse:
-            reset_gef_caches(all=True)
+            Cache.reset_gef_caches(all=True)
 
         # resolve text_base, ro_base
         if not args.quiet:
@@ -51559,7 +51558,7 @@ class KernelVersionCommand(GenericCommand):
             return "{:d}.{:d}.{:d}".format(*self.version_tuple)
 
     @staticmethod
-    @cache_this_session
+    @Cache.cache_this_session
     def kernel_version():
         # fast path
         linux_banner = get_ksymaddr("linux_banner")
@@ -51612,7 +51611,7 @@ class KernelVersionCommand(GenericCommand):
         self.dont_repeat()
 
         if args.reparse:
-            reset_gef_caches(all=True)
+            Cache.reset_gef_caches(all=True)
 
         if not args.quiet:
             info("Wait for memory scan")
@@ -51641,7 +51640,7 @@ class KernelCmdlineCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     @staticmethod
-    @cache_this_session
+    @Cache.cache_this_session
     def kernel_cmdline():
         saved_command_line = KernelAddressHeuristicFinder.get_saved_command_line()
         if saved_command_line is None:
@@ -51663,7 +51662,7 @@ class KernelCmdlineCommand(GenericCommand):
         self.dont_repeat()
 
         if args.reparse:
-            reset_gef_caches(all=True)
+            Cache.reset_gef_caches(all=True)
 
         if not args.quiet:
             info("Wait for memory scan")
@@ -70760,7 +70759,7 @@ class HoardHeapDumpCommand(GenericCommand):
         return super_blocks
 
     @staticmethod
-    @cache_until_next
+    @Cache.cache_until_next
     def get_all_freelist_head_from_tls():
         selected_thread = gdb.selected_thread()
         threads = gdb.selected_inferior().threads()
@@ -71230,7 +71229,7 @@ class PartitionAllocDumpCommand(GenericCommand):
         return
 
     @staticmethod
-    @cache_this_session
+    @Cache.cache_this_session
     def get_roots_heuristic():
         """searches for fast_malloc_root, array_buffer_root_ and buffer_root_"""
         # the pointers to each root are in the RW area.
@@ -73229,7 +73228,7 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
             dump_start = args.location
 
         self.out = []
-        reset_gef_caches(all=True)
+        Cache.reset_gef_caches(all=True)
         self.generate_visual_heap(malloc_state, dump_start, args.max_count)
         gef_print("\n".join(self.out), less=not args.no_pager)
         return
@@ -75755,7 +75754,7 @@ class QemuRegistersCommand(GenericCommand):
         return
 
 
-@cache_until_next
+@Cache.cache_until_next
 def get_maps_arm64_optee_secure_memory(verbose=False):
     # heuristic search of qemu-system memory
     sm_base, sm_size = XSecureMemAddrCommand.get_secure_memory_base_and_size(verbose)
@@ -75838,7 +75837,7 @@ def get_maps_arm64_optee_secure_memory(verbose=False):
     return maps
 
 
-@cache_until_next
+@Cache.cache_until_next
 def get_maps_by_pagewalk(command):
     # for lru cache
     return gdb.execute(command, to_string=True)
@@ -79666,7 +79665,7 @@ class PagewalkArm64Command(PagewalkCommand):
         self.dont_repeat()
 
         if args.optee:
-            reset_gef_caches(function=get_maps_arm64_optee_secure_memory)
+            Cache.reset_gef_caches(function=get_maps_arm64_optee_secure_memory)
             get_maps_arm64_optee_secure_memory(True)
             return
 
@@ -81407,7 +81406,7 @@ class ExecUntilCommand(GenericCommand):
         finally:
             self.revert_stdout_stderr() # anytime needed
             gef_on_stop_hook(hook_stop_handler) # anytime needed
-            reset_gef_caches()
+            Cache.reset_gef_caches()
             if self.err:
                 err(self.err)
             else:
@@ -82036,7 +82035,7 @@ class KmallocBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
-        reset_gef_caches()
+        Cache.reset_gef_caches()
 
         task_addr, _ = KmallocTracerCommand.get_task()
         if self.task_addr and task_addr != self.task_addr:
@@ -82068,7 +82067,7 @@ class KmallocRetBreakpoint(gdb.FinishBreakpoint):
         return
 
     def stop(self):
-        reset_gef_caches()
+        Cache.reset_gef_caches()
 
         task_addr, task_name = KmallocTracerCommand.get_task()
         task_prefix = Color.boldify("[task:{:#018x} {:16s}]".format(task_addr, task_name))
@@ -82116,7 +82115,7 @@ class KfreeBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
-        reset_gef_caches()
+        Cache.reset_gef_caches()
 
         _, loc = current_arch.get_ith_parameter(self.index_of_addr_arg)
         if not self.option.print_null and loc == 0:
@@ -85702,7 +85701,7 @@ class GefConfigCommand(GenericCommand):
             return
 
         __gef_config__[config_name][0] = _newval
-        reset_gef_caches(all=True)
+        Cache.reset_gef_caches(all=True)
         return
 
     def complete(self, text, word):
@@ -85904,7 +85903,7 @@ class GefReloadCommand(GenericCommand):
         gef_on_exit_unhook(exit_handler)
         gef_on_memchanged_unhook(memchanged_handler)
         gef_on_regchanged_unhook(regchanged_handler)
-        reset_gef_caches(all=True)
+        Cache.reset_gef_caches(all=True)
 
         info("Reload {:s}".format(__gef_fpath__))
         s = gdb.execute("source {:s}".format(__gef_fpath__), to_string=True)
@@ -85921,7 +85920,7 @@ class GefReloadCommand(GenericCommand):
         if not (is_qemu_user() or is_pin()):
             gdb.execute("define c\ncontinue\nend")
 
-        reset_gef_caches(all=True)
+        Cache.reset_gef_caches(all=True)
         return
 
 
