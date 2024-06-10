@@ -13178,40 +13178,6 @@ def endian_str():
     return "<" if is_little_endian() else ">"
 
 
-def de_bruijn(alphabet, n):
-    """De Bruijn sequence for alphabet and subsequences of length n (for compat. w/ pwnlib)."""
-    k = len(alphabet)
-    a = [0] * k * n
-
-    def db(t, p):
-        if t > n:
-            if n % p == 0:
-                for j in range(1, p + 1):
-                    yield alphabet[a[j]]
-        else:
-            a[t] = a[t - p]
-            for c in db(t + 1, p):
-                yield c
-
-            for j in range(a[t - p] + 1, k):
-                a[t] = j
-                for c in db(t + 1, t):
-                    yield c
-
-    return db(1, 1)
-
-
-def generate_cyclic_pattern(length, charset=None):
-    """Create a `length` byte bytearray of a de Bruijn cyclic pattern."""
-    if charset is None:
-        charset = bytearray(b"abcdefghijklmnopqrstuvwxyz")
-    elif isinstance(charset, str):
-        charset = str2bytes(charset)
-
-    cycle = get_memory_alignment()
-    return bytearray(itertools.islice(de_bruijn(charset, cycle), length))
-
-
 @Cache.cache_until_next
 def dereference(addr):
     """GEF wrapper for gdb dereference function."""
@@ -27477,7 +27443,7 @@ class PatchPatternCommand(PatchCommand):
             if orig_mode == "virt":
                 enable_phys()
 
-        pats = bytes(generate_cyclic_pattern(args.length, args.charset))
+        pats = bytes(PatternCreateCommand.generate_cyclic_pattern(args.length, args.charset))
         if args.dry_run:
             info("Generated pattern: {}".format(pats))
             return
@@ -29164,6 +29130,40 @@ class PatternCreateCommand(GenericCommand):
     parser.add_argument("size", metavar="SIZE", type=parse_address, nargs="?", help="the size of pattern. (default: 1024)")
     _syntax_ = parser.format_help()
 
+    @staticmethod
+    def de_bruijn(alphabet, n):
+        """De Bruijn sequence for alphabet and subsequences of length n (for compat. w/ pwnlib)."""
+        k = len(alphabet)
+        a = [0] * k * n
+
+        def db(t, p):
+            if t > n:
+                if n % p == 0:
+                    for j in range(1, p + 1):
+                        yield alphabet[a[j]]
+            else:
+                a[t] = a[t - p]
+                for c in db(t + 1, p):
+                    yield c
+
+                for j in range(a[t - p] + 1, k):
+                    a[t] = j
+                    for c in db(t + 1, t):
+                        yield c
+
+        return db(1, 1)
+
+    @staticmethod
+    def generate_cyclic_pattern(length, charset=None):
+        """Create a `length` byte bytearray of a de Bruijn cyclic pattern."""
+        if charset is None:
+            charset = bytearray(b"abcdefghijklmnopqrstuvwxyz")
+        elif isinstance(charset, str):
+            charset = str2bytes(charset)
+
+        cycle = get_memory_alignment()
+        return bytearray(itertools.islice(PatternCreateCommand.de_bruijn(charset, cycle), length))
+
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
@@ -29174,7 +29174,7 @@ class PatternCreateCommand(GenericCommand):
             size = args.size
 
         info("Generating a pattern of {:d} bytes".format(size))
-        pattern_str = gef_pystring(generate_cyclic_pattern(size, args.charset))
+        pattern_str = gef_pystring(PatternCreateCommand.generate_cyclic_pattern(size, args.charset))
         gef_print(pattern_str)
         ok("Saved as '{:s}'".format(gef_convenience(pattern_str)))
         return
@@ -29238,7 +29238,7 @@ class PatternSearchCommand(GenericCommand):
         else:
             size = args.size
 
-        cyclic_pattern = generate_cyclic_pattern(size, args.charset)
+        cyclic_pattern = PatternCreateCommand.generate_cyclic_pattern(size, args.charset)
         pack = p32 if is_32bit() else p64
 
         # 1. check if it's a symbol (like "$sp")
