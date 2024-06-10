@@ -357,7 +357,7 @@ There are also similar functions. Here are the list.
 * Register access
     * `get_register(regname, use_mbed_exec=False, use_monitor=False)`
 * Other
-    * `str2bytes(x)`, `bytes2str(x)`
+    * `String.str2bytes(x)`, `String.bytes2str(x)`
     * `slicer(data, n)`, `slice_unpack(data, n)`
     * `p8`, `p16`, `p32`, `p64`
     * `u8`, `u16`, `u32`, `u64`, `u128`

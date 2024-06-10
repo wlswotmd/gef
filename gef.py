@@ -191,16 +191,6 @@ HORIZONTAL_LINE                 = "-"
 VERTICAL_LINE                   = "|"
 BP_GLYPH                        = "*"
 
-STRING_ASCII_LOWERCASE          = "abcdefghijklmnopqrstuvwxyz"
-STRING_ASCII_UPPERCASE          = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-STRING_ASCII_LETTERS            = STRING_ASCII_LOWERCASE + STRING_ASCII_UPPERCASE
-STRING_DIGITS                   = "0123456789"
-STRING_HEXDIGITS                = "0123456789abcdefABCDEF"
-STRING_PUNCTUATION              = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
-STRING_WHITESPACE               = " \t\n\r\x0b\x0c"
-STRING_PRINTABLE                = STRING_DIGITS + STRING_ASCII_LETTERS + STRING_PUNCTUATION + STRING_WHITESPACE
-STRING_CHARSET                  = STRING_DIGITS + STRING_ASCII_LETTERS + STRING_PUNCTUATION + " "
-
 
 def perf(f): # noqa
     """Decorator wrapper to perf."""
@@ -4219,38 +4209,57 @@ def show_last_exception():
     return
 
 
-def gef_pystring(x):
-    """Returns a sanitized version as string of the bytes list given in input."""
-    res = str(x, encoding="utf-8")
-    substs = [("\n", "\\n"), ("\r", "\\r"), ("\t", "\\t"), ("\v", "\\v"), ("\b", "\\b"), ]
-    for x, y in substs:
-        res = res.replace(x, y)
-    return res
+class String:
+    STRING_ASCII_LOWERCASE = "abcdefghijklmnopqrstuvwxyz"
+    STRING_ASCII_UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    STRING_ASCII_LETTERS = STRING_ASCII_LOWERCASE + STRING_ASCII_UPPERCASE
+    STRING_DIGITS = "0123456789"
+    STRING_HEXDIGITS = "0123456789abcdefABCDEF"
+    STRING_PUNCTUATION = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+    STRING_WHITESPACE = " \t\n\r\x0b\x0c"
+    STRING_PRINTABLE = STRING_DIGITS + STRING_ASCII_LETTERS + STRING_PUNCTUATION + STRING_WHITESPACE
+    STRING_CHARSET = STRING_DIGITS + STRING_ASCII_LETTERS + STRING_PUNCTUATION + " "
 
+    @staticmethod
+    def gef_pystring(x):
+        """Returns a sanitized version as string of the bytes list given in input."""
+        res = str(x, encoding="utf-8")
+        substs = [("\n", "\\n"), ("\r", "\\r"), ("\t", "\\t"), ("\v", "\\v"), ("\b", "\\b"), ]
+        for x, y in substs:
+            res = res.replace(x, y)
+        return res
 
-def str2bytes(x):
-    """Helper function for str -> bytes."""
-    if isinstance(x, bytes):
-        return x
-    if isinstance(x, str):
-        try:
-            # If you convert data from bytes to str and convert it back to bytes again, an error may occur.
-            # This is because str, which is a decoded UTF-8 string, is multi-byte.
-            # Here is a sample: patch hex $rsp "4141414141414141c58200"
-            return bytes(ord(xx) for xx in x)
-        except ValueError:
-            # In that case, you should simply encode it as UTF-8.
-            return x.encode("utf-8")
-    raise
+    @staticmethod
+    def str2bytes(x):
+        """Helper function for str -> bytes."""
+        if isinstance(x, bytes):
+            return x
+        if isinstance(x, str):
+            try:
+                # If you convert data from bytes to str and convert it back to bytes again, an error may occur.
+                # This is because str, which is a decoded UTF-8 string, is multi-byte.
+                # Here is a sample: patch hex $rsp "4141414141414141c58200"
+                return bytes(ord(xx) for xx in x)
+            except ValueError:
+                # In that case, you should simply encode it as UTF-8.
+                return x.encode("utf-8")
+        raise
 
+    @staticmethod
+    def bytes2str(x):
+        """Helper function for bytes -> str."""
+        if isinstance(x, str):
+            return x
+        if isinstance(x, bytes):
+            return "".join(chr(xx) for xx in x)
+        raise
 
-def bytes2str(x):
-    """Helper function for bytes -> str."""
-    if isinstance(x, str):
-        return x
-    if isinstance(x, bytes):
-        return "".join(chr(xx) for xx in x)
-    raise
+    @staticmethod
+    def is_hex(pattern):
+        """Return whether provided string is a hexadecimal value."""
+        if not pattern.startswith("0x") and not pattern.startswith("0X"):
+            return False
+        return len(pattern) % 2 == 0 and all(c in String.STRING_HEXDIGITS for c in pattern[2:])
 
 
 def slicer(data, n):
@@ -4359,7 +4368,7 @@ def hexdump(source, length=0x10, separator=".", color=True, show_symbol=True, ba
 
         if sbyte in style:
             st = style[sbyte]
-        elif chr(b) in STRING_CHARSET:
+        elif chr(b) in String.STRING_CHARSET:
             st = style.get("printable")
         else:
             st = style.get("nonprintable")
@@ -4864,7 +4873,10 @@ def get_insn_prev(addr=None):
 def gef_execute_external(command, as_list=False, *args, **kwargs):
     """Execute an external command and return the result."""
     res = subprocess.check_output(command, stderr=subprocess.STDOUT, shell=kwargs.get("shell", False))
-    return [gef_pystring(x) for x in res.splitlines()] if as_list else gef_pystring(res)
+    if as_list:
+        return [String.gef_pystring(x) for x in res.splitlines()]
+    else:
+        return String.gef_pystring(res)
 
 
 def gef_execute_gdb_script(commands):
@@ -10807,7 +10819,7 @@ def read_cstring_from_memory(addr, max_length=None, ascii_only=False):
         ustr = "{}[...]".format(ustr[:max_length])
 
     if ascii_only:
-        if ustr and all(x in STRING_PRINTABLE for x in ustr):
+        if ustr and all(x in String.STRING_PRINTABLE for x in ustr):
             return ustr
         else:
             return None
@@ -12331,13 +12343,6 @@ def lookup_address(addr):
     return Address(value=addr, section=sect, info=info)
 
 
-def is_hex(pattern):
-    """Return whether provided string is a hexadecimal value."""
-    if not pattern.startswith("0x") and not pattern.startswith("0X"):
-        return False
-    return len(pattern) % 2 == 0 and all(c in STRING_HEXDIGITS for c in pattern[2:])
-
-
 def is_msb_on(addr):
     """Return whether provided address MSB is on."""
     if get_memory_alignment() == 4:
@@ -12657,7 +12662,7 @@ def keystone_assemble(code, arch, mode, *args, **kwargs):
     """Assembly encoding function based on keystone."""
     import multiprocessing
     keystone = sys.modules["keystone"]
-    code = str2bytes(code)
+    code = String.str2bytes(code)
     addr = kwargs.get("addr", 0x1000)
 
     # `asm "[]"` returns no response
@@ -13124,7 +13129,7 @@ def align_address_to_size(addr, align):
 
 def parse_address(addr):
     """Parse an address and return it as an Integer."""
-    if is_hex(addr):
+    if String.is_hex(addr):
         return int(addr, 16)
     return to_unsigned_long(gdb.parse_and_eval(addr))
 
@@ -13916,7 +13921,7 @@ class VersionCommand(GenericCommand):
             data = open(path, "rb").read()
             pos = re.search(b"(GNU C Library|uClibc-ng release) [\x20-\x7e]*", data)
             if pos:
-                return bytes2str(pos.group(0))
+                return String.bytes2str(pos.group(0))
         return "Not found"
 
     def qemu_system_version(self):
@@ -15900,7 +15905,7 @@ class ProcDumpCommand(GenericCommand):
                     data = open(path, "rb").read()
                     for line in sorted(data.split(b"\0")):
                         if line:
-                            line = bytes2str(line)
+                            line = String.bytes2str(line)
                             key, val = line.split("=", 1)
                             out.append("{:s}={:s}".format(Color.boldify(key), val))
                     continue
@@ -15909,7 +15914,7 @@ class ProcDumpCommand(GenericCommand):
                     data = open(path, "rb").read()
                     for line in data.split(b"\0"):
                         if line:
-                            out.append(bytes2str(line))
+                            out.append(String.bytes2str(line))
                     continue
 
                 if f == "auxv":
@@ -15923,7 +15928,7 @@ class ProcDumpCommand(GenericCommand):
 
                 if f == "syscall":
                     try:
-                        data = bytes2str(open(path, "rb").read())
+                        data = String.bytes2str(open(path, "rb").read())
                         out.append(data.strip())
                     except OSError:
                         continue
@@ -15954,7 +15959,7 @@ class ProcDumpCommand(GenericCommand):
 
                 if f == "stat":
                     try:
-                        data = bytes2str(open(path, "rb").read())
+                        data = String.bytes2str(open(path, "rb").read())
                         out.append(data.strip())
                     except OSError:
                         continue
@@ -15989,7 +15994,7 @@ class ProcDumpCommand(GenericCommand):
 
                 if f == "statm":
                     try:
-                        data = bytes2str(open(path, "rb").read())
+                        data = String.bytes2str(open(path, "rb").read())
                         out.append(data.strip())
                     except OSError:
                         continue
@@ -16083,13 +16088,13 @@ class ProcDumpCommand(GenericCommand):
                 if f in ["igmp", "fib_trie", "wireless"]:
                     fd = open(path, "rb")
                     for line in fd.readlines():
-                        out.append(bytes2str(line.rstrip())) # no-lstrip
+                        out.append(String.bytes2str(line.rstrip())) # no-lstrip
                     continue
 
                 if f in ["netstat", "snmp"]:
                     try:
                         fd = open(path, "rb")
-                        lines = bytes2str(fd.read()).splitlines()
+                        lines = String.bytes2str(fd.read()).splitlines()
                         table = [line.split() for line in lines]
                         for idx in range(0, len(table), 2):
                             for i, (k, v) in enumerate(zip(*table[idx:idx + 2])):
@@ -16104,7 +16109,7 @@ class ProcDumpCommand(GenericCommand):
                 try:
                     fd = open(path, "rb")
                     for line in fd.readlines():
-                        out.append(bytes2str(line).strip())
+                        out.append(String.bytes2str(line).strip())
                 except OSError:
                     continue
 
@@ -16488,7 +16493,7 @@ class HijackFdCommand(GenericCommand):
         return
 
     def write_stack(self, data):
-        data = str2bytes(data)
+        data = String.str2bytes(data)
 
         # get stack address
         vmmap = get_process_maps()
@@ -16722,7 +16727,7 @@ class SearchPatternCommand(GenericCommand):
 
     def search_pattern_by_address(self, pattern, start_address, end_address):
         """Search a pattern within a range defined by arguments."""
-        pattern = str2bytes(pattern)
+        pattern = String.str2bytes(pattern)
         if is_qemu_system():
             step = gef_getpagesize()
         else:
@@ -16879,7 +16884,7 @@ class SearchPatternCommand(GenericCommand):
                 return
             pattern = "".join(["\\x" + x for x in slicer(pattern, 2)])
 
-        elif is_hex(args.pattern): # "0x41414141" -> "\x41\x41\x41\x41"
+        elif String.is_hex(args.pattern): # "0x41414141" -> "\x41\x41\x41\x41"
             if args.big or is_big_endian():
                 pattern = "".join(["\\x" + x for x in slicer(args.pattern[2:], 2)])
             else:
@@ -20580,7 +20585,7 @@ class AssembleCommand(GenericCommand):
 
             s = binascii.hexlify(res)
             if args.hex:
-                res = bytes2str(s)
+                res = String.bytes2str(s)
             else:
                 res = b"\\x" + b"\\x".join([s[i:i + 2] for i in range(0, len(s), 2)])
                 res = res.decode("utf-8")
@@ -28005,7 +28010,7 @@ def to_string_dereference_from(value, skip_idx=0, phys=False):
     def to_ascii(v):
         s = ""
         while v & 0xff: # \0
-            if chr(v & 0xff) in STRING_CHARSET:
+            if chr(v & 0xff) in String.STRING_CHARSET:
                 s += chr(v & 0xff)
             else:
                 return ""
@@ -29135,7 +29140,7 @@ class PatternCreateCommand(GenericCommand):
         if charset is None:
             charset = bytearray(b"abcdefghijklmnopqrstuvwxyz")
         elif isinstance(charset, str):
-            charset = str2bytes(charset)
+            charset = String.str2bytes(charset)
 
         cycle = get_memory_alignment()
         return bytearray(itertools.islice(PatternCreateCommand.de_bruijn(charset, cycle), length))
@@ -29150,7 +29155,7 @@ class PatternCreateCommand(GenericCommand):
             size = args.size
 
         info("Generating a pattern of {:d} bytes".format(size))
-        pattern_str = gef_pystring(PatternCreateCommand.generate_cyclic_pattern(size, args.charset))
+        pattern_str = String.gef_pystring(PatternCreateCommand.generate_cyclic_pattern(size, args.charset))
         gef_print(pattern_str)
         ok("Saved as '{:s}'".format(gef_convenience(pattern_str)))
         return
@@ -29233,7 +29238,7 @@ class PatternSearchCommand(GenericCommand):
             pass
 
         # 3. plain text
-        pattern = str2bytes(args.pattern)
+        pattern = String.str2bytes(args.pattern)
         if set(pattern) - set(cyclic_pattern) == set():
             self.search("As string", cyclic_pattern, pattern)
         return
@@ -31441,7 +31446,7 @@ class FormatStringBreakpoint(gdb.Breakpoint):
 
         if addr.section.permission.value & Permission.WRITE:
             content = read_cstring_from_memory(addr.value)
-            content = gef_pystring(str2bytes(content))
+            content = String.gef_pystring(String.str2bytes(content))
             name = addr.info.name if addr.info else addr.section.path
             msg.append(Color.colorify("Format string helper", "bold yellow"))
             m = "Possible insecure format string: {:s}('{:s}' {:s} {:#x}: '{:s}')"
@@ -45480,7 +45485,7 @@ class LibcCommand(GenericCommand):
 
         pos = re.search(b"(GNU C Library|uClibc-ng release) [\x20-\x7e]*", data)
         if pos:
-            gef_print("ver:\t{:s}".format(bytes2str(pos.group(0))))
+            gef_print("ver:\t{:s}".format(String.bytes2str(pos.group(0))))
         return
 
 
@@ -45549,7 +45554,7 @@ class LdCommand(GenericCommand):
 
         pos = re.search(b"ld.so [\x20-\x7e]+ version [\x20-\x7e]*", data)
         if pos:
-            gef_print("ver:\t{:s}".format(bytes2str(pos.group(0))))
+            gef_print("ver:\t{:s}".format(String.bytes2str(pos.group(0))))
         return
 
 
@@ -58394,7 +58399,7 @@ class KernelPciDeviceCommand(GenericCommand):
                 url = "https://raw.githubusercontent.com/pciutils/pciids/master/pci.ids"
                 if not self.quiet:
                     info("use {:s}".format(url))
-                content = bytes2str(http_get(url) or "")
+                content = String.bytes2str(http_get(url) or "")
                 if not content:
                     if not self.quiet:
                         info("Connection timed out: {:s}".format(url))
@@ -58740,7 +58745,7 @@ class KernelConfigCommand(GenericCommand):
 
             import gzip
             try:
-                self.configs = bytes2str(gzip.decompress(configz))
+                self.configs = String.bytes2str(gzip.decompress(configz))
             except gzip.BadGzipFile:
                 err("Gzip decompress error")
                 return
@@ -59136,7 +59141,7 @@ class KernelDmesgCommand(GenericCommand):
             size = seq_based_info["text_len"]
             src += current_arch.ptrsize
             if size:
-                entry = bytes2str(read_memory(src, size))
+                entry = String.bytes2str(read_memory(src, size))
             else:
                 entry = ""
 
@@ -59198,7 +59203,7 @@ class KernelDmesgCommand(GenericCommand):
             nsec_str = "{:09d}".format(nsec)[:6]
 
             # split from multi-line message
-            for t in bytes2str(text).splitlines():
+            for t in String.bytes2str(text).splitlines():
                 formatted_entry = "[{:5d}.{:s}] {:s}".format(sec, nsec_str, t)
                 self.out.append(formatted_entry)
 
@@ -61691,7 +61696,7 @@ class DiffOutputListCommand(DiffOutputCommand):
             size = len(data)
             mtime = datetime.datetime.fromtimestamp(os.path.getmtime(path))
             cmd = open(path[:-4] + ".cmd", "rb").read()
-            cmd = bytes2str(cmd)
+            cmd = String.bytes2str(cmd)
             gef_print("{:<3d}  {}  {:s}  {:<7d}  {:s}".format(idx, mtime, path, size, cmd))
         return
 
@@ -68663,7 +68668,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         return True
 
     def get_cfg_name(self):
-        h = hashlib.sha256(str2bytes(self.version_string)).hexdigest()[-16:]
+        h = hashlib.sha256(String.str2bytes(self.version_string)).hexdigest()[-16:]
         major, minor = self.kernel_version
         cfg_file_name = os.path.join(GEF_TEMP_DIR, "ksymaddr-remote-{:d}.{:d}-{:s}.cfg".format(major, minor, h))
         return cfg_file_name
@@ -69710,7 +69715,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
 
         # resolve kversion for saved file name
         kversion = KernelVersionCommand.kernel_version()
-        h = hashlib.sha256(str2bytes(kversion.version_string)).hexdigest()[-16:]
+        h = hashlib.sha256(String.str2bytes(kversion.version_string)).hexdigest()[-16:]
         dumped_mem_file = os.path.join(GEF_TEMP_DIR, "dump-memory-{:s}.raw".format(h))
         symboled_vmlinux_file = os.path.join(GEF_TEMP_DIR, "dump-memory-{:s}.elf".format(h))
 
@@ -74274,7 +74279,7 @@ class CpuidCommand(GenericCommand):
                 return msg
 
         if id == 0:
-            vid = bytes2str(p32(ebx) + p32(edx) + p32(ecx))
+            vid = String.bytes2str(p32(ebx) + p32(edx) + p32(ecx))
             self.out.append("eax: Maximum Input Value for Basic CPUID Information")
             self.out.append("ebx+edx+ecx: Vendor ID (={:s})".format(repr(vid)))
         elif id == 1:
@@ -74583,7 +74588,7 @@ class CpuidCommand(GenericCommand):
         elif id == 31:
             self.out.append("Information of V2 Extended Topology Enumeration")
         elif id == 0x40000000:
-            vid = bytes2str(p32(ebx) + p32(ecx) + p32(edx))
+            vid = String.bytes2str(p32(ebx) + p32(ecx) + p32(edx))
             self.out.append("eax: Maximum Input Value for Hypervisor Function CPUID Information")
             self.out.append("ebx+ecx+edx: Hypervisor Brand String (={:s})".format(repr(vid)))
         elif id == 0x40000001:
@@ -74836,7 +74841,7 @@ class CpuidCommand(GenericCommand):
             self.out.append(c(ecx, 30, 1,          "        ECX    30: Address mask extension for instruction breakpoint"))
             self.out.append(c(ecx, 31, 1,          "        ECX    31: Reserved"))
         elif id in [0x80000002, 0x80000003, 0x80000004]:
-            vid = bytes2str(p32(eax) + p32(ebx) + p32(ecx) + p32(edx))
+            vid = String.bytes2str(p32(eax) + p32(ebx) + p32(ecx) + p32(edx))
             self.out.append("eax+ebx+ecx+edx: Processor Brand String (={:s})".format(repr(vid)))
         elif id == 0x80000005:
             self.out.append("L1 Cache Information")
@@ -74970,7 +74975,7 @@ class CpuidCommand(GenericCommand):
             self.out.append(c(eax, 10, 1,          "        EAX    10: IbsOpData4 (IBS Op Data 4 MSR)"))
             self.out.append(c(eax, 11, 0x1fffff,   "        EAX 31-11: Reserved"))
         elif id == 0x8fffffff:
-            vid = bytes2str(p32(eax) + p32(ebx) + p32(ecx) + p32(edx))
+            vid = String.bytes2str(p32(eax) + p32(ebx) + p32(ecx) + p32(edx))
             self.out.append("eax+ebx+ecx+edx: Easter egg (={:s})".format(repr(vid)))
         elif id == 0xc0000000:
             self.out.append("eax: Maximum Input Value for Extended Function CPUID Information")
@@ -80083,7 +80088,7 @@ class PagewalkWithHintsCommand(GenericCommand):
 
                 name = r.group(1)
                 # something is wrong
-                if name and not all(x in STRING_PRINTABLE for x in name):
+                if name and not all(x in String.STRING_PRINTABLE for x in name):
                     current += gef_getpagesize()
                     continue
 
@@ -81015,7 +81020,7 @@ class QemuDeviceInfoCommand(GenericCommand):
         if args.device:
             device_name = args.device
         else:
-            cmdline = bytes2str(open("/proc/{:d}/cmdline".format(Pid.get_pid()), "rb").read()).split("\0")
+            cmdline = String.bytes2str(open("/proc/{:d}/cmdline".format(Pid.get_pid()), "rb").read()).split("\0")
             if cmdline.count("-device") == 0:
                 err("Not found `-device` option in qemu-system cmdline")
                 return
@@ -82436,7 +82441,7 @@ class KmallocAllocatedByCommand(GenericCommand):
             if arg is None:
                 break
             if isinstance(arg, str):
-                arg = str2bytes(arg)
+                arg = String.str2bytes(arg)
             if isinstance(arg, bytes):
                 write_memory(sp, arg)
                 gdb.execute("set {:s}={:#x}".format(reg, sp), to_string=True)
@@ -84530,7 +84535,7 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
 
         # resolve kversion for saved file name
         kversion = KernelVersionCommand.kernel_version()
-        h = hashlib.sha256(str2bytes(kversion.version_string)).hexdigest()[-16:]
+        h = hashlib.sha256(String.str2bytes(kversion.version_string)).hexdigest()[-16:]
         sym_elf_path = os.path.join(GEF_TEMP_DIR, "ks-apply-{:s}.elf".format(h))
         if (not args.reparse) and os.path.exists(sym_elf_path) and os.path.getsize(sym_elf_path) > 0:
             if not args.quiet:
@@ -84838,7 +84843,7 @@ class XRefTelescopeCommand(SearchPatternCommand):
                     self.out.append("{:s}{:s}".format(prefix, h))
             return
 
-        if is_hex(pattern):
+        if String.is_hex(pattern):
             if get_endian() == Elf.BIG_ENDIAN:
                 pattern = "".join(["\\x" + pattern[i:i + 2] for i in range(2, len(pattern), 2)])
             else:
@@ -86368,7 +86373,7 @@ def fix_venv():
         return
 
     cmds = [pythonbin, "-c", "import os,sys;print(sys.prefix)"]
-    PREFIX = gef_pystring(subprocess.check_output(cmds)).strip("\\n")
+    PREFIX = String.gef_pystring(subprocess.check_output(cmds)).strip("\\n")
     if PREFIX != sys.base_prefix:
         cmds = [pythonbin, "-c", "import os,sys;print(os.linesep.join(sys.path).strip())"]
         SITE_PACKAGES_DIRS = subprocess.check_output(cmds).decode("utf-8").split()
