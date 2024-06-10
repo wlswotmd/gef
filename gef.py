@@ -13032,13 +13032,6 @@ def get_memory_alignment(in_bits=False):
     raise EnvironmentError("GEF is running under an unsupported mode")
 
 
-def clear_screen():
-    """Clear the screen."""
-    # this is more faster than executing "shell clear -x"
-    print("\x1b[H\x1b[2J", end="")
-    return
-
-
 @Cache.cache_until_next
 def is_in_kernel():
     if not is_alive():
@@ -26756,7 +26749,8 @@ class ContextCommand(GenericCommand):
         self.tty_rows, self.tty_columns = get_terminal_size()
 
         if self.get_setting("clear_screen") and len(args.commands) == 0:
-            clear_screen()
+            # this is more faster than executing "shell clear -x"
+            print("\x1b[H\x1b[2J", end="")
 
         for section in current_layout:
             if not is_alive():
