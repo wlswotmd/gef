@@ -1470,8 +1470,16 @@ class Elf:
     e_shnum                  = None
     e_shstrndx               = None
 
-    def __init__(self, elf):
-        """Instantiate an ELF object. The default behavior is to create the object by parsing the ELF file."""
+    @staticmethod
+    @Cache.cache_until_next
+    def get_elf(filepath=None):
+        """Return an Elf object with caching."""
+        return Elf(filepath)
+
+    def __init__(self, elf=None):
+        """Instantiate an ELF object."""
+        if elf is None:
+            elf = get_filepath()
         if isinstance(elf, str):
             if not os.access(elf, os.R_OK):
                 err("'{:s}' not found/readable".format(elf))
@@ -1510,14 +1518,14 @@ class Elf:
         # phdr
         self.phdrs = []
         for i in range(self.e_phnum):
-            phdr = Phdr(self, self.e_phoff + self.e_phentsize * i)
+            phdr = Elf.Phdr(self, self.e_phoff + self.e_phentsize * i)
             self.phdrs.append(phdr)
 
         # shdr
         self.shdrs = []
         for i in range(self.e_shnum):
             try:
-                shdr = Shdr(self, self.e_shoff + self.e_shentsize * i)
+                shdr = Elf.Shdr(self, self.e_shoff + self.e_shentsize * i)
                 self.shdrs.append(shdr)
             except gdb.MemoryError:
                 # Perspective failure. Probably it occurs when parsing ELF loaded into memory.
@@ -1526,7 +1534,7 @@ class Elf:
                 break
         else:
             # multiple SHT_NULLs are treated as abnormal
-            if sum([x.sh_type == Shdr.SHT_NULL for x in self.shdrs]) > 1:
+            if sum([x.sh_type == Elf.Shdr.SHT_NULL for x in self.shdrs]) > 1:
                 self.shdrs = []
 
         if self.fd is not None:
@@ -1652,11 +1660,11 @@ class Elf:
 
     def is_static(self):
         # note: static-pie has no PT_INTERP
-        return not bool(self.get_phdr(Phdr.PT_INTERP))
+        return not bool(self.get_phdr(Elf.Phdr.PT_INTERP))
 
     def has_dynamic(self):
         # note: static-pie has PT_DYNAMIC
-        return bool(self.get_phdr(Phdr.PT_DYNAMIC))
+        return bool(self.get_phdr(Elf.Phdr.PT_DYNAMIC))
 
     def is_stripped(self):
         return not bool(self.get_shdr(".symtab"))
@@ -1692,18 +1700,18 @@ class Elf:
         return self.e_type == Elf.ET_DYN
 
     def is_nx(self):
-        phdr = self.get_phdr(Phdr.PT_GNU_STACK)
+        phdr = self.get_phdr(Elf.Phdr.PT_GNU_STACK)
         if phdr:
-            return not bool(phdr.p_flags & Phdr.PF_X)
+            return not bool(phdr.p_flags & Elf.Phdr.PF_X)
         return False
 
     def is_relro(self):
         # both partial and full have PT_GNU_RELRO
-        return bool(self.get_phdr(Phdr.PT_GNU_RELRO))
+        return bool(self.get_phdr(Elf.Phdr.PT_GNU_RELRO))
 
     def get_dynamic_data(self):
         # find dynamic
-        phdr = self.get_phdr(Phdr.PT_DYNAMIC)
+        phdr = self.get_phdr(Elf.Phdr.PT_DYNAMIC)
         if phdr is None:
             return None
 
@@ -1887,7 +1895,7 @@ class Elf:
         if self.e_machine in (Elf.EM_X86_64, Elf.EM_386):
             sec["CET IBT flag"] = False
             sec["CET SHSTK flag"] = False
-            note_gnu_property = self.read_phdr(Phdr.PT_GNU_PROPERTY)
+            note_gnu_property = self.read_phdr(Elf.Phdr.PT_GNU_PROPERTY)
             if note_gnu_property:
                 features = get_features_from_note(note_gnu_property)
                 sec["CET IBT flag"] = features & 1 # GNU_PROPERTY_X86_FEATURE_1_IBT
@@ -1916,263 +1924,262 @@ class Elf:
             sec["Clang SafeStack"] = exists_sym(dynstr, strtab, ["__safestack_init"])
         return sec
 
+    class Phdr:
+        # p_type
+        PT_NULL          = 0
+        PT_LOAD          = 1
+        PT_DYNAMIC       = 2
+        PT_INTERP        = 3
+        PT_NOTE          = 4
+        PT_SHLIB         = 5
+        PT_PHDR          = 6
+        PT_TLS           = 7
+        #PT_LOOS          = 0x60000000
+        PT_GNU_EH_FRAME  = 0x6474e550
+        PT_GNU_STACK     = 0x6474e551
+        PT_GNU_RELRO     = 0x6474e552
+        PT_GNU_PROPERTY  = 0x6474e553
+        #PT_LOSUNW        = 0x6ffffffa
+        PT_SUNWBSS       = 0x6ffffffa
+        PT_SUNWSTACK     = 0x6ffffffb
+        #PT_HISUNW        = 0x6fffffff
+        #PT_HIOS          = 0x6fffffff
+        #PT_LOPROC        = 0x70000000
+        #PT_HIPROC        = 0x7fffffff
+        # arch specific values
+        PT_MIPS_REGINFO  = 0x70000000
+        PT_MIPS_RTPROC   = 0x70000001
+        PT_MIPS_OPTIONS  = 0x70000002
+        PT_MIPS_ABIFLAGS = 0x70000003
+        PT_IA_64_UNWIND  = 0x70000001 # noqa: F841
+        PT_HP_TLS        = 0x60000000 # noqa: F841
+        PT_HP_CORE_NONE  = 0x60000001 # noqa: F841
+        PT_HP_CORE_VERSION = 0x60000002 # noqa: F841
+        PT_HP_CORE_KERNEL = 0x60000003 # noqa: F841
+        PT_HP_CORE_COMM  = 0x60000004 # noqa: F841
+        PT_HP_CORE_PROC  = 0x60000005 # noqa: F841
+        PT_HP_CORE_LOADABLE = 0x60000006 # noqa: F841
+        PT_HP_CORE_STACK = 0x60000007 # noqa: F841
+        PT_HP_CORE_SHM   = 0x60000008 # noqa: F841
+        PT_HP_CORE_MMF   = 0x60000009 # noqa: F841
+        PT_HP_PARALLEL   = 0x6000000a # noqa: F841
+        PT_HP_FASTBIND   = 0x6000000b # noqa: F841
+        PT_HP_OPT_ANNOT  = 0x6000000c # noqa: F841
+        PT_HP_HSL_ANNOT  = 0x6000000d # noqa: F841
+        PT_HP_STACK      = 0x6000000ea # noqa: F841
+        PT_PARISC_ARCHEXT = 0x70000000 # noqa: F841
+        PT_PARISC_UNWIND = 0x70000001 # noqa: F841
 
-class Phdr:
-    # p_type
-    PT_NULL          = 0
-    PT_LOAD          = 1
-    PT_DYNAMIC       = 2
-    PT_INTERP        = 3
-    PT_NOTE          = 4
-    PT_SHLIB         = 5
-    PT_PHDR          = 6
-    PT_TLS           = 7
-    #PT_LOOS          = 0x60000000
-    PT_GNU_EH_FRAME  = 0x6474e550
-    PT_GNU_STACK     = 0x6474e551
-    PT_GNU_RELRO     = 0x6474e552
-    PT_GNU_PROPERTY  = 0x6474e553
-    #PT_LOSUNW        = 0x6ffffffa
-    PT_SUNWBSS       = 0x6ffffffa
-    PT_SUNWSTACK     = 0x6ffffffb
-    #PT_HISUNW        = 0x6fffffff
-    #PT_HIOS          = 0x6fffffff
-    #PT_LOPROC        = 0x70000000
-    #PT_HIPROC        = 0x7fffffff
-    # arch specific values
-    PT_MIPS_REGINFO  = 0x70000000
-    PT_MIPS_RTPROC   = 0x70000001
-    PT_MIPS_OPTIONS  = 0x70000002
-    PT_MIPS_ABIFLAGS = 0x70000003
-    PT_IA_64_UNWIND  = 0x70000001 # noqa: F841
-    PT_HP_TLS        = 0x60000000 # noqa: F841
-    PT_HP_CORE_NONE  = 0x60000001 # noqa: F841
-    PT_HP_CORE_VERSION = 0x60000002 # noqa: F841
-    PT_HP_CORE_KERNEL = 0x60000003 # noqa: F841
-    PT_HP_CORE_COMM  = 0x60000004 # noqa: F841
-    PT_HP_CORE_PROC  = 0x60000005 # noqa: F841
-    PT_HP_CORE_LOADABLE = 0x60000006 # noqa: F841
-    PT_HP_CORE_STACK = 0x60000007 # noqa: F841
-    PT_HP_CORE_SHM   = 0x60000008 # noqa: F841
-    PT_HP_CORE_MMF   = 0x60000009 # noqa: F841
-    PT_HP_PARALLEL   = 0x6000000a # noqa: F841
-    PT_HP_FASTBIND   = 0x6000000b # noqa: F841
-    PT_HP_OPT_ANNOT  = 0x6000000c # noqa: F841
-    PT_HP_HSL_ANNOT  = 0x6000000d # noqa: F841
-    PT_HP_STACK      = 0x6000000ea # noqa: F841
-    PT_PARISC_ARCHEXT = 0x70000000 # noqa: F841
-    PT_PARISC_UNWIND = 0x70000001 # noqa: F841
+        # p_flags
+        PF_X             = 1
+        PF_W             = 2
+        PF_R             = 4
+        # arch specific values
+        PF_HP_PAGE_SIZE  = 0x00100000 # noqa: F841
+        PF_HP_FAR_SHARED = 0x00200000 # noqa: F841
+        PF_HP_NEAR_SHARED = 0x00400000 # noqa: F841
+        PF_HP_CODE       = 0x01000000 # noqa: F841
+        PF_HP_MODIFY     = 0x02000000 # noqa: F841
+        PF_HP_LAZYSWAP   = 0x04000000 # noqa: F841
+        PF_HP_SBP        = 0x08000000 # noqa: F841
+        PF_PARISC_SBP    = 0x08000000 # noqa: F841
 
-    # p_flags
-    PF_X             = 1
-    PF_W             = 2
-    PF_R             = 4
-    # arch specific values
-    PF_HP_PAGE_SIZE  = 0x00100000 # noqa: F841
-    PF_HP_FAR_SHARED = 0x00200000 # noqa: F841
-    PF_HP_NEAR_SHARED = 0x00400000 # noqa: F841
-    PF_HP_CODE       = 0x01000000 # noqa: F841
-    PF_HP_MODIFY     = 0x02000000 # noqa: F841
-    PF_HP_LAZYSWAP   = 0x04000000 # noqa: F841
-    PF_HP_SBP        = 0x08000000 # noqa: F841
-    PF_PARISC_SBP    = 0x08000000 # noqa: F841
+        p_type           = None
+        p_flags          = None
+        p_offset         = None
+        p_vaddr          = None
+        p_paddr          = None
+        p_filesz         = None
+        p_memsz          = None
+        p_align          = None
 
-    p_type           = None
-    p_flags          = None
-    p_offset         = None
-    p_vaddr          = None
-    p_paddr          = None
-    p_filesz         = None
-    p_memsz          = None
-    p_align          = None
+        def __init__(self, elf, off):
+            if elf is None:
+                return None
+            elf.seek(off)
+            endian = "<" if elf.e_endianness == Elf.LITTLE_ENDIAN else ">"
+            if elf.e_class == Elf.ELF_64_BITS:
+                self.p_type, self.p_flags, self.p_offset = struct.unpack("{}IIQ".format(endian), elf.read(16))
+                self.p_vaddr, self.p_paddr = struct.unpack("{}QQ".format(endian), elf.read(16))
+                self.p_filesz, self.p_memsz, self.p_align = struct.unpack("{}QQQ".format(endian), elf.read(24))
+            else:
+                self.p_type, self.p_offset = struct.unpack("{}II".format(endian), elf.read(8))
+                self.p_vaddr, self.p_paddr = struct.unpack("{}II".format(endian), elf.read(8))
+                self.p_filesz, self.p_memsz, self.p_flags, self.p_align = struct.unpack("{}IIII".format(endian), elf.read(16))
 
-    def __init__(self, elf, off):
-        if elf is None:
-            return None
-        elf.seek(off)
-        endian = "<" if elf.e_endianness == Elf.LITTLE_ENDIAN else ">"
-        if elf.e_class == Elf.ELF_64_BITS:
-            self.p_type, self.p_flags, self.p_offset = struct.unpack("{}IIQ".format(endian), elf.read(16))
-            self.p_vaddr, self.p_paddr = struct.unpack("{}QQ".format(endian), elf.read(16))
-            self.p_filesz, self.p_memsz, self.p_align = struct.unpack("{}QQQ".format(endian), elf.read(24))
-        else:
-            self.p_type, self.p_offset = struct.unpack("{}II".format(endian), elf.read(8))
-            self.p_vaddr, self.p_paddr = struct.unpack("{}II".format(endian), elf.read(8))
-            self.p_filesz, self.p_memsz, self.p_flags, self.p_align = struct.unpack("{}IIII".format(endian), elf.read(16))
-
-    def __repr__(self):
-        for e in dir(self):
-            if e.startswith("PT_"):
-                if self.p_type == getattr(self, e):
-                    return "<{:s}.{:s} object at {:#x}, p_type={:s}>".format(
-                        self.__module__, self.__class__.__name__, id(self), e,
-                    )
-        return "<{:s}.{:s} object at {:#x}, p_type={:#x}>".format(
-            self.__module__, self.__class__.__name__, id(self), self.p_type,
-        )
+        def __repr__(self):
+            for e in dir(self):
+                if e.startswith("PT_"):
+                    if self.p_type == getattr(self, e):
+                        return "<{:s}.{:s} object at {:#x}, p_type={:s}>".format(
+                            self.__module__, self.__class__.__name__, id(self), e,
+                        )
+            return "<{:s}.{:s} object at {:#x}, p_type={:#x}>".format(
+                self.__module__, self.__class__.__name__, id(self), self.p_type,
+            )
 
 
-class Shdr:
-    # sh_type
-    SHT_NULL             = 0
-    SHT_PROGBITS         = 1
-    SHT_SYMTAB           = 2
-    SHT_STRTAB           = 3
-    SHT_RELA             = 4
-    SHT_HASH             = 5
-    SHT_DYNAMIC          = 6
-    SHT_NOTE             = 7
-    SHT_NOBITS           = 8
-    SHT_REL              = 9
-    SHT_SHLIB            = 10
-    SHT_DYNSYM           = 11
-    SHT_INIT_ARRAY       = 14
-    SHT_FINI_ARRAY       = 15
-    SHT_PREINIT_ARRAY    = 16
-    SHT_GROUP            = 17
-    SHT_SYMTAB_SHNDX     = 18
-    SHT_RELR             = 19
-    #SHT_LOOS             = 0x60000000
-    SHT_GNU_ATTRIBUTES   = 0x6ffffff5
-    SHT_GNU_HASH         = 0x6ffffff6
-    SHT_GNU_LIBLIST      = 0x6ffffff7
-    SHT_CHECKSUM         = 0x6ffffff8
-    #SHT_LOSUNW           = 0x6ffffffa
-    SHT_SUNW_move        = 0x6ffffffa
-    SHT_SUNW_COMDAT      = 0x6ffffffb
-    SHT_SUNW_syminfo     = 0x6ffffffc
-    SHT_GNU_verdef       = 0x6ffffffd
-    SHT_GNU_verneed      = 0x6ffffffe
-    SHT_GNU_versym       = 0x6fffffff
-    #SHT_HISUNW           = 0x6fffffff
-    #SHT_HIOS             = 0x6fffffff
-    #SHT_LOPROC           = 0x70000000
-    #SHT_HIPROC           = 0x7fffffff
-    #SHT_LOUSER           = 0x80000000
-    #SHT_HIUSER           = 0x8fffffff
-    # arch specific values
-    SHT_PARISC_EXT       = 0x70000000 # noqa: F841
-    SHT_PARISC_UNWIND    = 0x70000001 # noqa: F841
-    SHT_PARISC_DOC       = 0x70000002 # noqa: F841
-    SHT_MIPS_LIST        = 0x70000000 # noqa: F841
-    SHT_MIPS_CONFLICT    = 0x70000002 # noqa: F841
-    SHT_MIPS_GPTAB       = 0x70000003 # noqa: F841
-    SHT_MIPS_UCODE       = 0x70000004 # noqa: F841
-    SHT_MIPS_DEBUG       = 0x70000005 # noqa: F841
-    SHT_MIPS_REGINFO     = 0x70000006 # noqa: F841
-    SHT_MIPS_PACKAGE     = 0x70000007 # noqa: F841
-    SHT_MIPS_PACKSYM     = 0x70000008 # noqa: F841
-    SHT_MIPS_RELD        = 0x70000009 # noqa: F841
-    SHT_MIPS_IFACE       = 0x7000000b # noqa: F841
-    SHT_MIPS_CONTENT     = 0x7000000c # noqa: F841
-    SHT_MIPS_OPTIONS     = 0x7000000d # noqa: F841
-    SHT_MIPS_SHDR        = 0x70000010 # noqa: F841
-    SHT_MIPS_FDESC       = 0x70000011 # noqa: F841
-    SHT_MIPS_EXTSYM      = 0x70000012 # noqa: F841
-    SHT_MIPS_DENSE       = 0x70000013 # noqa: F841
-    SHT_MIPS_PDESC       = 0x70000014 # noqa: F841
-    SHT_MIPS_LOCSYM      = 0x70000015 # noqa: F841
-    SHT_MIPS_AUXSYM      = 0x70000016 # noqa: F841
-    SHT_MIPS_OPTSYM      = 0x70000017 # noqa: F841
-    SHT_MIPS_LOCSTR      = 0x70000018 # noqa: F841
-    SHT_MIPS_LINE        = 0x70000019 # noqa: F841
-    SHT_MIPS_RFDESC      = 0x7000001a # noqa: F841
-    SHT_MIPS_DELTASYM    = 0x7000001b # noqa: F841
-    SHT_MIPS_DELTAINST   = 0x7000001c # noqa: F841
-    SHT_MIPS_DELTACLASS  = 0x7000001d # noqa: F841
-    SHT_MIPS_DWARF       = 0x7000001e # noqa: F841
-    SHT_MIPS_DELTADECL   = 0x7000001f # noqa: F841
-    SHT_MIPS_SYMBOL_LIB  = 0x70000020 # noqa: F841
-    SHT_MIPS_EVENTS      = 0x70000021 # noqa: F841
-    SHT_MIPS_TRANSLATE   = 0x70000022 # noqa: F841
-    SHT_MIPS_PIXIE       = 0x70000023 # noqa: F841
-    SHT_MIPS_XLATE       = 0x70000024 # noqa: F841
-    SHT_MIPS_XLATE_DEBUG = 0x70000025 # noqa: F841
-    SHT_MIPS_WHIRL       = 0x70000026 # noqa: F841
-    SHT_MIPS_EH_REGION   = 0x70000027 # noqa: F841
-    SHT_MIPS_XLATE_OLD   = 0x70000028 # noqa: F841
-    SHT_MIPS_PDR_EXCEPTION = 0x70000029 # noqa: F841
+    class Shdr:
+        # sh_type
+        SHT_NULL             = 0
+        SHT_PROGBITS         = 1
+        SHT_SYMTAB           = 2
+        SHT_STRTAB           = 3
+        SHT_RELA             = 4
+        SHT_HASH             = 5
+        SHT_DYNAMIC          = 6
+        SHT_NOTE             = 7
+        SHT_NOBITS           = 8
+        SHT_REL              = 9
+        SHT_SHLIB            = 10
+        SHT_DYNSYM           = 11
+        SHT_INIT_ARRAY       = 14
+        SHT_FINI_ARRAY       = 15
+        SHT_PREINIT_ARRAY    = 16
+        SHT_GROUP            = 17
+        SHT_SYMTAB_SHNDX     = 18
+        SHT_RELR             = 19
+        #SHT_LOOS             = 0x60000000
+        SHT_GNU_ATTRIBUTES   = 0x6ffffff5
+        SHT_GNU_HASH         = 0x6ffffff6
+        SHT_GNU_LIBLIST      = 0x6ffffff7
+        SHT_CHECKSUM         = 0x6ffffff8
+        #SHT_LOSUNW           = 0x6ffffffa
+        SHT_SUNW_move        = 0x6ffffffa
+        SHT_SUNW_COMDAT      = 0x6ffffffb
+        SHT_SUNW_syminfo     = 0x6ffffffc
+        SHT_GNU_verdef       = 0x6ffffffd
+        SHT_GNU_verneed      = 0x6ffffffe
+        SHT_GNU_versym       = 0x6fffffff
+        #SHT_HISUNW           = 0x6fffffff
+        #SHT_HIOS             = 0x6fffffff
+        #SHT_LOPROC           = 0x70000000
+        #SHT_HIPROC           = 0x7fffffff
+        #SHT_LOUSER           = 0x80000000
+        #SHT_HIUSER           = 0x8fffffff
+        # arch specific values
+        SHT_PARISC_EXT       = 0x70000000 # noqa: F841
+        SHT_PARISC_UNWIND    = 0x70000001 # noqa: F841
+        SHT_PARISC_DOC       = 0x70000002 # noqa: F841
+        SHT_MIPS_LIST        = 0x70000000 # noqa: F841
+        SHT_MIPS_CONFLICT    = 0x70000002 # noqa: F841
+        SHT_MIPS_GPTAB       = 0x70000003 # noqa: F841
+        SHT_MIPS_UCODE       = 0x70000004 # noqa: F841
+        SHT_MIPS_DEBUG       = 0x70000005 # noqa: F841
+        SHT_MIPS_REGINFO     = 0x70000006 # noqa: F841
+        SHT_MIPS_PACKAGE     = 0x70000007 # noqa: F841
+        SHT_MIPS_PACKSYM     = 0x70000008 # noqa: F841
+        SHT_MIPS_RELD        = 0x70000009 # noqa: F841
+        SHT_MIPS_IFACE       = 0x7000000b # noqa: F841
+        SHT_MIPS_CONTENT     = 0x7000000c # noqa: F841
+        SHT_MIPS_OPTIONS     = 0x7000000d # noqa: F841
+        SHT_MIPS_SHDR        = 0x70000010 # noqa: F841
+        SHT_MIPS_FDESC       = 0x70000011 # noqa: F841
+        SHT_MIPS_EXTSYM      = 0x70000012 # noqa: F841
+        SHT_MIPS_DENSE       = 0x70000013 # noqa: F841
+        SHT_MIPS_PDESC       = 0x70000014 # noqa: F841
+        SHT_MIPS_LOCSYM      = 0x70000015 # noqa: F841
+        SHT_MIPS_AUXSYM      = 0x70000016 # noqa: F841
+        SHT_MIPS_OPTSYM      = 0x70000017 # noqa: F841
+        SHT_MIPS_LOCSTR      = 0x70000018 # noqa: F841
+        SHT_MIPS_LINE        = 0x70000019 # noqa: F841
+        SHT_MIPS_RFDESC      = 0x7000001a # noqa: F841
+        SHT_MIPS_DELTASYM    = 0x7000001b # noqa: F841
+        SHT_MIPS_DELTAINST   = 0x7000001c # noqa: F841
+        SHT_MIPS_DELTACLASS  = 0x7000001d # noqa: F841
+        SHT_MIPS_DWARF       = 0x7000001e # noqa: F841
+        SHT_MIPS_DELTADECL   = 0x7000001f # noqa: F841
+        SHT_MIPS_SYMBOL_LIB  = 0x70000020 # noqa: F841
+        SHT_MIPS_EVENTS      = 0x70000021 # noqa: F841
+        SHT_MIPS_TRANSLATE   = 0x70000022 # noqa: F841
+        SHT_MIPS_PIXIE       = 0x70000023 # noqa: F841
+        SHT_MIPS_XLATE       = 0x70000024 # noqa: F841
+        SHT_MIPS_XLATE_DEBUG = 0x70000025 # noqa: F841
+        SHT_MIPS_WHIRL       = 0x70000026 # noqa: F841
+        SHT_MIPS_EH_REGION   = 0x70000027 # noqa: F841
+        SHT_MIPS_XLATE_OLD   = 0x70000028 # noqa: F841
+        SHT_MIPS_PDR_EXCEPTION = 0x70000029 # noqa: F841
 
-    # sh_flags
-    SHF_WRITE            = 1
-    SHF_ALLOC            = 2
-    SHF_EXECINSTR        = 4
-    SHF_MERGE            = 0x10
-    SHF_STRINGS          = 0x20
-    SHF_INFO_LINK        = 0x40
-    SHF_LINK_ORDER       = 0x80
-    SHF_OS_NONCONFORMING = 0x100
-    SHF_GROUP            = 0x200
-    SHF_TLS              = 0x400
-    SHF_COMPRESSED       = 0x800
-    SHF_RELA_LIVEPATCH   = 0x00100000 # noqa: F841
-    SHF_RO_AFTER_INIT    = 0x00200000 # noqa: F841
-    SHF_ORDERED          = 0x40000000 # noqa: F841
-    SHF_EXCLUDE          = 0x80000000
-    # arch specific values
-    SHF_MIPS_NODUPES     = 0x01000000 # noqa: F841
-    SHF_MIPS_NAMES       = 0x02000000 # noqa: F841
-    SHF_MIPS_LOCAL       = 0x04000000 # noqa: F841
-    SHF_MIPS_NOSTRIP     = 0x08000000 # noqa: F841
-    SHF_MIPS_GPREL       = 0x10000000 # noqa: F841
-    SHF_MIPS_MERGE       = 0x20000000 # noqa: F841
-    SHF_MIPS_ADDR        = 0x40000000 # noqa: F841
-    SHF_MIPS_STRING      = 0x80000000 # noqa: F841
-    SHF_PARISC_SHORT     = 0x20000000 # noqa: F841
-    SHF_PARISC_HUGE      = 0x40000000 # noqa: F841
-    SHF_PARISC_SBP       = 0x80000000 # noqa: F841
-    SHF_ALPHA_GPREL      = 0x10000000 # noqa: F841
-    SHF_IA_64_SHORT      = 0x10000000 # noqa: F841
+        # sh_flags
+        SHF_WRITE            = 1
+        SHF_ALLOC            = 2
+        SHF_EXECINSTR        = 4
+        SHF_MERGE            = 0x10
+        SHF_STRINGS          = 0x20
+        SHF_INFO_LINK        = 0x40
+        SHF_LINK_ORDER       = 0x80
+        SHF_OS_NONCONFORMING = 0x100
+        SHF_GROUP            = 0x200
+        SHF_TLS              = 0x400
+        SHF_COMPRESSED       = 0x800
+        SHF_RELA_LIVEPATCH   = 0x00100000 # noqa: F841
+        SHF_RO_AFTER_INIT    = 0x00200000 # noqa: F841
+        SHF_ORDERED          = 0x40000000 # noqa: F841
+        SHF_EXCLUDE          = 0x80000000
+        # arch specific values
+        SHF_MIPS_NODUPES     = 0x01000000 # noqa: F841
+        SHF_MIPS_NAMES       = 0x02000000 # noqa: F841
+        SHF_MIPS_LOCAL       = 0x04000000 # noqa: F841
+        SHF_MIPS_NOSTRIP     = 0x08000000 # noqa: F841
+        SHF_MIPS_GPREL       = 0x10000000 # noqa: F841
+        SHF_MIPS_MERGE       = 0x20000000 # noqa: F841
+        SHF_MIPS_ADDR        = 0x40000000 # noqa: F841
+        SHF_MIPS_STRING      = 0x80000000 # noqa: F841
+        SHF_PARISC_SHORT     = 0x20000000 # noqa: F841
+        SHF_PARISC_HUGE      = 0x40000000 # noqa: F841
+        SHF_PARISC_SBP       = 0x80000000 # noqa: F841
+        SHF_ALPHA_GPREL      = 0x10000000 # noqa: F841
+        SHF_IA_64_SHORT      = 0x10000000 # noqa: F841
 
-    sh_name              = None
-    sh_type              = None
-    sh_flags             = None
-    sh_addr              = None
-    sh_offset            = None
-    sh_size              = None
-    sh_link              = None
-    sh_info              = None
-    sh_addralign         = None
-    sh_entsize           = None
+        sh_name              = None
+        sh_type              = None
+        sh_flags             = None
+        sh_addr              = None
+        sh_offset            = None
+        sh_size              = None
+        sh_link              = None
+        sh_info              = None
+        sh_addralign         = None
+        sh_entsize           = None
 
-    def __init__(self, elf, off):
-        if elf is None:
-            return None
-        elf.seek(off)
-        endian = "<" if elf.e_endianness == Elf.LITTLE_ENDIAN else ">"
-        if elf.e_class == Elf.ELF_64_BITS:
-            self.sh_name, self.sh_type, self.sh_flags = struct.unpack("{}IIQ".format(endian), elf.read(16))
-            self.sh_addr, self.sh_offset = struct.unpack("{}QQ".format(endian), elf.read(16))
-            self.sh_size, self.sh_link, self.sh_info = struct.unpack("{}QII".format(endian), elf.read(16))
-            self.sh_addralign, self.sh_entsize = struct.unpack("{}QQ".format(endian), elf.read(16))
-        else:
-            self.sh_name, self.sh_type, self.sh_flags = struct.unpack("{}III".format(endian), elf.read(12))
-            self.sh_addr, self.sh_offset = struct.unpack("{}II".format(endian), elf.read(8))
-            self.sh_size, self.sh_link, self.sh_info = struct.unpack("{}III".format(endian), elf.read(12))
-            self.sh_addralign, self.sh_entsize = struct.unpack("{}II".format(endian), elf.read(8))
+        def __init__(self, elf, off):
+            if elf is None:
+                return None
+            elf.seek(off)
+            endian = "<" if elf.e_endianness == Elf.LITTLE_ENDIAN else ">"
+            if elf.e_class == Elf.ELF_64_BITS:
+                self.sh_name, self.sh_type, self.sh_flags = struct.unpack("{}IIQ".format(endian), elf.read(16))
+                self.sh_addr, self.sh_offset = struct.unpack("{}QQ".format(endian), elf.read(16))
+                self.sh_size, self.sh_link, self.sh_info = struct.unpack("{}QII".format(endian), elf.read(16))
+                self.sh_addralign, self.sh_entsize = struct.unpack("{}QQ".format(endian), elf.read(16))
+            else:
+                self.sh_name, self.sh_type, self.sh_flags = struct.unpack("{}III".format(endian), elf.read(12))
+                self.sh_addr, self.sh_offset = struct.unpack("{}II".format(endian), elf.read(8))
+                self.sh_size, self.sh_link, self.sh_info = struct.unpack("{}III".format(endian), elf.read(12))
+                self.sh_addralign, self.sh_entsize = struct.unpack("{}II".format(endian), elf.read(8))
 
-        # name
-        stroff = elf.e_shoff + elf.e_shentsize * elf.e_shstrndx
+            # name
+            stroff = elf.e_shoff + elf.e_shentsize * elf.e_shstrndx
 
-        if elf.e_class == Elf.ELF_64_BITS:
-            elf.seek(stroff + 16 + 8)
-            offset = struct.unpack("{}Q".format(endian), elf.read(8))[0]
-        else:
-            elf.seek(stroff + 12 + 4)
-            offset = struct.unpack("{}I".format(endian), elf.read(4))[0]
-        elf.seek(offset + self.sh_name)
-        self.sh_name = ""
-        while True:
-            c = ord(elf.read(1))
-            if c == 0:
-                break
-            self.sh_name += chr(c)
-        return
+            if elf.e_class == Elf.ELF_64_BITS:
+                elf.seek(stroff + 16 + 8)
+                offset = struct.unpack("{}Q".format(endian), elf.read(8))[0]
+            else:
+                elf.seek(stroff + 12 + 4)
+                offset = struct.unpack("{}I".format(endian), elf.read(4))[0]
+            elf.seek(offset + self.sh_name)
+            self.sh_name = ""
+            while True:
+                c = ord(elf.read(1))
+                if c == 0:
+                    break
+                self.sh_name += chr(c)
+            return
 
-    def __repr__(self):
-        return '<{:s}.{:s} object at {:#x}, sh_name="{:s}">'.format(
-            self.__module__, self.__class__.__name__, id(self), self.sh_name,
-        )
+        def __repr__(self):
+            return '<{:s}.{:s} object at {:#x}, sh_name="{:s}">'.format(
+                self.__module__, self.__class__.__name__, id(self), self.sh_name,
+            )
 
 
 class Instruction:
@@ -4995,21 +5002,6 @@ def get_endian():
     if "big endian" in endian:
         return Elf.BIG_ENDIAN
     raise EnvironmentError("Invalid endianness")
-
-
-@Cache.cache_this_session
-def get_entry_point(fpath=None):
-    """Return the binary entry point."""
-    if fpath:
-        elf = get_elf_headers(fpath)
-    elif current_elf:
-        elf = current_elf
-    else:
-        elf = get_elf_headers()
-
-    if elf and elf.is_valid:
-        return elf.e_entry
-    return None
 
 
 def is_big_endian():
@@ -11898,7 +11890,7 @@ def get_explored_regions():
                 return None
             try:
                 if read_memory(addr, 4) == b"\x7fELF":
-                    return Elf(addr)
+                    return Elf.get_elf(addr)
             except gdb.MemoryError:
                 return None
             addr -= gef_getpagesize()
@@ -11933,8 +11925,8 @@ def get_explored_regions():
                 for i, page in enumerate(pages):
                     if page["vaddr"] == page_addr:
                         # found, so fix flags
-                        if page["flags"] & Phdr.PF_X: # already has PF_X
-                            flags |= Phdr.PF_X
+                        if page["flags"] & Elf.Phdr.PF_X: # already has PF_X
+                            flags |= Elf.Phdr.PF_X
                         pages[i]["flags"] = flags # overwrite, because RELRO
                         break
                 else:
@@ -11976,7 +11968,7 @@ def get_explored_regions():
 
         # get interp
         elf = get_ehdr(addr & gef_getpagesize_mask_high())
-        phdr = elf.get_phdr(Phdr.PT_INTERP)
+        phdr = elf.get_phdr(Elf.Phdr.PT_INTERP)
         if phdr is None:
             return None
 
@@ -11993,7 +11985,7 @@ def get_explored_regions():
 
         # get dynamic
         elf = get_ehdr(addr & gef_getpagesize_mask_high())
-        phdr = elf.get_phdr(Phdr.PT_DYNAMIC)
+        phdr = elf.get_phdr(Elf.Phdr.PT_DYNAMIC)
         if phdr is None:
             return None
 
@@ -12082,7 +12074,7 @@ def get_explored_regions():
         auxv = gef_get_auxiliary_values()
         if auxv and "AT_PHDR" in auxv:
             elf = get_ehdr(auxv["AT_PHDR"] & gef_getpagesize_mask_high())
-            phdr = elf.get_phdr(Phdr.PT_GNU_STACK)
+            phdr = elf.get_phdr(Elf.Phdr.PT_GNU_STACK)
             if phdr:
                 stack_permission = ElfInfoCommand.pflags[phdr.p_flags].lower()
             else:
@@ -12695,17 +12687,6 @@ def keystone_assemble(code, arch, mode, *args, **kwargs):
     return enc
 
 
-@Cache.cache_until_next
-def get_elf_headers(filepath=None):
-    """Return an Elf object with info from `filename`. If not provided, will return
-    the currently debugged file."""
-    if filepath is None:
-        filepath = get_filepath()
-        if filepath is None:
-            return None
-    return Elf(filepath)
-
-
 @Cache.cache_this_session
 def ptr_width():
     void = cached_lookup_type("void")
@@ -12969,7 +12950,7 @@ def set_arch(arch_str=None):
     else:
         # Determined from loaded ELF
         if not current_elf:
-            elf = get_elf_headers()
+            elf = Elf.get_elf()
             if elf and elf.is_valid():
                 current_elf = elf
             else:
@@ -14732,12 +14713,7 @@ class BreakRelativeVirtualAddressCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        filepath = get_filepath()
-        if not filepath:
-            err("Not found filepath")
-            return
-
-        elf = get_elf_headers(filepath)
+        elf = Elf.get_elf()
         if not elf.is_valid():
             err("Invalid elf")
             return
@@ -15262,7 +15238,7 @@ class VdsoCommand(GenericCommand):
             return
 
         # get dump area
-        elf = get_elf_headers(entry.page_start)
+        elf = Elf.get_elf(entry.page_start)
         if not elf or not elf.is_valid:
             err("parse failed")
             return
@@ -21466,66 +21442,66 @@ class ElfInfoCommand(GenericCommand):
     }
 
     ptype = {
-        Phdr.PT_NULL          : "NULL",
-        Phdr.PT_LOAD          : "LOAD",
-        Phdr.PT_DYNAMIC       : "DYNAMIC",
-        Phdr.PT_INTERP        : "INTERP",
-        Phdr.PT_NOTE          : "NOTE",
-        Phdr.PT_SHLIB         : "SHLIB",
-        Phdr.PT_PHDR          : "PHDR",
-        Phdr.PT_TLS           : "TLS",
-        Phdr.PT_GNU_EH_FRAME  : "GNU_EH_FLAME",
-        Phdr.PT_GNU_STACK     : "GNU_STACK",
-        Phdr.PT_GNU_RELRO     : "GNU_RELRO",
-        Phdr.PT_GNU_PROPERTY  : "GNU_PROPERTY",
-        Phdr.PT_SUNWBSS       : "SUNWBSS",
-        Phdr.PT_SUNWSTACK     : "SUNWSTACK",
-        Phdr.PT_MIPS_REGINFO  : "REGINFO",
-        Phdr.PT_MIPS_RTPROC   : "RTPROC",
-        Phdr.PT_MIPS_OPTIONS  : "OPTIONS",
-        Phdr.PT_MIPS_ABIFLAGS : "ABIFLAGS",
+        Elf.Phdr.PT_NULL          : "NULL",
+        Elf.Phdr.PT_LOAD          : "LOAD",
+        Elf.Phdr.PT_DYNAMIC       : "DYNAMIC",
+        Elf.Phdr.PT_INTERP        : "INTERP",
+        Elf.Phdr.PT_NOTE          : "NOTE",
+        Elf.Phdr.PT_SHLIB         : "SHLIB",
+        Elf.Phdr.PT_PHDR          : "PHDR",
+        Elf.Phdr.PT_TLS           : "TLS",
+        Elf.Phdr.PT_GNU_EH_FRAME  : "GNU_EH_FLAME",
+        Elf.Phdr.PT_GNU_STACK     : "GNU_STACK",
+        Elf.Phdr.PT_GNU_RELRO     : "GNU_RELRO",
+        Elf.Phdr.PT_GNU_PROPERTY  : "GNU_PROPERTY",
+        Elf.Phdr.PT_SUNWBSS       : "SUNWBSS",
+        Elf.Phdr.PT_SUNWSTACK     : "SUNWSTACK",
+        Elf.Phdr.PT_MIPS_REGINFO  : "REGINFO",
+        Elf.Phdr.PT_MIPS_RTPROC   : "RTPROC",
+        Elf.Phdr.PT_MIPS_OPTIONS  : "OPTIONS",
+        Elf.Phdr.PT_MIPS_ABIFLAGS : "ABIFLAGS",
     }
 
     pflags = {
-        0                                 : "---",
-        Phdr.PF_X                         : "--X",
-        Phdr.PF_W                         : "-W-",
-        Phdr.PF_R                         : "R--",
-        Phdr.PF_W | Phdr.PF_X             : "-WX",
-        Phdr.PF_R | Phdr.PF_X             : "R-X",
-        Phdr.PF_R | Phdr.PF_W             : "RW-",
-        Phdr.PF_R | Phdr.PF_W | Phdr.PF_X : "RWX",
+        0                                             : "---",
+        Elf.Phdr.PF_X                                 : "--X",
+        Elf.Phdr.PF_W                                 : "-W-",
+        Elf.Phdr.PF_R                                 : "R--",
+        Elf.Phdr.PF_W | Elf.Phdr.PF_X                 : "-WX",
+        Elf.Phdr.PF_R | Elf.Phdr.PF_X                 : "R-X",
+        Elf.Phdr.PF_R | Elf.Phdr.PF_W                 : "RW-",
+        Elf.Phdr.PF_R | Elf.Phdr.PF_W | Elf.Phdr.PF_X : "RWX",
     }
 
     stype = {
-        Shdr.SHT_NULL           : "NULL",
-        Shdr.SHT_PROGBITS       : "PROGBITS",
-        Shdr.SHT_SYMTAB         : "SYMTAB",
-        Shdr.SHT_STRTAB         : "STRTAB",
-        Shdr.SHT_RELA           : "RELA",
-        Shdr.SHT_HASH           : "HASH",
-        Shdr.SHT_DYNAMIC        : "DYNAMIC",
-        Shdr.SHT_NOTE           : "NOTE",
-        Shdr.SHT_NOBITS         : "NOBITS",
-        Shdr.SHT_REL            : "REL",
-        Shdr.SHT_SHLIB          : "SHLIB",
-        Shdr.SHT_DYNSYM         : "DYNSYM",
-        Shdr.SHT_INIT_ARRAY     : "INIT_ARRAY",
-        Shdr.SHT_FINI_ARRAY     : "FINI_ARRAY",
-        Shdr.SHT_PREINIT_ARRAY  : "PREINIT_ARRAY",
-        Shdr.SHT_GROUP          : "GROUP",
-        Shdr.SHT_SYMTAB_SHNDX   : "SYMTAB_SHNDX",
-        Shdr.SHT_RELR           : "RELR",
-        Shdr.SHT_GNU_ATTRIBUTES : "GNU_ATTRIBUTES",
-        Shdr.SHT_GNU_HASH       : "GNU_HASH",
-        Shdr.SHT_GNU_LIBLIST    : "GNU_LIBLIST",
-        Shdr.SHT_CHECKSUM       : "CHECKSUM",
-        Shdr.SHT_SUNW_move      : "SUNW_move",
-        Shdr.SHT_SUNW_COMDAT    : "SUNW_COMDAT",
-        Shdr.SHT_SUNW_syminfo   : "SUNW_syminfo",
-        Shdr.SHT_GNU_verdef     : "GNU_verdef",
-        Shdr.SHT_GNU_verneed    : "GNU_verneed",
-        Shdr.SHT_GNU_versym     : "GNU_versym",
+        Elf.Shdr.SHT_NULL           : "NULL",
+        Elf.Shdr.SHT_PROGBITS       : "PROGBITS",
+        Elf.Shdr.SHT_SYMTAB         : "SYMTAB",
+        Elf.Shdr.SHT_STRTAB         : "STRTAB",
+        Elf.Shdr.SHT_RELA           : "RELA",
+        Elf.Shdr.SHT_HASH           : "HASH",
+        Elf.Shdr.SHT_DYNAMIC        : "DYNAMIC",
+        Elf.Shdr.SHT_NOTE           : "NOTE",
+        Elf.Shdr.SHT_NOBITS         : "NOBITS",
+        Elf.Shdr.SHT_REL            : "REL",
+        Elf.Shdr.SHT_SHLIB          : "SHLIB",
+        Elf.Shdr.SHT_DYNSYM         : "DYNSYM",
+        Elf.Shdr.SHT_INIT_ARRAY     : "INIT_ARRAY",
+        Elf.Shdr.SHT_FINI_ARRAY     : "FINI_ARRAY",
+        Elf.Shdr.SHT_PREINIT_ARRAY  : "PREINIT_ARRAY",
+        Elf.Shdr.SHT_GROUP          : "GROUP",
+        Elf.Shdr.SHT_SYMTAB_SHNDX   : "SYMTAB_SHNDX",
+        Elf.Shdr.SHT_RELR           : "RELR",
+        Elf.Shdr.SHT_GNU_ATTRIBUTES : "GNU_ATTRIBUTES",
+        Elf.Shdr.SHT_GNU_HASH       : "GNU_HASH",
+        Elf.Shdr.SHT_GNU_LIBLIST    : "GNU_LIBLIST",
+        Elf.Shdr.SHT_CHECKSUM       : "CHECKSUM",
+        Elf.Shdr.SHT_SUNW_move      : "SUNW_move",
+        Elf.Shdr.SHT_SUNW_COMDAT    : "SUNW_COMDAT",
+        Elf.Shdr.SHT_SUNW_syminfo   : "SUNW_syminfo",
+        Elf.Shdr.SHT_GNU_verdef     : "GNU_verdef",
+        Elf.Shdr.SHT_GNU_verneed    : "GNU_verneed",
+        Elf.Shdr.SHT_GNU_versym     : "GNU_versym",
     }
 
     def elf_info(self, elf, orig_filepath=None):
@@ -21610,29 +21586,29 @@ class ElfInfoCommand(GenericCommand):
         for i, s in enumerate(elf.shdrs):
             sh_type = self.stype.get(s.sh_type, "UNKNOWN")
             sh_flags = ""
-            if s.sh_flags & Shdr.SHF_WRITE:
+            if s.sh_flags & Elf.Shdr.SHF_WRITE:
                 sh_flags += "W"
-            if s.sh_flags & Shdr.SHF_ALLOC:
+            if s.sh_flags & Elf.Shdr.SHF_ALLOC:
                 sh_flags += "A"
-            if s.sh_flags & Shdr.SHF_EXECINSTR:
+            if s.sh_flags & Elf.Shdr.SHF_EXECINSTR:
                 sh_flags += "X"
-            if s.sh_flags & Shdr.SHF_MERGE:
+            if s.sh_flags & Elf.Shdr.SHF_MERGE:
                 sh_flags += "M"
-            if s.sh_flags & Shdr.SHF_STRINGS:
+            if s.sh_flags & Elf.Shdr.SHF_STRINGS:
                 sh_flags += "S"
-            if s.sh_flags & Shdr.SHF_INFO_LINK:
+            if s.sh_flags & Elf.Shdr.SHF_INFO_LINK:
                 sh_flags += "I"
-            if s.sh_flags & Shdr.SHF_LINK_ORDER:
+            if s.sh_flags & Elf.Shdr.SHF_LINK_ORDER:
                 sh_flags += "L"
-            if s.sh_flags & Shdr.SHF_OS_NONCONFORMING:
+            if s.sh_flags & Elf.Shdr.SHF_OS_NONCONFORMING:
                 sh_flags += "O"
-            if s.sh_flags & Shdr.SHF_GROUP:
+            if s.sh_flags & Elf.Shdr.SHF_GROUP:
                 sh_flags += "G"
-            if s.sh_flags & Shdr.SHF_TLS:
+            if s.sh_flags & Elf.Shdr.SHF_TLS:
                 sh_flags += "T"
-            if s.sh_flags & Shdr.SHF_EXCLUDE:
+            if s.sh_flags & Elf.Shdr.SHF_EXCLUDE:
                 sh_flags += "E"
-            if s.sh_flags & Shdr.SHF_COMPRESSED:
+            if s.sh_flags & Elf.Shdr.SHF_COMPRESSED:
                 sh_flags += "C"
 
             fmt = "[{:2d}] {:{:d}s} {:>15s} {:#12x} {:#12x} {:#12x} {:#12x} {:5s} {:#5x} {:#5x} {:#8x}"
@@ -21665,7 +21641,7 @@ class ElfInfoCommand(GenericCommand):
         # memory parse pattern
         if args.address is not None:
             try:
-                elf = Elf(args.address)
+                elf = Elf.get_elf(args.address)
             except gdb.MemoryError:
                 err("Memory error.")
                 return
@@ -21732,7 +21708,7 @@ class ElfInfoCommand(GenericCommand):
             return
 
         # self parse pattern
-        elf = get_elf_headers(local_filepath)
+        elf = Elf.get_elf(local_filepath)
         if elf is None or not elf.is_valid():
             err("Failed to parse elf.")
         else:
@@ -22003,7 +21979,7 @@ class ChecksecCommand(GenericCommand):
         return msg
 
     def print_security_properties(self, filename):
-        elf = Elf(filename)
+        elf = Elf.get_elf(filename)
         if not elf.is_valid():
             err("checksec is failed")
             return
@@ -23550,7 +23526,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
     def parse_eh_frame_hdr(self, eh_frame_hdr):
         data = eh_frame_hdr.data
         shdr = self.elf.get_shdr(".eh_frame_hdr")
-        load_base = self.elf.get_phdr(Phdr.PT_LOAD).p_vaddr
+        load_base = self.elf.get_phdr(Elf.Phdr.PT_LOAD).p_vaddr
 
         entries = []
         pos = 0
@@ -23627,7 +23603,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
     def parse_eh_frame(self, eh_frame):
         data = eh_frame.data
         shdr = self.elf.get_shdr(".eh_frame")
-        load_base = self.elf.get_phdr(Phdr.PT_LOAD).p_vaddr
+        load_base = self.elf.get_phdr(Elf.Phdr.PT_LOAD).p_vaddr
 
         cies = []
         entries = []
@@ -24741,7 +24717,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
         section_base = gcc_except_table.offset
         data = gcc_except_table.data
         shdr = self.elf.get_shdr(".gcc_except_table")
-        load_base = self.elf.get_phdr(Phdr.PT_LOAD).p_vaddr
+        load_base = self.elf.get_phdr(Elf.Phdr.PT_LOAD).p_vaddr
         ptr_size = 4 if self.elf.e_class == Elf.ELF_32_BITS else 8
         lsda_pos_info = get_lsda_info(eh_frame_entries)
 
@@ -24978,13 +24954,13 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
             if is_qemu_system():
                 err("Argument-less calls are unsupported under qemu-system.")
                 return
-            local_filepath = get_filepath()
+            local_filepath = Path.get_filepath()
 
         if local_filepath is None:
             err("File name could not be determined.")
             return
 
-        self.elf = get_elf_headers(local_filepath)
+        self.elf = Elf.get_elf(local_filepath)
         if self.elf is None or not self.elf.is_valid():
             err("Failed to parse elf.")
             if tmp_filepath and os.path.exists(tmp_filepath):
@@ -25057,7 +25033,7 @@ class MainBreakCommand(GenericCommand):
             return None
 
         if libc_start_main == 0:
-            elf = get_elf_headers()
+            elf = Elf.get_elf()
             entry = elf.e_entry
             if elf.is_pie():
                 codebase = get_section_base_address(get_filepath(append_proc_root_prefix=False))
@@ -25192,8 +25168,8 @@ class EntryPointBreakCommand(GenericCommand):
 
         # no symbols. use elf entry point
         # non-PIE
-        if not get_elf_headers(fpath).is_pie():
-            entry = get_entry_point()
+        if not Elf.get_elf(fpath).is_pie():
+            entry = Elf.get_elf().e_entry
             info("Breaking at entry-point: {:#x}".format(entry))
             EntryBreakBreakpoint("*{:#x}".format(entry))
             gdb.execute("run {}".format(" ".join(argv)))
@@ -25229,7 +25205,7 @@ class EntryPointBreakCommand(GenericCommand):
         else:
             # stopped in ld, so continue to entry-point.
             base_address = process_lookup_path(fpath).page_start
-            entry_address = base_address + get_entry_point()
+            entry_address = base_address + Elf.get_elf().e_entry
             info("Breaking at entry-point: {:#x}".format(entry_address))
             EntryBreakBreakpoint("*{:#x}".format(entry_address))
 
@@ -29929,7 +29905,7 @@ class LinkMapCommand(GenericCommand):
                 err("{:s} is not found.".format(filename))
                 return
 
-            if not get_elf_headers(filename).has_dynamic():
+            if not Elf.get_elf(filename).has_dynamic():
                 info("The binary has no link_map.")
                 return
 
@@ -30181,8 +30157,8 @@ class DynamicCommand(GenericCommand):
             else:
                 info("address: {:#x}".format(filename_or_addr))
 
-        elf = Elf(filename_or_addr)
-        phdr = elf.get_phdr(Phdr.PT_DYNAMIC)
+        elf = Elf.get_elf(filename_or_addr)
+        phdr = elf.get_phdr(Elf.Phdr.PT_DYNAMIC)
         if phdr is None:
             return None
 
@@ -30232,7 +30208,7 @@ class DynamicCommand(GenericCommand):
                 err("{:s} is not found.".format(filename))
                 return
 
-            if not get_elf_headers(filename).has_dynamic():
+            if not Elf.get_elf(filename).has_dynamic():
                 info("The binary has no _DYNAMIC.")
                 return
 
@@ -30889,7 +30865,7 @@ class DestructorDumpCommand(GenericCommand):
 
         # filepath and elf
         self.local_filepath = local_filepath
-        self.elf = get_elf_headers(local_filepath)
+        self.elf = Elf.get_elf(local_filepath)
 
         # codebase
         if remote_filepath:
@@ -30970,7 +30946,7 @@ class GotCommand(GenericCommand):
         except (FileNotFoundError, subprocess.CalledProcessError):
             return []
 
-        elf = get_elf_headers(self.filename)
+        elf = Elf.get_elf(self.filename)
 
         output = {}
         section_name = None
@@ -31040,7 +31016,7 @@ class GotCommand(GenericCommand):
         except (FileNotFoundError, subprocess.CalledProcessError):
             return {}
 
-        elf = get_elf_headers(self.filename)
+        elf = Elf.get_elf(self.filename)
 
         output = {}
         for line in lines:
@@ -31063,7 +31039,7 @@ class GotCommand(GenericCommand):
 
     def get_plt_range(self):
         # The PLT range is required to determine whether the information in the GOT is resolved or not.
-        elf = get_elf_headers(self.filename)
+        elf = Elf.get_elf(self.filename)
         sections = [x for x in elf.shdrs if x.sh_name in [".plt", ".plt.got", ".plt.sec"]]
         if len(sections) == 0:
             return 0, 0
@@ -31084,7 +31060,7 @@ class GotCommand(GenericCommand):
 
     def get_shdr_range(self):
         # Required to identify the section name.
-        elf = get_elf_headers(self.filename)
+        elf = Elf.get_elf(self.filename)
         ranges = []
         for shdr in elf.shdrs:
             sh_start = shdr.sh_addr
@@ -45353,7 +45329,7 @@ class CodebaseCommand(GenericCommand):
             err("Not found filepath")
             return
 
-        elf = get_elf_headers(filepath)
+        elf = Elf.get_elf(filepath)
         if elf.is_pie():
             gdb.execute(f"set $piebase = {codebase}")
             gef_print(f"$piebase = {codebase:#x}")
@@ -70364,7 +70340,7 @@ class GoHeapDumpCommand(GenericCommand):
             pass
 
         # use heuristic search (TODO: Check if it is always correct)
-        elf = get_elf_headers()
+        elf = Elf.get_elf()
         bss = elf.get_shdr(".bss")
         mheap = bss.sh_addr + bss.sh_size - self.sizeof_mheap
         if is_valid_addr(mheap):
@@ -84323,7 +84299,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
             # delete unneeded section for faster (`ksymaddr-remote-apply` will embed many symbols)
             os.system(f"{objcopy} --only-keep-debug '{blank_elf}'")
             os.system(f"{objcopy} --strip-all '{blank_elf}'")
-            elf = get_elf_headers(blank_elf)
+            elf = Elf.get_elf(blank_elf)
             for s in elf.shdrs:
                 if s.sh_name == "": # null, skip
                     continue
@@ -84388,7 +84364,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
             blank_elf_skelton = bytes.fromhex("".join(blank_elf_skelton).replace(" ", ""))
             fd, blank_elf = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".elf")
             os.fdopen(fd, "wb").write(blank_elf_skelton)
-            elf = get_elf_headers(blank_elf)
+            elf = Elf.get_elf(blank_elf)
 
         # fix .text base address
         os.system(f"{objcopy} --change-section-address .text={text_base:#x} '{blank_elf}' 2>/dev/null")
