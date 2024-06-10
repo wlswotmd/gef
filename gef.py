@@ -4942,14 +4942,14 @@ class Checksec:
         # https://www.kernel.org/doc/html/next/arch/x86/shstk.html
         dic = {}
         if is_remote_debug():
-            if get_pid(remote=True):
-                remote_status = "/proc/{:d}/status".format(get_pid(remote=True))
+            if Pid.get_pid(remote=True):
+                remote_status = "/proc/{:d}/status".format(Pid.get_pid(remote=True))
             data = Path.read_remote_file(remote_status, as_byte=True) # qemu-user is failed here, it is ok
             if not data:
                 return None
         else:
-            if get_pid():
-                local_status = "/proc/{:d}/status".format(get_pid())
+            if Pid.get_pid():
+                local_status = "/proc/{:d}/status".format(Pid.get_pid())
             data = open(local_status, "rb").read()
             if not data:
                 return None
@@ -10641,7 +10641,7 @@ def write_memory(addr, data):
         pass
 
     # Under qemu-user/pin, you may not be able to patch code areas, so we patch via /proc/pid/mem
-    pid = get_pid()
+    pid = Pid.get_pid()
     if pid and (is_qemu_user() or is_pin()):
         return write_memory_qemu_user(pid, addr, data, length)
 
@@ -10653,7 +10653,7 @@ def read_memory(addr, length):
     if is_pin():
         # Memory read of Intel Pin is very slow, so speed it up
         try:
-            pid = get_pid()
+            pid = Pid.get_pid()
             fd = open("/proc/{:d}/mem".format(pid), "rb")
             fd.seek(addr)
             content = fd.read(length)
@@ -11539,7 +11539,7 @@ def is_vmware():
 def is_qiling():
     if not is_remote_debug():
         return False
-    pid = get_pid(remote=True)
+    pid = Pid.get_pid(remote=True)
     if pid is None or pid < 42000:
         return False
     for m in get_process_maps():
@@ -11550,126 +11550,123 @@ def is_qiling():
 
 @Cache.cache_this_session
 def is_rr():
-    return get_pid_from_tcp_session(filepath="rr") is not None
+    return Pid.get_pid_from_tcp_session(filepath="rr") is not None
 
 
 @Cache.cache_this_session
 def is_wine():
-    return get_pid_from_tcp_session(filepath="wineserver") is not None
+    return Pid.get_pid_from_tcp_session(filepath="wineserver") is not None
 
 
-def get_tcp_sess(pid):
-    # get inode information from opened file descriptor
-    inodes = []
-    for openfd in os.listdir("/proc/{:d}/fd".format(pid)):
-        try:
-            fdname = os.readlink("/proc/{:d}/fd/{:s}".format(pid, openfd))
-        except (FileNotFoundError, ProcessLookupError, OSError):
-            continue
-        if fdname.startswith("socket:["):
-            inode = fdname[8:-1]
-            inodes.append(inode)
-
-    def decode(addr):
-        ip, port = addr.split(":")
-        import socket
-        ip = socket.inet_ntop(socket.AF_INET, bytes.fromhex(ip)[::-1])
-        port = int(port, 16)
-        return (ip, port)
-
-    # get connection information
-    sessions = []
-    with open("/proc/{:d}/net/tcp".format(pid)) as fd:
-        for line in fd.readlines()[1:]:
-            _, laddr, raddr, status, _, _, _, _, _, inode = line.split()[:10]
-            if status != "01": # ESTABLISHED
-                continue
-            if inode not in inodes:
-                continue
-            laddr = decode(laddr)
-            raddr = decode(raddr)
-            sessions.append({"laddr": laddr, "raddr": raddr})
-    return sessions
-
-
-def get_all_process():
-    pids = [int(x) for x in os.listdir("/proc") if x.isdigit()]
-    process = []
-    for pid in pids:
-        try:
-            filepath = os.readlink("/proc/{:d}/exe".format(pid))
-        except (FileNotFoundError, ProcessLookupError, OSError):
-            continue
-        process.append({"pid": pid, "filepath": os.path.basename(filepath)})
-    return process
-
-
-def get_pid_from_tcp_session(filepath=None):
-    gdb_tcp_sess = [x["raddr"] for x in get_tcp_sess(os.getpid())]
-    if not gdb_tcp_sess:
-        return None
-    for process in get_all_process():
-        if filepath and not process["filepath"].startswith(filepath):
-            continue
-        for c in get_tcp_sess(process["pid"]):
-            if c["laddr"] in gdb_tcp_sess:
-                return process["pid"]
-    return None
-
-
-def get_pid_wine():
-    ws_pid = get_pid_from_tcp_session(filepath="wineserver")
-    if ws_pid is None:
-        return None
-
-    def get_external_pipe_inodes(pid):
-        inodes = set()
-        if not os.path.exists("/proc/{:d}/".format(pid)):
-            return inodes
+class Pid:
+    @staticmethod
+    def get_tcp_sess(pid):
         # get inode information from opened file descriptor
+        inodes = []
         for openfd in os.listdir("/proc/{:d}/fd".format(pid)):
             try:
                 fdname = os.readlink("/proc/{:d}/fd/{:s}".format(pid, openfd))
             except (FileNotFoundError, ProcessLookupError, OSError):
                 continue
-            if fdname.startswith("pipe:["):
-                inode = fdname[6:-1]
-                if inode in inodes:
-                    inodes.remove(inode)
-                else:
-                    inodes.add(inode)
-        return inodes
+            if fdname.startswith("socket:["):
+                inode = fdname[8:-1]
+                inodes.append(inode)
 
-    ws_inodes = get_external_pipe_inodes(ws_pid)
+        def decode(addr):
+            ip, port = addr.split(":")
+            import socket
+            ip = socket.inet_ntop(socket.AF_INET, bytes.fromhex(ip)[::-1])
+            port = int(port, 16)
+            return (ip, port)
 
-    gdb_pid = os.getpid()
-    for candidate_pid in range(gdb_pid - 1, ws_pid, -1):
-        candidate_inodes = get_external_pipe_inodes(candidate_pid)
-        if candidate_inodes & ws_inodes:
-            return candidate_pid
-    return None
+        # get connection information
+        sessions = []
+        with open("/proc/{:d}/net/tcp".format(pid)) as fd:
+            for line in fd.readlines()[1:]:
+                _, laddr, raddr, status, _, _, _, _, _, inode = line.split()[:10]
+                if status != "01": # ESTABLISHED
+                    continue
+                if inode not in inodes:
+                    continue
+                laddr = decode(laddr)
+                raddr = decode(raddr)
+                sessions.append({"laddr": laddr, "raddr": raddr})
+        return sessions
 
+    @staticmethod
+    def get_all_process():
+        pids = [int(x) for x in os.listdir("/proc") if x.isdigit()]
+        process = []
+        for pid in pids:
+            try:
+                filepath = os.readlink("/proc/{:d}/exe".format(pid))
+            except (FileNotFoundError, ProcessLookupError, OSError):
+                continue
+            process.append({"pid": pid, "filepath": os.path.basename(filepath)})
+        return process
 
-# Under pin and qemu, it is necessary to parse the TCP information for obtaining the pid.
-# This operation is expensive, but once known, it never changes.
-# I decided to keep the cache until it is explicitly cleared.
-@Cache.cache_this_session
-def get_pid(remote=False):
-    """Return the PID of the debuggee process."""
+    @staticmethod
+    def get_pid_from_tcp_session(filepath=None):
+        gdb_tcp_sess = [x["raddr"] for x in Pid.get_tcp_sess(os.getpid())]
+        if not gdb_tcp_sess:
+            return None
+        for process in Pid.get_all_process():
+            if filepath and not process["filepath"].startswith(filepath):
+                continue
+            for c in Pid.get_tcp_sess(process["pid"]):
+                if c["laddr"] in gdb_tcp_sess:
+                    return process["pid"]
+        return None
 
-    if is_pin():
-        return get_pid_from_tcp_session()
+    @staticmethod
+    def get_pid_wine():
+        ws_pid = Pid.get_pid_from_tcp_session(filepath="wineserver")
+        if ws_pid is None:
+            return None
 
-    elif is_qemu_user() or is_qemu_system():
-        return get_pid_from_tcp_session("qemu")
+        def get_external_pipe_inodes(pid):
+            inodes = set()
+            if not os.path.exists("/proc/{:d}/".format(pid)):
+                return inodes
+            # get inode information from opened file descriptor
+            for openfd in os.listdir("/proc/{:d}/fd".format(pid)):
+                try:
+                    fdname = os.readlink("/proc/{:d}/fd/{:s}".format(pid, openfd))
+                except (FileNotFoundError, ProcessLookupError, OSError):
+                    continue
+                if fdname.startswith("pipe:["):
+                    inode = fdname[6:-1]
+                    if inode in inodes:
+                        inodes.remove(inode)
+                    else:
+                        inodes.add(inode)
+            return inodes
 
-    elif is_wine():
-        return get_pid_wine()
+        ws_inodes = get_external_pipe_inodes(ws_pid)
 
-    elif remote is False and is_remote_debug():
-        return None # gdbserver etc.
+        gdb_pid = os.getpid()
+        for candidate_pid in range(gdb_pid - 1, ws_pid, -1):
+            candidate_inodes = get_external_pipe_inodes(candidate_pid)
+            if candidate_inodes & ws_inodes:
+                return candidate_pid
+        return None
 
-    return gdb.selected_inferior().pid
+    # Under pin and qemu, it is necessary to parse the TCP information for obtaining the pid.
+    # This operation is expensive, but once known, it never changes.
+    # I decided to keep the cache until it is explicitly cleared.
+    @staticmethod
+    @Cache.cache_this_session
+    def get_pid(remote=False):
+        """Return the PID of the debuggee process."""
+        if is_pin():
+            return Pid.get_pid_from_tcp_session()
+        elif is_qemu_user() or is_qemu_system():
+            return Pid.get_pid_from_tcp_session("qemu")
+        elif is_wine():
+            return Pid.get_pid_wine()
+        elif remote is False and is_remote_debug():
+            return None # gdbserver etc.
+        return gdb.selected_inferior().pid
 
 
 class Path:
@@ -11677,7 +11674,7 @@ class Path:
     def append_proc_root(filepath):
         if filepath is None:
             return None
-        pid = get_pid()
+        pid = Pid.get_pid()
         if pid is None:
             return None
         if pid == 0: # under gdbserver, when target exited then pid is 0
@@ -12207,7 +12204,7 @@ def get_process_maps(outer=False):
     """Return the mapped memory sections"""
     if is_qemu_user():
         if outer:
-            pid = get_pid()
+            pid = Pid.get_pid()
             if pid:
                 return get_process_maps_linux(pid)
             return []
@@ -12215,7 +12212,7 @@ def get_process_maps(outer=False):
             return get_process_maps_heuristic()
 
     elif is_pin():
-        pid = get_pid()
+        pid = Pid.get_pid()
         if pid:
             return get_process_maps_linux(pid)
 
@@ -12227,13 +12224,13 @@ def get_process_maps(outer=False):
         # Due to pwner's use case, wine itself and its libraries should also be displayed.
         # However, wine's `monitor mem` does not display them, so I did not adopt them.
         # It's more reliable to resolve wine's PID and get its maps.
-        pid = get_pid()
+        pid = Pid.get_pid()
         if pid:
             return get_process_maps_linux(pid)
         return []
 
     elif is_remote_debug():
-        remote_pid = get_pid(remote=True)
+        remote_pid = Pid.get_pid(remote=True)
         if remote_pid:
             return get_process_maps_linux(remote_pid, remote=True)
 
@@ -12241,7 +12238,7 @@ def get_process_maps(outer=False):
         return get_process_maps_from_info_proc()
 
     else: # normal pattern
-        pid = get_pid()
+        pid = Pid.get_pid()
         if pid:
             return get_process_maps_linux(pid)
 
@@ -13926,7 +13923,7 @@ class VersionCommand(GenericCommand):
         return gdb.execute("monitor info version", to_string=True).strip()
 
     def qemu_user_version(self):
-        pid = get_pid()
+        pid = Pid.get_pid()
         try:
             res = gef_execute_external(["/proc/{:d}/exe".format(pid), "--version"], as_list=True)
             return res[0].strip()
@@ -14457,7 +14454,7 @@ class ContCommand(GenericCommand):
         thread_started = False
         thread_finished = False
 
-        pid = get_pid()
+        pid = Pid.get_pid()
 
         def continue_thread():
             nonlocal thread_started, thread_finished
@@ -14492,7 +14489,7 @@ class ContCommand(GenericCommand):
     @only_if_gdb_running
     def do_invoke(self, args):
         if is_qemu_user() or is_pin():
-            if get_pid():
+            if Pid.get_pid():
                 if self.nest_count == 0:
                     self.nest_count += 1
                     self.continue_for_qemu()
@@ -15075,8 +15072,8 @@ class ArgvCommand(GenericCommand):
             self.print_from_mem(addr2, args.verbose)
 
         if not is_remote_debug():
-            gef_print(titlify("ARGV from /proc/{:d}/cmdline".format(get_pid())))
-            self.print_from_proc("/proc/{:d}/cmdline".format(get_pid()), args.verbose)
+            gef_print(titlify("ARGV from /proc/{:d}/cmdline".format(Pid.get_pid())))
+            self.print_from_proc("/proc/{:d}/cmdline".format(Pid.get_pid()), args.verbose)
         else:
             if not (paddr1 or paddr2):
                 err("Not found argv")
@@ -15167,8 +15164,8 @@ class EnvpCommand(GenericCommand):
             err("Not found last_environ")
 
         if not is_remote_debug():
-            gef_print(titlify("ENVP from /proc/{:d}/environ".format(get_pid())))
-            self.print_from_proc("/proc/{:d}/environ".format(get_pid()), args.verbose)
+            gef_print(titlify("ENVP from /proc/{:d}/environ".format(Pid.get_pid())))
+            self.print_from_proc("/proc/{:d}/environ".format(Pid.get_pid()), args.verbose)
         return
 
 
@@ -15404,7 +15401,7 @@ class PidCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        pid = get_pid()
+        pid = Pid.get_pid()
         if pid:
             if is_qemu_user() or is_qemu_system():
                 gef_print("Local qemu PID: {:d}".format(pid))
@@ -15413,7 +15410,7 @@ class PidCommand(GenericCommand):
             return
 
         if is_remote_debug():
-            pid = get_pid(remote=True)
+            pid = Pid.get_pid(remote=True)
             if pid:
                 gef_print("Remote PID: {:d}".format(pid))
                 return
@@ -15610,7 +15607,7 @@ class ProcInfoCommand(GenericCommand):
     def show_info_proc(self):
         gef_print(titlify("Process Information"))
 
-        pid = get_pid()
+        pid = Pid.get_pid()
         executable = self.get_process_path_of(pid)
         cmdline = self.get_cmdline_of(pid)
         cwd = self.get_process_cwd(pid)
@@ -15632,7 +15629,7 @@ class ProcInfoCommand(GenericCommand):
     def show_info_proc_extra(self):
         gef_print(titlify("Process Information Additional"))
 
-        pid = get_pid()
+        pid = Pid.get_pid()
         pgid = self.get_stat_of(pid)[4]
         pgid_exec = self.get_process_path_of(pgid)
         pgid_cmdline = self.get_cmdline_of(pgid)
@@ -15659,7 +15656,7 @@ class ProcInfoCommand(GenericCommand):
 
     def show_parent(self):
         gef_print(titlify("Parent Process Information"))
-        ppid = int(self.get_state_of(get_pid())["PPid"])
+        ppid = int(self.get_state_of(Pid.get_pid())["PPid"])
         ppid_exec = self.get_process_path_of(ppid)
         ppid_cmdline = self.get_cmdline_of(ppid)
         gef_print("{:32s} {} {}".format("Parent PID", RIGHT_ARROW, ppid))
@@ -15670,7 +15667,7 @@ class ProcInfoCommand(GenericCommand):
     def show_childs(self):
         gef_print(titlify("Child Process Information"))
 
-        children = self.get_children_pids(get_pid())
+        children = self.get_children_pids(Pid.get_pid())
         if not children:
             gef_print("No child process")
             return
@@ -15686,7 +15683,7 @@ class ProcInfoCommand(GenericCommand):
     def show_info_thread(self):
         gef_print(titlify("Thread Information"))
 
-        pid = get_pid()
+        pid = Pid.get_pid()
         nthreads = self.get_state_of(pid)["Threads"]
         tgid = self.get_state_of(pid)["Tgid"]
         gef_print("{:32s} {} {}".format("Num of Threads", RIGHT_ARROW, nthreads))
@@ -15701,7 +15698,7 @@ class ProcInfoCommand(GenericCommand):
     def show_info_proc_ns(self):
         gef_print(titlify("Namespace Information"))
 
-        pid = get_pid()
+        pid = Pid.get_pid()
         gdb_pid = os.getpid()
         ns_symbols = ["cgroup", "ipc", "mnt", "net", "pid", "time", "user", "uts"]
         for ns in ns_symbols:
@@ -15734,7 +15731,7 @@ class ProcInfoCommand(GenericCommand):
     def show_fds(self):
         gef_print(titlify("File Descriptors"))
 
-        pid = get_pid()
+        pid = Pid.get_pid()
         path = "/proc/{:d}/fd".format(pid)
 
         gef_print("{:32s} {} {}".format("Num of FD slots", RIGHT_ARROW, self.get_state_of(pid)["FDSize"]))
@@ -15788,7 +15785,7 @@ class ProcInfoCommand(GenericCommand):
             0x07: "UDP_LISTEN",
         }
 
-        pid = get_pid()
+        pid = Pid.get_pid()
         sockets = self.list_sockets(pid)
         if not sockets:
             gef_print("No open connections")
@@ -15846,7 +15843,7 @@ class FileDescriptorsCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        pid = get_pid()
+        pid = Pid.get_pid()
         path = "/proc/{:d}/fd".format(pid)
 
         items = os.listdir(path)
@@ -15877,7 +15874,7 @@ class ProcDumpCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
         self.dont_repeat()
-        pid = get_pid()
+        pid = Pid.get_pid()
 
         out = []
         for root, dirs, files in os.walk("/proc/{:d}/".format(pid)):
@@ -16181,7 +16178,7 @@ class CapabilityCommand(GenericCommand):
         return
 
     def print_capability_from_pid(self, verbose):
-        pid = get_pid()
+        pid = Pid.get_pid()
         if pid is None:
             return
 
@@ -16372,7 +16369,7 @@ class SmartMemoryDumpCommand(GenericCommand):
         self.commit = args.commit
 
         if args.prefix is None:
-            pid = get_pid(remote=True)
+            pid = Pid.get_pid(remote=True)
             if pid is None:
                 self.prefix = "{:05d}_".format(0)
             else:
@@ -21672,8 +21669,8 @@ class ElfInfoCommand(GenericCommand):
                 if f.startswith("target:"): # gdbserver
                     f = f[7:]
                 remote_filepath = f
-            elif get_pid(remote=True):
-                remote_filepath = "/proc/{:d}/exe".format(get_pid(remote=True))
+            elif Pid.get_pid(remote=True):
+                remote_filepath = "/proc/{:d}/exe".format(Pid.get_pid(remote=True))
             else:
                 err("File name could not be determined.")
                 return
@@ -22108,8 +22105,8 @@ class ChecksecCommand(GenericCommand):
                 if f.startswith("target:"): # gdbserver
                     f = f[7:]
                 remote_filepath = f
-            elif get_pid(remote=True):
-                remote_filepath = "/proc/{:d}/exe".format(get_pid(remote=True))
+            elif Pid.get_pid(remote=True):
+                remote_filepath = "/proc/{:d}/exe".format(Pid.get_pid(remote=True))
             else:
                 err("File name could not be determined.")
                 return
@@ -24935,8 +24932,8 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                 if f.startswith("target:"): # gdbserver
                     f = f[7:]
                 remote_filepath = f
-            elif get_pid(remote=True):
-                remote_filepath = "/proc/{:d}/exe".format(get_pid(remote=True))
+            elif Pid.get_pid(remote=True):
+                remote_filepath = "/proc/{:d}/exe".format(Pid.get_pid(remote=True))
             else:
                 err("File name could not be determined.")
                 return
@@ -30841,8 +30838,8 @@ class DestructorDumpCommand(GenericCommand):
                 if f.startswith("target:"): # gdbserver
                     f = f[7:]
                 remote_filepath = f
-            elif get_pid(remote=True):
-                remote_filepath = "/proc/{:d}/exe".format(get_pid(remote=True))
+            elif Pid.get_pid(remote=True):
+                remote_filepath = "/proc/{:d}/exe".format(Pid.get_pid(remote=True))
             else:
                 err("File name could not be determined.")
                 return
@@ -31282,8 +31279,8 @@ class GotCommand(GenericCommand):
                     f = f[7:]
                 remote_filepath = f
                 vmmap_filepath = f
-            elif get_pid(remote=True):
-                remote_filepath = "/proc/{:d}/exe".format(get_pid(remote=True))
+            elif Pid.get_pid(remote=True):
+                remote_filepath = "/proc/{:d}/exe".format(Pid.get_pid(remote=True))
             else:
                 if not args.quiet:
                     err("File name could not be determined.")
@@ -73402,7 +73399,7 @@ class XSecureMemAddrCommand(GenericCommand):
 
     @staticmethod
     def get_secure_memory_qemu_map(secure_memory_base, secure_memory_size, verbose=False):
-        qemu_system_pid = get_pid()
+        qemu_system_pid = Pid.get_pid()
         if qemu_system_pid is None:
             err("Not found qemu-system pid")
             return None
@@ -73458,7 +73455,7 @@ class XSecureMemAddrCommand(GenericCommand):
 
     @staticmethod
     def read_secure_memory(sm, offset, dump_size, verbose=False):
-        qemu_system_pid = get_pid()
+        qemu_system_pid = Pid.get_pid()
         if qemu_system_pid is None:
             err("Not found qemu-system pid")
             return None
@@ -73641,7 +73638,7 @@ class WSecureMemAddrCommand(GenericCommand):
 
     @staticmethod
     def write_secure_memory(sm, offset, data, verbose=False):
-        qemu_system_pid = get_pid()
+        qemu_system_pid = Pid.get_pid()
         if qemu_system_pid is None:
             return None
 
@@ -81018,7 +81015,7 @@ class QemuDeviceInfoCommand(GenericCommand):
         if args.device:
             device_name = args.device
         else:
-            cmdline = bytes2str(open("/proc/{:d}/cmdline".format(get_pid()), "rb").read()).split("\0")
+            cmdline = bytes2str(open("/proc/{:d}/cmdline".format(Pid.get_pid()), "rb").read()).split("\0")
             if cmdline.count("-device") == 0:
                 err("Not found `-device` option in qemu-system cmdline")
                 return
@@ -81048,7 +81045,7 @@ class QemuDeviceInfoCommand(GenericCommand):
             info("  " + m)
 
         # get qemu-system path
-        qemu_path = os.readlink("/proc/{:d}/exe".format(get_pid()))
+        qemu_path = os.readlink("/proc/{:d}/exe".format(Pid.get_pid()))
         info("qemu path: {:s}".format(qemu_path))
 
         # get symbol related device
