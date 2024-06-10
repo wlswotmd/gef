@@ -69099,7 +69099,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             self.verbose_err("Could not find kallsyms_names")
             return False
 
-        # This value is provisional. Corrected in the process of find_kallsyms_num_syms().
+        # This value is provisional. It will be corrected in the next process (=find_kallsyms_num_syms).
         self.offset_kallsyms_names = position
         self.verbose_info("kallsyms_names: {:#x} (candidate)".format(self.ro_base + self.offset_kallsyms_names))
         return True
