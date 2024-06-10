@@ -171,7 +171,6 @@ __gef_fpath__                   = os.path.expanduser(http_get.__code__.co_filena
                                 # note: __file__ will no longer be available from gdb 15
 __gef_commands__                = [] # keep command classes
 __LCO__                         = {} # keep command instances for debug (meaning Loaded Command Objects)
-__gef_aliases__                 = [] # keep alias settings
 __gef_config__                  = {} # keep gef configs
 __gef_watches__                 = {} # keep memory watch points
 __gef_convenience_vars_index__  = 0 # $_gef1, $_gef2, ...
@@ -85760,7 +85759,7 @@ class GefSaveCommand(GenericCommand):
 
         # save the aliases
         cfg.add_section("aliases")
-        for alias in __gef_aliases__:
+        for alias in GefAlias.gef_aliases:
             cfg.set("aliases", alias._alias, alias._command)
 
         with open(GEF_RC, "w") as fd:
@@ -86240,17 +86239,17 @@ class GefAlias(gdb.Command):
     """Simple aliasing wrapper because GDB doesn't do what it should."""
     _category_ = "99. GEF Maintenance Command"
 
+    gef_aliases = []
+
     def __init__(self, alias, command, repeat=False, completer_class=gdb.COMPLETE_NONE, command_class=gdb.COMMAND_NONE):
         p = command.split()
         if not p:
             return
 
-        global __gef_aliases__
-
         # already defined, so remove old entry
         try:
-            alias_to_remove = next(filter(lambda x: x._alias == alias, __gef_aliases__))
-            __gef_aliases__.remove(alias_to_remove)
+            alias_to_remove = next(filter(lambda x: x._alias == alias, GefAlias.gef_aliases))
+            GefAlias.gef_aliases.remove(alias_to_remove)
         except (ValueError, StopIteration):
             pass
 
@@ -86268,7 +86267,7 @@ class GefAlias(gdb.Command):
                 self.complete = _instance.complete
 
         super().__init__(alias, command_class, completer_class=completer_class)
-        __gef_aliases__.append(self)
+        GefAlias.gef_aliases.append(self)
         return
 
     def invoke(self, args, from_tty):
@@ -86350,10 +86349,9 @@ class AliasesRmCommand(AliasesCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        global __gef_aliases__
         try:
-            alias_to_remove = next(filter(lambda x: x._alias == args.alias, __gef_aliases__))
-            __gef_aliases__.remove(alias_to_remove)
+            alias_to_remove = next(filter(lambda x: x._alias == args.alias, GefAlias.gef_aliases))
+            GefAlias.gef_aliases.remove(alias_to_remove)
         except (ValueError, StopIteration):
             err("{:s} is not found in aliases.".format(args.alias))
         return
@@ -86377,7 +86375,7 @@ class AliasesListCommand(AliasesCommand):
         self.dont_repeat()
 
         ok("Aliases defined:")
-        for a in sorted(__gef_aliases__, key=lambda a: a._alias):
+        for a in sorted(GefAlias.gef_aliases, key=lambda a: a._alias):
             gef_print("{:30s} {} {}".format(a._alias, RIGHT_ARROW, a._command))
         return
 
