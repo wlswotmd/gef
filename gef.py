@@ -180,7 +180,6 @@ __gef_prev_arch__               = None # previous valid result of edb.selected_f
 __gef_check_once__              = True # the flag to process only once at startup
 __gef_use_info_proc_mappings__  = None # the flag to use `info proc mappings`
 __gef_check_disabled_bp__       = False # the flag to remove unnecessary breakpoints
-__patch_history__               = [] # keep patched information
 current_elf                     = None # keep Elf instance
 current_arch                    = None # keep Architecture instance
 
@@ -27171,6 +27170,8 @@ class PatchCommand(GenericCommand):
     subparsers.add_parser("revert")
     _syntax_ = parser.format_help()
 
+    patch_history = []
+
     def __init__(self, *args, **kwargs):
         prefix = kwargs.get("prefix", True)
         complete_type = kwargs.get("complete", gdb.COMPLETE_NONE)
@@ -27180,7 +27181,6 @@ class PatchCommand(GenericCommand):
 
     @staticmethod
     def patch_insert(history_info):
-        global __patch_history__
         assert isinstance(history_info, dict)
         assert "addr" in history_info
         assert "before_data" in history_info
@@ -27192,7 +27192,7 @@ class PatchCommand(GenericCommand):
                 history_info["physmode"] = "phys"
             else:
                 history_info["physmode"] = "virt"
-        __patch_history__.insert(0, history_info)
+        PatchCommand.patch_history.insert(0, history_info)
         ok("Inserted to patch history")
         return
 
@@ -27208,8 +27208,7 @@ class PatchCommand(GenericCommand):
             err(e)
             return
         history_info = {"addr": addr, "before_data": before_data, "after_data": after_data, "physmode": get_current_mmu_mode()}
-        global __patch_history__
-        __patch_history__.insert(0, history_info)
+        PatchCommand.patch_history.insert(0, history_info)
         ok("Patching {:d} bytes from {!s}".format(length, lookup_address(addr)))
         return
 
@@ -27908,9 +27907,9 @@ class PatchHistoryCommand(PatchCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        if __patch_history__:
+        if PatchCommand.patch_history:
             gef_print("[NEW]")
-            for i, hist in enumerate(__patch_history__):
+            for i, hist in enumerate(PatchCommand.patch_history):
                 b = " ".join(["{:02x}".format(x) for x in hist["before_data"][:0x10]])
                 if len(hist["before_data"]) > 0x10:
                     b += " ..."
@@ -27952,24 +27951,22 @@ class PatchRevertCommand(PatchCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        global __patch_history__
-
-        if len(__patch_history__) == 0:
+        if len(PatchCommand.patch_history) == 0:
             info("Patch history is empty.")
             return
 
         if args.all:
-            revert_count = len(__patch_history__)
+            revert_count = len(PatchCommand.patch_history)
         else:
-            if not (0 <= args.revert_target < len(__patch_history__)):
+            if not (0 <= args.revert_target < len(PatchCommand.patch_history)):
                 err("Invalid target index")
                 gef_print(titlify("Patch history"))
                 gdb.execute("patch history")
                 return
             revert_count = args.revert_target + 1
 
-        while __patch_history__ and revert_count > 0:
-            hist = __patch_history__.pop(0)
+        while PatchCommand.patch_history and revert_count > 0:
+            hist = PatchCommand.patch_history.pop(0)
             b = " ".join(["{:02x}".format(x) for x in hist["before_data"][:0x10]])
             if len(hist["before_data"]) > 0x10:
                 b += " ..."
