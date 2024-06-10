@@ -182,9 +182,6 @@ __gef_delayed_breakpoints__     = set() # for break-rva command
 __gef_delayed_bp_set__          = False # for break-rva command
 __gef_use_info_proc_mappings__  = None # the flag to use `info proc mappings`
 __gef_check_disabled_bp__       = False # the flag to remove unnecessary breakpoints
-__context_comments__            = {} # keep user comments for context
-__context_messages__            = [] # keep additional messages for context
-__context_extra_commands__      = [] # keep extra commands for context
 __highlight_table__             = {} # keep highlight settings
 __patch_history__               = [] # keep patched information
 current_elf                     = None # keep Elf instance
@@ -4215,16 +4212,6 @@ def ok(msg):
 def info(msg):
     """The wrapper of gef_print for information level message."""
     gef_print("{} {}".format(Color.colorify("[+]", "bold blue"), msg))
-    return
-
-
-def push_context_message(level, message):
-    """Push the message to be displayed the next time the context is invoked."""
-    global __context_messages__
-    if level not in ("error", "warn", "ok", "info"):
-        err("Invalid level '{}', discarding message".format(level))
-        return
-    __context_messages__.append((level, message))
     return
 
 
@@ -25302,7 +25289,7 @@ class NamedBreakpoint(gdb.Breakpoint):
     def stop(self):
         Cache.reset_gef_caches()
         msg = "Hit breakpoint {} ({})".format(self.loc, Color.colorify(self.name, "bold red"))
-        push_context_message("info", msg)
+        ContextCommand.push_context_message("info", msg)
         return True
 
 
@@ -25454,6 +25441,9 @@ class ContextCommand(GenericCommand):
 
     old_registers = {}
     context_hidden = False
+    context_comments = {}
+    context_messages = []
+    context_extra_commands = []
 
     @staticmethod
     def hide_context():
@@ -25463,6 +25453,15 @@ class ContextCommand(GenericCommand):
     @staticmethod
     def unhide_context():
         ContextCommand.context_hidden = False
+        return
+
+    @staticmethod
+    def push_context_message(level, message):
+        """Push the message to be displayed the next time the context is invoked."""
+        if level not in ("error", "warn", "ok", "info"):
+            err("Invalid level '{}', discarding message".format(level))
+            return
+        ContextCommand.context_messages.append((level, message))
         return
 
     def __init__(self):
@@ -25842,8 +25841,8 @@ class ContextCommand(GenericCommand):
                     delay_slot = insn.mnemonic.endswith(".d") or insn.mnemonic.endswith(".d.nt")
 
             # comment
-            if insn.address in __context_comments__:
-                line += "\t\t" + Color.grayify("// " + "; ".join(__context_comments__[insn.address]))
+            if insn.address in ContextCommand.context_comments:
+                line += "\t\t" + Color.grayify("// " + "; ".join(ContextCommand.context_comments[insn.address]))
 
             gef_print(line)
 
@@ -26671,12 +26670,12 @@ class ContextCommand(GenericCommand):
         return
 
     def context_additional_information(self):
-        if not __context_messages__ and not __context_extra_commands__:
+        if not ContextCommand.context_messages and not ContextCommand.context_extra_commands:
             return
 
         self.context_title("extra")
 
-        for level, text in __context_messages__:
+        for level, text in ContextCommand.context_messages:
             if level == "error":
                 err(text)
             elif level == "warn":
@@ -26686,7 +26685,7 @@ class ContextCommand(GenericCommand):
             else:
                 info(text)
 
-        for command in __context_extra_commands__:
+        for command in ContextCommand.context_extra_commands:
             gef_print(titlify(command))
             gdb.execute(command)
         return
@@ -26715,8 +26714,7 @@ class ContextCommand(GenericCommand):
             return
 
     def empty_extra_messages(self, _event):
-        global __context_messages__
-        __context_messages__ = []
+        ContextCommand.context_messages = []
         return
 
     @parse_args
@@ -28565,8 +28563,7 @@ class ContextExtraAddCommand(ContextExtraCommand):
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
-        global __context_extra_commands__
-        __context_extra_commands__.append(" ".join(args.cmd))
+        ContextCommand.context_extra_commands.append(" ".join(args.cmd))
         return
 
 
@@ -28583,10 +28580,10 @@ class ContextExtraListCommand(ContextExtraCommand):
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
-        if not __context_extra_commands__:
+        if not ContextCommand.context_extra_commands:
             warn("Nothing to display")
             return
-        for i, command in enumerate(__context_extra_commands__):
+        for i, command in enumerate(ContextCommand.context_extra_commands):
             gef_print("[{:3d}] {:s}".format(i, command))
         return
 
@@ -28606,9 +28603,8 @@ class ContextExtraRemoveCommand(ContextExtraCommand):
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
-        global __context_extra_commands__
-        if args.index < len(__context_extra_commands__):
-            __context_extra_commands__.pop(args.index)
+        if args.index < len(ContextCommand.context_extra_commands):
+            ContextCommand.context_extra_commands.pop(args.index)
         else:
             err("Out of index")
         return
@@ -28627,8 +28623,7 @@ class ContextExtraClearCommand(ContextExtraCommand):
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
-        global __context_extra_commands__
-        __context_extra_commands__ = []
+        ContextCommand.context_extra_commands = []
         return
 
 
@@ -28678,9 +28673,8 @@ class CommentAddCommand(CommentCommand):
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
-        global __context_comments__
-        comms = __context_comments__.get(args.location, [])
-        __context_comments__[args.location] = comms + [args.comment]
+        comms = ContextCommand.context_comments.get(args.location, [])
+        ContextCommand.context_comments[args.location] = comms + [args.comment]
         return
 
 
@@ -28697,10 +28691,10 @@ class CommentLsCommand(CommentCommand):
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
-        if not __context_comments__:
+        if not ContextCommand.context_comments:
             warn("Nothing to display")
             return
-        for loc, comms in sorted(__context_comments__.items()):
+        for loc, comms in sorted(ContextCommand.context_comments.items()):
             for i, comm in enumerate(comms):
                 gef_print("{:#x}: [{:3d}] {:s}".format(loc, i, comm))
         return
@@ -28722,17 +28716,18 @@ class CommentRemoveCommand(CommentCommand):
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
-        global __context_comments__
-        if args.location not in __context_comments__:
+        if args.location not in ContextCommand.context_comments:
             err("Invalid location")
             return
         if args.index is None:
-            __context_comments__[args.location] = []
+            del ContextCommand.context_comments[args.location]
         else:
-            if args.index >= len(__context_comments__[args.location]):
+            if args.index >= len(ContextCommand.context_comments[args.location]):
                 err("Out of index")
                 return
-            __context_comments__[args.location].pop(args.index)
+            ContextCommand.context_comments[args.location].pop(args.index)
+            if len(ContextCommand.context_comments[args.location]) == 0:
+                del ContextCommand.context_comments[args.location]
         return
 
 
@@ -28749,8 +28744,7 @@ class CommentClearCommand(CommentCommand):
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
-        global __context_comments__
-        __context_comments__ = {}
+        ContextCommand.context_comments = {}
         return
 
 
@@ -31493,7 +31487,7 @@ class FormatStringBreakpoint(gdb.Breakpoint):
             m = "Reason: Call to '{:s}()' with format string argument in position "
             m += "#{:d} is in page {:#x} ({:s}) that has write permission"
             msg.append(m.format(self.location, self.num_args, addr.section.page_start, name))
-            push_context_message("warn", "\n".join(msg))
+            ContextCommand.push_context_message("warn", "\n".join(msg))
             return True
         return False
 
@@ -31693,7 +31687,7 @@ class TraceMallocRetBreakpoint(gdb.FinishBreakpoint):
                 msg.append("Writing {:d} bytes from {:#x} will reach chunk {:#x}".format(offset, chunk_addr, loc))
                 msg.append("Payload example for chunk {:#x} (to overwrite {:#x} headers):".format(chunk_addr, loc))
                 msg.append("  data = 'A'*{0:d} + 'B'*{1:d} + 'C'*{1:d}".format(offset, align))
-                push_context_message("warn", "\n".join(msg))
+                ContextCommand.push_context_message("warn", "\n".join(msg))
                 return True
 
         # add it to alloc-ed list
@@ -31787,7 +31781,7 @@ class TraceFreeBreakpoint(gdb.Breakpoint):
                 msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
                 msg.append("Attempting to free(NULL) at {:#x}".format(current_arch.pc))
                 msg.append("Reason: if NULL page is allocatable, this can lead to code execution.")
-                push_context_message("warn", "\n".join(msg))
+                ContextCommand.push_context_message("warn", "\n".join(msg))
                 return True
             return False
 
@@ -31798,7 +31792,7 @@ class TraceFreeBreakpoint(gdb.Breakpoint):
                     RIGHT_ARROW, addr, current_arch.pc,
                 ))
                 msg.append("Execution will likely crash...")
-                push_context_message("warn", "\n".join(msg))
+                ContextCommand.push_context_message("warn", "\n".join(msg))
                 return True
             return False
 
@@ -31814,7 +31808,7 @@ class TraceFreeBreakpoint(gdb.Breakpoint):
                 msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
                 msg.append("Heap inconsistency detected:")
                 msg.append("Attempting to free an unknown value: {:#x}".format(addr))
-                push_context_message("warn", "\n".join(msg))
+                ContextCommand.push_context_message("warn", "\n".join(msg))
                 return True
             return False
 
@@ -31876,7 +31870,7 @@ class UafWatchpoint(gdb.Breakpoint):
             get_filepath(), self.address, pc,
         ))
         msg.append("{:#x}   {:s} {:s}".format(insn.address, insn.mnemonic, Color.yellowify(", ".join(insn.operands))))
-        push_context_message("warn", "\n".join(msg))
+        ContextCommand.push_context_message("warn", "\n".join(msg))
         return True
 
 
