@@ -4871,117 +4871,119 @@ def gef_execute_gdb_script(commands):
     return
 
 
-@Cache.cache_until_next
-def get_cet_status_old_interface():
-    # https://lore.kernel.org/lkml/1531342544.15351.37.camel@intel.com/
-    sp = current_arch.sp
-    mem = {}
+class Checksec:
+    @staticmethod
+    @Cache.cache_until_next
+    def get_cet_status_old_interface():
+        # https://lore.kernel.org/lkml/1531342544.15351.37.camel@intel.com/
+        sp = current_arch.sp
+        mem = {}
 
-    # backup
-    for i in range(3):
-        # *addr = SHSTK/IBT status
-        # *(addr + 1) = SHSTK base address
-        # *(addr + 2) = SHSTK size
-        addr = sp + current_arch.ptrsize * i
-        mem[addr] = read_memory(addr, current_arch.ptrsize)
+        # backup
+        for i in range(3):
+            # *addr = SHSTK/IBT status
+            # *(addr + 1) = SHSTK base address
+            # *(addr + 2) = SHSTK size
+            addr = sp + current_arch.ptrsize * i
+            mem[addr] = read_memory(addr, current_arch.ptrsize)
 
-    res = gdb.execute("call-syscall arch_prctl 0x3001 {:#x}".format(sp), to_string=True) # ARCH_CET_STATUS
-    output_line = res.splitlines()[-1]
-    ret = int(output_line.split()[2], 0)
+        res = gdb.execute("call-syscall arch_prctl 0x3001 {:#x}".format(sp), to_string=True) # ARCH_CET_STATUS
+        output_line = res.splitlines()[-1]
+        ret = int(output_line.split()[2], 0)
 
-    sp_value = read_int_from_memory(sp)
+        sp_value = read_int_from_memory(sp)
 
-    # revert
-    for addr, data in mem.items():
-        write_memory(addr, data)
+        # revert
+        for addr, data in mem.items():
+            write_memory(addr, data)
 
-    # check ret
-    if ret != 0:
-        return None
-    return sp_value
-
-
-@Cache.cache_until_next
-def get_cet_status_new_interface():
-    # https://www.kernel.org/doc/html/next/arch/x86/shstk.html
-    sp = current_arch.sp
-    mem = {}
-
-    # backup
-    for i in range(1):
-        # *addr = SHSTK status
-        addr = sp + current_arch.ptrsize * i
-        mem[addr] = read_memory(addr, current_arch.ptrsize)
-
-    res = gdb.execute("call-syscall arch_prctl 0x5005 {:#x}".format(sp), to_string=True) # ARCH_SHSTK_STATUS
-    output_line = res.splitlines()[-1]
-    ret = int(output_line.split()[2], 0)
-
-    sp_value = read_int_from_memory(sp)
-
-    # revert
-    for addr, data in mem.items():
-        write_memory(addr, data)
-
-    if ret != 0:
-        return None
-    return sp_value
-
-
-@Cache.cache_until_next
-def get_cet_status_via_procfs():
-    # https://www.kernel.org/doc/html/next/arch/x86/shstk.html
-    dic = {}
-    if is_remote_debug():
-        if get_pid(remote=True):
-            remote_status = "/proc/{:d}/status".format(get_pid(remote=True))
-        data = read_remote_file(remote_status, as_byte=True) # qemu-user is failed here, it is ok
-        if not data:
+        # check ret
+        if ret != 0:
             return None
-    else:
-        if get_pid():
-            local_status = "/proc/{:d}/status".format(get_pid())
-        data = open(local_status, "rb").read()
-        if not data:
+        return sp_value
+
+    @staticmethod
+    @Cache.cache_until_next
+    def get_cet_status_new_interface():
+        # https://www.kernel.org/doc/html/next/arch/x86/shstk.html
+        sp = current_arch.sp
+        mem = {}
+
+        # backup
+        for i in range(1):
+            # *addr = SHSTK status
+            addr = sp + current_arch.ptrsize * i
+            mem[addr] = read_memory(addr, current_arch.ptrsize)
+
+        res = gdb.execute("call-syscall arch_prctl 0x5005 {:#x}".format(sp), to_string=True) # ARCH_SHSTK_STATUS
+        output_line = res.splitlines()[-1]
+        ret = int(output_line.split()[2], 0)
+
+        sp_value = read_int_from_memory(sp)
+
+        # revert
+        for addr, data in mem.items():
+            write_memory(addr, data)
+
+        if ret != 0:
             return None
+        return sp_value
 
-    if b"x86_Thread_features:" not in data:
-        return False # unsupported
+    @staticmethod
+    @Cache.cache_until_next
+    def get_cet_status_via_procfs():
+        # https://www.kernel.org/doc/html/next/arch/x86/shstk.html
+        dic = {}
+        if is_remote_debug():
+            if get_pid(remote=True):
+                remote_status = "/proc/{:d}/status".format(get_pid(remote=True))
+            data = read_remote_file(remote_status, as_byte=True) # qemu-user is failed here, it is ok
+            if not data:
+                return None
+        else:
+            if get_pid():
+                local_status = "/proc/{:d}/status".format(get_pid())
+            data = open(local_status, "rb").read()
+            if not data:
+                return None
 
-    dic["shstk"] = b"x86_Thread_features: shstk" in data
-    dic["shstk lock"] = b"x86_Thread_features_locked: shstk" in data
-    return dic
+        if b"x86_Thread_features:" not in data:
+            return False # unsupported
 
+        dic["shstk"] = b"x86_Thread_features: shstk" in data
+        dic["shstk lock"] = b"x86_Thread_features_locked: shstk" in data
+        return dic
 
-def get_mte_status():
-    auxv = gef_get_auxiliary_values()
-    HWCAP2_MTE = 1 << 18
-    if auxv and "AT_HWCAP2" in auxv and (auxv["AT_HWCAP2"] & HWCAP2_MTE) == 0:
-        return None # Unsupported
-    res = gdb.execute("call-syscall prctl 0x38 0 0 0 0", to_string=True) # PR_GET_TAGGED_ADDR_CTRL
-    output_line = res.splitlines()[-1]
-    ret = int(output_line.split()[2], 0)
+    @staticmethod
+    def get_mte_status():
+        auxv = gef_get_auxiliary_values()
+        HWCAP2_MTE = 1 << 18
+        if auxv and "AT_HWCAP2" in auxv and (auxv["AT_HWCAP2"] & HWCAP2_MTE) == 0:
+            return None # Unsupported
+        res = gdb.execute("call-syscall prctl 0x38 0 0 0 0", to_string=True) # PR_GET_TAGGED_ADDR_CTRL
+        output_line = res.splitlines()[-1]
+        ret = int(output_line.split()[2], 0)
 
-    pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
-    uq = lambda a: struct.unpack("<q", a)[0]
-    u2i = lambda a: uq(pQ(a))
-    return u2i(ret)
+        pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
+        uq = lambda a: struct.unpack("<q", a)[0]
+        u2i = lambda a: uq(pQ(a))
+        return u2i(ret)
 
+    @staticmethod
+    def get_pac_status():
+        auxv = gef_get_auxiliary_values()
+        HWCAP_PACA = 1 << 30
+        HWCAP_PACG = 1 << 31
+        if auxv and "AT_HWCAP" in auxv and (auxv["AT_HWCAP"] & (HWCAP_PACA | HWCAP_PACG)) == 0:
+            return None # Unsupported
+        res = gdb.execute("call-syscall prctl 0x3d 0 0 0 0", to_string=True) # PR_PAC_GET_ENABLED_KEYS
+        output_line = res.splitlines()[-1]
+        ret = int(output_line.split()[2], 0)
 
-def get_pac_status():
-    auxv = gef_get_auxiliary_values()
-    HWCAP_PACA = 1 << 30
-    HWCAP_PACG = 1 << 31
-    if auxv and "AT_HWCAP" in auxv and (auxv["AT_HWCAP"] & (HWCAP_PACA | HWCAP_PACG)) == 0:
-        return None # Unsupported
-    res = gdb.execute("call-syscall prctl 0x3d 0 0 0 0", to_string=True) # PR_PAC_GET_ENABLED_KEYS
-    output_line = res.splitlines()[-1]
-    ret = int(output_line.split()[2], 0)
-
-    pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
-    uq = lambda a: struct.unpack("<q", a)[0]
-    u2i = lambda a: uq(pQ(a))
-    return u2i(ret)
+        pQ = lambda a: struct.pack("<Q", a & 0xffffffffffffffff)
+        uq = lambda a: struct.unpack("<q", a)[0]
+        u2i = lambda a: uq(pQ(a))
+        return u2i(ret)
 
 
 @Cache.cache_this_session
@@ -21818,7 +21820,7 @@ class ChecksecCommand(GenericCommand):
         # Intel CET SHSTK status via arch_prctl
         if is_pin():
             # Intel SDE implements userspace CET SHSTK but old interface
-            r = get_cet_status_old_interface()
+            r = Checksec.get_cet_status_old_interface()
             if r is None:
                 msg = Color.colorify("Disabled", "bold red") + " (kernel does not support; Intel SDE has no `-cet` option)"
                 gef_print("{:<40s}: {:s}".format("CET IBT status (via old arch_prctl IF)", msg))
@@ -21831,7 +21833,7 @@ class ChecksecCommand(GenericCommand):
                     gef_print("{:<40s}: {:s}".format("CET SHSTK status (via old arch_prctl IF)", msg))
         else:
             # kernel 6.6 or after supports userspace CET SHSTK
-            r = get_cet_status_new_interface()
+            r = Checksec.get_cet_status_new_interface()
             if r is None:
                 msg = Color.colorify("Unimplemented", "bold red") + " (kernel does not support; kernel supports it from 6.6)"
                 gef_print("{:<40s}: {:s}".format("CET SHSTK status (via new arch_prctl IF)", msg))
@@ -21844,7 +21846,7 @@ class ChecksecCommand(GenericCommand):
                     gef_print("{:<40s}: {:s}".format("CET SHSTK status (via new arch_prctl IF)", msg))
 
         # Intel CET SHSTK status via procfs
-        r = get_cet_status_via_procfs()
+        r = Checksec.get_cet_status_via_procfs()
         if r is None:
             msg = Color.grayify("Unknown") + " (failed to open /proc/PID/status)"
             gef_print("{:<40s}: {:s}".format("CET SHSTK status (via procfs)", msg))
@@ -21887,7 +21889,7 @@ class ChecksecCommand(GenericCommand):
         # Intel CET IBT status via arch_prctl
         if is_pin():
             # Intel SDE implements userspace CET IBT but old interface
-            r = get_cet_status_old_interface()
+            r = Checksec.get_cet_status_old_interface()
             if r is None:
                 msg = Color.colorify("Disabled", "bold red") + " (kernel does not support; Intel SDE has no `-cet` option)"
                 gef_print("{:<40s}: {:s}".format("CET IBT status (via old arch_prctl IF)", msg))
@@ -21926,7 +21928,7 @@ class ChecksecCommand(GenericCommand):
             return
 
         # PAC status
-        r = get_pac_status()
+        r = Checksec.get_pac_status()
         if r is None:
             msg = Color.colorify("Disabled", "bold red") + " (kernel does not support PAC)"
             gef_print("{:<40s}: {:s}".format("PAC", msg))
@@ -21963,7 +21965,7 @@ class ChecksecCommand(GenericCommand):
             return
 
         # MTE status
-        r = get_mte_status()
+        r = Checksec.get_mte_status()
         if r is None:
             msg = Color.colorify("Disabled", "bold red") + " (kernel does not support MTE)"
             gef_print("{:<40s}: {:s}".format("MTE", msg))
