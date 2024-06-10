@@ -172,7 +172,6 @@ __gef_fpath__                   = os.path.expanduser(http_get.__code__.co_filena
 __gef_commands__                = [] # keep command classes
 __LCO__                         = {} # keep command instances for debug (meaning Loaded Command Objects)
 __gef_config__                  = {} # keep gef configs
-__gef_watches__                 = {} # keep memory watch points
 __gef_convenience_vars_index__  = 0 # $_gef1, $_gef2, ...
 __gef_libc_args_definitions__   = {} # libc arguments definition
 __gef_prev_arch__               = None # previous valid result of edb.selected_frame().architecture()
@@ -26691,8 +26690,7 @@ class ContextCommand(GenericCommand):
         return
 
     def context_memory(self):
-        global __gef_watches__
-        for address, opt in sorted(__gef_watches__.items()):
+        for address, opt in sorted(MemoryWatchCommand.mem_watches.items()):
             count, fmt = opt[0:2]
             self.context_title("memory:{:#x}".format(address))
             if fmt == "pointers":
@@ -26829,6 +26827,8 @@ class MemoryWatchCommand(GenericCommand):
     _example_ = "{:s} 0x603000 0x100 byte\n".format(_cmdline_)
     _example_ += "{:s} $sp".format(_cmdline_)
 
+    mem_watches = {}
+
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         return
@@ -26838,9 +26838,7 @@ class MemoryWatchCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        global __gef_watches__
-
-        __gef_watches__[args.address] = (args.count, args.unit)
+        MemoryWatchCommand.mem_watches[args.address] = (args.count, args.unit)
         ok("Adding memwatch to {:#x}".format(args.address))
         return
 
@@ -26868,9 +26866,7 @@ class MemoryUnwatchCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        global __gef_watches__
-
-        res = __gef_watches__.pop(args.address, None)
+        res = MemoryWatchCommand.mem_watches.pop(args.address, None)
         if not res:
             warn("You weren't watching {:#x}".format(args.address))
         else:
@@ -26892,9 +26888,7 @@ class MemoryWatchResetCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        global __gef_watches__
-
-        __gef_watches__.clear()
+        MemoryWatchCommand.mem_watches.clear()
         ok("Memory watches cleared")
         return
 
@@ -26913,14 +26907,12 @@ class MemoryWatchListCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        global __gef_watches__
-
-        if not __gef_watches__:
+        if not MemoryWatchCommand.mem_watches:
             info("No memory watches")
             return
 
         info("Memory watches:")
-        for address, opt in sorted(__gef_watches__.items()):
+        for address, opt in sorted(MemoryWatchCommand.mem_watches.items()):
             gef_print("- {:#x} ({}, {})".format(address, opt[0], opt[1]))
         return
 
