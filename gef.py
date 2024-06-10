@@ -180,7 +180,6 @@ __gef_prev_arch__               = None # previous valid result of edb.selected_f
 __gef_check_once__              = True # the flag to process only once at startup
 __gef_use_info_proc_mappings__  = None # the flag to use `info proc mappings`
 __gef_check_disabled_bp__       = False # the flag to remove unnecessary breakpoints
-__highlight_table__             = {} # keep highlight settings
 __patch_history__               = [] # keep patched information
 current_elf                     = None # keep Elf instance
 current_arch                    = None # keep Architecture instance
@@ -407,40 +406,9 @@ class Cache:
         return
 
 
-def highlight_text(text):
-    """Highlight text using highlight_table { match -> color } settings.
-
-    If RegEx is enabled it will create a match group around all items in the
-    highlight_table and wrap the specified color in the highlight_table
-    around those matches.
-
-    If RegEx is disabled, split by ANSI codes and 'colorify' each match found
-    within the specified string."""
-    if not __highlight_table__:
-        return text
-
-    if get_gef_setting("highlight.regex"):
-        for match, color in __highlight_table__.items():
-            text = re.sub("(" + match + ")", Color.colorify("\\1", color), text)
-        return text
-
-    ansiSplit = re.split(r"(\033\[[\d;]*m)", text)
-
-    for match, color in __highlight_table__.items():
-        for index, val in enumerate(ansiSplit):
-            found = val.find(match)
-            if found > -1:
-                ansiSplit[index] = val.replace(match, Color.colorify(match, color))
-                break
-        text = "".join(ansiSplit)
-        ansiSplit = re.split(r"(\033\[[\d;]*m)", text)
-
-    return "".join(ansiSplit)
-
-
 def gef_print(x="", less=False, *args, **kwargs):
     """Wrapper around print(), using string buffering feature."""
-    x = highlight_text(x)
+    x = HighlightCommand.highlight_text(x)
 
     if less:
         try:
@@ -14194,6 +14162,37 @@ class HighlightCommand(GenericCommand):
     subparsers.add_parser("clear")
     _syntax_ = parser.format_help()
 
+    highlight_table = {}
+
+    @staticmethod
+    def highlight_text(text):
+        """Highlight text using highlight_table { match -> color } settings.
+
+        If RegEx is enabled it will create a match group around all items in the
+        highlight_table and wrap the specified color in the highlight_table
+        around those matches.
+
+        If RegEx is disabled, split by ANSI codes and 'colorify' each match found
+        within the specified string."""
+        if not HighlightCommand.highlight_table:
+            return text
+
+        if get_gef_setting("highlight.regex"):
+            for match, color in HighlightCommand.highlight_table.items():
+                text = re.sub("(" + match + ")", Color.colorify("\\1", color), text)
+            return text
+
+        ansiSplit = re.split(r"(\033\[[\d;]*m)", text)
+        for match, color in HighlightCommand.highlight_table.items():
+            for index, val in enumerate(ansiSplit):
+                found = val.find(match)
+                if found > -1:
+                    ansiSplit[index] = val.replace(match, Color.colorify(match, color))
+                    break
+            text = "".join(ansiSplit)
+            ansiSplit = re.split(r"(\033\[[\d;]*m)", text)
+        return "".join(ansiSplit)
+
     def __init__(self):
         super().__init__(prefix=True)
         self.add_setting("regex", False, "Enable regex highlighting")
@@ -14216,13 +14215,17 @@ class HighlightListCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     def print_highlight_table(self):
-        if not __highlight_table__:
+        if not HighlightCommand.highlight_table:
             err("no matches found")
             return
 
-        left_pad = max(map(len, __highlight_table__.keys()))
-        for match, color in sorted(__highlight_table__.items()):
-            gef_print("{} {} {}".format(Color.colorify(match.ljust(left_pad), color), VERTICAL_LINE, Color.colorify(color, color)))
+        left_pad = max(map(len, HighlightCommand.highlight_table.keys()))
+        for match, color in sorted(HighlightCommand.highlight_table.items()):
+            gef_print("{:s} {:s} {:s}".format(
+                Color.colorify(match.ljust(left_pad), color),
+                VERTICAL_LINE,
+                Color.colorify(color, color),
+            ))
         return
 
     @parse_args
@@ -14245,7 +14248,7 @@ class HighlightClearCommand(GenericCommand):
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
-        __highlight_table__.clear()
+        HighlightCommand.highlight_table.clear()
         return
 
 
@@ -14268,7 +14271,7 @@ class HighlightAddCommand(GenericCommand):
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
-        __highlight_table__[args.match] = " ".join(args.color)
+        HighlightCommand.highlight_table[args.match] = " ".join(args.color)
         return
 
 
@@ -14288,7 +14291,7 @@ class HighlightRemoveCommand(GenericCommand):
     @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
-        __highlight_table__.pop(args.match, None)
+        HighlightCommand.highlight_table.pop(args.match, None)
         return
 
 
