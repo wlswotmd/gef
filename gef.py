@@ -112,16 +112,6 @@ import time
 import traceback
 
 
-LEFT_ARROW = " <- "
-RIGHT_ARROW = " -> "
-HORIZONTAL_LINE = "-"
-VERTICAL_LINE = "|"
-BP_GLYPH = "*"
-GEF_PROMPT = "gef> "
-GEF_PROMPT_ON = "\001\033[1;32m\002{:s}\001\033[0m\002".format(GEF_PROMPT)
-GEF_PROMPT_OFF = "\001\033[1;31m\002{:s}\001\033[0m\002".format(GEF_PROMPT)
-
-
 def http_get(url):
     """Basic HTTP wrapper for GET request."""
     import urllib.request
@@ -178,28 +168,38 @@ __gef_prev_arch__               = None # previous valid result of edb.selected_f
 __gef_check_once__              = True # the flag to process only once at startup
 __gef_use_info_proc_mappings__  = None # the flag to use `info proc mappings`
 __gef_check_disabled_bp__       = False # the flag to remove unnecessary breakpoints
+
 current_elf                     = None # keep Elf instance
 current_arch                    = None # keep Architecture instance
 
-DEFAULT_PAGE_ALIGN_SHIFT        = 12
-DEFAULT_PAGE_SIZE               = 1 << DEFAULT_PAGE_ALIGN_SHIFT
-DEFAULT_PAGE_SIZE_MASK_LOW      = DEFAULT_PAGE_SIZE - 1
-DEFAULT_PAGE_SIZE_MASK_HIGH     = ~DEFAULT_PAGE_SIZE_MASK_LOW
 GEF_RC                          = os.getenv("GEF_RC") or os.path.join(os.getenv("HOME") or "~", ".gef.rc")
 GEF_TEMP_DIR                    = os.path.join(tempfile.gettempdir(), "gef")
+GEF_PROMPT                      = "gef> "
+GEF_PROMPT_ON                   = "\001\033[1;32m\002{:s}\001\033[0m\002".format(GEF_PROMPT)
+GEF_PROMPT_OFF                  = "\001\033[1;31m\002{:s}\001\033[0m\002".format(GEF_PROMPT)
 
 GDB_MIN_VERSION                 = (9, 2) # ubuntu 20.04
 GDB_VERSION                     = tuple(map(int, re.search(r"(\d+)[^\d]+(\d+)", gdb.VERSION).groups()))
 
-STRING_ASCII_LOWERCASE = "abcdefghijklmnopqrstuvwxyz"
-STRING_ASCII_UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-STRING_ASCII_LETTERS = STRING_ASCII_LOWERCASE + STRING_ASCII_UPPERCASE
-STRING_DIGITS = "0123456789"
-STRING_HEXDIGITS = "0123456789abcdefABCDEF"
-STRING_PUNCTUATION = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
-STRING_WHITESPACE = " \t\n\r\x0b\x0c"
-STRING_PRINTABLE = STRING_DIGITS + STRING_ASCII_LETTERS + STRING_PUNCTUATION + STRING_WHITESPACE
-STRING_CHARSET = STRING_DIGITS + STRING_ASCII_LETTERS + STRING_PUNCTUATION + " "
+DEFAULT_PAGE_SIZE               = 1 << 12
+DEFAULT_PAGE_SIZE_MASK_LOW      = DEFAULT_PAGE_SIZE - 1
+DEFAULT_PAGE_SIZE_MASK_HIGH     = ~DEFAULT_PAGE_SIZE_MASK_LOW
+
+LEFT_ARROW                      = " <- "
+RIGHT_ARROW                     = " -> "
+HORIZONTAL_LINE                 = "-"
+VERTICAL_LINE                   = "|"
+BP_GLYPH                        = "*"
+
+STRING_ASCII_LOWERCASE          = "abcdefghijklmnopqrstuvwxyz"
+STRING_ASCII_UPPERCASE          = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+STRING_ASCII_LETTERS            = STRING_ASCII_LOWERCASE + STRING_ASCII_UPPERCASE
+STRING_DIGITS                   = "0123456789"
+STRING_HEXDIGITS                = "0123456789abcdefABCDEF"
+STRING_PUNCTUATION              = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+STRING_WHITESPACE               = " \t\n\r\x0b\x0c"
+STRING_PRINTABLE                = STRING_DIGITS + STRING_ASCII_LETTERS + STRING_PUNCTUATION + STRING_WHITESPACE
+STRING_CHARSET                  = STRING_DIGITS + STRING_ASCII_LETTERS + STRING_PUNCTUATION + " "
 
 
 def perf(f): # noqa
