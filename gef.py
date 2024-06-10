@@ -178,8 +178,6 @@ __gef_convenience_vars_index__  = 0 # $_gef1, $_gef2, ...
 __gef_libc_args_definitions__   = {} # libc arguments definition
 __gef_prev_arch__               = None # previous valid result of edb.selected_frame().architecture()
 __gef_check_once__              = True # the flag to process only once at startup
-__gef_delayed_breakpoints__     = set() # for break-rva command
-__gef_delayed_bp_set__          = False # for break-rva command
 __gef_use_info_proc_mappings__  = None # the flag to use `info proc mappings`
 __gef_check_disabled_bp__       = False # the flag to remove unnecessary breakpoints
 __highlight_table__             = {} # keep highlight settings
@@ -12460,16 +12458,15 @@ def new_objfile_handler(_event):
     load_libc_args()
 
     # delayed breakpoint for brva
-    global __gef_delayed_bp_set__
-    if __gef_delayed_bp_set__ is False and is_alive():
+    if BreakRelativeVirtualAddressCommand.delayed_bp_set is False and is_alive():
         if not (is_qemu_system() or is_kgdb() or is_vmware()):
             codebase = get_section_base_address(get_filepath(append_proc_root_prefix=False))
             if codebase is None:
                 codebase = get_section_base_address(get_path_from_info_proc())
             if codebase:
-                for offset in __gef_delayed_breakpoints__:
+                for offset in BreakRelativeVirtualAddressCommand.delayed_breakpoints:
                     gdb.execute("b *{:#x}".format(codebase + offset))
-                __gef_delayed_bp_set__ = True
+                BreakRelativeVirtualAddressCommand.delayed_bp_set = True
     return
 
 
@@ -14766,6 +14763,9 @@ class BreakRelativeVirtualAddressCommand(GenericCommand):
                         help="the offset from codebase you want to set a breakpoint.")
     _syntax_ = parser.format_help()
 
+    delayed_breakpoints = set()
+    delayed_bp_set = False
+
     @parse_args
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
@@ -14795,8 +14795,7 @@ class BreakRelativeVirtualAddressCommand(GenericCommand):
             gdb.execute("b *{:#x}".format(codebase + args.offset))
         else:
             # use delayed breakpoints
-            global __gef_delayed_breakpoints__
-            __gef_delayed_breakpoints__.add(args.offset)
+            BreakRelativeVirtualAddressCommand.delayed_breakpoints.add(args.offset)
             info("Add delayed breakpoint to codebase+{:#x}".format(args.offset))
         return
 
