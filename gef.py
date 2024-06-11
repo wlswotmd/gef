@@ -19964,7 +19964,9 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
                 try:
                     m.append("{:s}{:s}".format(RIGHT_ARROW, chunk.to_str(arena)))
                     if chunk.address in chunks:
-                        m.append(Color.colorify("{:s}{:#x} [loop detected]".format(RIGHT_ARROW, chunk.address), corrupted_msg_color))
+                        m.append(Color.colorify("{:s}{:#x} [loop detected]".format(
+                            RIGHT_ARROW, chunk.address,
+                        ), corrupted_msg_color))
                         break
 
                     chunks.append(chunk.address)
@@ -19976,8 +19978,9 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
 
                     chunk = GlibcHeap.GlibcChunk(next_chunk)
                 except gdb.MemoryError:
-                    fmt = "{:s}{:#x} [Corrupted chunk]"
-                    m.append(Color.colorify(fmt.format(RIGHT_ARROW, chunk.address), corrupted_msg_color))
+                    m.append(Color.colorify("{:s}{:#x} [Corrupted chunk]".format(
+                        RIGHT_ARROW, chunk.address,
+                    ), corrupted_msg_color))
                     break
 
             if m or verbose:
@@ -19988,7 +19991,9 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
                 size = GlibcHeap.get_binsize_table()["tcache"][i]["size"]
                 bins_addr = ProcessMap.lookup_address(arena.tcachebins_addr(i))
                 fd = ProcessMap.lookup_address(read_int_from_memory(bins_addr.value))
-                gef_print("tcachebins[idx={:d}, size={:#x}, @{!s}]: fd={!s} count={:d}".format(i, size, bins_addr, fd, count))
+                gef_print("tcachebins[idx={:d}, size={:#x}, @{!s}]: fd={!s} count={:d}".format(
+                    i, size, bins_addr, fd, count,
+                ))
                 if m:
                     gef_print("\n".join(m))
 
@@ -20074,7 +20079,9 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
                 try:
                     m.append("{:s}{:s}".format(RIGHT_ARROW, chunk.to_str(arena)))
                     if chunk.address in chunks:
-                        m.append(Color.colorify("{:s}{:#x} [loop detected]".format(RIGHT_ARROW, chunk.chunk_base_address), corrupted_msg_color))
+                        m.append(Color.colorify("{:s}{:#x} [loop detected]".format(
+                            RIGHT_ARROW, chunk.chunk_base_address,
+                        ), corrupted_msg_color))
                         break
 
                     if fastbin_index(chunk.get_chunk_size()) != i:
@@ -20089,8 +20096,9 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
 
                     chunk = GlibcHeap.GlibcChunk(next_chunk, from_base=True)
                 except gdb.MemoryError:
-                    fmt = "{:s}{:#x} [Corrupted chunk]"
-                    m.append(Color.colorify(fmt.format(RIGHT_ARROW, chunk.chunk_base_address), corrupted_msg_color))
+                    m.append(Color.colorify("{:s}{:#x} [Corrupted chunk]".format(
+                        RIGHT_ARROW, chunk.chunk_base_address,
+                    ), corrupted_msg_color))
                     break
 
             if m or verbose:
@@ -20099,7 +20107,9 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
                     size = bin_table[i]["size"]
                     bins_addr = ProcessMap.lookup_address(arena.fastbins_addr(i))
                     fd = ProcessMap.lookup_address(read_int_from_memory(bins_addr.value))
-                    gef_print("fastbins[idx={:d}, size={:#x}, @{!s}]: fd={!s}".format(i, size, bins_addr, fd))
+                    gef_print("fastbins[idx={:d}, size={:#x}, @{!s}]: fd={!s}".format(
+                        i, size, bins_addr, fd,
+                    ))
                     if m:
                         gef_print("\n".join(m))
 
