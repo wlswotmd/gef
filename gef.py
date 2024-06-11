@@ -2902,7 +2902,6 @@ class GlibcHeap:
         def __getitem__(self, item):
             return getattr(self, item)
 
-
     @staticmethod
     @Cache.cache_until_next
     def search_for_mp_():
