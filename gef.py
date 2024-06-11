@@ -72523,87 +72523,88 @@ class MuslHeapDumpCommand(GenericCommand):
         return
 
 
-class uClibcChunk:
-    """uClibc chunk class."""
-    def __init__(self, addr, from_base=False):
-        self.ptrsize = current_arch.ptrsize
-        if from_base:
-            self.chunk_base_address = addr
-            self.address = addr + 2 * self.ptrsize
-        else:
-            self.chunk_base_address = align_address(addr - 2 * self.ptrsize)
-            self.address = addr
-
-        self.size_addr = align_address(self.address - self.ptrsize)
-        return
-
-    def get_chunk_size(self):
-        return read_int_from_memory(self.size_addr) & (~0x03)
-
-    @property
-    def size(self):
-        return self.get_chunk_size()
-
-    # if freed functions
-    def get_fwd_ptr(self, sll):
-        try:
-            # Not a single-linked-list (sll) or no Safe-Linking support yet
-            if not sll:
-                return read_int_from_memory(self.address)
-            # Unmask ("reveal") the Safe-Linking pointer
+class uClibcNgHeap:
+    class uClibcChunk:
+        """uClibc chunk class."""
+        def __init__(self, addr, from_base=False):
+            self.ptrsize = current_arch.ptrsize
+            if from_base:
+                self.chunk_base_address = addr
+                self.address = addr + 2 * self.ptrsize
             else:
-                return read_int_from_memory(self.address) ^ (self.address >> 12)
-        except gdb.MemoryError:
-            return None
+                self.chunk_base_address = align_address(addr - 2 * self.ptrsize)
+                self.address = addr
 
-    @property
-    def fwd(self):
-        return self.get_fwd_ptr(False)
+            self.size_addr = align_address(self.address - self.ptrsize)
+            return
 
-    fd = fwd # for compat
+        def get_chunk_size(self):
+            return read_int_from_memory(self.size_addr) & (~0x03)
 
-    def get_bkw_ptr(self):
-        return read_int_from_memory(self.address + self.ptrsize)
+        @property
+        def size(self):
+            return self.get_chunk_size()
 
-    @property
-    def bck(self):
-        return self.get_bkw_ptr()
+        # if freed functions
+        def get_fwd_ptr(self, sll):
+            try:
+                # Not a single-linked-list (sll) or no Safe-Linking support yet
+                if not sll:
+                    return read_int_from_memory(self.address)
+                # Unmask ("reveal") the Safe-Linking pointer
+                else:
+                    return read_int_from_memory(self.address) ^ (self.address >> 12)
+            except gdb.MemoryError:
+                return None
 
-    bk = bck # for compat
-    # endif freed functions
+        @property
+        def fwd(self):
+            return self.get_fwd_ptr(False)
 
-    def has_p_bit(self):
-        return read_int_from_memory(self.size_addr) & 0x01
+        fd = fwd # for compat
 
-    def has_m_bit(self):
-        return read_int_from_memory(self.size_addr) & 0x02
+        def get_bkw_ptr(self):
+            return read_int_from_memory(self.address + self.ptrsize)
 
-    def flags_as_string(self):
-        flags = []
-        if self.has_p_bit():
-            flags.append(Color.colorify("PREV_INUSE", get_gef_setting("theme.heap_chunk_flag_prev_inuse")))
-        if self.has_m_bit():
-            flags.append(Color.colorify("IS_MMAPPED", get_gef_setting("theme.heap_chunk_flag_is_mmapped")))
-        return "|".join(flags)
+        @property
+        def bck(self):
+            return self.get_bkw_ptr()
 
-    def to_str(self, is_fastbin=False):
-        chunk_c = Color.colorify("Chunk", get_gef_setting("theme.heap_chunk_label"))
-        size_c = Color.colorify_hex(self.get_chunk_size(), get_gef_setting("theme.heap_chunk_size"))
-        base_c = Color.colorify_hex(self.chunk_base_address, get_gef_setting("theme.heap_chunk_address_freed"))
-        addr_c = Color.colorify_hex(self.address, get_gef_setting("theme.heap_chunk_address_freed"))
-        flags = self.flags_as_string()
+        bk = bck # for compat
+        # endif freed functions
 
-        if is_fastbin:
-            decoded_fd = ProcessMap.lookup_address(self.get_fwd_ptr(sll=True))
-            fd = self.get_fwd_ptr(sll=False)
-            fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={:#x}(={!s})"
-            msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, decoded_fd)
-        else:
-            fd = ProcessMap.lookup_address(self.fd)
-            bk = ProcessMap.lookup_address(self.bk)
-            fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
-            msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk)
-        return msg
+        def has_p_bit(self):
+            return read_int_from_memory(self.size_addr) & 0x01
+
+        def has_m_bit(self):
+            return read_int_from_memory(self.size_addr) & 0x02
+
+        def flags_as_string(self):
+            flags = []
+            if self.has_p_bit():
+                flags.append(Color.colorify("PREV_INUSE", get_gef_setting("theme.heap_chunk_flag_prev_inuse")))
+            if self.has_m_bit():
+                flags.append(Color.colorify("IS_MMAPPED", get_gef_setting("theme.heap_chunk_flag_is_mmapped")))
+            return "|".join(flags)
+
+        def to_str(self, is_fastbin=False):
+            chunk_c = Color.colorify("Chunk", get_gef_setting("theme.heap_chunk_label"))
+            size_c = Color.colorify_hex(self.get_chunk_size(), get_gef_setting("theme.heap_chunk_size"))
+            base_c = Color.colorify_hex(self.chunk_base_address, get_gef_setting("theme.heap_chunk_address_freed"))
+            addr_c = Color.colorify_hex(self.address, get_gef_setting("theme.heap_chunk_address_freed"))
+            flags = self.flags_as_string()
+
+            if is_fastbin:
+                decoded_fd = ProcessMap.lookup_address(self.get_fwd_ptr(sll=True))
+                fd = self.get_fwd_ptr(sll=False)
+                fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={:#x}(={!s})"
+                msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, decoded_fd)
+            else:
+                fd = ProcessMap.lookup_address(self.fd)
+                bk = ProcessMap.lookup_address(self.bk)
+                fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
+                msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk)
+            return msg
 
 
 @register_command
@@ -72973,7 +72974,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
                 seen = []
                 while is_valid_addr(n) and n not in seen:
                     seen.append(n)
-                    chunk = uClibcChunk(n, from_base=True)
+                    chunk = uClibcNgHeap.uClibcChunk(n, from_base=True)
                     self.out.append(" -> {}".format(chunk.to_str(is_fastbin=True)))
                     n = chunk.get_fwd_ptr(True)
 
@@ -73000,7 +73001,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
                 seen = [addr - current_arch.ptrsize * 2]
                 while is_valid_addr(n) and n not in seen:
                     seen.append(n)
-                    chunk = uClibcChunk(n, from_base=True)
+                    chunk = uClibcNgHeap.uClibcChunk(n, from_base=True)
                     self.out.append(" -> {}".format(chunk.to_str()))
                     n = chunk.fwd
 
@@ -73023,7 +73024,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
                 seen = [addr - current_arch.ptrsize * 2]
                 while is_valid_addr(n) and n not in seen:
                     seen.append(n)
-                    chunk = uClibcChunk(n, from_base=True)
+                    chunk = uClibcNgHeap.uClibcChunk(n, from_base=True)
                     self.out.append(" -> {}".format(chunk.to_str()))
                     n = chunk.fwd
 
@@ -73111,7 +73112,7 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
             while n and n not in seen:
                 seen.append(n)
                 try:
-                    chunk = uClibcChunk(n, from_base=True)
+                    chunk = uClibcNgHeap.uClibcChunk(n, from_base=True)
                     n = chunk.get_fwd_ptr(True)
                 except gdb.MemoryError:
                     break
@@ -73123,7 +73124,7 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
             while n and addr - current_arch.ptrsize * 2 != n and n not in seen:
                 seen.append(n)
                 try:
-                    chunk = uClibcChunk(n, from_base=True)
+                    chunk = uClibcNgHeap.uClibcChunk(n, from_base=True)
                     n = chunk.fwd
                 except gdb.MemoryError:
                     break
@@ -73135,7 +73136,7 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
             while n and addr - current_arch.ptrsize * 2 != n and n not in seen:
                 seen.append(n)
                 try:
-                    chunk = uClibcChunk(n, from_base=True)
+                    chunk = uClibcNgHeap.uClibcChunk(n, from_base=True)
                     n = chunk.fwd
                 except gdb.MemoryError:
                     break
@@ -73263,7 +73264,7 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
             # This is fast, but does not return an accurate list in some cases.
             # For example, sparc64 may not include the heap area.
             # So it detects the end of the page from malloc_state.top.
-            end = malloc_state.top + uClibcChunk(malloc_state.top, from_base=True).size
+            end = malloc_state.top + uClibcNgHeap.uClibcChunk(malloc_state.top, from_base=True).size
 
         try:
             from tqdm import tqdm
