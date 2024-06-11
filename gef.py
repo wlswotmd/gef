@@ -5049,7 +5049,7 @@ class Checksec:
 
     @staticmethod
     def get_mte_status():
-        auxv = gef_get_auxiliary_values()
+        auxv = Auxv.get_auxiliary_values()
         HWCAP2_MTE = 1 << 18
         if auxv and "AT_HWCAP2" in auxv and (auxv["AT_HWCAP2"] & HWCAP2_MTE) == 0:
             return None # Unsupported
@@ -5064,7 +5064,7 @@ class Checksec:
 
     @staticmethod
     def get_pac_status():
-        auxv = gef_get_auxiliary_values()
+        auxv = Auxv.get_auxiliary_values()
         HWCAP_PACA = 1 << 30
         HWCAP_PACG = 1 << 31
         if auxv and "AT_HWCAP" in auxv and (auxv["AT_HWCAP"] & (HWCAP_PACA | HWCAP_PACG)) == 0:
@@ -12172,7 +12172,7 @@ class ProcessMap:
             return new_regions
 
         def parse_auxv():
-            auxv = gef_get_auxiliary_values()
+            auxv = Auxv.get_auxiliary_values()
             if not auxv:
                 return []
 
@@ -12205,7 +12205,7 @@ class ProcessMap:
         def parse_stack_register():
             # get permission
             stack_permission = "rw-" # default
-            auxv = gef_get_auxiliary_values()
+            auxv = Auxv.get_auxiliary_values()
             if auxv and "AT_PHDR" in auxv:
                 elf = get_ehdr(auxv["AT_PHDR"] & gef_getpagesize_mask_high())
                 phdr = elf.get_phdr(Elf.Phdr.PT_GNU_STACK)
@@ -13359,133 +13359,135 @@ def parse_string_range(s):
     return [int(x, 16) for x in addrs]
 
 
-def get_auxiliary_walk(offset=0):
-    """Find AUXV by walking stack"""
+class Auxv:
+    @staticmethod
+    def get_auxiliary_walk(offset=0):
+        """Find AUXV by walking stack"""
 
-    # do not use gef_getpagesize(), gef_getpagesize_mask_high(), etc.
-    # because gef_getpagesize() -> gef_get_auxiliary_values() -> get_auxiliary_walk()
-    if current_arch.sp is None:
-        return None
-    addr = current_arch.sp & DEFAULT_PAGE_SIZE_MASK_HIGH
+        # do not use gef_getpagesize(), gef_getpagesize_mask_high(), etc.
+        # because gef_getpagesize() -> Auxv.get_auxiliary_values() -> Auxv.get_auxiliary_walk()
+        if current_arch.sp is None:
+            return None
+        addr = current_arch.sp & DEFAULT_PAGE_SIZE_MASK_HIGH
 
-    # check readable or not
-    if not is_valid_addr(addr):
-        return None
+        # check readable or not
+        if not is_valid_addr(addr):
+            return None
 
-    # find stack bottom
-    try:
+        # find stack bottom
+        try:
+            while True:
+                if b"\x7fELF" == read_memory(addr, 4):
+                    break
+                addr += DEFAULT_PAGE_SIZE
+        except gdb.MemoryError: # if read error, that is stack bottom
+            pass
+        current = addr - current_arch.ptrsize * 2 - offset
+
+        # check readable or not again
+        if not is_valid_addr(current):
+            # something is wrong, maybe stack is pivoted
+            return None
+
+        # find auxv end
         while True:
-            if b"\x7fELF" == read_memory(addr, 4):
+            a = read_int_from_memory(current)
+            b = read_int_from_memory(current + current_arch.ptrsize)
+            if a == b == 0:
                 break
-            addr += DEFAULT_PAGE_SIZE
-    except gdb.MemoryError: # if read error, that is stack bottom
-        pass
-    current = addr - current_arch.ptrsize * 2 - offset
+            current -= current_arch.ptrsize * 2
 
-    # check readable or not again
-    if not is_valid_addr(current):
-        # something is wrong, maybe stack is pivoted
-        return None
+        # skip dummy null if exist
+        for _ in range(1024):
+            a = read_int_from_memory(current)
+            if a == 7: # AT_BASE
+                break
+            current -= current_arch.ptrsize * 2
+        else:
+            return None
 
-    # find auxv end
-    while True:
-        a = read_int_from_memory(current)
-        b = read_int_from_memory(current + current_arch.ptrsize)
-        if a == b == 0:
-            break
-        current -= current_arch.ptrsize * 2
-
-    # skip dummy null if exist
-    for _ in range(1024):
-        a = read_int_from_memory(current)
-        if a == 7: # AT_BASE
-            break
-        current -= current_arch.ptrsize * 2
-    else:
-        return None
-
-    # find auxv start
-    while read_int_from_memory(current) <= 37: # AT_L3_CACHESHAPE
-        current -= current_arch.ptrsize * 2
-    current += current_arch.ptrsize * 2
-
-    # parse auxv
-    res = {}
-    while True:
-        key = read_int_from_memory(current)
-        val = read_int_from_memory(current + current_arch.ptrsize)
-        if key not in AuxvCommand.AT_CONSTANTS:
-            break
-        res[AuxvCommand.AT_CONSTANTS[key]] = val
-        if key == 0:
-            break
+        # find auxv start
+        while read_int_from_memory(current) <= 37: # AT_L3_CACHESHAPE
+            current -= current_arch.ptrsize * 2
         current += current_arch.ptrsize * 2
 
-    # test
-    if "AT_ENTRY" not in res:
-        return None
-    if "AT_PHDR" not in res:
-        return None
-    if "AT_RANDOM" not in res:
-        return None
-    if "AT_BASE" not in res:
-        return None
-    if "AT_NULL" not in res:
-        return None
-
-    return res
-
-
-# gef_get_auxiliary_values (under qemu-user mode) is very slow,
-# Because it may call get_auxiliary_walk that repeats read_memory many times to find the auxv value.
-# Cache.cache_until_next is not effective as-is, as it is cleared by Cache.reset_gef_caches() each time the `stepi` runs.
-# Fortunately, auxv rarely changes.
-# I decided to keep the cache until it is explicitly cleared.
-@Cache.cache_this_session
-def gef_get_auxiliary_values(force_heuristic=False):
-    """Retrieves the auxiliary values of the current execution.
-    Returns None if not running, or a dict() of values."""
-    if not is_alive():
-        return None
-    if is_qemu_system() or is_kgdb() or is_vmware() or is_wine():
-        return None
-
-    def fast_path():
-        try:
-            result = gdb.execute("info auxv", to_string=True)
-        except gdb.error:
-            return None
+        # parse auxv
         res = {}
-        for line in result.splitlines():
-            tmp = line.split()
-            auxv_type = tmp[1]
-            if auxv_type in ("AT_PLATFORM", "AT_EXECFN", "AT_BASE_PLATFORM"):
-                m = re.match("^.+?(0x[0-9a-f]+)", line)
-                res[auxv_type] = int(m.group(1), 0)
-            else:
-                res[auxv_type] = int(tmp[-1], 0)
+        while True:
+            key = read_int_from_memory(current)
+            val = read_int_from_memory(current + current_arch.ptrsize)
+            if key not in AuxvCommand.AT_CONSTANTS:
+                break
+            res[AuxvCommand.AT_CONSTANTS[key]] = val
+            if key == 0:
+                break
+            current += current_arch.ptrsize * 2
+
+        # test
+        if "AT_ENTRY" not in res:
+            return None
+        if "AT_PHDR" not in res:
+            return None
+        if "AT_RANDOM" not in res:
+            return None
+        if "AT_BASE" not in res:
+            return None
+        if "AT_NULL" not in res:
+            return None
+
         return res
 
-    def slow_path():
-        if current_arch is None:
+    # Auxv.get_auxiliary_values (under qemu-user mode) is very slow,
+    # Because it may call Auxv.get_auxiliary_walk that repeats read_memory many times to find the auxv value.
+    # Cache.cache_until_next is not effective as-is, as it is cleared by Cache.reset_gef_caches() each time the `stepi` runs.
+    # Fortunately, auxv rarely changes.
+    # I decided to keep the cache until it is explicitly cleared.
+    @staticmethod
+    @Cache.cache_this_session
+    def get_auxiliary_values(force_heuristic=False):
+        """Retrieves the auxiliary values of the current execution.
+        Returns None if not running, or a dict() of values."""
+        if not is_alive():
             return None
-        for offset in [0, current_arch.ptrsize]:
-            res = get_auxiliary_walk(offset)
-            if res:
-                return res
-        return None
+        if is_qemu_system() or is_kgdb() or is_vmware() or is_wine():
+            return None
 
-    if force_heuristic:
-        return slow_path()
+        def fast_path():
+            try:
+                result = gdb.execute("info auxv", to_string=True)
+            except gdb.error:
+                return None
+            res = {}
+            for line in result.splitlines():
+                tmp = line.split()
+                auxv_type = tmp[1]
+                if auxv_type in ("AT_PLATFORM", "AT_EXECFN", "AT_BASE_PLATFORM"):
+                    m = re.match("^.+?(0x[0-9a-f]+)", line)
+                    res[auxv_type] = int(m.group(1), 0)
+                else:
+                    res[auxv_type] = int(tmp[-1], 0)
+            return res
 
-    return fast_path() or slow_path()
+        def slow_path():
+            if current_arch is None:
+                return None
+            for offset in [0, current_arch.ptrsize]:
+                res = Auxv.get_auxiliary_walk(offset)
+                if res:
+                    return res
+            return None
+
+        if force_heuristic:
+            return slow_path()
+
+        return fast_path() or slow_path()
 
 
 @Cache.cache_this_session
 def gef_read_canary():
     """Read the canary of a running process using Auxiliary Vector.
     Return a tuple of (canary, location) if found, None otherwise."""
-    auxval = gef_get_auxiliary_values()
+    auxval = Auxv.get_auxiliary_values()
     if not auxval:
         return None
 
@@ -13501,7 +13503,7 @@ def gef_read_canary():
 @Cache.cache_this_session
 def gef_getpagesize():
     """Get the page size from auxiliary values."""
-    auxval = gef_get_auxiliary_values()
+    auxval = Auxv.get_auxiliary_values()
     if not auxval or "AT_PAGESZ" not in auxval:
         return DEFAULT_PAGE_SIZE
     return auxval["AT_PAGESZ"]
@@ -13510,7 +13512,7 @@ def gef_getpagesize():
 @Cache.cache_this_session
 def gef_getpagesize_mask_low():
     """Get the page size mask from auxiliary values."""
-    auxval = gef_get_auxiliary_values()
+    auxval = Auxv.get_auxiliary_values()
     if not auxval or "AT_PAGESZ" not in auxval:
         return DEFAULT_PAGE_SIZE_MASK_LOW
     return auxval["AT_PAGESZ"] - 1
@@ -13519,7 +13521,7 @@ def gef_getpagesize_mask_low():
 @Cache.cache_this_session
 def gef_getpagesize_mask_high():
     """Get the page size mask from auxiliary values."""
-    auxval = gef_get_auxiliary_values()
+    auxval = Auxv.get_auxiliary_values()
     if not auxval or "AT_PAGESZ" not in auxval:
         return DEFAULT_PAGE_SIZE_MASK_HIGH
     return ~(auxval["AT_PAGESZ"] - 1)
@@ -15115,7 +15117,7 @@ class AuxvCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        auxval = gef_get_auxiliary_values(args.force_heuristic)
+        auxval = Auxv.get_auxiliary_values(args.force_heuristic)
         if not auxval:
             return None
 
@@ -17145,10 +17147,10 @@ class PtrDemangleCommand(GenericCommand):
 
         # generic
         try:
-            auxv = gef_get_auxiliary_values()
+            auxv = Auxv.get_auxiliary_values()
             if auxv is None:
-                Cache.reset_gef_caches(function=gef_get_auxiliary_values)
-                auxv = gef_get_auxiliary_values()
+                Cache.reset_gef_caches(function=Auxv.get_auxiliary_values)
+                auxv = Auxv.get_auxiliary_values()
             if auxv and "AT_RANDOM" in auxv:
                 if is_s390x():
                     cookie = read_int_from_memory(auxv["AT_RANDOM"]) & 0x00ffffffffffffff
@@ -75348,7 +75350,7 @@ class MteTagsCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        auxv = gef_get_auxiliary_values()
+        auxv = Auxv.get_auxiliary_values()
         HWCAP2_MTE = 1 << 18
         if auxv and "AT_HWCAP2" in auxv and (auxv["AT_HWCAP2"] & HWCAP2_MTE) == 0:
             err("MTE is unsupported")
