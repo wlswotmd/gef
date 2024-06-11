@@ -5098,18 +5098,6 @@ def is_little_endian():
     return not is_big_endian()
 
 
-def flags_to_human(reg_value, value_table):
-    """Return a human readable string showing the flag states."""
-    flags = []
-    for i in value_table:
-        if reg_value & (1 << i):
-            flag_str = Color.boldify(value_table[i].upper())
-        else:
-            flag_str = value_table[i].lower()
-        flags.append(flag_str)
-    return "{:#x} [{}]".format(reg_value, " ".join(flags))
-
-
 class Architecture:
     """Generic metaclass for the architecture supported by GEF."""
     __metaclass__ = abc.ABCMeta
@@ -5348,6 +5336,18 @@ class Architecture:
         maxlen = max([len(v) for v in self.all_registers if v != self.flag_register])
         self.__registers_max_len = maxlen
         return self.__registers_max_len
+
+    @staticmethod
+    def flags_to_human(reg_value, value_table):
+        """Return a human readable string showing the flag states."""
+        flags = []
+        for i in value_table:
+            if reg_value & (1 << i):
+                flag_str = Color.boldify(value_table[i].upper())
+            else:
+                flag_str = value_table[i].lower()
+            flags.append(flag_str)
+        return "{:#x} [{}]".format(reg_value, " ".join(flags))
 
 
 class RISCV(Architecture):
@@ -5929,7 +5929,7 @@ class ARM(Architecture):
             else:
                 self.__SCR_available = False
                 mode = " [Mode={:s}({:#07b},PL{:d})]".format(CurrentMode, key, CurrentPL)
-        return flags_to_human(val, self.flags_table) + mode
+        return Architecture.flags_to_human(val, self.flags_table) + mode
 
     def get_ra(self, insn, frame):
         ra = None
@@ -6084,7 +6084,7 @@ class AARCH64(ARM):
                 self.__SCR_EL3_available = False
                 mode = " [EL={:d},SP={:d}]".format((val >> 2) & 0b11, val & 0b11)
 
-        return flags_to_human(val, self.flags_table) + mode
+        return Architecture.flags_to_human(val, self.flags_table) + mode
 
     def get_tls(self):
         if is_in_kernel():
@@ -6182,7 +6182,7 @@ class X86(Architecture):
             reg = self.flag_register
             val = get_register(reg) & 0xffffffff
         mode = " [Ring={:d}]".format(get_register("$cs") & 0b11)
-        return flags_to_human(val, self.flags_table) + mode
+        return Architecture.flags_to_human(val, self.flags_table) + mode
 
     def is_syscall(self, insn):
         if insn.mnemonic in ["sysenter", "syscall"]:
@@ -6714,7 +6714,7 @@ class PPC(Architecture):
         if not val:
             reg = self.flag_register
             val = get_register(reg)
-        return flags_to_human(val, self.flags_table)
+        return Architecture.flags_to_human(val, self.flags_table)
 
     def is_syscall(self, insn):
         return insn.mnemonic in ["sc"]
@@ -7017,7 +7017,7 @@ class SPARC(Architecture):
         reg = self.flag_register
         if not val:
             val = get_register(reg)
-        return flags_to_human(val, self.flags_table)
+        return Architecture.flags_to_human(val, self.flags_table)
 
     def is_syscall(self, insn):
         return insn.mnemonic == "ta" and insn.operands[0] == "0x10"
@@ -7865,7 +7865,7 @@ class S390X(Architecture):
         condition_code = (cc1 << 1) + cc0
         extra_msg += "ConditionCode={:d}]".format(condition_code)
 
-        return flags_to_human(val, self.flags_table) + extra_msg
+        return Architecture.flags_to_human(val, self.flags_table) + extra_msg
 
     def get_ith_parameter(self, i, in_func=True):
         if i < len(self.function_parameters):
@@ -8009,7 +8009,7 @@ class SH4(Architecture):
         if not val:
             reg = self.flag_register
             val = get_register(reg)
-        return flags_to_human(val, self.flags_table)
+        return Architecture.flags_to_human(val, self.flags_table)
 
     def get_ra(self, insn, frame):
         ra = None
@@ -8331,7 +8331,7 @@ class M68K(Architecture):
         if not val:
             reg = self.flag_register
             val = get_register(reg)
-        return flags_to_human(val, self.flags_table)
+        return Architecture.flags_to_human(val, self.flags_table)
 
     def get_ra(self, insn, frame):
         ra = None
@@ -9077,7 +9077,7 @@ class OR1K(Architecture):
         if not val:
             reg = self.flag_register
             val = get_register(reg)
-        return flags_to_human(val, self.flags_table)
+        return Architecture.flags_to_human(val, self.flags_table)
 
     def get_ra(self, insn, frame):
         ra = None
@@ -9817,7 +9817,7 @@ class CRIS(Architecture):
         if not val:
             reg = self.flag_register
             val = get_register(reg)
-        return flags_to_human(val, self.flags_table)
+        return Architecture.flags_to_human(val, self.flags_table)
 
     def get_ra(self, insn, frame):
         ra = None
@@ -10281,7 +10281,7 @@ class ARC(Architecture):
         if not val:
             reg = self.flag_register
             val = get_register(reg)
-        return flags_to_human(val, self.flags_table)
+        return Architecture.flags_to_human(val, self.flags_table)
 
     def get_ra(self, insn, frame):
         ra = None
@@ -10479,7 +10479,7 @@ class CSKY(Architecture):
         if not val:
             reg = self.flag_register
             val = get_register(reg)
-        return flags_to_human(val, self.flags_table)
+        return Architecture.flags_to_human(val, self.flags_table)
 
     def get_ra(self, insn, frame):
         ra = None
@@ -10611,7 +10611,7 @@ class CSKY(Architecture):
 #    #    if not val:
 #    #        reg = self.flag_register
 #    #        val = get_register(reg)
-#    #    return flags_to_human(val, self.flags_table)
+#    #    return Architecture.flags_to_human(val, self.flags_table)
 #
 #    #def get_ith_parameter(self, i, in_func=True):
 #    #    if in_func:
