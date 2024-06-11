@@ -12444,6 +12444,28 @@ class ProcessMap:
             return Address(value=addr, valid=False)
         return Address(value=addr, section=sect, info=info)
 
+    @staticmethod
+    @Cache.cache_until_next
+    def get_section_base_address(name):
+        if name is None:
+            return None
+        section = ProcessMap.process_lookup_path(name)
+        if section:
+            return section.page_start
+        # Fail, retry with real path
+        section = ProcessMap.process_lookup_path(os.path.realpath(name))
+        if section:
+            return section.page_start
+        return None
+
+    @staticmethod
+    def get_section_base_address_by_list(names):
+        for name in names:
+            page_start = ProcessMap.get_section_base_address(name)
+            if page_start is not None:
+                return page_start
+        return None
+
 
 def is_msb_on(addr):
     """Return whether provided address MSB is on."""
@@ -12529,9 +12551,9 @@ class EventHandler:
         # delayed breakpoint for brva
         if BreakRelativeVirtualAddressCommand.delayed_bp_set is False and is_alive():
             if not (is_qemu_system() or is_kgdb() or is_vmware()):
-                codebase = get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
+                codebase = ProcessMap.get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
                 if codebase is None:
-                    codebase = get_section_base_address(Path.get_filepath_from_info_proc())
+                    codebase = ProcessMap.get_section_base_address(Path.get_filepath_from_info_proc())
                 if codebase:
                     for offset in BreakRelativeVirtualAddressCommand.delayed_breakpoints:
                         gdb.execute("b *{:#x}".format(codebase + offset))
@@ -14864,9 +14886,9 @@ class BreakRelativeVirtualAddressCommand(GenericCommand):
             return
 
         if is_alive():
-            codebase = get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
+            codebase = ProcessMap.get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
             if codebase is None:
-                codebase = get_section_base_address(Path.get_filepath_from_info_proc())
+                codebase = ProcessMap.get_section_base_address(Path.get_filepath_from_info_proc())
             if codebase is None:
                 gef_print("Codebase is not found")
                 return
@@ -25177,9 +25199,9 @@ class MainBreakCommand(GenericCommand):
             elf = Elf.get_elf()
             entry = elf.e_entry
             if elf.is_pie():
-                codebase = get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
+                codebase = ProcessMap.get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
                 if codebase is None:
-                    codebase = get_section_base_address(Path.get_filepath_from_info_proc())
+                    codebase = ProcessMap.get_section_base_address(Path.get_filepath_from_info_proc())
                 if codebase is None:
                     return None
                 entry += codebase
@@ -29045,7 +29067,7 @@ class XInfoCommand(GenericCommand):
             gef_print("Offset (from mapped):  {!s} + {:#x}".format(page_start, addr.value - addr.section.page_start))
 
             if addr.section.path and addr.section.path.startswith("/"):
-                base_start = ProcessMap.lookup_address(get_section_base_address(addr.section.path))
+                base_start = ProcessMap.lookup_address(ProcessMap.get_section_base_address(addr.section.path))
                 gef_print("Offset (from base):    {!s} + {:#x}".format(base_start, addr.value - base_start.section.page_start))
 
         if addr.info:
@@ -30314,7 +30336,7 @@ class DynamicCommand(GenericCommand):
 
         if isinstance(filename_or_addr, str):
             if elf.is_pie():
-                load_base = get_section_base_address(filename_or_addr)
+                load_base = ProcessMap.get_section_base_address(filename_or_addr)
                 dynamic = phdr.p_vaddr + load_base
             else:
                 dynamic = phdr.p_vaddr
@@ -30362,7 +30384,7 @@ class DynamicCommand(GenericCommand):
                 info("The binary has no _DYNAMIC.")
                 return
 
-            if get_section_base_address(filename) is None:
+            if ProcessMap.get_section_base_address(filename) is None:
                 err("{:s} is not loaded.".format(filename))
                 return
 
@@ -31019,13 +31041,13 @@ class DestructorDumpCommand(GenericCommand):
 
         # codebase
         if remote_filepath:
-            self.codebase = get_section_base_address(remote_filepath)
+            self.codebase = ProcessMap.get_section_base_address(remote_filepath)
         elif local_filepath:
-            self.codebase = get_section_base_address(local_filepath)
+            self.codebase = ProcessMap.get_section_base_address(local_filepath)
         if self.codebase is None:
-            self.codebase = get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
+            self.codebase = ProcessMap.get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
         if self.codebase is None:
-            self.codebase = get_section_base_address(Path.get_filepath_from_info_proc())
+            self.codebase = ProcessMap.get_section_base_address(Path.get_filepath_from_info_proc())
         if self.codebase is None:
             warn("Not found codebase")
 
@@ -45426,28 +45448,6 @@ class SyscallSampleCommand(GenericCommand):
         return
 
 
-@Cache.cache_until_next
-def get_section_base_address(name):
-    if name is None:
-        return None
-    section = ProcessMap.process_lookup_path(name)
-    if section:
-        return section.page_start
-    # Fail, retry with real path
-    section = ProcessMap.process_lookup_path(os.path.realpath(name))
-    if section:
-        return section.page_start
-    return None
-
-
-def get_section_base_address_by_list(names):
-    for name in names:
-        page_start = get_section_base_address(name)
-        if page_start is not None:
-            return page_start
-    return None
-
-
 @register_command
 class CodebaseCommand(GenericCommand):
     """Display code base address."""
@@ -45463,9 +45463,9 @@ class CodebaseCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        codebase = get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
+        codebase = ProcessMap.get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
         if codebase is None:
-            codebase = get_section_base_address(Path.get_filepath_from_info_proc())
+            codebase = ProcessMap.get_section_base_address(Path.get_filepath_from_info_proc())
         if codebase is None:
             gef_print("Codebase is not found")
             return
@@ -45544,7 +45544,7 @@ class HeapbaseCommand(GenericCommand):
                     return Cache.cached_heap_base
 
         # fall through
-        Cache.cached_heap_base = get_section_base_address("[heap]")
+        Cache.cached_heap_base = ProcessMap.get_section_base_address("[heap]")
         return Cache.cached_heap_base
 
     @parse_args
@@ -45582,7 +45582,7 @@ class LibcCommand(GenericCommand):
 
         libc_targets = ("libc-2.", "libc.so.6", "libuClibc-")
 
-        libc = get_section_base_address_by_list(libc_targets)
+        libc = ProcessMap.get_section_base_address_by_list(libc_targets)
         if libc is None:
             err("libc is not found")
             return
@@ -45652,7 +45652,7 @@ class LdCommand(GenericCommand):
 
         ld_targets = ("ld-2.", "ld-linux-", "ld-linux.", "ld64-uClibc-", "ld-uClibc-")
 
-        ld = get_section_base_address_by_list(ld_targets)
+        ld = ProcessMap.get_section_base_address_by_list(ld_targets)
         if ld is None:
             err("ld is not found")
             return
@@ -45763,9 +45763,9 @@ class MagicCommand(GenericCommand):
         return
 
     def magic(self):
-        codebase = get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
-        libc = get_section_base_address_by_list(("libc-2.", "libc.so.6"))
-        ld = get_section_base_address_by_list(("ld-2.", "ld-linux-", "ld-linux.so.2"))
+        codebase = ProcessMap.get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
+        libc = ProcessMap.get_section_base_address_by_list(("libc-2.", "libc.so.6"))
+        ld = ProcessMap.get_section_base_address_by_list(("ld-2.", "ld-linux-", "ld-linux.so.2"))
         if libc is None or ld is None:
             gef_print("libc/ld not found")
             return
@@ -47441,7 +47441,7 @@ class DistanceCommand(GenericCommand):
             return
 
         if addr_a.section.path:
-            base_address = get_section_base_address(addr_a.section.path)
+            base_address = ProcessMap.get_section_base_address(addr_a.section.path)
         else:
             base_address = addr_a.section.page_start
 
@@ -71334,7 +71334,7 @@ class PartitionAllocDumpCommand(GenericCommand):
         filepath = Path.get_filepath(append_proc_root_prefix=False)
         maps = ProcessMap.get_process_maps()
         if is_64bit():
-            codebase = get_section_base_address(filepath)
+            codebase = ProcessMap.get_section_base_address(filepath)
             mask = 0x0000ffff00000000
             chromium_rw_maps = [p for p in maps if p.permission.value == Permission.READ | Permission.WRITE]
             chromium_rw_maps = [p for p in chromium_rw_maps if (p.page_start & mask) == (codebase & mask) and p.path != filepath]
