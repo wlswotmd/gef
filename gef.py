@@ -16342,7 +16342,7 @@ class CapabilityCommand(GenericCommand):
             [1, "CAP_DAC_OVERRIDE", "Bypass permission checks of file read/write/exec"],
             [0, "CAP_CHOWN", "Make arbitrary changes to file UIDs and GIDs"],
         ]
-        PrintBitInfo(name, 64, bit_info).print(cap)
+        BitInfo(name, 64, bit_info).print(cap)
         return
 
     def print_capability_from_pid(self, verbose):
@@ -46453,7 +46453,7 @@ class SseCommand(GenericCommand):
             [0, "IE", "Invalid Operation Exception"],
         ]
         reg = int(gdb.execute("info registers $mxcsr", to_string=True).split()[1], 16)
-        PrintBitInfo("$mxcsr", 32, bit_info).print(reg)
+        BitInfo("$mxcsr", 32, bit_info).print(reg)
         return
 
     @only_if_gdb_running
@@ -46673,7 +46673,7 @@ class FpuCommand(GenericCommand):
         ]
         reg = get_register("$fpscr")
         if reg is not None:
-            PrintBitInfo("$fpscr", 32, bit_info).print(reg)
+            BitInfo("$fpscr", 32, bit_info).print(reg)
         else:
             warn("Failed to get the value")
 
@@ -46705,7 +46705,7 @@ class FpuCommand(GenericCommand):
         }
         reg = get_register("$fpsid")
         if reg is not None:
-            PrintBitInfo("$fpsid", 32, bit_info).print(reg)
+            BitInfo("$fpsid", 32, bit_info).print(reg)
             gef_print("Implementer code")
             for k, v in impl.items():
                 gef_print("  {:#02x}: {:s}".format(k, v))
@@ -46731,7 +46731,7 @@ class FpuCommand(GenericCommand):
         ]
         reg = get_register("$fpexc")
         if reg is not None:
-            PrintBitInfo("$fpexc", 32, bit_info).print(reg)
+            BitInfo("$fpexc", 32, bit_info).print(reg)
         else:
             warn("Failed to get the value")
         return
@@ -46756,7 +46756,7 @@ class FpuCommand(GenericCommand):
         ]
         reg = get_register("$fpcr")
         if reg is not None:
-            PrintBitInfo("$fpcr", 32, bit_info).print(reg)
+            BitInfo("$fpcr", 32, bit_info).print(reg)
 
         # fpsr
         gef_print(titlify("FPCR (Floating-Point Status Register)"))
@@ -46775,7 +46775,7 @@ class FpuCommand(GenericCommand):
         ]
         reg = get_register("$fpsr")
         if reg is not None:
-            PrintBitInfo("$fpsr", 32, bit_info).print(reg)
+            BitInfo("$fpsr", 32, bit_info).print(reg)
         return
 
     def print_fpu_x86_other(self):
@@ -46793,7 +46793,7 @@ class FpuCommand(GenericCommand):
             [0, "IM", "Invalid Operation Exception Mask"],
         ]
         reg = get_register("$fctrl")
-        PrintBitInfo("$fctrl", 16, bit_info).print(reg)
+        BitInfo("$fctrl", 16, bit_info).print(reg)
 
         # fstat
         gef_print(titlify("FSTAT (x87 FPU Status Word)"))
@@ -46814,7 +46814,7 @@ class FpuCommand(GenericCommand):
             [0, "IE", "Invalid Operation Exception"],
         ]
         reg = get_register("$fstat")
-        PrintBitInfo("$fstat", 16, bit_info).print(reg)
+        BitInfo("$fstat", 16, bit_info).print(reg)
 
         # ftag
         gef_print(titlify("FTAG (x87 FPU Tag Word)"))
@@ -46829,26 +46829,26 @@ class FpuCommand(GenericCommand):
             [[0, 1], "TAG(0)", "Reg0 Tag", "00: Valid, 01: Zero, 10: Invalid/Nan/Inf/Denormal, 11: Blank"],
         ]
         reg = get_register("$ftag")
-        PrintBitInfo("$ftag", 16, bit_info).print(reg)
+        BitInfo("$ftag", 16, bit_info).print(reg)
 
         # $fiseg, $fioff
         gef_print(titlify("FCS:FIP (x87 FPU Last Instruction Pointer)"))
         reg = get_register("$fiseg")
-        PrintBitInfo("$fiseg(FCS)", 16).print(reg)
+        BitInfo("$fiseg(FCS)", 16).print(reg)
         reg = get_register("$fioff")
-        PrintBitInfo("$fioff(FIP)", 32).print(reg)
+        BitInfo("$fioff(FIP)", 32).print(reg)
 
         # $foseg, $fooff
         gef_print(titlify("FDS:FDP (x87 FPU Last Data(Operand) Pointer)"))
         reg = get_register("$foseg")
-        PrintBitInfo("$foseg(FDS)", 16).print(reg)
+        BitInfo("$foseg(FDS)", 16).print(reg)
         reg = get_register("$fooff")
-        PrintBitInfo("$fooff(FDP)", 32).print(reg)
+        BitInfo("$fooff(FDP)", 32).print(reg)
 
         # $fop
         gef_print(titlify("FOP (x87 FPU Last Instruction Opcode)"))
         reg = get_register("$fop")
-        PrintBitInfo("$fop", 11).print(reg)
+        BitInfo("$fop", 11).print(reg)
         return
 
     @parse_args
@@ -75395,7 +75395,7 @@ class PacKeysCommand(GenericCommand):
         return
 
 
-class PrintBitInfo:
+class BitInfo:
     """Printing various bit information of the register"""
 
     def __init__(self, name, register_bit=None, bit_info=(), desc=None):
@@ -75568,7 +75568,7 @@ class QemuRegistersCommand(GenericCommand):
             [0, "PE", "Protected mode enable", "If 1, system is in protected mode, else system is in real mode"],
         ]
         cr0 = get_register("cr0", use_monitor=True)
-        self.out.extend(PrintBitInfo("CR0", 32, bit_info, desc).make_out(cr0))
+        self.out.extend(BitInfo("CR0", 32, bit_info, desc).make_out(cr0))
 
         # CR1
         self.out.append(titlify("CR1 (Control Register 1)"))
@@ -75578,7 +75578,7 @@ class QemuRegistersCommand(GenericCommand):
         self.out.append(titlify("CR2 (Control Register 2)"))
         desc = "When page fault, the address attempted to access is stored (PFLA: Page Fault Linear Address)"
         cr2 = get_register("cr2", use_monitor=True)
-        self.out.extend(PrintBitInfo("CR2", desc=desc).make_out(cr2))
+        self.out.extend(BitInfo("CR2", desc=desc).make_out(cr2))
 
         # CR3
         self.out.append(titlify("CR3 (Control Register 3)"))
@@ -75590,7 +75590,7 @@ class QemuRegistersCommand(GenericCommand):
             [3, "PWT", "Page-level Write-Through", "If 1, enable write through Page-Directory itself caching when CR4.PCIDE=0"],
         ]
         cr3 = get_register("cr3", use_monitor=True)
-        self.out.extend(PrintBitInfo("CR3", bit_info=bit_info, desc=desc).make_out(cr3))
+        self.out.extend(BitInfo("CR3", bit_info=bit_info, desc=desc).make_out(cr3))
 
         # CR4
         self.out.append(titlify("CR4 (Control Register 4)"))
@@ -75622,7 +75622,7 @@ class QemuRegistersCommand(GenericCommand):
             [0, "VME", "Virtual 8086 Mode Extensions", "If 1, enables support for the virtual interrupt flag (VIF) in virtual-8086 mode"],
         ]
         cr4 = get_register("cr4", use_monitor=True)
-        self.out.extend(PrintBitInfo("CR4", bit_info=bit_info, desc=desc).make_out(cr4))
+        self.out.extend(BitInfo("CR4", bit_info=bit_info, desc=desc).make_out(cr4))
 
         # CR8
         self.out.append(titlify("CR8 (Control Register 8)"))
@@ -75632,7 +75632,7 @@ class QemuRegistersCommand(GenericCommand):
         ]
         cr8 = get_register("cr8", use_monitor=True)
         if cr8 is not None: # only access x86 64-bit mode
-            self.out.extend(PrintBitInfo("CR8", bit_info=bit_info, desc=desc).make_out(cr8))
+            self.out.extend(BitInfo("CR8", bit_info=bit_info, desc=desc).make_out(cr8))
 
         # XCR0
         self.out.append(titlify("XCR0 (Extended Control Register 0)"))
@@ -75661,7 +75661,7 @@ class QemuRegistersCommand(GenericCommand):
         ]
         xcr0 = get_register("xcr0", use_monitor=True)
         if xcr0 is not None:
-            self.out.extend(PrintBitInfo("XCR0", bit_info=bit_info, desc=desc).make_out(xcr0))
+            self.out.extend(BitInfo("XCR0", bit_info=bit_info, desc=desc).make_out(xcr0))
 
         # DR0-DR3
         self.out.append(titlify("DR0-DR3 (Debug Address Register 0-3)"))
@@ -75670,10 +75670,10 @@ class QemuRegistersCommand(GenericCommand):
         dr1 = get_register("dr1", use_monitor=True)
         dr2 = get_register("dr2", use_monitor=True)
         dr3 = get_register("dr3", use_monitor=True)
-        self.out.extend(PrintBitInfo("DR0").make_out(dr0))
-        self.out.extend(PrintBitInfo("DR1").make_out(dr1))
-        self.out.extend(PrintBitInfo("DR2").make_out(dr2))
-        self.out.extend(PrintBitInfo("DR3", desc=desc).make_out(dr3))
+        self.out.extend(BitInfo("DR0").make_out(dr0))
+        self.out.extend(BitInfo("DR1").make_out(dr1))
+        self.out.extend(BitInfo("DR2").make_out(dr2))
+        self.out.extend(BitInfo("DR3", desc=desc).make_out(dr3))
 
         # DR4-DR5
         self.out.append(titlify("DR4-DR5 (Debug Register 4-5)"))
@@ -75693,7 +75693,7 @@ class QemuRegistersCommand(GenericCommand):
             [0, "B0", "breakpoint condition detected", "If 1, breakpoint condition was met when a debug exception for DR0"],
         ]
         dr6 = get_register("dr6", use_monitor=True)
-        self.out.extend(PrintBitInfo("DR6", 32, bit_info, desc).make_out(dr6))
+        self.out.extend(BitInfo("DR6", 32, bit_info, desc).make_out(dr6))
 
         # DR7
         self.out.append(titlify("DR7 (Debug Control Register 7)"))
@@ -75721,7 +75721,7 @@ class QemuRegistersCommand(GenericCommand):
             [0, "L0", "Local DR0 breakpoint"],
         ]
         dr7 = get_register("dr7", use_monitor=True)
-        self.out.extend(PrintBitInfo("DR7", bit_info=bit_info, desc=desc).make_out(dr7))
+        self.out.extend(BitInfo("DR7", bit_info=bit_info, desc=desc).make_out(dr7))
 
         # EFER
         self.out.append(titlify("EFER (Extended Feature Enable Register; MSR_EFER:0xc0000080)"))
@@ -75744,7 +75744,7 @@ class QemuRegistersCommand(GenericCommand):
             [1, "DPE", "Data Prefetch Enable", "only AMD K6"],
             [0, "SCE", "System Call Extensions"],
         ]
-        self.out.extend(PrintBitInfo("EFER", bit_info=bit_info).make_out(efer))
+        self.out.extend(BitInfo("EFER", bit_info=bit_info).make_out(efer))
 
         # TR
         res = gdb.execute("monitor info registers", to_string=True)
