@@ -4753,7 +4753,7 @@ class Disasm:
             return None
 
         if cs is None:
-            cs = sys.modules["capstone"].Cs(*get_capstone_arch())
+            cs = sys.modules["capstone"].Cs(*UnicornKeystoneCapstone.get_capstone_arch())
 
         # fixed-length ABI
         if current_arch.instruction_length:
@@ -4799,7 +4799,7 @@ class Disasm:
         _arch = kwargs.get("arch", None)
         _mode = kwargs.get("mode", None)
         _endian = kwargs.get("endian", None)
-        arch, mode = get_capstone_arch(arch=_arch, mode=_mode, endian=_endian)
+        arch, mode = UnicornKeystoneCapstone.get_capstone_arch(arch=_arch, mode=_mode, endian=_endian)
         try:
             cs = capstone.Cs(arch, mode)
             cs.detail = True # noqa
@@ -5980,8 +5980,8 @@ class ARM(Architecture):
             "svc 0",
         ]
         code = "; ".join(insns)
-        arch, mode = get_keystone_arch()
-        return keystone_assemble(code, arch, mode, raw=True)
+        arch, mode = UnicornKeystoneCapstone.get_keystone_arch()
+        return UnicornKeystoneCapstone.keystone_assemble(code, arch, mode, raw=True)
 
 
 class AARCH64(ARM):
@@ -6111,8 +6111,8 @@ class AARCH64(ARM):
             "svc 0",
         ]
         code = "; ".join(insns)
-        arch, mode = get_keystone_arch()
-        return keystone_assemble(code, arch, mode, raw=True)
+        arch, mode = UnicornKeystoneCapstone.get_keystone_arch()
+        return UnicornKeystoneCapstone.keystone_assemble(code, arch, mode, raw=True)
 
 
 class X86(Architecture):
@@ -6357,8 +6357,8 @@ class X86(Architecture):
             "int 0x80",
         ]
         code = "; ".join(insns)
-        arch, mode = get_keystone_arch()
-        return keystone_assemble(code, arch, mode, raw=True)
+        arch, mode = UnicornKeystoneCapstone.get_keystone_arch()
+        return UnicornKeystoneCapstone.keystone_assemble(code, arch, mode, raw=True)
 
     def get_ith_parameter(self, i, in_func=True):
         if in_func:
@@ -6537,8 +6537,8 @@ class X86_64(X86):
             "syscall",
         ]
         code = "; ".join(insns)
-        arch, mode = get_keystone_arch()
-        return keystone_assemble(code, arch, mode, raw=True)
+        arch, mode = UnicornKeystoneCapstone.get_keystone_arch()
+        return UnicornKeystoneCapstone.keystone_assemble(code, arch, mode, raw=True)
 
     def read128(self, addr):
         codes = [
@@ -6874,8 +6874,8 @@ class PPC(Architecture):
             "sc",
         ]
         code = "; ".join(insns)
-        arch, mode = get_keystone_arch()
-        return keystone_assemble(code, arch, mode, raw=True)
+        arch, mode = UnicornKeystoneCapstone.get_keystone_arch()
+        return UnicornKeystoneCapstone.keystone_assemble(code, arch, mode, raw=True)
 
 
 class PPC64(PPC):
@@ -6954,8 +6954,8 @@ class PPC64(PPC):
             "sc",
         ]
         code = "; ".join(insns)
-        arch, mode = get_keystone_arch()
-        return keystone_assemble(code, arch, mode, raw=True)
+        arch, mode = UnicornKeystoneCapstone.get_keystone_arch()
+        return UnicornKeystoneCapstone.keystone_assemble(code, arch, mode, raw=True)
 
 
 class SPARC(Architecture):
@@ -7143,8 +7143,8 @@ class SPARC(Architecture):
             "nop", # keystone does not give nop for delay slot, needs this nop
         ]
         code = "; ".join(insns)
-        arch, mode = get_keystone_arch()
-        return keystone_assemble(code, arch, mode, raw=True)
+        arch, mode = UnicornKeystoneCapstone.get_keystone_arch()
+        return UnicornKeystoneCapstone.keystone_assemble(code, arch, mode, raw=True)
 
 
 class SPARC32PLUS(SPARC):
@@ -7246,8 +7246,8 @@ class SPARC64(SPARC):
             "nop", # keystone does not give nop for delay slot, needs this nop
         ]
         code = "; ".join(insns)
-        arch, mode = get_keystone_arch()
-        return keystone_assemble(code, arch, mode, raw=True)
+        arch, mode = UnicornKeystoneCapstone.get_keystone_arch()
+        return UnicornKeystoneCapstone.keystone_assemble(code, arch, mode, raw=True)
 
 
 class MIPS(Architecture):
@@ -7453,8 +7453,8 @@ class MIPS(Architecture):
             "syscall", # keystone gives nop for delay slot, need not nop
         ]
         code = "; ".join(insns)
-        arch, mode = get_keystone_arch()
-        return keystone_assemble(code, arch, mode, raw=True)
+        arch, mode = UnicornKeystoneCapstone.get_keystone_arch()
+        return UnicornKeystoneCapstone.keystone_assemble(code, arch, mode, raw=True)
 
 
 class MIPS64(MIPS):
@@ -7532,8 +7532,8 @@ class MIPS64(MIPS):
             "syscall", # keystone gives nop for delay slot, need not nop
         ]
         code = "; ".join(insns)
-        arch, mode = get_keystone_arch()
-        return keystone_assemble(code, arch, mode, raw=True)
+        arch, mode = UnicornKeystoneCapstone.get_keystone_arch()
+        return UnicornKeystoneCapstone.keystone_assemble(code, arch, mode, raw=True)
 
 
 class MIPSN32(MIPS64):
@@ -7921,8 +7921,8 @@ class S390X(Architecture):
             "bcr 0, %r7", # nop
         ]
         code = "; ".join(insns)
-        arch, mode = get_keystone_arch()
-        return keystone_assemble(code, arch, mode, raw=True)
+        arch, mode = UnicornKeystoneCapstone.get_keystone_arch()
+        return UnicornKeystoneCapstone.keystone_assemble(code, arch, mode, raw=True)
 
 
 class SH4(Architecture):
@@ -12649,195 +12649,197 @@ def get_terminal_size():
         return 600, 100
 
 
-def get_generic_arch(module, prefix, arch, mode, big_endian, to_string):
-    """Retrieves architecture and mode from the arguments for use for the holy
-    capstone/keystone/unicorn trinity."""
-    if isinstance(mode, tuple):
-        modes = list(mode)
-    else:
-        modes = [mode, ]
-
-    if big_endian:
-        modes.append("BIG_ENDIAN")
-    else:
-        modes.append("LITTLE_ENDIAN")
-
-    if to_string:
-        # arch
-        arch = "{:s}.{:s}_ARCH_{:s}".format(module.__name__, prefix, arch)
-        # mode
-        tmp = []
-        for m in modes:
-            if not m:
-                tmp.append("0")
-            else:
-                tmp.append("{:s}.{:s}_MODE_{:s}".format(module.__name__, prefix, m))
-        mode = " + ".join(tmp)
-    else:
-        # arch
-        arch = getattr(module, "{:s}_ARCH_{:s}".format(prefix, arch))
-        # mode
-        mode = 0
-        for m in modes:
-            if m:
-                mode |= getattr(module, "{:s}_MODE_{:s}".format(prefix, m))
-    return arch, mode
-
-
-@load_unicorn
-def get_unicorn_arch(arch=None, mode=None, endian=None, to_string=False):
-    if (arch, mode, endian) == (None, None, None):
-        arch = current_arch.arch
-        mode = current_arch.mode
-        endian = is_big_endian()
-    if (arch, mode) == ("RISCV", "32"):
-        mode = "RISCV32"
-    elif (arch, mode) == ("RISCV", "64"):
-        mode = "RISCV64"
-    elif (arch, mode) == ("PPC", "32"):
-        mode = "PPC32"
-    elif (arch, mode) == ("PPC", "64"):
-        mode = "PPC64"
-    elif (arch, mode) == ("SPARC", "32"):
-        mode = "SPARC32"
-    elif (arch, mode) == ("SPARC", "32PLUS"):
-        mode = "SPARC32"
-    elif (arch, mode) == ("SPARC", "64"):
-        mode = "SPARC64"
-    elif (arch, mode) == ("MIPS", "32"):
-        mode = "MIPS32"
-    elif (arch, mode) == ("MIPS", "64"):
-        mode = "MIPS64"
-    elif arch == "S390X":
-        mode = None
-    elif arch == "M68K":
-        mode = None
-    return get_generic_arch(sys.modules["unicorn"], "UC", arch, mode, endian, to_string)
-
-
-@load_capstone
-def get_capstone_arch(arch=None, mode=None, endian=None, to_string=False):
-    if (arch, mode, endian) == (None, None, None):
-        arch = current_arch.arch
-        mode = current_arch.mode
-        endian = is_big_endian()
-    # hacky patch for applying to capstone's mode
-    if (arch, mode) == ("RISCV", "32"):
-        mode = ("RISCV32", "RISCVC")
-    elif (arch, mode) == ("RISCV", "64"):
-        mode = ("RISCV64", "RISCVC")
-    elif (arch, mode) == ("SPARC", "32"):
-        mode = ""
-    elif (arch, mode) == ("SPARC", "32PLUS"):
-        mode = ""
-    elif (arch, mode) == ("SPARC", "64"):
-        mode = "V9"
-    elif (arch, mode) == ("MIPS", "32"):
-        mode = "MIPS32"
-    elif (arch, mode) == ("MIPS", "64"):
-        mode = "MIPS64"
-    elif arch == "S390X":
-        arch, mode = "SYSZ", None
-    elif arch == "M68K":
-        mode = "M68K_060"
-    return get_generic_arch(sys.modules["capstone"], "CS", arch, mode, endian, to_string)
-
-
-@load_keystone
-def get_keystone_arch(arch=None, mode=None, endian=None, to_string=False):
-    if (arch, mode, endian) == (None, None, None):
-        arch = current_arch.arch
-        mode = current_arch.mode
-        endian = is_big_endian()
-    # hacky patch for applying to capstone's mode
-    if arch == "ARM64":
-        mode = None
-    elif (arch, mode) == ("PPC", "32"):
-        mode = "PPC32"
-    elif (arch, mode) == ("PPC", "64"):
-        mode = "PPC64"
-    elif (arch, mode) == ("SPARC", "32"):
-        mode = "SPARC32"
-    elif (arch, mode) == ("SPARC", "32PLUS"):
-        mode = "SPARC32"
-    elif (arch, mode) == ("SPARC", "64"):
-        mode = "SPARC64"
-    elif (arch, mode) == ("MIPS", "32"):
-        mode = "MIPS32"
-    elif (arch, mode) == ("MIPS", "64"):
-        mode = "MIPS64"
-    elif arch == "S390X":
-        arch, mode = "SYSTEMZ", None
-    return get_generic_arch(sys.modules["keystone"], "KS", arch, mode, endian, to_string)
-
-
-@load_unicorn
-def get_unicorn_registers(to_string=False, add_sse=False):
-    "Return a dict matching the Unicorn identifier for a specific register."
-    unicorn = sys.modules["unicorn"]
-    regs = {}
-
-    if current_arch is not None:
-        arch = current_arch.arch.lower()
-    else:
-        raise OSError("Oops")
-
-    const = getattr(unicorn, "{}_const".format(arch))
-
-    extra_regs = []
-    if add_sse:
-        if is_x86():
-            extra_regs = ["$xmm{:d}".format(i) for i in range(16)]
-
-    for reg in current_arch.all_registers + extra_regs:
-        if arch == "ppc" and reg.startswith("$r"):
-            regname = "UC_{:s}_REG_{:s}".format(arch.upper(), reg.lstrip("$r").upper())
+class UnicornKeystoneCapstone:
+    @staticmethod
+    def get_generic_arch(module, prefix, arch, mode, big_endian, to_string):
+        """Retrieves architecture and mode from the arguments for use for the holy
+        capstone/keystone/unicorn trinity."""
+        if isinstance(mode, tuple):
+            modes = list(mode)
         else:
-            regname = "UC_{:s}_REG_{:s}".format(arch.upper(), reg.lstrip("$").upper())
-        try:
-            getattr(const, regname)
-        except AttributeError:
-            continue
+            modes = [mode, ]
+
+        if big_endian:
+            modes.append("BIG_ENDIAN")
+        else:
+            modes.append("LITTLE_ENDIAN")
+
         if to_string:
-            regs[reg] = "{:s}.{:s}".format(const.__name__, regname)
+            # arch
+            arch = "{:s}.{:s}_ARCH_{:s}".format(module.__name__, prefix, arch)
+            # mode
+            tmp = []
+            for m in modes:
+                if not m:
+                    tmp.append("0")
+                else:
+                    tmp.append("{:s}.{:s}_MODE_{:s}".format(module.__name__, prefix, m))
+            mode = " + ".join(tmp)
         else:
-            regs[reg] = getattr(const, regname)
-    return regs
+            # arch
+            arch = getattr(module, "{:s}_ARCH_{:s}".format(prefix, arch))
+            # mode
+            mode = 0
+            for m in modes:
+                if m:
+                    mode |= getattr(module, "{:s}_MODE_{:s}".format(prefix, m))
+        return arch, mode
 
+    @staticmethod
+    @load_unicorn
+    def get_unicorn_arch(arch=None, mode=None, endian=None, to_string=False):
+        if (arch, mode, endian) == (None, None, None):
+            arch = current_arch.arch
+            mode = current_arch.mode
+            endian = is_big_endian()
+        if (arch, mode) == ("RISCV", "32"):
+            mode = "RISCV32"
+        elif (arch, mode) == ("RISCV", "64"):
+            mode = "RISCV64"
+        elif (arch, mode) == ("PPC", "32"):
+            mode = "PPC32"
+        elif (arch, mode) == ("PPC", "64"):
+            mode = "PPC64"
+        elif (arch, mode) == ("SPARC", "32"):
+            mode = "SPARC32"
+        elif (arch, mode) == ("SPARC", "32PLUS"):
+            mode = "SPARC32"
+        elif (arch, mode) == ("SPARC", "64"):
+            mode = "SPARC64"
+        elif (arch, mode) == ("MIPS", "32"):
+            mode = "MIPS32"
+        elif (arch, mode) == ("MIPS", "64"):
+            mode = "MIPS64"
+        elif arch == "S390X":
+            mode = None
+        elif arch == "M68K":
+            mode = None
+        return UnicornKeystoneCapstone.get_generic_arch(sys.modules["unicorn"], "UC", arch, mode, endian, to_string)
 
-@load_keystone
-def keystone_assemble(code, arch, mode, *args, **kwargs):
-    """Assembly encoding function based on keystone."""
-    import multiprocessing
-    keystone = sys.modules["keystone"]
-    code = String.str2bytes(code)
-    addr = kwargs.get("addr", 0x1000)
+    @staticmethod
+    @load_capstone
+    def get_capstone_arch(arch=None, mode=None, endian=None, to_string=False):
+        if (arch, mode, endian) == (None, None, None):
+            arch = current_arch.arch
+            mode = current_arch.mode
+            endian = is_big_endian()
+        # hacky patch for applying to capstone's mode
+        if (arch, mode) == ("RISCV", "32"):
+            mode = ("RISCV32", "RISCVC")
+        elif (arch, mode) == ("RISCV", "64"):
+            mode = ("RISCV64", "RISCVC")
+        elif (arch, mode) == ("SPARC", "32"):
+            mode = ""
+        elif (arch, mode) == ("SPARC", "32PLUS"):
+            mode = ""
+        elif (arch, mode) == ("SPARC", "64"):
+            mode = "V9"
+        elif (arch, mode) == ("MIPS", "32"):
+            mode = "MIPS32"
+        elif (arch, mode) == ("MIPS", "64"):
+            mode = "MIPS64"
+        elif arch == "S390X":
+            arch, mode = "SYSZ", None
+        elif arch == "M68K":
+            mode = "M68K_060"
+        return UnicornKeystoneCapstone.get_generic_arch(sys.modules["capstone"], "CS", arch, mode, endian, to_string)
 
-    # `asm "[]"` returns no response
-    @timeout(duration=1)
-    def ks_asm(code, addr):
-        return ks.asm(code, addr)
+    @staticmethod
+    @load_keystone
+    def get_keystone_arch(arch=None, mode=None, endian=None, to_string=False):
+        if (arch, mode, endian) == (None, None, None):
+            arch = current_arch.arch
+            mode = current_arch.mode
+            endian = is_big_endian()
+        # hacky patch for applying to capstone's mode
+        if arch == "ARM64":
+            mode = None
+        elif (arch, mode) == ("PPC", "32"):
+            mode = "PPC32"
+        elif (arch, mode) == ("PPC", "64"):
+            mode = "PPC64"
+        elif (arch, mode) == ("SPARC", "32"):
+            mode = "SPARC32"
+        elif (arch, mode) == ("SPARC", "32PLUS"):
+            mode = "SPARC32"
+        elif (arch, mode) == ("SPARC", "64"):
+            mode = "SPARC64"
+        elif (arch, mode) == ("MIPS", "32"):
+            mode = "MIPS32"
+        elif (arch, mode) == ("MIPS", "64"):
+            mode = "MIPS64"
+        elif arch == "S390X":
+            arch, mode = "SYSTEMZ", None
+        return UnicornKeystoneCapstone.get_generic_arch(sys.modules["keystone"], "KS", arch, mode, endian, to_string)
 
-    try:
-        ks = keystone.Ks(arch, mode)
-        enc, cnt = ks_asm(code, addr)
-    except keystone.KsError as e:
-        err("Keystone assembler error: {!s}".format(e))
-        return None
-    except multiprocessing.TimeoutError:
-        err("Keystone assembler timeout error")
-        return None
+    @staticmethod
+    @load_unicorn
+    def get_unicorn_registers(to_string=False, add_sse=False):
+        "Return a dict matching the Unicorn identifier for a specific register."
+        unicorn = sys.modules["unicorn"]
+        regs = {}
 
-    if cnt == 0:
-        return ""
+        if current_arch is not None:
+            arch = current_arch.arch.lower()
+        else:
+            raise OSError("Oops")
 
-    enc = bytearray(enc)
-    if "raw" not in kwargs:
-        s = binascii.hexlify(enc)
-        enc = b"\\x" + b"\\x".join([s[i : i + 2] for i in range(0, len(s), 2)])
-        enc = enc.decode("utf-8")
+        const = getattr(unicorn, "{}_const".format(arch))
 
-    return enc
+        extra_regs = []
+        if add_sse:
+            if is_x86():
+                extra_regs = ["$xmm{:d}".format(i) for i in range(16)]
+
+        for reg in current_arch.all_registers + extra_regs:
+            if arch == "ppc" and reg.startswith("$r"):
+                regname = "UC_{:s}_REG_{:s}".format(arch.upper(), reg.lstrip("$r").upper())
+            else:
+                regname = "UC_{:s}_REG_{:s}".format(arch.upper(), reg.lstrip("$").upper())
+            try:
+                getattr(const, regname)
+            except AttributeError:
+                continue
+            if to_string:
+                regs[reg] = "{:s}.{:s}".format(const.__name__, regname)
+            else:
+                regs[reg] = getattr(const, regname)
+        return regs
+
+    @staticmethod
+    @load_keystone
+    def keystone_assemble(code, arch, mode, *args, **kwargs):
+        """Assembly encoding function based on keystone."""
+        import multiprocessing
+        keystone = sys.modules["keystone"]
+        code = String.str2bytes(code)
+        addr = kwargs.get("addr", 0x1000)
+
+        # `asm "[]"` returns no response
+        @timeout(duration=1)
+        def ks_asm(code, addr):
+            return ks.asm(code, addr)
+
+        try:
+            ks = keystone.Ks(arch, mode)
+            enc, cnt = ks_asm(code, addr)
+        except keystone.KsError as e:
+            err("Keystone assembler error: {!s}".format(e))
+            return None
+        except multiprocessing.TimeoutError:
+            err("Keystone assembler timeout error")
+            return None
+
+        if cnt == 0:
+            return ""
+
+        enc = bytearray(enc)
+        if "raw" not in kwargs:
+            s = binascii.hexlify(enc)
+            enc = b"\\x" + b"\\x".join([s[i : i + 2] for i in range(0, len(s), 2)])
+            enc = enc.decode("utf-8")
+
+        return enc
 
 
 @Cache.cache_this_session
@@ -18708,8 +18710,8 @@ class ReadSystemRegisterCommand(GenericCommand):
 
     def get_mrc_code(self, cp_info):
         code = "mrc {:s}, {:d}, r0, {:s}, {:s}, {:d}".format(cp_info[0], cp_info[2], cp_info[1], cp_info[3], cp_info[4])
-        arch, mode = get_keystone_arch()
-        raw_insns = keystone_assemble(code, arch, mode, raw=True)
+        arch, mode = UnicornKeystoneCapstone.get_keystone_arch()
+        raw_insns = UnicornKeystoneCapstone.keystone_assemble(code, arch, mode, raw=True)
         return raw_insns
 
     def mrc_execute(self, reg_name):
@@ -18789,9 +18791,9 @@ class UnicornEmulateCommand(GenericCommand):
         return last_insn.address
 
     def run_unicorn(self, start_insn_addr, end_insn_addr, *args, **kwargs):
-        arch, mode = get_unicorn_arch(to_string=True)
-        unicorn_registers = get_unicorn_registers(to_string=True, add_sse=kwargs["add_sse"])
-        cs_arch, cs_mode = get_capstone_arch(to_string=True)
+        arch, mode = UnicornKeystoneCapstone.get_unicorn_arch(to_string=True)
+        unicorn_registers = UnicornKeystoneCapstone.get_unicorn_registers(to_string=True, add_sse=kwargs["add_sse"])
+        cs_arch, cs_mode = UnicornKeystoneCapstone.get_capstone_arch(to_string=True)
 
         pythonbin = which("python3")
         if is_remote_debug():
@@ -20698,12 +20700,12 @@ class AssembleCommand(GenericCommand):
 
         if (args.arch, args.mode) == (None, None):
             if is_alive():
-                arch, mode = get_keystone_arch(arch=current_arch.arch, mode=current_arch.mode, endian=is_big_endian())
+                arch, mode = UnicornKeystoneCapstone.get_keystone_arch(arch=current_arch.arch, mode=current_arch.mode, endian=is_big_endian())
                 arch_mode_s = ":".join([current_arch.arch, current_arch.mode])
                 endian_s = "big" if is_big_endian() else "little"
             else:
                 # if not alive, defaults to x86-64
-                arch, mode = get_keystone_arch(arch="X86", mode="64", endian=False)
+                arch, mode = UnicornKeystoneCapstone.get_keystone_arch(arch="X86", mode="64", endian=False)
                 arch_mode_s = "X86:64"
                 endian_s = "little"
         elif not args.arch:
@@ -20719,7 +20721,7 @@ class AssembleCommand(GenericCommand):
             return
         else:
             try:
-                arch, mode = get_keystone_arch(arch=args.arch, mode=args.mode, endian=args.big_endian)
+                arch, mode = UnicornKeystoneCapstone.get_keystone_arch(arch=args.arch, mode=args.mode, endian=args.big_endian)
                 arch_mode_s = ":".join([args.arch, args.mode])
                 endian_s = "big" if args.big_endian else "little"
             except AttributeError:
@@ -20736,7 +20738,7 @@ class AssembleCommand(GenericCommand):
 
         raw = b""
         for insn in insns:
-            res = keystone_assemble(insn, arch, mode, raw=True)
+            res = UnicornKeystoneCapstone.keystone_assemble(insn, arch, mode, raw=True)
             if not res:
                 gef_print("(Invalid)")
                 continue
@@ -20806,12 +20808,12 @@ class DisassembleCommand(GenericCommand):
 
         if (args.arch, args.mode) == (None, None):
             if is_alive():
-                arch, mode = get_capstone_arch(arch=current_arch.arch, mode=current_arch.mode, endian=is_big_endian())
+                arch, mode = UnicornKeystoneCapstone.get_capstone_arch(arch=current_arch.arch, mode=current_arch.mode, endian=is_big_endian())
                 arch_mode_s = ":".join([current_arch.arch, current_arch.mode])
                 endian_s = "big" if is_big_endian() else "little"
             else:
                 # if not alive, defaults to x86-64
-                arch, mode = get_capstone_arch(arch="X86", mode="64", endian=False)
+                arch, mode = UnicornKeystoneCapstone.get_capstone_arch(arch="X86", mode="64", endian=False)
                 arch_mode_s = "X86:64"
                 endian_s = "little"
         elif not args.arch:
@@ -20826,7 +20828,7 @@ class DisassembleCommand(GenericCommand):
             return
         else:
             try:
-                arch, mode = get_capstone_arch(arch=args.arch, mode=args.mode, endian=args.big_endian)
+                arch, mode = UnicornKeystoneCapstone.get_capstone_arch(arch=args.arch, mode=args.mode, endian=args.big_endian)
                 arch_mode_s = ":".join([args.arch, args.mode])
                 endian_s = "big" if args.big_endian else "little"
             except AttributeError:
@@ -21026,12 +21028,12 @@ class AsmListCommand(GenericCommand):
 
         if (args.arch, args.mode) == (None, None):
             if is_alive():
-                arch, mode = get_capstone_arch(arch=current_arch.arch, mode=current_arch.mode, endian=is_big_endian())
+                arch, mode = UnicornKeystoneCapstone.get_capstone_arch(arch=current_arch.arch, mode=current_arch.mode, endian=is_big_endian())
                 arch_mode_s = ":".join([current_arch.arch, current_arch.mode])
                 endian_s = "big" if is_big_endian() else "little"
             else:
                 # if not alive, defaults to x86-64
-                arch, mode = get_capstone_arch(arch="X86", mode="64", endian=False)
+                arch, mode = UnicornKeystoneCapstone.get_capstone_arch(arch="X86", mode="64", endian=False)
                 arch_mode_s = "X86:64"
                 endian_s = "little"
         elif not args.arch:
@@ -21046,7 +21048,7 @@ class AsmListCommand(GenericCommand):
             return
         else:
             try:
-                arch, mode = get_capstone_arch(arch=args.arch, mode=args.mode, endian=args.big_endian)
+                arch, mode = UnicornKeystoneCapstone.get_capstone_arch(arch=args.arch, mode=args.mode, endian=args.big_endian)
                 arch_mode_s = ":".join([args.arch, args.mode])
                 endian_s = "big" if args.big_endian else "little"
             except AttributeError:
