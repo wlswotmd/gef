@@ -12487,13 +12487,6 @@ class ProcessMap:
         return None
 
 
-def is_msb_on(addr):
-    """Return whether provided address MSB is on."""
-    if get_memory_alignment() == 4:
-        return addr & 0x80000000
-    return addr & 0x8000000000000000
-
-
 class EventHandler:
     @staticmethod
     def continue_handler(_event):
@@ -12841,6 +12834,13 @@ class UnicornKeystoneCapstone:
         return enc
 
 
+@Cache.cache_until_next
+def cached_lookup_type(_type):
+    try:
+        return gdb.lookup_type(_type).strip_typedefs()
+    except RuntimeError:
+        return None
+
 @Cache.cache_this_session
 def ptr_width():
     void = cached_lookup_type("void")
@@ -12849,7 +12849,6 @@ def ptr_width():
         return uintptr_t.sizeof
     else:
         return void.pointer().sizeof
-
 
 def is_64bit():
     return ptr_width() == 8
@@ -13132,44 +13131,6 @@ def set_arch(arch_str=None):
 
 
 @Cache.cache_until_next
-def cached_lookup_type(_type):
-    try:
-        return gdb.lookup_type(_type).strip_typedefs()
-    except RuntimeError:
-        return None
-
-
-@Cache.cache_this_session
-def get_memory_alignment(in_bits=False):
-    """Try to determine the size of a pointer on this system.
-    First, try to parse it out of the ELF header.
-    Next, use the size of `size_t`.
-    Finally, try the size of $pc.
-    If `in_bits` is set to True, the result is returned in bits, otherwise in bytes."""
-
-    if is_x86_16():
-        if current_arch.A20:
-            return 2 if not in_bits else 21
-        else:
-            return 2 if not in_bits else 20
-
-    if is_32bit():
-        return 4 if not in_bits else 32
-    elif is_64bit():
-        return 8 if not in_bits else 64
-
-    res = cached_lookup_type("size_t")
-    if res is not None:
-        return res.sizeof if not in_bits else res.sizeof * 8
-
-    try:
-        return gdb.parse_and_eval("$pc").type.sizeof
-    except gdb.error:
-        pass
-    raise EnvironmentError("GEF is running under an unsupported mode")
-
-
-@Cache.cache_until_next
 def is_in_kernel():
     if not is_alive():
         return False
@@ -13210,6 +13171,43 @@ def is_double_link_list(addr):
         if p != seen[i - 1]:
             return False
     return True
+
+
+@Cache.cache_this_session
+def get_memory_alignment(in_bits=False):
+    """Try to determine the size of a pointer on this system.
+    First, try to parse it out of the ELF header.
+    Next, use the size of `size_t`.
+    Finally, try the size of $pc.
+    If `in_bits` is set to True, the result is returned in bits, otherwise in bytes."""
+
+    if is_x86_16():
+        if current_arch.A20:
+            return 2 if not in_bits else 21
+        else:
+            return 2 if not in_bits else 20
+
+    if is_32bit():
+        return 4 if not in_bits else 32
+    elif is_64bit():
+        return 8 if not in_bits else 64
+
+    res = cached_lookup_type("size_t")
+    if res is not None:
+        return res.sizeof if not in_bits else res.sizeof * 8
+
+    try:
+        return gdb.parse_and_eval("$pc").type.sizeof
+    except gdb.error:
+        pass
+    raise EnvironmentError("GEF is running under an unsupported mode")
+
+
+def is_msb_on(addr):
+    """Return whether provided address MSB is on."""
+    if get_memory_alignment() == 4:
+        return addr & 0x80000000
+    return addr & 0x8000000000000000
 
 
 def get_format_address_width(memalign_size=None):
