@@ -344,7 +344,6 @@ There are also similar functions. Here are the list.
 * `get_insn(addr=None)`
 * `get_insn_next(addr=None)`
 * `get_insn_prev(addr=None)`
-* `gef_instruction_n(addr, n)`
 
 ## Are there any other globally accessible functions that are useful?
 * Memory access

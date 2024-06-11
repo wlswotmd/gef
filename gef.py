@@ -4658,257 +4658,259 @@ def load_ropper(f):
     return wrapper
 
 
-def gdb_disassemble(start_pc, nb_insn=None, end_pc=None):
-    """Disassemble instructions from `start_pc` (Integer). Return an iterator of Instruction objects.
-    This is the backend used by gef_disassemble by default."""
-    if start_pc is None:
-        return None
+class Disasm:
+    @staticmethod
+    def gdb_disassemble(start_pc, nb_insn=None, end_pc=None):
+        """Disassemble instructions from `start_pc` (Integer). Return an iterator of Instruction objects.
+        This is the backend used by Disasm.gef_disassemble by default."""
+        if start_pc is None:
+            return None
 
-    global __gef_prev_arch__
-    try:
-        arch = gdb.selected_frame().architecture()
-        __gef_prev_arch__ = arch
-    except gdb.error:
-        # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
-        # At this time arch cannot be resolved, but if it was successful before, it will be used.
-        if __gef_prev_arch__ is None:
-            raise
-        arch = __gef_prev_arch__
+        global __gef_prev_arch__
+        try:
+            arch = gdb.selected_frame().architecture()
+            __gef_prev_arch__ = arch
+        except gdb.error:
+            # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
+            # At this time arch cannot be resolved, but if it was successful before, it will be used.
+            if __gef_prev_arch__ is None:
+                raise
+            arch = __gef_prev_arch__
 
-    kwargs = {}
-    if nb_insn is not None:
-        kwargs["count"] = nb_insn
-    if end_pc is not None:
-        kwargs["end_pc"] = end_pc
+        kwargs = {}
+        if nb_insn is not None:
+            kwargs["count"] = nb_insn
+        if end_pc is not None:
+            kwargs["end_pc"] = end_pc
 
-    for insn in arch.disassemble(start_pc, **kwargs):
-        address = insn["addr"]
-        asm = insn["asm"].rstrip().split(None, 1)
-        if len(asm) > 1:
-            mnemo, operands = asm
-            if "\t" in operands:
-                first, second = operands.rsplit("\t", 1)
-                operands = [x.strip() for x in first.split(",")] + [second]
+        for insn in arch.disassemble(start_pc, **kwargs):
+            address = insn["addr"]
+            asm = insn["asm"].rstrip().split(None, 1)
+            if len(asm) > 1:
+                mnemo, operands = asm
+                if "\t" in operands:
+                    first, second = operands.rsplit("\t", 1)
+                    operands = [x.strip() for x in first.split(",")] + [second]
+                else:
+                    operands = [x.strip() for x in operands.split(",")]
             else:
-                operands = [x.strip() for x in operands.split(",")]
-        else:
-            mnemo, operands = asm[0], []
+                mnemo, operands = asm[0], []
 
-        location = Symbol.get_symbol_string(address, nosymbol_string=" <NO_SYMBOL>")
+            location = Symbol.get_symbol_string(address, nosymbol_string=" <NO_SYMBOL>")
 
-        if is_arm32() and insn["addr"] & 1:
-            opcodes = read_memory(insn["addr"] - 1, insn["length"])
-        else:
-            opcodes = read_memory(insn["addr"], insn["length"])
+            if is_arm32() and insn["addr"] & 1:
+                opcodes = read_memory(insn["addr"] - 1, insn["length"])
+            else:
+                opcodes = read_memory(insn["addr"], insn["length"])
 
-        yield Instruction(address, location, mnemo, operands, opcodes)
-    return None
-
-
-def gdb_get_nth_previous_instruction_address(addr, n):
-    """Return the address (Integer) of the `n`-th instruction before `addr`."""
-    if addr is None:
+            yield Instruction(address, location, mnemo, operands, opcodes)
         return None
 
-    # fixed-length ABI
-    if current_arch.instruction_length:
-        return max(0, addr - n * current_arch.instruction_length)
+    @staticmethod
+    def gdb_get_nth_previous_instruction_address(addr, n):
+        """Return the address (Integer) of the `n`-th instruction before `addr`."""
+        if addr is None:
+            return None
 
-    # variable-length ABI
-    cur_insn_addr = get_insn(addr).address
+        # fixed-length ABI
+        if current_arch.instruction_length:
+            return max(0, addr - n * current_arch.instruction_length)
 
-    # we try to find a good set of previous instructions by "guessing" disassembling backwards
-    # the 15 comes from the longest instruction valid size
-    for i in range(15 * n, 0, -1):
-        try:
-            insns = list(gdb_disassemble(addr - i, end_pc=cur_insn_addr))
-        except gdb.MemoryError:
-            # this is because we can hit an unmapped page trying to read backward
-            break
+        # variable-length ABI
+        cur_insn_addr = get_insn(addr).address
 
-        # 1. check that the disassembled instructions list size can satisfy
-        if len(insns) < n + 1: # we expect the current instruction plus the n before it
-            continue
-
-        # If the list of instructions is longer than what we need, then we
-        # could get lucky and already have more than what we need, so slice down
-        insns = insns[-n - 1:]
-
-        # 2. check that the sequence ends with the current address
-        if insns[-1].address != cur_insn_addr:
-            continue
-
-        # 3. check all instructions are valid
-        if all(insn.is_valid() for insn in insns):
-            return insns[0].address
-    return None
-
-
-@load_capstone
-def capstone_get_nth_previous_instruction_address(addr, n, cs=None):
-    """Return the address (Integer) of the `n`-th instruction before `addr`."""
-    if addr is None:
-        return None
-
-    if cs is None:
-        cs = sys.modules["capstone"].Cs(*get_capstone_arch())
-
-    # fixed-length ABI
-    if current_arch.instruction_length:
-        return max(0, addr - n * current_arch.instruction_length)
-
-    # variable-length ABI
-
-    # we try to find a good set of previous instructions by "guessing" disassembling backwards
-    # the 15 comes from the longest instruction valid size
-    for i in range(15 * n, 0, -1):
-        try:
-            code = read_memory(addr - i, i)
-        except gdb.MemoryError:
-            continue
-
-        insns = list(cs.disasm(code, addr - i))
-
-        # 1. check that the disassembled instructions list size can satisfy
-        if len(insns) < n:
-            continue
-        insns = insns[-n:]
-
-        # 2. check that the sequence ends with the current address
-        if insns[-1].address + insns[-1].size != addr:
-            continue
-
-        return insns[0].address
-    return None
-
-
-@load_capstone
-def capstone_disassemble(location, nb_insn, **kwargs):
-    """Disassemble `nb_insn` instructions after `addr` and `nb_prev` before `addr` using the capstone disassembler.
-    Return an iterator of Instruction objects.
-    This is the backend used by gef_disassemble if specified in the config.
-    It is also called directly from some commands such as capstone_disassemble."""
-    def cs_insn_to_gef_insn(cs_insn):
-        loc = Symbol.get_symbol_string(cs_insn.address, nosymbol_string=" <NO_SYMBOL>")
-        ops = [] + cs_insn.op_str.split(", ")
-        return Instruction(cs_insn.address, loc, cs_insn.mnemonic, ops, cs_insn.bytes)
-
-    capstone = sys.modules["capstone"]
-    _arch = kwargs.get("arch", None)
-    _mode = kwargs.get("mode", None)
-    _endian = kwargs.get("endian", None)
-    arch, mode = get_capstone_arch(arch=_arch, mode=_mode, endian=_endian)
-    try:
-        cs = capstone.Cs(arch, mode)
-        cs.detail = True # noqa
-    except capstone.CsError:
-        err("CsError")
-        return
-
-    # fix location by nb_prev
-    nb_prev = kwargs.get("nb_prev", 0)
-    if nb_prev > 0:
-        _location = capstone_get_nth_previous_instruction_address(location, nb_prev, capstone.Cs(arch, mode))
-        if _location is not None:
-            location = _location
-            nb_insn += nb_prev
-
-    # split reading by page_size
-    read_addr = location
-    read_size = gef_getpagesize() - (location & gef_getpagesize_mask_low())
-
-    # fix for arm thumb2 mode
-    if is_arm32() and read_addr & 1:
-        read_addr -= 1
-        read_size += 1
-
-    skip = kwargs.get("skip", 0)
-    arch_inst_length = current_arch.instruction_length or 1
-    used_bytes = 0
-    code_remain = bytes.fromhex(kwargs.get("code", ""))
-    dont_read = "code" in kwargs
-
-    # A loop to read the required memory until the specified length is reached
-    while True:
-        if not dont_read and len(code_remain) < gef_getpagesize():
-            # not enough code to disassemble, so read the memory to pool
+        # we try to find a good set of previous instructions by "guessing" disassembling backwards
+        # the 15 comes from the longest instruction valid size
+        for i in range(15 * n, 0, -1):
             try:
-                read_data = read_memory(read_addr, read_size)
+                insns = list(Disasm.gdb_disassemble(addr - i, end_pc=cur_insn_addr))
             except gdb.MemoryError:
-                err("Memory read error at {:#x}-{:#x}".format(read_addr, read_addr + read_size))
-                return
-            code_remain += read_data
+                # this is because we can hit an unmapped page trying to read backward
+                break
 
-        # cs.disasm will terminate disassemble if an invalid instruction is detected.
-        # This is a loop to display (bad) and increment and reinterpret code.
+            # 1. check that the disassembled instructions list size can satisfy
+            if len(insns) < n + 1: # we expect the current instruction plus the n before it
+                continue
+
+            # If the list of instructions is longer than what we need, then we
+            # could get lucky and already have more than what we need, so slice down
+            insns = insns[-n - 1:]
+
+            # 2. check that the sequence ends with the current address
+            if insns[-1].address != cur_insn_addr:
+                continue
+
+            # 3. check all instructions are valid
+            if all(insn.is_valid() for insn in insns):
+                return insns[0].address
+        return None
+
+    @staticmethod
+    @load_capstone
+    def capstone_get_nth_previous_instruction_address(addr, n, cs=None):
+        """Return the address (Integer) of the `n`-th instruction before `addr`."""
+        if addr is None:
+            return None
+
+        if cs is None:
+            cs = sys.modules["capstone"].Cs(*get_capstone_arch())
+
+        # fixed-length ABI
+        if current_arch.instruction_length:
+            return max(0, addr - n * current_arch.instruction_length)
+
+        # variable-length ABI
+
+        # we try to find a good set of previous instructions by "guessing" disassembling backwards
+        # the 15 comes from the longest instruction valid size
+        for i in range(15 * n, 0, -1):
+            try:
+                code = read_memory(addr - i, i)
+            except gdb.MemoryError:
+                continue
+
+            insns = list(cs.disasm(code, addr - i))
+
+            # 1. check that the disassembled instructions list size can satisfy
+            if len(insns) < n:
+                continue
+            insns = insns[-n:]
+
+            # 2. check that the sequence ends with the current address
+            if insns[-1].address + insns[-1].size != addr:
+                continue
+
+            return insns[0].address
+        return None
+
+    @staticmethod
+    @load_capstone
+    def capstone_disassemble(location, nb_insn, **kwargs):
+        """Disassemble `nb_insn` instructions after `addr` and `nb_prev` before `addr` using the capstone disassembler.
+        Return an iterator of Instruction objects.
+        This is the backend used by Disasm.gef_disassemble if specified in the config.
+        It is also called directly from some commands such as Disasm.capstone_disassemble."""
+        def cs_insn_to_gef_insn(cs_insn):
+            loc = Symbol.get_symbol_string(cs_insn.address, nosymbol_string=" <NO_SYMBOL>")
+            ops = [] + cs_insn.op_str.split(", ")
+            return Instruction(cs_insn.address, loc, cs_insn.mnemonic, ops, cs_insn.bytes)
+
+        capstone = sys.modules["capstone"]
+        _arch = kwargs.get("arch", None)
+        _mode = kwargs.get("mode", None)
+        _endian = kwargs.get("endian", None)
+        arch, mode = get_capstone_arch(arch=_arch, mode=_mode, endian=_endian)
+        try:
+            cs = capstone.Cs(arch, mode)
+            cs.detail = True # noqa
+        except capstone.CsError:
+            err("CsError")
+            return
+
+        # fix location by nb_prev
+        nb_prev = kwargs.get("nb_prev", 0)
+        if nb_prev > 0:
+            _location = Disasm.capstone_get_nth_previous_instruction_address(location, nb_prev, capstone.Cs(arch, mode))
+            if _location is not None:
+                location = _location
+                nb_insn += nb_prev
+
+        # split reading by page_size
+        read_addr = location
+        read_size = gef_getpagesize() - (location & gef_getpagesize_mask_low())
+
+        # fix for arm thumb2 mode
+        if is_arm32() and read_addr & 1:
+            read_addr -= 1
+            read_size += 1
+
+        skip = kwargs.get("skip", 0)
+        arch_inst_length = current_arch.instruction_length or 1
+        used_bytes = 0
+        code_remain = bytes.fromhex(kwargs.get("code", ""))
+        dont_read = "code" in kwargs
+
+        # A loop to read the required memory until the specified length is reached
         while True:
-            # disasm
-            for insn in cs.disasm(code_remain, location):
-                used_bytes += len(insn.bytes)
-                if skip:
-                    skip -= 1
-                    continue
-                yield cs_insn_to_gef_insn(insn)
+            if not dont_read and len(code_remain) < gef_getpagesize():
+                # not enough code to disassemble, so read the memory to pool
+                try:
+                    read_data = read_memory(read_addr, read_size)
+                except gdb.MemoryError:
+                    err("Memory read error at {:#x}-{:#x}".format(read_addr, read_addr + read_size))
+                    return
+                code_remain += read_data
+
+            # cs.disasm will terminate disassemble if an invalid instruction is detected.
+            # This is a loop to display (bad) and increment and reinterpret code.
+            while True:
+                # disasm
+                for insn in cs.disasm(code_remain, location):
+                    used_bytes += len(insn.bytes)
+                    if skip:
+                        skip -= 1
+                        continue
+                    yield cs_insn_to_gef_insn(insn)
+                    nb_insn -= 1
+                    if nb_insn == 0:
+                        return
+
+                # success (disassembled something)
+                if used_bytes > 0:
+                    break
+
+                # failure (maybe the code is invalid)
+                yield Instruction(location, "", "(bad)", [], code_remain[:arch_inst_length])
                 nb_insn -= 1
                 if nb_insn == 0:
                     return
+                location += arch_inst_length
+                code_remain = code_remain[arch_inst_length:]
 
-            # success (disassembled something)
-            if used_bytes > 0:
+            # go away only the size used
+            code_remain = code_remain[used_bytes:] # There may be instructions placed across page boundaries.
+            location += used_bytes
+            used_bytes = 0
+
+            read_addr += read_size # 1st loop is the offset size. 2nd~ loops are the page size.
+            read_size = gef_getpagesize()
+        return
+
+    @staticmethod
+    def gef_disassemble(addr, nb_insn, nb_prev=0):
+        """Disassemble `nb_insn` instructions after `addr` and `nb_prev` before `addr`.
+        Return an iterator of Instruction objects.
+        Use Disasm.gdb_disassemble or Disasm.capstone_disassemble according to the settings."""
+        if get_gef_setting("context.use_capstone"):
+            get_nth_prev_address = Disasm.capstone_get_nth_previous_instruction_address
+            get_insns = Disasm.capstone_disassemble
+        else:
+            get_nth_prev_address = Disasm.gdb_get_nth_previous_instruction_address
+            get_insns = Disasm.gdb_disassemble
+
+        if nb_prev:
+            for i in range(nb_prev):
+                nb_prev_addr = get_nth_prev_address(addr, nb_prev - i)
+                if not nb_prev_addr:
+                    continue
+                for insn in get_insns(nb_prev_addr, nb_prev):
+                    if insn.address == addr:
+                        break
+                    yield insn
                 break
 
-            # failure (maybe the code is invalid)
-            yield Instruction(location, "", "(bad)", [], code_remain[:arch_inst_length])
-            nb_insn -= 1
-            if nb_insn == 0:
-                return
-            location += arch_inst_length
-            code_remain = code_remain[arch_inst_length:]
-
-        # go away only the size used
-        code_remain = code_remain[used_bytes:] # There may be instructions placed across page boundaries.
-        location += used_bytes
-        used_bytes = 0
-
-        read_addr += read_size # 1st loop is the offset size. 2nd~ loops are the page size.
-        read_size = gef_getpagesize()
-    return
-
-
-def gef_disassemble(addr, nb_insn, nb_prev=0):
-    """Disassemble `nb_insn` instructions after `addr` and `nb_prev` before `addr`.
-    Return an iterator of Instruction objects.
-    Use gdb_disassemble or capstone_disassemble according to the settings."""
-    if get_gef_setting("context.use_capstone"):
-        get_nth_prev_address = capstone_get_nth_previous_instruction_address
-        get_insns = capstone_disassemble
-    else:
-        get_nth_prev_address = gdb_get_nth_previous_instruction_address
-        get_insns = gdb_disassemble
-
-    if nb_prev:
-        for i in range(nb_prev):
-            nb_prev_addr = get_nth_prev_address(addr, nb_prev - i)
-            if not nb_prev_addr:
-                continue
-            for insn in get_insns(nb_prev_addr, nb_prev):
-                if insn.address == addr:
-                    break
-                yield insn
-            break
-
-    nb_insn = max(1, nb_insn)
-    for insn in get_insns(addr, nb_insn):
-        yield insn
-    return None
-
-
-def gef_instruction_n(addr, n):
-    """Return the `n`-th instruction after `addr` as an Instruction object."""
-    try:
-        return list(gef_disassemble(addr, n + 1))[n]
-    except IndexError:
+        nb_insn = max(1, nb_insn)
+        for insn in get_insns(addr, nb_insn):
+            yield insn
         return None
+
+    @staticmethod
+    def gef_instruction_n(addr, n):
+        """Return the `n`-th instruction after `addr` as an Instruction object."""
+        try:
+            return list(Disasm.gef_disassemble(addr, n + 1))[n]
+        except IndexError:
+            return None
 
 
 def get_insn(addr=None):
@@ -4917,7 +4919,7 @@ def get_insn(addr=None):
         if not is_alive():
             return None
         addr = current_arch.pc
-    return gef_instruction_n(addr, 0)
+    return Disasm.gef_instruction_n(addr, 0)
 
 
 def get_insn_next(addr=None):
@@ -4926,7 +4928,7 @@ def get_insn_next(addr=None):
         if not is_alive():
             return None
         addr = current_arch.pc
-    return gef_instruction_n(addr, 1)
+    return Disasm.gef_instruction_n(addr, 1)
 
 
 def get_insn_prev(addr=None):
@@ -4936,7 +4938,7 @@ def get_insn_prev(addr=None):
             return None
         addr = current_arch.pc
     try:
-        gen = gef_disassemble(addr, 0, nb_prev=2)
+        gen = Disasm.gef_disassemble(addr, 0, nb_prev=2)
         gen.__next__()
         return gen.__next__()
     except (gdb.error, StopIteration):
@@ -15419,7 +15421,7 @@ class VdsoCommand(GenericCommand):
             ret = gdb.execute("capstone-disassemble {:#x} -l {:#x}".format(text_start, text_size), to_string=True)
             result_lines = ret.splitlines()
         except ImportError:
-            gen = gdb_disassemble(text_start, end_pc=text_end - 1)
+            gen = Disasm.gdb_disassemble(text_start, end_pc=text_end - 1)
             result_lines = [str(x) for x in gen]
 
         text_lines = []
@@ -17422,7 +17424,7 @@ class SearchCfiGadgetsCommand(GenericCommand):
                 self.out.append(res)
         except ImportError:
             for start, inscount in candidates:
-                self.out.extend([str(x) for x in gdb_disassemble(start, nb_insn=inscount)])
+                self.out.extend([str(x) for x in Disasm.gdb_disassemble(start, nb_insn=inscount)])
         return
 
     @parse_args
@@ -18782,7 +18784,7 @@ class UnicornEmulateCommand(GenericCommand):
         return
 
     def get_unicorn_end_addr(self, start_addr, nb):
-        dis = list(gef_disassemble(start_addr, nb + 1))
+        dis = list(Disasm.gef_disassemble(start_addr, nb + 1))
         last_insn = dis[-1]
         return last_insn.address
 
@@ -19289,7 +19291,7 @@ class CapstoneDisassembleCommand(GenericCommand):
 
         try:
             skip = length * self.repeat_count
-            for insn in capstone_disassemble(location, length, skip=skip, **kwargs):
+            for insn in Disasm.capstone_disassemble(location, length, skip=skip, **kwargs):
                 if insn.address == current_arch.pc:
                     text_insn = "{:12O}".format(insn)
                     msg = "{}  {}".format(RIGHT_ARROW, text_insn)
@@ -25589,7 +25591,7 @@ class ContextCommand(GenericCommand):
         self.add_setting("libc_args", False, "Show libc function call args description")
         self.add_setting("libc_args_path", "", "Path to libc function call args json files, provided via gef-extras")
         self.add_setting("smart_cpp_function_name", False, "Print cpp function name without args if demangled")
-        self.add_setting("use_native_x_command", False, "Use x/16i instead of gdb_disassemble/capstone")
+        self.add_setting("use_native_x_command", False, "Use x/16i instead of Disasm.gef_disassemble")
         self.add_setting("use_capstone", False, "Use capstone as disassembler in the code pane (instead of GDB)")
         self.add_setting("enable_auto_switch_for_i8086", True, "Enable auto architecture switching for i8086 <-> x86-32.")
 
@@ -25885,7 +25887,7 @@ class ContextCommand(GenericCommand):
             gdb.execute("x/16i {:#x}".format(current_arch.pc))
             return
 
-        for insn in gef_disassemble(pc, nb_insn, nb_prev=nb_insn_prev):
+        for insn in Disasm.gef_disassemble(pc, nb_insn, nb_prev=nb_insn_prev):
             line = ""
             is_taken = False
             target = None
@@ -25952,7 +25954,7 @@ class ContextCommand(GenericCommand):
                 # for delay slot
                 try:
                     if delay_slot:
-                        next_insn = list(gef_disassemble(insn.address, 2))[-1]
+                        next_insn = list(Disasm.gef_disassemble(insn.address, 2))[-1]
                         if show_opcodes_size == 0:
                             text = str(next_insn)
                         else:
@@ -25965,7 +25967,7 @@ class ContextCommand(GenericCommand):
 
                 # branch target address
                 try:
-                    for i, tinsn in enumerate(gef_disassemble(target, nb_insn)):
+                    for i, tinsn in enumerate(Disasm.gef_disassemble(target, nb_insn)):
                         if show_opcodes_size == 0:
                             text = str(tinsn)
                         else:
@@ -25996,7 +25998,7 @@ class ContextCommand(GenericCommand):
         if not (is_x86() or is_arm32() or is_arm64()):
             return
 
-        inst_iter = gef_disassemble(current_arch.pc, 2)
+        inst_iter = Disasm.gef_disassemble(current_arch.pc, 2)
         try:
             insn_here = inst_iter.__next__()
         except StopIteration:
@@ -26080,7 +26082,7 @@ class ContextCommand(GenericCommand):
         if not is_x86():
             return
 
-        inst_iter = gef_disassemble(current_arch.pc, 2)
+        inst_iter = Disasm.gef_disassemble(current_arch.pc, 2)
         try:
             insn_here = inst_iter.__next__()
         except StopIteration:
@@ -26129,7 +26131,7 @@ class ContextCommand(GenericCommand):
         if not is_x86():
             return
 
-        inst_iter = gef_disassemble(current_arch.pc, 1)
+        inst_iter = Disasm.gef_disassemble(current_arch.pc, 1)
         try:
             insn_here = inst_iter.__next__()
         except StopIteration:
@@ -27631,7 +27633,7 @@ class PatchNopCommand(PatchCommand):
         return
 
     def get_insns_size(self, addr, num_insts):
-        addr_after_n = gef_instruction_n(addr, num_insts)
+        addr_after_n = Disasm.gef_instruction_n(addr, num_insts)
         return addr_after_n.address - addr
 
     def patch_nop(self, addr, num_bytes):
@@ -31998,7 +32000,7 @@ class UafWatchpoint(gdb.Breakpoint):
 
         # software watchpoints stop after the next statement
         # see https://sourceware.org/gdb/onlinedocs/gdb/Set-Watchpoints.html
-        pc = gdb_get_nth_previous_instruction_address(current_arch.pc, 2)
+        pc = Disasm.gdb_get_nth_previous_instruction_address(current_arch.pc, 2)
         insn = get_insn()
         msg = []
         msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
@@ -45299,7 +45301,7 @@ class SyscallArgsCommand(GenericCommand):
 
         # hppa specific. hppa syscall instruction has a delay slot and _NR may be set there.
         if is_hppa32() or is_hppa64():
-            next_insn = gef_instruction_n(current_arch.pc, 1)
+            next_insn = Disasm.gef_instruction_n(current_arch.pc, 1)
             if next_insn.mnemonic == "ldi" and next_insn.operands[1] == "r20":
                 nr = int(next_insn.operands[0], 16)
             else:
@@ -73628,7 +73630,7 @@ class XSecureMemAddrCommand(GenericCommand):
             kwargs["mode"] = "ARM"
 
         try:
-            for insn in capstone_disassemble(target, self.dump_count, **kwargs):
+            for insn in Disasm.capstone_disassemble(target, self.dump_count, **kwargs):
                 insn_fmt = "{:12o}"
                 text_insn = insn_fmt.format(insn)
                 msg = "{} {}".format(" " * 5, text_insn)
@@ -73785,7 +73787,7 @@ class WSecureMemAddrCommand(GenericCommand):
         # avoid qemu-system caches
         TemporaryDummyBreakpoint()
 
-        # By default, "context code" uses gdb_disassemble.
+        # By default, "context code" uses Diasm.gdb_disassemble.
         # However, due to gdb's internal cache, changes to secure memory may not be reflected in the disassembled results.
         # Therefore, if capstone is available, change it to disassemble by capstone.
         if get_gef_setting("context.use_capstone") is False:
@@ -81214,7 +81216,7 @@ class XUntilCommand(GenericCommand):
     @only_if_gdb_running
     def do_invoke(self, args):
         if args.address is None:
-            stop_addr = gef_instruction_n(current_arch.pc, 1).address
+            stop_addr = Disasm.gef_instruction_n(current_arch.pc, 1).address
         else:
             stop_addr = args.address
         # `until` command has a bug(?) because sometimes fail, so we should use `tbreak` and `continue` instead of `until`.
@@ -82011,7 +82013,7 @@ class ThunkBreakpoint(gdb.Breakpoint):
     def stop(self):
         try:
             return_address = gdb.selected_frame().older().pc()
-            caller_address = gdb_get_nth_previous_instruction_address(return_address, 1)
+            caller_address = Disasm.gdb_get_nth_previous_instruction_address(return_address, 1)
             target_address = get_register(self.reg)
         except gdb.error:
             return False # continue
