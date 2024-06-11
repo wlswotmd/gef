@@ -4321,7 +4321,7 @@ def slice_unpack(data, n):
     """Helper function for slice then unpack."""
     if n in [1, 2, 4, 8]:
         length = len(data) // n
-        fmt = "{:s}{:d}{:s}".format(endian_str(), length, {1: "B", 2: "H", 4: "I", 8: "Q"}[n])
+        fmt = "{:s}{:d}{:s}".format(Endian.endian_str(), length, {1: "B", 2: "H", 4: "I", 8: "Q"}[n])
         return struct.unpack(fmt, data)
     elif n == 16:
         return [u128(data[i:i + 16]) for i in range(0, len(data), 16)]
@@ -5076,23 +5076,30 @@ class Checksec:
         return u2i(ret)
 
 
-@Cache.cache_this_session
-def get_endian():
-    """Return the binary endianness."""
-    endian = gdb.execute("show endian", to_string=True).strip().lower()
-    if "little endian" in endian:
-        return Elf.LITTLE_ENDIAN
-    if "big endian" in endian:
-        return Elf.BIG_ENDIAN
-    raise EnvironmentError("Invalid endianness")
+class Endian:
+    @staticmethod
+    @Cache.cache_this_session
+    def get_endian():
+        """Return the binary endianness."""
+        endian = gdb.execute("show endian", to_string=True).strip().lower()
+        if "little endian" in endian:
+            return Elf.LITTLE_ENDIAN
+        if "big endian" in endian:
+            return Elf.BIG_ENDIAN
+        raise EnvironmentError("Invalid endianness")
 
+    @staticmethod
+    def is_big_endian():
+        return Endian.get_endian() == Elf.BIG_ENDIAN
 
-def is_big_endian():
-    return get_endian() == Elf.BIG_ENDIAN
+    @staticmethod
+    def is_little_endian():
+        return not Endian.is_big_endian()
 
-
-def is_little_endian():
-    return not is_big_endian()
+    @staticmethod
+    @Cache.cache_this_session
+    def endian_str():
+        return "<" if Endian.is_little_endian() else ">"
 
 
 class Architecture:
@@ -11085,79 +11092,79 @@ def is_kvm_enabled():
 def p8(x, s=False):
     """Pack one byte respecting the current architecture endianness."""
     if not s:
-        return struct.pack("{}B".format(endian_str()), x)
+        return struct.pack("{}B".format(Endian.endian_str()), x)
     else:
-        return struct.pack("{}b".format(endian_str()), x)
+        return struct.pack("{}b".format(Endian.endian_str()), x)
 
 
 @Cache.cache_until_next
 def p16(x, s=False):
     """Pack one word respecting the current architecture endianness."""
     if not s:
-        return struct.pack("{}H".format(endian_str()), x)
+        return struct.pack("{}H".format(Endian.endian_str()), x)
     else:
-        return struct.pack("{}h".format(endian_str()), x)
+        return struct.pack("{}h".format(Endian.endian_str()), x)
 
 
 @Cache.cache_until_next
 def p32(x, s=False):
     """Pack one dword respecting the current architecture endianness."""
     if not s:
-        return struct.pack("{}I".format(endian_str()), x)
+        return struct.pack("{}I".format(Endian.endian_str()), x)
     else:
-        return struct.pack("{}i".format(endian_str()), x)
+        return struct.pack("{}i".format(Endian.endian_str()), x)
 
 
 @Cache.cache_until_next
 def p64(x, s=False):
     """Pack one qword respecting the current architecture endianness."""
     if not s:
-        return struct.pack("{}Q".format(endian_str()), x)
+        return struct.pack("{}Q".format(Endian.endian_str()), x)
     else:
-        return struct.pack("{}q".format(endian_str()), x)
+        return struct.pack("{}q".format(Endian.endian_str()), x)
 
 
 @Cache.cache_until_next
 def u8(x, s=False):
     """Unpack one byte respecting the current architecture endianness."""
     if not s:
-        return struct.unpack("{}B".format(endian_str()), x)[0]
+        return struct.unpack("{}B".format(Endian.endian_str()), x)[0]
     else:
-        return struct.unpack("{}b".format(endian_str()), x)[0]
+        return struct.unpack("{}b".format(Endian.endian_str()), x)[0]
 
 
 @Cache.cache_until_next
 def u16(x, s=False):
     """Unpack one word respecting the current architecture endianness."""
     if not s:
-        return struct.unpack("{}H".format(endian_str()), x)[0]
+        return struct.unpack("{}H".format(Endian.endian_str()), x)[0]
     else:
-        return struct.unpack("{}h".format(endian_str()), x)[0]
+        return struct.unpack("{}h".format(Endian.endian_str()), x)[0]
 
 
 @Cache.cache_until_next
 def u32(x, s=False):
     """Unpack one dword respecting the current architecture endianness."""
     if not s:
-        return struct.unpack("{}I".format(endian_str()), x)[0]
+        return struct.unpack("{}I".format(Endian.endian_str()), x)[0]
     else:
-        return struct.unpack("{}i".format(endian_str()), x)[0]
+        return struct.unpack("{}i".format(Endian.endian_str()), x)[0]
 
 
 @Cache.cache_until_next
 def u64(x, s=False):
     """Unpack one qword respecting the current architecture endianness."""
     if not s:
-        return struct.unpack("{}Q".format(endian_str()), x)[0]
+        return struct.unpack("{}Q".format(Endian.endian_str()), x)[0]
     else:
-        return struct.unpack("{}q".format(endian_str()), x)[0]
+        return struct.unpack("{}q".format(Endian.endian_str()), x)[0]
 
 
 @Cache.cache_until_next
 def u128(x):
     """Unpack one oword respecting the current architecture endianness."""
-    upper = struct.unpack("{}Q".format(endian_str()), x[8:])[0]
-    lower = struct.unpack("{}Q".format(endian_str()), x[:8])[0]
+    upper = struct.unpack("{}Q".format(Endian.endian_str()), x[8:])[0]
+    lower = struct.unpack("{}Q".format(Endian.endian_str()), x[:8])[0]
     return (upper << 64) | lower
 
 
@@ -12682,7 +12689,7 @@ class UnicornKeystoneCapstone:
         if (arch, mode, endian) == (None, None, None):
             arch = current_arch.arch
             mode = current_arch.mode
-            endian = is_big_endian()
+            endian = Endian.is_big_endian()
         if (arch, mode) == ("RISCV", "32"):
             mode = "RISCV32"
         elif (arch, mode) == ("RISCV", "64"):
@@ -12713,7 +12720,7 @@ class UnicornKeystoneCapstone:
         if (arch, mode, endian) == (None, None, None):
             arch = current_arch.arch
             mode = current_arch.mode
-            endian = is_big_endian()
+            endian = Endian.is_big_endian()
         # hacky patch for applying to capstone's mode
         if (arch, mode) == ("RISCV", "32"):
             mode = ("RISCV32", "RISCVC")
@@ -12741,7 +12748,7 @@ class UnicornKeystoneCapstone:
         if (arch, mode, endian) == (None, None, None):
             arch = current_arch.arch
             mode = current_arch.mode
-            endian = is_big_endian()
+            endian = Endian.is_big_endian()
         # hacky patch for applying to capstone's mode
         if arch == "ARM64":
             mode = None
@@ -13286,11 +13293,6 @@ def get_ksysctl(sym):
         return int(res.split()[1], 16)
     except (gdb.error, IndexError, ValueError):
         return None
-
-
-@Cache.cache_this_session
-def endian_str():
-    return "<" if is_little_endian() else ">"
 
 
 @Cache.cache_until_next
@@ -17045,7 +17047,7 @@ class SearchPatternCommand(GenericCommand):
             pattern = "".join(["\\x" + x for x in slicer(pattern, 2)])
 
         elif String.is_hex(args.pattern): # "0x41414141" -> "\x41\x41\x41\x41"
-            if args.big or is_big_endian():
+            if args.big or Endian.is_big_endian():
                 pattern = "".join(["\\x" + x for x in slicer(args.pattern[2:], 2)])
             else:
                 pattern = "".join(["\\x" + x for x in slicer(args.pattern[2:], 2)[::-1]])
@@ -20705,9 +20707,11 @@ class AssembleCommand(GenericCommand):
 
         if (args.arch, args.mode) == (None, None):
             if is_alive():
-                arch, mode = UnicornKeystoneCapstone.get_keystone_arch(arch=current_arch.arch, mode=current_arch.mode, endian=is_big_endian())
+                arch, mode = UnicornKeystoneCapstone.get_keystone_arch(
+                    arch=current_arch.arch, mode=current_arch.mode, endian=Endian.is_big_endian(),
+                )
                 arch_mode_s = ":".join([current_arch.arch, current_arch.mode])
-                endian_s = "big" if is_big_endian() else "little"
+                endian_s = "big" if Endian.is_big_endian() else "little"
             else:
                 # if not alive, defaults to x86-64
                 arch, mode = UnicornKeystoneCapstone.get_keystone_arch(arch="X86", mode="64", endian=False)
@@ -20813,9 +20817,11 @@ class DisassembleCommand(GenericCommand):
 
         if (args.arch, args.mode) == (None, None):
             if is_alive():
-                arch, mode = UnicornKeystoneCapstone.get_capstone_arch(arch=current_arch.arch, mode=current_arch.mode, endian=is_big_endian())
+                arch, mode = UnicornKeystoneCapstone.get_capstone_arch(
+                    arch=current_arch.arch, mode=current_arch.mode, endian=Endian.is_big_endian(),
+                )
                 arch_mode_s = ":".join([current_arch.arch, current_arch.mode])
-                endian_s = "big" if is_big_endian() else "little"
+                endian_s = "big" if Endian.is_big_endian() else "little"
             else:
                 # if not alive, defaults to x86-64
                 arch, mode = UnicornKeystoneCapstone.get_capstone_arch(arch="X86", mode="64", endian=False)
@@ -21033,9 +21039,11 @@ class AsmListCommand(GenericCommand):
 
         if (args.arch, args.mode) == (None, None):
             if is_alive():
-                arch, mode = UnicornKeystoneCapstone.get_capstone_arch(arch=current_arch.arch, mode=current_arch.mode, endian=is_big_endian())
+                arch, mode = UnicornKeystoneCapstone.get_capstone_arch(
+                    arch=current_arch.arch, mode=current_arch.mode, endian=Endian.is_big_endian(),
+                )
                 arch_mode_s = ":".join([current_arch.arch, current_arch.mode])
-                endian_s = "big" if is_big_endian() else "little"
+                endian_s = "big" if Endian.is_big_endian() else "little"
             else:
                 # if not alive, defaults to x86-64
                 arch, mode = UnicornKeystoneCapstone.get_capstone_arch(arch="X86", mode="64", endian=False)
@@ -21229,7 +21237,7 @@ class ArchInfoCommand(GenericCommand):
             bit_str = "64-bit"
         else:
             bit_str = "32-bit"
-        if is_big_endian():
+        if Endian.is_big_endian():
             endian_str = "big"
         else:
             endian_str = "little"
@@ -21688,7 +21696,7 @@ class ElfInfoCommand(GenericCommand):
             filename = "{:#x}".format(elf.addr)
 
         magic_hex = " ".join(slicer(struct.pack(">I", elf.e_magic).hex(), 2))
-        if is_big_endian():
+        if Endian.is_big_endian():
             magic_str = repr(p32(elf.e_magic).decode())
         else:
             magic_str = repr(p32(elf.e_magic).decode()[::-1])
@@ -27205,7 +27213,7 @@ class HexdumpFlexibleCommand(GenericCommand):
 
         fmt = args.format
         if not fmt.startswith(("<", ">")):
-            fmt = endian_str() + fmt
+            fmt = Endian.endian_str() + fmt
         try:
             size = struct.calcsize(fmt.replace("-", ""))
         except struct.error:
@@ -27354,9 +27362,9 @@ class PatchCommand(GenericCommand):
             size, fcode = SUPPORTED_SIZES[self.format]
 
             if args.endian_reverse is False:
-                d = "<" if is_little_endian() else ">"
+                d = "<" if Endian.is_little_endian() else ">"
             else:
-                d = ">" if is_little_endian() else "<"
+                d = ">" if Endian.is_little_endian() else "<"
 
             for value in args.values:
                 value = parse_address(value) & ((1 << size * 8) - 1)
@@ -27663,7 +27671,7 @@ class PatchNopCommand(PatchCommand):
             err("Cannot patch instruction at {:#x} (nop instruction does not evenly fit in requested size)".format(addr))
             return
 
-        if is_big_endian():
+        if Endian.is_big_endian():
             insn = current_arch.nop_insn[::-1]
         else:
             insn = current_arch.nop_insn
@@ -27740,7 +27748,7 @@ class PatchInfloopCommand(PatchCommand):
         if is_arm32() and current_arch.is_thumb() and addr & 1:
             addr -= 1
 
-        if is_big_endian():
+        if Endian.is_big_endian():
             insn = current_arch.infloop_insn[::-1]
             if current_arch.has_delay_slot:
                 insn += current_arch.nop_insn[::-1]
@@ -27813,7 +27821,7 @@ class PatchTrapCommand(PatchCommand):
         if is_arm32() and current_arch.is_thumb() and addr & 1:
             addr -= 1
 
-        if is_big_endian():
+        if Endian.is_big_endian():
             insn = current_arch.trap_insn[::-1]
             if current_arch.has_delay_slot:
                 insn += current_arch.nop_insn[::-1]
@@ -27882,7 +27890,7 @@ class PatchRetCommand(PatchCommand):
         if is_arm32() and current_arch.is_thumb() and addr & 1:
             addr -= 1
 
-        if is_big_endian():
+        if Endian.is_big_endian():
             insn = current_arch.ret_insn[::-1]
             if current_arch.has_delay_slot:
                 insn += current_arch.nop_insn[::-1]
@@ -27951,7 +27959,7 @@ class PatchSyscallCommand(PatchCommand):
         if is_arm32() and current_arch.is_thumb() and addr & 1:
             addr -= 1
 
-        if is_big_endian():
+        if Endian.is_big_endian():
             insn = current_arch.syscall_insn[::-1]
             if current_arch.has_syscall_delay_slot:
                 insn += current_arch.nop_insn[::-1]
@@ -59797,7 +59805,7 @@ class ExecAsm:
         codes += _codes
 
         # list to bytes
-        if is_big_endian():
+        if Endian.is_big_endian():
             self.code = b"".join(code[::-1] for code in codes)
         else:
             self.code = b"".join(codes)
@@ -59956,7 +59964,7 @@ class ExecSyscall(ExecAsm):
             codes += [current_arch.nop_insn]
 
         # list to bytes
-        if is_big_endian():
+        if Endian.is_big_endian():
             self.code = b"".join(code[::-1] for code in codes)
         else:
             self.code = b"".join(codes)
@@ -69513,7 +69521,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         """
 
         # const values
-        if is_big_endian():
+        if Endian.is_big_endian():
             endianness_marker = ">"
             endian_str = "big"
         else:
@@ -69637,7 +69645,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         """
 
         # const values
-        if is_big_endian():
+        if Endian.is_big_endian():
             endianness_marker = ">"
         else:
             endianness_marker = "<"
@@ -84972,7 +84980,7 @@ class XRefTelescopeCommand(SearchPatternCommand):
             return
 
         if String.is_hex(pattern):
-            if get_endian() == Elf.BIG_ENDIAN:
+            if Endian.get_endian() == Elf.BIG_ENDIAN:
                 pattern = "".join(["\\x" + pattern[i:i + 2] for i in range(2, len(pattern), 2)])
             else:
                 pattern = "".join(["\\x" + pattern[i:i + 2] for i in range(len(pattern) - 2, 0, -2)])
