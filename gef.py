@@ -1044,7 +1044,7 @@ class Address:
             self.value, bool(self.section), bool(self.section), bool(self.valid),
         )
     def __str__(self):
-        value = format_address(self.value)
+        value = AddressUtil.format_address(self.value)
         if not self.valid:
             return value
         line_color = ""
@@ -1065,7 +1065,7 @@ class Address:
         return Color.colorify(value, line_color)
 
     def long_fmt(self):
-        value = format_address(self.value, long_fmt=True)
+        value = AddressUtil.format_address(self.value, long_fmt=True)
         if not self.valid:
             return value
         line_color = ""
@@ -1135,11 +1135,318 @@ class Address:
     def dereference(self):
         # Even if the valid flag is not set, it still dereferences.
         # This is because the valid flag is not set during kernel debugging.
-        addr = align_address(int(self.value))
-        derefed = dereference(addr)
+        addr = AddressUtil.align_address(int(self.value))
+        derefed = AddressUtil.dereference(addr)
         if derefed is None:
             return None
         return int(derefed)
+
+
+class AddressUtil:
+    @staticmethod
+    @Cache.cache_this_session
+    def ptr_width():
+        void = cached_lookup_type("void")
+        if void is None:
+            uintptr_t = cached_lookup_type("uintptr_t")
+            return uintptr_t.sizeof
+        else:
+            return void.pointer().sizeof
+
+    @staticmethod
+    @Cache.cache_this_session
+    def get_memory_alignment(in_bits=False):
+        """Try to determine the size of a pointer on this system.
+        First, try to parse it out of the ELF header.
+        Next, use the size of `size_t`.
+        Finally, try the size of $pc.
+        If `in_bits` is set to True, the result is returned in bits, otherwise in bytes."""
+
+        if is_x86_16():
+            if current_arch.A20:
+                return 2 if not in_bits else 21
+            else:
+                return 2 if not in_bits else 20
+
+        if is_32bit():
+            return 4 if not in_bits else 32
+        elif is_64bit():
+            return 8 if not in_bits else 64
+
+        res = cached_lookup_type("size_t")
+        if res is not None:
+            return res.sizeof if not in_bits else res.sizeof * 8
+
+        try:
+            return gdb.parse_and_eval("$pc").type.sizeof
+        except gdb.error:
+            pass
+        raise EnvironmentError("GEF is running under an unsupported mode")
+
+    @staticmethod
+    def is_msb_on(addr):
+        """Return whether provided address MSB is on."""
+        if AddressUtil.get_memory_alignment() == 4:
+            return addr & 0x80000000
+        return addr & 0x8000000000000000
+
+    @staticmethod
+    def get_format_address_width(memalign_size=None):
+        if not is_alive():
+            return 18
+        if is_32bit() or memalign_size == 4:
+            return 10
+        if not is_in_kernel():
+            return 14
+        else:
+            return 18
+
+    @staticmethod
+    def format_address(addr, memalign_size=None, long_fmt=False):
+        """Format the address according to its size."""
+        # if qemu-xxx(32bit arch) runs on x86-64 machine, memalign_size does not match
+        # AddressUtil.get_memory_alignment(), so use the value forcibly if memalign_size is not None
+        if memalign_size is None:
+            memalign_size = AddressUtil.get_memory_alignment()
+
+        if isinstance(addr, str):
+            addr = int(addr, 16)
+
+        addr = AddressUtil.align_address(addr, memalign_size)
+        if memalign_size == 4:
+            return "{:#010x}".format(addr)
+        elif memalign_size == 2:
+            return "{:#06x}".format(addr)
+        elif memalign_size == 2.5:
+            if current_arch.A20:
+                return "{:#08x}".format(addr)
+            else:
+                return "{:#07x}".format(addr)
+        if long_fmt:
+            return "{:#018x}".format(addr)
+        if is_in_kernel():
+            return "{:#018x}".format(addr)
+        return "{:#014x}".format(addr)
+
+    @staticmethod
+    def align_address(addr, memalign_size=None):
+        """Align the provided address to the process's native length."""
+        # if qemu-xxx(32bit arch) runs on x86-64 machine, memalign_size does not match
+        # AddressUtil.get_memory_alignment(), so use the value forcibly if memalign_size is not None
+        if memalign_size is None:
+            memalign_size = AddressUtil.get_memory_alignment()
+
+        if memalign_size == 8:
+            return addr & 0xFFFFFFFFFFFFFFFF
+        elif memalign_size == 4:
+            return addr & 0xFFFFFFFF
+        elif memalign_size == 2:
+            return addr & 0xFFFF
+        elif memalign_size == 2.5:
+            if current_arch.A20:
+                return addr & 0x1FFFFF
+            else:
+                return addr & 0x0FFFFF
+        return None
+
+    @staticmethod
+    def align_address_to_size(addr, align):
+        """Align the address to the given size."""
+        return addr + ((align - (addr % align)) % align)
+
+    @staticmethod
+    def parse_address(addr):
+        """Parse an address and return it as an Integer."""
+        if String.is_hex(addr):
+            return int(addr, 16)
+        return to_unsigned_long(gdb.parse_and_eval(addr))
+
+    @staticmethod
+    def parse_string_range(s):
+        """Parses an address range (e.g. 0x400000-0x401000)"""
+        addrs = s.split("-")
+        return [int(x, 16) for x in addrs]
+
+    @staticmethod
+    @Cache.cache_until_next
+    def dereference(addr):
+        """GEF wrapper for gdb dereference function."""
+
+        def use_stdtype():
+            if is_32bit():
+                return "uint32_t"
+            elif is_64bit():
+                return "uint64_t"
+            return "uint16_t"
+
+        def use_default_type():
+            if is_32bit():
+                return "unsigned int"
+            elif is_64bit():
+                return "unsigned long"
+            return "unsigned short"
+
+        def use_golang_type():
+            if is_32bit():
+                return "uint32"
+            elif is_64bit():
+                return "uint64"
+            return "uint16"
+
+        def use_rust_type():
+            if is_32bit():
+                return "u32"
+            elif is_64bit():
+                return "u64"
+            return "u16"
+
+        try:
+            ulong_t = cached_lookup_type(use_stdtype())
+            if not ulong_t:
+                ulong_t = cached_lookup_type(use_default_type())
+                if not ulong_t:
+                    ulong_t = cached_lookup_type(use_golang_type())
+                    if not ulong_t:
+                        ulong_t = cached_lookup_type(use_rust_type())
+            unsigned_long_type = ulong_t.pointer()
+            res = gdb.Value(addr).cast(unsigned_long_type).dereference()
+            # GDB does lazy fetch by default so we need to force access to the value
+            res.fetch_lazy()
+            return res
+        except gdb.MemoryError:
+            pass
+        return None
+
+    @staticmethod
+    @Cache.cache_this_session
+    def get_recursive_dereference_blacklist():
+        return eval(get_gef_setting("dereference.blacklist")) or []
+
+    @staticmethod
+    @Cache.cache_until_next
+    def recursive_dereference(addr, phys=False):
+        """Create dereference array."""
+
+        if not is_alive():
+            return [addr], None
+
+        recursion = get_gef_setting("dereference.max_recursion") or 4
+        blacklist = AddressUtil.get_recursive_dereference_blacklist()
+        addr_list = []
+        error = None
+
+        while recursion > 0:
+            # check loop
+            if addr in addr_list:
+                if addr == 0 and len(addr_list) == 1:
+                    # the case that address 0x0 is valid and first element is 0x0 (i.e. telescope 0x0).
+                    # but no error because it is generally unnecessary information.
+                    addr_list.append(addr) # use [0, 0] instead of [0]
+                else:
+                    error = "[loop detected]"
+                break
+
+            # not loop
+            addr_list.append(addr)
+
+            # check blacklist
+            if any(bstart <= addr < bend for bstart, bend in blacklist):
+                error = "[blacklist detected]"
+                break
+
+            # check non-address
+            if len(addr_list) > 1 and addr < 0x100:
+                break
+
+            # goto next
+            if phys and len(addr_list) == 1:
+                mem = read_physmem(addr, current_arch.ptrsize)
+                unpack = u32 if current_arch.ptrsize == 4 else u64
+                addr = unpack(mem)
+            else:
+                try:
+                    addr = read_int_from_memory(addr)
+                except gdb.MemoryError:
+                    break
+            recursion -= 1
+
+        return addr_list, error
+
+    @staticmethod
+    @Cache.cache_until_next
+    def recursive_dereference_to_string(value, skip_idx=0, phys=False):
+        """Create string from dereference array"""
+        string_color = get_gef_setting("theme.dereference_string")
+        nb_max_string_length = get_gef_setting("context.nb_max_string_length")
+        recursion = get_gef_setting("dereference.max_recursion") or 4
+
+        # dereference
+        addrs, error = AddressUtil.recursive_dereference(value, phys=phys)
+
+        # if addrs has one element and it is address with error (e.g.: address_A -> [loop detected]),
+        # don't skip the element even if skip_idx=1
+        if skip_idx == 1:
+            if len(addrs) == 1:
+                if error == "[loop detected]":
+                    skip_idx = 0
+
+        # add "..."
+        if error is None:
+            if addrs[-1] > 0x100 and is_valid_addr(addrs[-1]) and recursion > 1:
+                error = "..."
+
+        # replace to string if valid
+        def to_ascii(v):
+            s = ""
+            while v & 0xff: # \0
+                if chr(v & 0xff) in String.STRING_CHARSET:
+                    s += chr(v & 0xff)
+                else:
+                    return ""
+                v >>= 8
+            return s
+
+        last_elem = None
+        if error is None:
+            s = to_ascii(addrs[-1])
+            if len(s) < 2:
+                pass
+            elif 2 <= len(s) < current_arch.ptrsize:
+                fa = AddressUtil.format_address(addrs[-1], long_fmt=True)
+                last_elem = "{:s} ({:s}?)".format(fa, Color.colorify(repr(s), string_color))
+                addrs = addrs[:-1]
+            else: # len(s) == current_arch.ptrsize
+                if len(addrs) >= 2 and is_valid_addr(addrs[-2]):
+                    # read more string
+                    s = read_cstring_from_memory(addrs[-2])
+                    if s:
+                        fa = AddressUtil.format_address(addrs[-1], long_fmt=True)
+                        if len(s) > nb_max_string_length:
+                            last_elem = "{:s} {:s}...".format(fa, Color.colorify(repr(s[:nb_max_string_length]), string_color))
+                        else:
+                            last_elem = "{:s} {:s}".format(fa, Color.colorify(repr(s), string_color))
+                        addrs = addrs[:-1]
+                    else:
+                        # Ignore when the string that do not end with a null character
+                        pass
+                else:
+                    # fallback
+                    fa = AddressUtil.format_address(addrs[-1], long_fmt=True)
+                    last_elem = "{:s} ({:s}?)".format(fa, Color.colorify(repr(s), string_color))
+                    addrs = addrs[:-1]
+
+        # others
+        msg = []
+        for addr in addrs[skip_idx:]:
+            address = ProcessMap.lookup_address(addr)
+            msg.append(address.long_fmt() + Symbol.get_symbol_string(addr))
+
+        if error:
+            msg.append(error)
+        elif last_elem:
+            msg.append(last_elem)
+
+        return " {:s} ".format(RIGHT_ARROW).join(msg)
 
 
 class Permission:
@@ -2609,15 +2916,15 @@ class GlibcHeap:
 
         # helper methods
         def get_size_t(self, addr):
-            return dereference(addr).cast(self.size_t)
+            return AddressUtil.dereference(addr).cast(self.size_t)
 
         def get_char_t_pointer(self, addr):
             char_t_pointer = self.char_t.pointer()
-            return dereference(addr).cast(char_t_pointer)
+            return AddressUtil.dereference(addr).cast(char_t_pointer)
 
         def get_char_t_array(self, addr, length):
             char_t_array = self.char_t.array(length)
-            return dereference(addr).cast(char_t_array)
+            return AddressUtil.dereference(addr).cast(char_t_array)
 
         def __getitem__(self, item):
             return getattr(self, item)
@@ -2711,9 +3018,9 @@ class GlibcHeap:
         @property
         def mmapped_mem_addr(self):
             if get_libc_version() >= (2, 15):
-                return align_address_to_size(self.no_dyn_threshold_addr + self.int_t.sizeof, current_arch.ptrsize)
+                return AddressUtil.align_address_to_size(self.no_dyn_threshold_addr + self.int_t.sizeof, current_arch.ptrsize)
             else:
-                return align_address_to_size(self.pagesize_addr + self.int_t.sizeof, current_arch.ptrsize)
+                return AddressUtil.align_address_to_size(self.pagesize_addr + self.int_t.sizeof, current_arch.ptrsize)
 
         @property
         def max_mmapped_mem_addr(self):
@@ -2884,17 +3191,17 @@ class GlibcHeap:
 
         # helper methods
         def get_size_t(self, addr):
-            return dereference(addr).cast(self.size_t)
+            return AddressUtil.dereference(addr).cast(self.size_t)
 
         def get_int_t(self, addr):
-            return dereference(addr).cast(self.int_t)
+            return AddressUtil.dereference(addr).cast(self.int_t)
 
         def get_long_t(self, addr):
-            return dereference(addr).cast(self.long_t)
+            return AddressUtil.dereference(addr).cast(self.long_t)
 
         def get_char_t_pointer(self, addr):
             char_t_pointer = self.char_t.pointer()
-            return dereference(addr).cast(char_t_pointer)
+            return AddressUtil.dereference(addr).cast(char_t_pointer)
 
         def __getitem__(self, item):
             return getattr(self, item)
@@ -2969,7 +3276,7 @@ class GlibcHeap:
         @property
         def fastbins_addr(self):
             if get_libc_version() >= (2, 27):
-                fastbin_offset = align_address_to_size(self.int_t.sizeof * 3, self.size_t.sizeof)
+                fastbin_offset = AddressUtil.align_address_to_size(self.int_t.sizeof * 3, self.size_t.sizeof)
             else:
                 fastbin_offset = self.int_t.sizeof * 2
             return self.__addr + fastbin_offset
@@ -3091,22 +3398,22 @@ class GlibcHeap:
 
         # helper methods
         def get_size_t(self, addr):
-            return dereference(addr).cast(self.size_t)
+            return AddressUtil.dereference(addr).cast(self.size_t)
 
         def get_int_t(self, addr):
-            return dereference(addr).cast(self.int_t)
+            return AddressUtil.dereference(addr).cast(self.int_t)
 
         def get_size_t_pointer(self, addr):
             size_t_pointer = self.size_t.pointer()
-            return dereference(addr).cast(size_t_pointer)
+            return AddressUtil.dereference(addr).cast(size_t_pointer)
 
         def get_size_t_array(self, addr, length):
             size_t_array = self.size_t.array(length)
-            return dereference(addr).cast(size_t_array)
+            return AddressUtil.dereference(addr).cast(size_t_array)
 
         def get_int_t_array(self, addr, length):
             int_t_array = self.int_t.array(length)
-            return dereference(addr).cast(int_t_array)
+            return AddressUtil.dereference(addr).cast(int_t_array)
 
         def __getitem__(self, item):
             return getattr(self, item)
@@ -3275,7 +3582,7 @@ class GlibcHeap:
 
             # plan 1 (directly)
             try:
-                Cache.cached_main_arena = parse_address("&main_arena")
+                Cache.cached_main_arena = AddressUtil.parse_address("&main_arena")
                 return Cache.cached_main_arena
             except gdb.error:
                 pass
@@ -3283,9 +3590,9 @@ class GlibcHeap:
             # plan 2 (from __malloc_hook)
             if get_libc_version() < (2, 34):
                 try:
-                    malloc_hook_addr = parse_address("(void *)&__malloc_hook")
+                    malloc_hook_addr = AddressUtil.parse_address("(void *)&__malloc_hook")
                     if is_x86():
-                        Cache.cached_main_arena = align_address_to_size(malloc_hook_addr + current_arch.ptrsize, 0x20)
+                        Cache.cached_main_arena = AddressUtil.align_address_to_size(malloc_hook_addr + current_arch.ptrsize, 0x20)
                     elif is_arm64():
                         mstate_size = GlibcHeap.MallocStateStruct("*0").struct_size
                         Cache.cached_main_arena = malloc_hook_addr - current_arch.ptrsize * 2 - mstate_size
@@ -3415,7 +3722,7 @@ class GlibcHeap:
             tcache_i_head = self.tcachebins_addr(i)
             if not tcache_i_head:
                 return None
-            addr = dereference(tcache_i_head)
+            addr = AddressUtil.dereference(tcache_i_head)
             if not addr:
                 return None
             return GlibcHeap.GlibcChunk(int(addr))
@@ -3692,10 +3999,10 @@ class GlibcHeap:
                 self.chunk_base_address = addr
                 self.address = addr + 2 * self.ptrsize
             else:
-                self.chunk_base_address = align_address(addr - 2 * self.ptrsize)
+                self.chunk_base_address = AddressUtil.align_address(addr - 2 * self.ptrsize)
                 self.address = addr
 
-            self.size_addr = align_address(self.address - self.ptrsize)
+            self.size_addr = AddressUtil.align_address(self.address - self.ptrsize)
             self.prev_size_addr = self.chunk_base_address
             return
 
@@ -4426,7 +4733,7 @@ def hexdump(source, length=0x10, separator=".", color=True, show_symbol=True, ba
             sbyte = Color.colorify(sbyte, st)
         return sbyte
 
-    align = get_format_address_width()
+    align = AddressUtil.get_format_address_width()
 
     tmp = []
     max_sym_width = 0
@@ -4502,7 +4809,7 @@ def set_gef_setting(name, value, _type=None, _desc=None):
 
 class Symbol:
     # `info symbol` called from gdb_get_location is heavy processing.
-    # Moreover, dereference_from causes each address to be resolved every time.
+    # Moreover, AddressUtil.recursive_dereference causes each address to be resolved every time.
     # Cache.cache_until_next is not effective as-is, as it is cleared by Cache.reset_gef_caches() each time the `stepi` runs.
     # Fortunately, symbol information rarely changes.
     # I decided to keep the cache until it is explicitly cleared.
@@ -5279,7 +5586,7 @@ class Architecture:
 
     @property
     def ptrsize(self):
-        return get_memory_alignment()
+        return AddressUtil.get_memory_alignment()
 
     def get_ith_parameter(self, i, in_func=True):
         if i < len(self.function_parameters):
@@ -5930,10 +6237,10 @@ class ARM(Architecture):
             if self.is_ret(insn):
                 # If it's a pop, we have to peek into the stack, otherwise use lr
                 if insn.mnemonic == "pop":
-                    ra_addr = current_arch.sp + (len(insn.operands) - 1) * get_memory_alignment()
-                    ra = to_unsigned_long(dereference(ra_addr))
+                    ra_addr = current_arch.sp + (len(insn.operands) - 1) * AddressUtil.get_memory_alignment()
+                    ra = to_unsigned_long(AddressUtil.dereference(ra_addr))
                 elif insn.mnemonic == "ldr":
-                    return to_unsigned_long(dereference(current_arch.sp))
+                    return to_unsigned_long(AddressUtil.dereference(current_arch.sp))
                 else: # 'bx lr' or 'add pc, lr, #0'
                     return get_register("$lr")
             elif frame.older():
@@ -6263,14 +6570,14 @@ class X86(Architecture):
         try:
             if self.is_ret(insn):
                 if insn.mnemonic == "ret":
-                    ra = to_unsigned_long(dereference(current_arch.sp))
+                    ra = to_unsigned_long(AddressUtil.dereference(current_arch.sp))
                 elif insn.mnemonic == "retf": # eip, cs
-                    ra = to_unsigned_long(dereference(current_arch.sp))
+                    ra = to_unsigned_long(AddressUtil.dereference(current_arch.sp))
                 elif insn.mnemonic == "sysret": # ecx
                     ra = get_register("$ecx")
                 elif insn.mnemonic in ["iret", "iretd", "iretw"]: # eip, cs, eflags, esp, ss
-                    reg = to_unsigned_long(dereference(current_arch.sp))
-                    seg = dereference(current_arch.sp + current_arch.ptrsize) & 0xffff
+                    reg = to_unsigned_long(AddressUtil.dereference(current_arch.sp))
+                    seg = AddressUtil.dereference(current_arch.sp + current_arch.ptrsize) & 0xffff
                     if get_register("$cs") == 0x08:
                         return ((seg << 4) + reg) & (0x1fffff if X86_16.A20 else 0x0fffff)
                     return reg
@@ -6430,13 +6737,13 @@ class X86_64(X86):
         try:
             if self.is_ret(insn):
                 if insn.mnemonic == "ret":
-                    ra = to_unsigned_long(dereference(current_arch.sp))
+                    ra = to_unsigned_long(AddressUtil.dereference(current_arch.sp))
                 elif insn.mnemonic == "retf": # rip, cs
-                    ra = to_unsigned_long(dereference(current_arch.sp))
+                    ra = to_unsigned_long(AddressUtil.dereference(current_arch.sp))
                 elif insn.mnemonic in ["sysret", "sysretd", "sysretq"]: # rcx
                     ra = get_register("$rcx")
                 elif insn.mnemonic in ["iret", "iretd", "iretq", "iretw"]: # rip, cs, rflags, rsp, ss
-                    ra = to_unsigned_long(dereference(current_arch.sp))
+                    ra = to_unsigned_long(AddressUtil.dereference(current_arch.sp))
             elif frame.older():
                 ra = frame.older().pc()
         except (gdb.error, AttributeError):
@@ -6603,15 +6910,15 @@ class X86_16(X86):
         try:
             if self.is_ret(insn):
                 if insn.mnemonic == "ret":
-                    reg = dereference(current_arch.sp) & 0xffff
+                    reg = AddressUtil.dereference(current_arch.sp) & 0xffff
                     ra = current_arch.real2phys("$cs", reg)
                 elif insn.mnemonic == "retf": # ip, cs
-                    reg = dereference(current_arch.sp) & 0xffff
-                    seg = dereference(current_arch.sp + current_arch.ptrsize) & 0xffff
+                    reg = AddressUtil.dereference(current_arch.sp) & 0xffff
+                    seg = AddressUtil.dereference(current_arch.sp + current_arch.ptrsize) & 0xffff
                     ra = current_arch.real2phys(seg, reg)
                 elif insn.mnemonic == "iret": # ip, cs, flags, sp, ss
-                    reg = dereference(current_arch.sp) & 0xffff
-                    seg = dereference(current_arch.sp + current_arch.ptrsize) & 0xffff
+                    reg = AddressUtil.dereference(current_arch.sp) & 0xffff
+                    seg = AddressUtil.dereference(current_arch.sp + current_arch.ptrsize) & 0xffff
                     ra = current_arch.real2phys(seg, reg)
             elif frame.older():
                 ra = frame.older().pc()
@@ -8330,7 +8637,7 @@ class M68K(Architecture):
         ra = None
         try:
             if self.is_ret(insn):
-                ra = to_unsigned_long(dereference(current_arch.sp))
+                ra = to_unsigned_long(AddressUtil.dereference(current_arch.sp))
             if frame.older():
                 ra = frame.older().pc()
         except gdb.error:
@@ -11490,7 +11797,7 @@ def timeout(duration):
 
 def to_unsigned_long(v):
     """Cast a gdb.Value to unsigned long."""
-    bits = get_memory_alignment(in_bits=True)
+    bits = AddressUtil.get_memory_alignment(in_bits=True)
     mask = (1 << bits) - 1
     return int(v.cast(gdb.Value(mask).type)) & mask
 
@@ -11982,7 +12289,7 @@ class ProcessMap:
                     break
                 region_start -= gef_getpagesize()
 
-            upper_bound = 1 << get_memory_alignment(in_bits=True)
+            upper_bound = 1 << AddressUtil.get_memory_alignment(in_bits=True)
             # down search
             while True:
                 if region_end >= upper_bound:
@@ -12011,7 +12318,7 @@ class ProcessMap:
             return [sect]
 
         def get_ehdr(addr):
-            upper_bound = 1 << get_memory_alignment(in_bits=True)
+            upper_bound = 1 << AddressUtil.get_memory_alignment(in_bits=True)
             for _ in range(128):
                 if addr < 0 or addr > upper_bound:
                     return None
@@ -12373,7 +12680,7 @@ class ProcessMap:
         return ProcessMap.get_process_maps_heuristic()
 
     # `info files` called from get_info_files is heavy processing.
-    # Moreover, dereference_from causes each address to be resolved every time.
+    # Moreover, AddressUtil.recursive_dereference causes each address to be resolved every time.
     # Cache.cache_until_next is not effective as-is, as it is cleared by Cache.reset_gef_caches() each time the `stepi` runs.
     # Fortunately, zone information rarely changes.
     # I decided to keep the cache until it is explicitly cleared.
@@ -12836,21 +13143,12 @@ def cached_lookup_type(_type):
     except RuntimeError:
         return None
 
-@Cache.cache_this_session
-def ptr_width():
-    void = cached_lookup_type("void")
-    if void is None:
-        uintptr_t = cached_lookup_type("uintptr_t")
-        return uintptr_t.sizeof
-    else:
-        return void.pointer().sizeof
-
 def is_64bit():
-    return ptr_width() == 8
+    return AddressUtil.ptr_width() == 8
 
 
 def is_32bit():
-    return ptr_width() == 4
+    return AddressUtil.ptr_width() == 4
 
 
 def is_emulated32():
@@ -13168,170 +13466,12 @@ def is_double_link_list(addr):
     return True
 
 
-@Cache.cache_this_session
-def get_memory_alignment(in_bits=False):
-    """Try to determine the size of a pointer on this system.
-    First, try to parse it out of the ELF header.
-    Next, use the size of `size_t`.
-    Finally, try the size of $pc.
-    If `in_bits` is set to True, the result is returned in bits, otherwise in bytes."""
-
-    if is_x86_16():
-        if current_arch.A20:
-            return 2 if not in_bits else 21
-        else:
-            return 2 if not in_bits else 20
-
-    if is_32bit():
-        return 4 if not in_bits else 32
-    elif is_64bit():
-        return 8 if not in_bits else 64
-
-    res = cached_lookup_type("size_t")
-    if res is not None:
-        return res.sizeof if not in_bits else res.sizeof * 8
-
-    try:
-        return gdb.parse_and_eval("$pc").type.sizeof
-    except gdb.error:
-        pass
-    raise EnvironmentError("GEF is running under an unsupported mode")
-
-
-def is_msb_on(addr):
-    """Return whether provided address MSB is on."""
-    if get_memory_alignment() == 4:
-        return addr & 0x80000000
-    return addr & 0x8000000000000000
-
-
-def get_format_address_width(memalign_size=None):
-    if not is_alive():
-        return 18
-    if is_32bit() or memalign_size == 4:
-        return 10
-    if not is_in_kernel():
-        return 14
-    else:
-        return 18
-
-
-def format_address(addr, memalign_size=None, long_fmt=False):
-    """Format the address according to its size."""
-    # if qemu-xxx(32bit arch) runs on x86-64 machine, memalign_size does not match get_memory_alignment()
-    # so use the value forcibly if memalign_size is not None
-    if memalign_size is None:
-        memalign_size = get_memory_alignment()
-
-    if isinstance(addr, str):
-        addr = int(addr, 16)
-
-    addr = align_address(addr, memalign_size)
-    if memalign_size == 4:
-        return "{:#010x}".format(addr)
-    elif memalign_size == 2:
-        return "{:#06x}".format(addr)
-    elif memalign_size == 2.5:
-        if current_arch.A20:
-            return "{:#08x}".format(addr)
-        else:
-            return "{:#07x}".format(addr)
-    if long_fmt:
-        return "{:#018x}".format(addr)
-    if is_in_kernel():
-        return "{:#018x}".format(addr)
-    return "{:#014x}".format(addr)
-
-
-def align_address(addr, memalign_size=None):
-    """Align the provided address to the process's native length."""
-    # if qemu-xxx(32bit arch) runs on x86-64 machine, memalign_size does not match
-    # get_memory_alignment(), so use the value forcibly if memalign_size is not None
-    if memalign_size is None:
-        memalign_size = get_memory_alignment()
-
-    if memalign_size == 8:
-        return addr & 0xFFFFFFFFFFFFFFFF
-    elif memalign_size == 4:
-        return addr & 0xFFFFFFFF
-    elif memalign_size == 2:
-        return addr & 0xFFFF
-    elif memalign_size == 2.5:
-        if current_arch.A20:
-            return addr & 0x1FFFFF
-        else:
-            return addr & 0x0FFFFF
-    return None
-
-
-def align_address_to_size(addr, align):
-    """Align the address to the given size."""
-    return addr + ((align - (addr % align)) % align)
-
-
-def parse_address(addr):
-    """Parse an address and return it as an Integer."""
-    if String.is_hex(addr):
-        return int(addr, 16)
-    return to_unsigned_long(gdb.parse_and_eval(addr))
-
-
 def get_ksysctl(sym):
     try:
         res = gdb.execute("ksysctl --quiet --no-pager --exact --filter {:s}".format(sym), to_string=True)
         return int(res.split()[1], 16)
     except (gdb.error, IndexError, ValueError):
         return None
-
-
-@Cache.cache_until_next
-def dereference(addr):
-    """GEF wrapper for gdb dereference function."""
-
-    def use_stdtype():
-        if is_32bit():
-            return "uint32_t"
-        elif is_64bit():
-            return "uint64_t"
-        return "uint16_t"
-
-    def use_default_type():
-        if is_32bit():
-            return "unsigned int"
-        elif is_64bit():
-            return "unsigned long"
-        return "unsigned short"
-
-    def use_golang_type():
-        if is_32bit():
-            return "uint32"
-        elif is_64bit():
-            return "uint64"
-        return "uint16"
-
-    def use_rust_type():
-        if is_32bit():
-            return "u32"
-        elif is_64bit():
-            return "u64"
-        return "u16"
-
-    try:
-        ulong_t = cached_lookup_type(use_stdtype())
-        if not ulong_t:
-            ulong_t = cached_lookup_type(use_default_type())
-            if not ulong_t:
-                ulong_t = cached_lookup_type(use_golang_type())
-                if not ulong_t:
-                    ulong_t = cached_lookup_type(use_rust_type())
-        unsigned_long_type = ulong_t.pointer()
-        res = gdb.Value(addr).cast(unsigned_long_type).dereference()
-        # GDB does lazy fetch by default so we need to force access to the value
-        res.fetch_lazy()
-        return res
-    except gdb.MemoryError:
-        pass
-    return None
 
 
 def gef_convenience(value):
@@ -13341,12 +13481,6 @@ def gef_convenience(value):
     __gef_convenience_vars_index__ += 1
     gdb.execute("""set {:s} = "{:s}" """.format(var_name, value))
     return var_name
-
-
-def parse_string_range(s):
-    """Parses an address range (e.g. 0x400000-0x401000)"""
-    addrs = s.split("-")
-    return [int(x, 16) for x in addrs]
 
 
 class Auxv:
@@ -14768,7 +14902,8 @@ class DisplayTypeCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("type", metavar="TYPE", help="the type name.")
-    parser.add_argument("address", metavar="ADDRESS", nargs="?", type=parse_address, help="the address to apply the type.")
+    parser.add_argument("address", metavar="ADDRESS", nargs="?", type=AddressUtil.parse_address,
+                        help="the address to apply the type.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
@@ -14857,7 +14992,7 @@ class BreakRelativeVirtualAddressCommand(GenericCommand):
     _aliases_ = ["brva"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("offset", metavar="OFFSET", type=parse_address,
+    parser.add_argument("offset", metavar="OFFSET", type=AddressUtil.parse_address,
                         help="the offset from codebase you want to set a breakpoint.")
     _syntax_ = parser.format_help()
 
@@ -14905,8 +15040,10 @@ class PrintFormatCommand(GenericCommand):
                         help="the output format. (default: %(default)s)")
     parser.add_argument("-b", dest="bitlen", type=int, default=8, choices=[8, 16, 32, 64],
                         help="the size of bit. (default: %(default)s)")
-    parser.add_argument("-l", dest="length", type=parse_address, default=256, help="the length of array. (default: %(default)s)")
-    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the address of data you want to dump.")
+    parser.add_argument("-l", dest="length", type=AddressUtil.parse_address, default=256,
+                        help="the length of array. (default: %(default)s)")
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
+                        help="the address of data you want to dump.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} -f py -b 8 -l 256 $rsp".format(_cmdline_)
@@ -15165,13 +15302,18 @@ class ArgvCommand(GenericCommand):
 
     def get_address_from_symbol(self, symbol):
         try:
-            return parse_address(symbol)
+            return AddressUtil.parse_address(symbol)
         except Exception:
             return None
 
     def print_from_mem(self, array, verbose):
         fmt = "{:3s} {:{:d}s}  {:{:d}s} -> {:s}"
-        legend = ["#", "ArrAddr", get_format_address_width(), "StrAddr", get_format_address_width(), "String"]
+        legend = [
+            "#",
+            "ArrAddr", AddressUtil.get_format_address_width(),
+            "StrAddr", AddressUtil.get_format_address_width(),
+            "String",
+        ]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
         i = 0
@@ -15248,13 +15390,18 @@ class EnvpCommand(GenericCommand):
 
     def get_address_from_symbol(self, symbol):
         try:
-            return parse_address(symbol)
+            return AddressUtil.parse_address(symbol)
         except Exception:
             return None
 
     def print_from_mem(self, array, verbose):
         fmt = "{:3s} {:{:d}s}  {:{:d}s} -> {:s}"
-        legend = ["#", "ArrAddr", get_format_address_width(), "StrAddr", get_format_address_width(), "String"]
+        legend = [
+            "#",
+            "ArrAddr", AddressUtil.get_format_address_width(),
+            "StrAddr", AddressUtil.get_format_address_width(),
+            "String",
+        ]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
         i = 0
@@ -15360,7 +15507,7 @@ class DumpArgsCommand(GenericCommand):
             width = len(key)
             while width % 4:
                 width += 1
-            gef_print("{:>{:d}s} = {:s}".format(key, width, to_string_dereference_from(val)))
+            gef_print("{:>{:d}s} = {:s}".format(key, width, AddressUtil.recursive_dereference_to_string(val)))
         return
 
 
@@ -16753,14 +16900,14 @@ class ScanSectionCommand(GenericCommand):
 
         if "0x" in haystack:
             try:
-                start, end = parse_string_range(haystack)
+                start, end = AddressUtil.parse_string_range(haystack)
                 haystack_sections.append((start, end, ""))
             except ValueError:
                 pass
 
         if "0x" in needle:
             try:
-                start, end = parse_string_range(needle)
+                start, end = AddressUtil.parse_string_range(needle)
                 needle_sections.append((start, end))
             except ValueError:
                 pass
@@ -16785,7 +16932,7 @@ class ScanSectionCommand(GenericCommand):
                 for nstart, nend in needle_sections:
                     if not (nstart <= target < nend):
                         continue
-                    deref = to_string_dereference_from(hstart + i)
+                    deref = AddressUtil.recursive_dereference_to_string(hstart + i)
                     if hname != "":
                         name = Color.colorify(hname, "yellow")
                         gef_print("{:s}: {:s}".format(name, deref))
@@ -17062,7 +17209,7 @@ class SearchPatternCommand(GenericCommand):
             else:
                 # the case `find AAAA 0x400000-0x404000`
                 try:
-                    start, end = parse_string_range(args.section)
+                    start, end = AddressUtil.parse_string_range(args.section)
                 except ValueError:
                     self.usage()
                     return
@@ -17127,7 +17274,7 @@ class PtrDemangleCommand(GenericCommand):
                 cookie = read_int_from_memory(tls + 0x18)
                 return cookie
             elif is_arm32() or is_arm64():
-                cookie_ptr = parse_address("&__pointer_chk_guard_local")
+                cookie_ptr = AddressUtil.parse_address("&__pointer_chk_guard_local")
                 cookie = read_int_from_memory(cookie_ptr)
                 return cookie
         except (gdb.error, OverflowError):
@@ -17250,7 +17397,7 @@ class SearchMangledPtrCommand(GenericCommand):
         decoded = Color.boldify("{:#x}".format(decoded))
 
         base_address_color = get_gef_setting("theme.dereference_base_address")
-        width = get_format_address_width()
+        width = AddressUtil.get_format_address_width()
         addr = Color.colorify("{:#0{:d}x}".format(addr, width), base_address_color)
 
         gef_print("  {:s}{:s}: {:#x} (={:s}{:s}) [{:s}]".format(addr, addr_sym, value, decoded, decoded_sym, valid_msg))
@@ -17740,7 +17887,8 @@ class MprotectCommand(GenericCommand):
     _category_ = "05-a. Syscall - Invoke"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the address you want to change the permission.")
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
+                        help="the address you want to change the permission.")
     parser.add_argument("permission", metavar="PERMISSION", nargs="?", default="rwx",
                         help="the permission you set to the LOCATION. (default: %(default)s)")
     parser.add_argument("--patch-only", action="store_true", help="do not execute after patch.")
@@ -17902,7 +18050,8 @@ class CallSyscallCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("syscall_name", metavar="SYSCALL_NAME", help="system call name to invoke.")
-    parser.add_argument("syscall_args", metavar="SYSCALL_ARG", nargs="*", type=parse_address, help="arguments of system call.")
+    parser.add_argument("syscall_args", metavar="SYSCALL_ARG", nargs="*", type=AddressUtil.parse_address,
+                        help="arguments of system call.")
     _syntax_ = parser.format_help()
 
     _example_ = '{:s} write 1 "*(void**)($rsp+0x18)" 15'.format(_cmdline_)
@@ -17962,9 +18111,9 @@ class MmapMemoryCommand(GenericCommand):
     _category_ = "05-a. Syscall - Invoke"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address, default=0,
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address, default=0,
                         help="the address you want to allocate. (default: %(default)s)")
-    parser.add_argument("size", metavar="SIZE", nargs="?", type=parse_address, default=gef_getpagesize(),
+    parser.add_argument("size", metavar="SIZE", nargs="?", type=AddressUtil.parse_address, default=gef_getpagesize(),
                         help="the size you want to allocate. (default: %(default)s)")
     parser.add_argument("permission", metavar="PERMISSION", nargs="?", default="rwx",
                         help="the permission you want to allocate. `_` is interpreted as `-`. (default: %(default)s)")
@@ -18744,12 +18893,15 @@ class UnicornEmulateCommand(GenericCommand):
     _aliases_ = ["emulate"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-f", "--from-location", type=parse_address,
+    parser.add_argument("-f", "--from-location", type=AddressUtil.parse_address,
                         help="specifies the start address of the emulated run. (default: current_arch.pc)")
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("-g", "--nb-gadget", type=parse_address, help="the number of gadgets to execute. (default mode, NB_GADGET: 10)")
-    group.add_argument("-t", "--to-location", type=parse_address, help="the end address of the emulated run.")
-    group.add_argument("-n", "--nb-insn", type=parse_address, help="the number of instructions from `FROM_LOCATION`.")
+    group.add_argument("-g", "--nb-gadget", type=AddressUtil.parse_address,
+                        help="the number of gadgets to execute. (default mode, NB_GADGET: 10)")
+    group.add_argument("-t", "--to-location", type=AddressUtil.parse_address,
+                        help="the end address of the emulated run.")
+    group.add_argument("-n", "--nb-insn", type=AddressUtil.parse_address,
+                        help="the number of instructions from `FROM_LOCATION`.")
     parser.add_argument("-i", "--only-insns", action="store_true", help="show only instructions (no registers, memories, etc).")
     parser.add_argument("-o", "--output-path", help="writes the persistent Unicorn script into this file.")
     parser.add_argument("-s", "--skip-emulation", action="store_true", help="do not run, just save the script.")
@@ -19204,8 +19356,10 @@ class StubCommand(GenericCommand):
     _aliases_ = ["deactive"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-r", "--retval", type=int, default=0, help="the return value from stub. (default: %(default)s)")
-    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="address/symbol to stub out.")
+    parser.add_argument("-r", "--retval", type=int, default=0,
+                        help="the return value from stub. (default: %(default)s)")
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
+                        help="address/symbol to stub out.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} -r 0 fork".format(_cmdline_)
@@ -19232,9 +19386,9 @@ class CapstoneDisassembleCommand(GenericCommand):
     _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
                         help="the address you want to disassemble. (default: current_arch.pc)")
-    parser.add_argument("-l", "--length", type=parse_address,
+    parser.add_argument("-l", "--length", type=AddressUtil.parse_address,
                         help="the length you want to disassemble. (default: context.nb_lines_code)")
     parser.add_argument("args", metavar="ARGS", nargs="*", help="arguments for capstone. see following example.")
     _syntax_ = parser.format_help()
@@ -19333,7 +19487,7 @@ class GlibcHeapTopCommand(GenericCommand):
     _aliases_ = ["top-chunk"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-a", "--arena-addr", type=parse_address,
+    parser.add_argument("-a", "--arena-addr", type=AddressUtil.parse_address,
                         help="the address or number you want to interpret as an arena. (default: main_arena)")
     _syntax_ = parser.format_help()
 
@@ -19416,7 +19570,7 @@ class GlibcHeapArenaCommand(GenericCommand):
     _aliases_ = ["arena"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-a", "--arena-addr", type=parse_address,
+    parser.add_argument("-a", "--arena-addr", type=AddressUtil.parse_address,
                         help="the address or number you want to interpret as an arena. (default: main_arena)")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
@@ -19465,7 +19619,7 @@ class GlibcHeapArenaCommand(GenericCommand):
 
     def parse_mp(self):
         try:
-            mp = parse_address("&mp_")
+            mp = AddressUtil.parse_address("&mp_")
         except gdb.error:
             mp = GlibcHeap.search_for_mp_()
             if mp is None:
@@ -19582,9 +19736,9 @@ class GlibcHeapChunkCommand(GenericCommand):
     _category_ = "06-a. Heap - Glibc"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", type=parse_address,
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
                         help="the address you want to interpret as a chunk.")
-    parser.add_argument("-a", "--arena-addr", type=parse_address,
+    parser.add_argument("-a", "--arena-addr", type=AddressUtil.parse_address,
                         help="the address or number you want to interpret as an arena. (default: main_arena)")
     parser.add_argument("-b", "--as-base", action="store_true",
                         help="use LOCATION as chunk base address (chunk_base_address = chunk_address - ptrsize * 2).")
@@ -19647,9 +19801,9 @@ class GlibcHeapChunksCommand(GenericCommand):
     _aliases_ = ["chunks"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
                         help="the address you want to interpret as the beginning of a contiguous chunk. (default: arena.heap_base)")
-    parser.add_argument("-a", "--arena-addr", type=parse_address,
+    parser.add_argument("-a", "--arena-addr", type=AddressUtil.parse_address,
                         help="the address or number you want to interpret as an arena. (default: main_arena)")
     parser.add_argument("-b", "--nb-byte", type=lambda x: int(x, 0), help="temporarily override `heap_chunks.peek_nb_byte`.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
@@ -19779,7 +19933,7 @@ class GlibcHeapBinsCommand(GenericCommand):
     _aliases_ = ["bins"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-a", "--arena-addr", type=parse_address,
+    parser.add_argument("-a", "--arena-addr", type=AddressUtil.parse_address,
                         help="the address or number you want to interpret as an arena. (default: main_arena)")
     parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
@@ -19917,7 +20071,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
     _aliases_ = ["tcache"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-a", "--arena-addr", type=parse_address,
+    parser.add_argument("-a", "--arena-addr", type=AddressUtil.parse_address,
                         help="the address or number you want to interpret as an arena. (default: main_arena)")
     parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
@@ -20031,7 +20185,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
     _aliases_ = ["fastbins"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-a", "--arena-addr", type=parse_address,
+    parser.add_argument("-a", "--arena-addr", type=AddressUtil.parse_address,
                         help="the address or number you want to interpret as an arena. (default: main_arena)")
     parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
@@ -20142,7 +20296,7 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
     _aliases_ = ["unsortedbin"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-a", "--arena-addr", type=parse_address,
+    parser.add_argument("-a", "--arena-addr", type=AddressUtil.parse_address,
                         help="the address or number you want to interpret as an arena. (default: main_arena)")
     parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
@@ -20193,7 +20347,7 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
     _aliases_ = ["smallbin"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-a", "--arena-addr", type=parse_address,
+    parser.add_argument("-a", "--arena-addr", type=AddressUtil.parse_address,
                         help="the address or number you want to interpret as an arena. (default: main_arena)")
     parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
@@ -20250,7 +20404,7 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
     _aliases_ = ["largebin"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-a", "--arena_addr", type=parse_address,
+    parser.add_argument("-a", "--arena_addr", type=AddressUtil.parse_address,
                         help="the address or number you want to interpret as an arena. (default: main_arena)")
     parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
@@ -20377,9 +20531,9 @@ class RegistersCommand(GenericCommand):
 
             # colorling
             if is_x86_16():
-                value = align_address(int(reg), memalign_size=4)
+                value = AddressUtil.align_address(int(reg), memalign_size=4)
             else:
-                value = align_address(int(reg))
+                value = AddressUtil.align_address(int(reg))
             old_value = ContextCommand.old_registers.get(regname, 0)
             if value == old_value:
                 color = unchanged_color
@@ -20405,12 +20559,12 @@ class RegistersCommand(GenericCommand):
 
             # dereference values
             if is_x86_16():
-                line += format_address(value, memalign_size=4)
-                derefs = to_string_dereference_from(value, skip_idx=1)
+                line += AddressUtil.format_address(value, memalign_size=4)
+                derefs = AddressUtil.recursive_dereference_to_string(value, skip_idx=1)
                 if derefs:
                     line += " {:s} {:s}".format(RIGHT_ARROW, derefs)
             else:
-                line += to_string_dereference_from(value)
+                line += AddressUtil.recursive_dereference_to_string(value)
 
             out.append(line)
 
@@ -20434,9 +20588,9 @@ class RegistersCommand(GenericCommand):
                 line = "{}:".format(Color.colorify(regname, color))
 
                 # dereference values
-                value_s = format_address(value, memalign_size=2.5)
+                value_s = AddressUtil.format_address(value, memalign_size=2.5)
                 line += " {:04x}:{:04x}: {:s} {:s} ".format(segval, regval, value_s, RIGHT_ARROW)
-                line += to_string_dereference_from(value, skip_idx=1)
+                line += AddressUtil.recursive_dereference_to_string(value, skip_idx=1)
 
                 out.append(line)
 
@@ -20664,7 +20818,7 @@ class AssembleCommand(GenericCommand):
     parser.add_argument("-m", dest="mode", help="specify the mode. (default: current_arch.mode)")
     parser.add_argument("-e", dest="big_endian", action="store_true", help="use big-endian.")
     parser.add_argument("-s", dest="as_shellcode", action="store_true", help="output like shellcode style.")
-    parser.add_argument("-l", dest="overwrite_location", metavar="LOCATION", type=parse_address, help="write to memory address.")
+    parser.add_argument("-l", dest="overwrite_location", metavar="LOCATION", type=AddressUtil.parse_address, help="write to memory address.")
     parser.add_argument("-H", "--hex", action="store_true", help="show in hex style.")
     parser.add_argument("instruction", metavar="INSTRUCTION", nargs="+", help="the code you want to assemble")
     _syntax_ = parser.format_help()
@@ -21308,7 +21462,7 @@ class ElfInfoCommand(GenericCommand):
     parser.add_argument("-e", "--use-readelf", action="store_true", help="use readelf.")
     parser.add_argument("-r", "--remote", action="store_true", help="parse remote binary if download feature is available.")
     parser.add_argument("-f", "--file", help="the file path you want to parse.")
-    parser.add_argument("-a", "--address", type=parse_address, help="the memory address you want to parse.")
+    parser.add_argument("-a", "--address", type=AddressUtil.parse_address, help="the memory address you want to parse.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="dump the content of each section.")
     _syntax_ = parser.format_help()
@@ -21699,11 +21853,11 @@ class ElfInfoCommand(GenericCommand):
             ("Type", "{:#x} - {:s}".format(elf.e_type, self.types[elf.e_type])),
             ("Machine", "{:#x} - {:s}".format(elf.e_machine, self.machines.get(elf.e_machine, "Unknown"))),
             ("Version", "{:#x} - {:s}".format(elf.e_version, self.versions[elf.e_version])),
-            ("Entry point", "{:s}".format(format_address(elf.e_entry))),
-            ("Program Header Table", "{:s}".format(format_address(elf.e_phoff))),
+            ("Entry point", "{:s}".format(AddressUtil.format_address(elf.e_entry))),
+            ("Program Header Table", "{:s}".format(AddressUtil.format_address(elf.e_phoff))),
             ("Program Header Entry Size", "{0:d} ({0:#x})".format(elf.e_phentsize)),
             ("Number of Program Headers", "{:d}".format(elf.e_phnum)),
-            ("Section Header Table", "{:s}".format(format_address(elf.e_shoff))),
+            ("Section Header Table", "{:s}".format(AddressUtil.format_address(elf.e_shoff))),
             ("Section Header Entry Size", "{0:d} ({0:#x})".format(elf.e_shentsize)),
             ("Number of Section Headers", "{:d}".format(elf.e_shnum)),
             ("ELF Header Size", "{0:d} ({0:#x})".format(elf.e_ehsize)),
@@ -25183,7 +25337,7 @@ class MainBreakCommand(GenericCommand):
 
     def get_libc_start_main(self):
         try:
-            return parse_address("__libc_start_main")
+            return AddressUtil.parse_address("__libc_start_main")
         except gdb.error:
             pass
 
@@ -25239,7 +25393,7 @@ class MainBreakCommand(GenericCommand):
         self.dont_repeat()
 
         try:
-            main_address = parse_address("main")
+            main_address = AddressUtil.parse_address("main")
         except gdb.error:
             main_address = self.search_main()
 
@@ -25326,7 +25480,7 @@ class EntryPointBreakCommand(GenericCommand):
         entrypoints = self.get_setting("entrypoint_symbols").split()
         for sym in entrypoints:
             try:
-                value = parse_address(sym)
+                value = AddressUtil.parse_address(sym)
             except gdb.error:
                 continue
 
@@ -25407,7 +25561,7 @@ class NamedBreakCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("name", metavar="NAME", help="the name you want to assign.")
-    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
                         help="the address you want to set breakpoint. (default: current_arch.pc)")
     _syntax_ = parser.format_help()
 
@@ -25447,7 +25601,7 @@ class CommandBreakCommand(GenericCommand):
     _category_ = "01-b. Debugging Support - Breakpoint"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
                         help="the address you want to set breakpoint. (default: current_arch.pc)")
     parser.add_argument("command", metavar="COMMAND", type=str, help="the command executed if breakpoint is hit.")
     _syntax_ = parser.format_help()
@@ -25498,7 +25652,7 @@ class BreakIfTakenCommand(GenericCommand):
     _category_ = "01-b. Debugging Support - Breakpoint"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", type=parse_address,
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
                         help="the address you want to set breakpoint.")
     parser.add_argument("--hw", action="store_true", help="use hardware breakpoint.")
     _syntax_ = parser.format_help()
@@ -25517,7 +25671,7 @@ class BreakIfNotTakenCommand(GenericCommand):
     _category_ = "01-b. Debugging Support - Breakpoint"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", type=parse_address,
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
                         help="the address you want to set breakpoint.")
     parser.add_argument("--hw", action="store_true", help="use hardware breakpoint.")
     _syntax_ = parser.format_help()
@@ -26070,10 +26224,10 @@ class ContextCommand(GenericCommand):
             # print
             try:
                 code = code.replace("$", "(long)$")
-                addr = parse_address(code)
+                addr = AddressUtil.parse_address(code)
             except gdb.error:
                 # some binary fails to resolve "(long)"
-                addr = parse_address(code_orig)
+                addr = AddressUtil.parse_address(code_orig)
             self.context_title("memory access: {:s} = {:#x}".format(code_orig, addr))
             gdb.execute("dereference {:#x} 4 --no-pager".format(addr))
         return
@@ -26121,8 +26275,8 @@ class ContextCommand(GenericCommand):
             offset = "".join(offset)
             # $rip/$eip points next instruction
             offset = offset.replace("$rip", "$rip+{:#x}".format(codesize))
-            offset = parse_address(offset)
-            addr = align_address(fsgs_val + offset)
+            offset = AddressUtil.parse_address(offset)
+            addr = AddressUtil.align_address(fsgs_val + offset)
             self.context_title("memory access: {:s} = {:#x}".format(code, addr))
             gdb.execute("dereference {:#x} 4 --no-pager".format(addr))
         return
@@ -26155,7 +26309,7 @@ class ContextCommand(GenericCommand):
             addr = addr.replace("eiz", " 0 ") # $eiz is always 0x0
             addr = addr.split()
             addr = ["$" + x if x.isalpha() or self.RE_MATCH_REG5.match(x) else x for x in addr]
-            addr = parse_address("".join(addr))
+            addr = AddressUtil.parse_address("".join(addr))
             self.context_title("memory access: {:s} = {:#x}".format(code, addr))
             gdb.execute("dereference {:#x} 4 --no-pager".format(addr))
         return
@@ -26371,7 +26525,7 @@ class ContextCommand(GenericCommand):
 
             # If it resolves the real symbol, it may not be the beginning of the function. This is not the symbol I want.
             # To determine whether it is the beginning of a function, use whether a "+" symbol is included.
-            # Another option is to check whether parse_address(real_symbol) returns the original address.
+            # Another option is to check whether AddressUtil.parse_address(real_symbol) returns the original address.
             # However, this cannot be used in cases where addresses exceeding the PLT are handled, so this should not be used.
             if "+" not in real_sym_str:
                 sym_str = real_sym_str
@@ -26426,7 +26580,7 @@ class ContextCommand(GenericCommand):
             _value = current_arch.get_ith_parameter(i, in_func=False)[1]
             if _value is None:
                 break
-            _value = to_string_dereference_from(_value)
+            _value = AddressUtil.recursive_dereference_to_string(_value)
             _name = f.name or "var_{}".format(i)
             _type = f.type.name or size2type[f.type.sizeof]
             args.append("{} {} = {}".format(_type, _name, _value))
@@ -26459,7 +26613,7 @@ class ContextCommand(GenericCommand):
         for i in range(nb_argument):
             try:
                 _key, _value = current_arch.get_ith_parameter(i, in_func=False)
-                _value = to_string_dereference_from(_value)
+                _value = AddressUtil.recursive_dereference_to_string(_value)
             except Exception:
                 break
             try:
@@ -26569,7 +26723,7 @@ class ContextCommand(GenericCommand):
                         if val.address is None:
                             continue
                         addr = int(val.address)
-                        val = to_string_dereference_from(addr)
+                        val = AddressUtil.recursive_dereference_to_string(addr)
                     elif val.type.code == gdb.TYPE_CODE_INT:
                         try:
                             val = hex(int(val))
@@ -26927,7 +27081,7 @@ class MemoryWatchCommand(GenericCommand):
     _category_ = "01-f. Debugging Support - Context Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("address", metavar="ADDRESS", type=parse_address,
+    parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address,
                         help="the memory address you want to register for display in `context memory`.")
     parser.add_argument("count", metavar="COUNT", nargs="?", type=lambda x: int(x, 0), default=0x10,
                         help="the count of displayed units. (default: %(default)s)")
@@ -26962,7 +27116,7 @@ class MemoryUnwatchCommand(GenericCommand):
     _category_ = "01-f. Debugging Support - Context Extension"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("address", metavar="ADDRESS", type=parse_address,
+    parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address,
                         help="the memory address you want to deregister for display in `context memory`.")
     _syntax_ = parser.format_help()
 
@@ -27040,7 +27194,7 @@ class HexdumpCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("format", choices=["byte", "word", "dword", "qword", "b", "w", "d", "q"], nargs="?", default="byte",
                         help="dump mode. It also works if you specify the first character. (default: %(default)s)")
-    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to dump.")
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address, help="the memory address you want to dump.")
     parser.add_argument("count", metavar="COUNT", nargs="?", type=lambda x: int(x, 0), default=0x100,
                         help="the count of displayed units. (default: %(default)s)")
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
@@ -27135,7 +27289,7 @@ class HexdumpCommand(GenericCommand):
         if is_x86_16():
             memalign_size = 2.5
 
-        read_from = align_address(args.location, memalign_size=memalign_size) + min(from_idx, to_idx)
+        read_from = AddressUtil.align_address(args.location, memalign_size=memalign_size) + min(from_idx, to_idx)
         mem = self.read_memory(read_from, args.count)
         if mem is None:
             err("cannot access memory")
@@ -27164,7 +27318,7 @@ class HexdumpFlexibleCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("format", metavar="FORMAT", help="dump format.")
-    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to dump.")
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address, help="the memory address you want to dump.")
     parser.add_argument("count", metavar="COUNT", nargs="?", type=lambda x: int(x, 0), default=1,
                         help="the count of displayed units. (default: %(default)s)")
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
@@ -27225,7 +27379,7 @@ class HexdumpFlexibleCommand(GenericCommand):
                 break
 
             values = struct.unpack(fmt.replace("-", ""), data)
-            colored_address = Color.colorify(format_address(address), base_address_color)
+            colored_address = Color.colorify(AddressUtil.format_address(address), base_address_color)
             line_elem = ["{:s}|{:+#06x}|{:+04d}:   ".format(colored_address, size * i, i)]
             for t, v in zip(each_type, values):
                 if t.startswith("-"):
@@ -27356,7 +27510,7 @@ class PatchCommand(GenericCommand):
                 d = ">" if Endian.is_little_endian() else "<"
 
             for value in args.values:
-                value = parse_address(value) & ((1 << size * 8) - 1)
+                value = AddressUtil.parse_address(value) & ((1 << size * 8) - 1)
                 vstr = struct.pack(d + fcode, value)
                 self.patch(addr, vstr, size)
                 addr += size
@@ -27380,7 +27534,7 @@ class PatchQwordCommand(PatchCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-e", dest="endian_reverse", action="store_true", help="reverse endian.")
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
-    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to patch.")
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address, help="the memory address you want to patch.")
     parser.add_argument("values", metavar="QWORD", nargs="*", help="the value you want to patch.")
     _syntax_ = parser.format_help()
 
@@ -27403,7 +27557,7 @@ class PatchDwordCommand(PatchCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-e", dest="endian_reverse", action="store_true", help="reverse endian.")
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
-    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to patch.")
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address, help="the memory address you want to patch.")
     parser.add_argument("values", metavar="DWORD", nargs="*", help="the value you want to patch.")
     _syntax_ = parser.format_help()
 
@@ -27426,7 +27580,7 @@ class PatchWordCommand(PatchCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-e", dest="endian_reverse", action="store_true", help="reverse endian.")
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
-    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to patch.")
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address, help="the memory address you want to patch.")
     parser.add_argument("values", metavar="WORD", nargs="*", help="the value you want to patch.")
     _syntax_ = parser.format_help()
 
@@ -27449,7 +27603,7 @@ class PatchByteCommand(PatchCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-e", dest="endian_reverse", action="store_true", help="reverse endian.")
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
-    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to patch.")
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address, help="the memory address you want to patch.")
     parser.add_argument("values", metavar="BYTE", nargs="*", help="the value you want to patch.")
     _syntax_ = parser.format_help()
 
@@ -27470,7 +27624,7 @@ class PatchStringCommand(PatchCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
-    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to patch.")
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address, help="the memory address you want to patch.")
     parser.add_argument("vstr", metavar='"double backslash-escaped string"', type=lambda x: codecs.escape_decode(x)[0],
                         help="the string you want to patch.")
     parser.add_argument("length", metavar="LENGTH", nargs="?",
@@ -27521,7 +27675,7 @@ class PatchHexCommand(PatchCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
-    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to patch.")
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address, help="the memory address you want to patch.")
     parser.add_argument("hstr", metavar='"hex-string"', type=lambda x: bytes.fromhex(x),
                         help="the string you want to patch.")
     parser.add_argument("length", metavar="LENGTH", nargs="?",
@@ -27573,7 +27727,7 @@ class PatchPatternCommand(PatchCommand):
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
     parser.add_argument("-c", "--charset", help="the charset of pattern. (default: abc..z)")
     parser.add_argument("-d", "--dry-run", action="store_true", help="only generates patterns.")
-    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the memory address you want to patch.")
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address, help="the memory address you want to patch.")
     parser.add_argument("length", metavar="LENGTH", type=lambda x: int(x, 0), help="the length of repeat. (default: %(default)s)")
     _syntax_ = parser.format_help()
 
@@ -27620,7 +27774,7 @@ class PatchNopCommand(PatchCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
-    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
                         help="the memory address you want to patch. (default: current_arch.pc)")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("-b", dest="byte_length", type=lambda x: int(x, 0),
@@ -27723,7 +27877,7 @@ class PatchInfloopCommand(PatchCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
-    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
                         help="the memory address you want to patch. (default: current_arch.pc)")
     _syntax_ = parser.format_help()
 
@@ -27796,7 +27950,7 @@ class PatchTrapCommand(PatchCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
-    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
                         help="the memory address you want to patch. (default: current_arch.pc)")
     _syntax_ = parser.format_help()
 
@@ -27865,7 +28019,7 @@ class PatchRetCommand(PatchCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
-    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
                         help="the memory address you want to patch. (default: current_arch.pc)")
     _syntax_ = parser.format_help()
 
@@ -27934,7 +28088,7 @@ class PatchSyscallCommand(PatchCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
-    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
                         help="the memory address you want to patch. (default: current_arch.pc)")
     _syntax_ = parser.format_help()
 
@@ -28103,137 +28257,6 @@ class PatchRevertCommand(PatchCommand):
         return
 
 
-@Cache.cache_this_session
-def get_dereference_from_blacklist():
-    return eval(get_gef_setting("dereference.blacklist")) or []
-
-
-@Cache.cache_until_next
-def dereference_from(addr, phys=False):
-    """Create dereference array."""
-
-    if not is_alive():
-        return [addr], None
-
-    recursion = get_gef_setting("dereference.max_recursion") or 4
-    blacklist = get_dereference_from_blacklist()
-    addr_list = []
-    error = None
-
-    while recursion > 0:
-        # check loop
-        if addr in addr_list:
-            if addr == 0 and len(addr_list) == 1:
-                # the case that address 0x0 is valid and first element is 0x0 (i.e. telescope 0x0).
-                # but no error because it is generally unnecessary information.
-                addr_list.append(addr) # use [0, 0] instead of [0]
-            else:
-                error = "[loop detected]"
-            break
-
-        # not loop
-        addr_list.append(addr)
-
-        # check blacklist
-        if any(bstart <= addr < bend for bstart, bend in blacklist):
-            error = "[blacklist detected]"
-            break
-
-        # check non-address
-        if len(addr_list) > 1 and addr < 0x100:
-            break
-
-        # goto next
-        if phys and len(addr_list) == 1:
-            mem = read_physmem(addr, current_arch.ptrsize)
-            unpack = u32 if current_arch.ptrsize == 4 else u64
-            addr = unpack(mem)
-        else:
-            try:
-                addr = read_int_from_memory(addr)
-            except gdb.MemoryError:
-                break
-        recursion -= 1
-
-    return addr_list, error
-
-
-@Cache.cache_until_next
-def to_string_dereference_from(value, skip_idx=0, phys=False):
-    """Create string from dereference array"""
-    string_color = get_gef_setting("theme.dereference_string")
-    nb_max_string_length = get_gef_setting("context.nb_max_string_length")
-    recursion = get_gef_setting("dereference.max_recursion") or 4
-
-    # dereference
-    addrs, error = dereference_from(value, phys=phys)
-
-    # if addrs has one element and it is address with error (e.g.: address_A -> [loop detected]),
-    # don't skip the element even if skip_idx=1
-    if skip_idx == 1:
-        if len(addrs) == 1:
-            if error == "[loop detected]":
-                skip_idx = 0
-
-    # add "..."
-    if error is None:
-        if addrs[-1] > 0x100 and is_valid_addr(addrs[-1]) and recursion > 1:
-            error = "..."
-
-    # replace to string if valid
-    def to_ascii(v):
-        s = ""
-        while v & 0xff: # \0
-            if chr(v & 0xff) in String.STRING_CHARSET:
-                s += chr(v & 0xff)
-            else:
-                return ""
-            v >>= 8
-        return s
-
-    last_elem = None
-    if error is None:
-        s = to_ascii(addrs[-1])
-        if len(s) < 2:
-            pass
-        elif 2 <= len(s) < current_arch.ptrsize:
-            fa = format_address(addrs[-1], long_fmt=True)
-            last_elem = "{:s} ({:s}?)".format(fa, Color.colorify(repr(s), string_color))
-            addrs = addrs[:-1]
-        else: # len(s) == current_arch.ptrsize
-            if len(addrs) >= 2 and is_valid_addr(addrs[-2]):
-                # read more string
-                s = read_cstring_from_memory(addrs[-2])
-                if s:
-                    fa = format_address(addrs[-1], long_fmt=True)
-                    if len(s) > nb_max_string_length:
-                        last_elem = "{:s} {:s}...".format(fa, Color.colorify(repr(s[:nb_max_string_length]), string_color))
-                    else:
-                        last_elem = "{:s} {:s}".format(fa, Color.colorify(repr(s), string_color))
-                    addrs = addrs[:-1]
-                else:
-                    # Ignore when the string that do not end with a null character
-                    pass
-            else:
-                # fallback
-                fa = format_address(addrs[-1], long_fmt=True)
-                last_elem = "{:s} ({:s}?)".format(fa, Color.colorify(repr(s), string_color))
-                addrs = addrs[:-1]
-
-    # others
-    msg = []
-    for addr in addrs[skip_idx:]:
-        address = ProcessMap.lookup_address(addr)
-        msg.append(address.long_fmt() + Symbol.get_symbol_string(addr))
-
-    if error:
-        msg.append(error)
-    elif last_elem:
-        msg.append(last_elem)
-
-    return " {:s} ".format(RIGHT_ARROW).join(msg)
-
-
 @register_command
 class DereferenceCommand(GenericCommand):
     """Dereference recursively from an address and display information."""
@@ -28243,7 +28266,7 @@ class DereferenceCommand(GenericCommand):
     _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
                         help="the memory address you want to dump. (default: current_arch.sp)")
     parser.add_argument("nb_lines", metavar="NB_LINES", nargs="?", type=lambda x: int(x, 0), default=0x40,
                         help="the count of lines. (default: %(default)s)")
@@ -28334,17 +28357,17 @@ class DereferenceCommand(GenericCommand):
         if is_x86_16():
             memalign_size = 2.5
 
-        current_address = align_address(addr + offset, memalign_size=memalign_size)
+        current_address = AddressUtil.align_address(addr + offset, memalign_size=memalign_size)
 
-        addrs, error = dereference_from(current_address, phys=phys)
+        addrs, error = AddressUtil.recursive_dereference(current_address, phys=phys)
         if len(addrs) == 1 and not error: # cannot access this area
             raise
 
         # create address link list
-        link = to_string_dereference_from(current_address, skip_idx=1, phys=phys)
+        link = AddressUtil.recursive_dereference_to_string(current_address, skip_idx=1, phys=phys)
 
         # create line of one entry
-        addr_colored = Color.colorify(format_address(addrs[0], memalign_size=memalign_size), base_address_color)
+        addr_colored = Color.colorify(AddressUtil.format_address(addrs[0], memalign_size=memalign_size), base_address_color)
         if tag:
             line = f"{addr_colored}{VERTICAL_LINE}{offset:+#07x}{VERTICAL_LINE}{idx:+04d}: {tag:s}: {link:{memalign * 2 + 2}s}"
         else:
@@ -28773,7 +28796,7 @@ class CommentAddCommand(CommentCommand):
     _aliases_ = ["comment set"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the address for comment.")
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address, help="the address for comment.")
     parser.add_argument("comment", metavar="COMMENT", help="the comment to print when hit.")
     _syntax_ = parser.format_help()
 
@@ -28815,7 +28838,7 @@ class CommentRemoveCommand(CommentCommand):
     _aliases_ = ["comment del", "comment unset", "comment rm"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="the address for comment.")
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address, help="the address for comment.")
     parser.add_argument("index", metavar="INDEX", nargs="?", type=int,
                         help="the index of comment to remove. If omitted, all comments for that address will be deleted.")
     _syntax_ = parser.format_help()
@@ -28911,7 +28934,7 @@ class VMMapCommand(GenericCommand):
             self.show_legend()
 
         headers = ["Start", "End", "Size", "Offset", "Perm", "Path"]
-        memalign_size = 8 if args.outer else get_memory_alignment()
+        memalign_size = 8 if args.outer else AddressUtil.get_memory_alignment()
         legend = "{:{w}s} {:{w}s} {:{w}s} {:{w}s} {:4s} {:s}".format(*headers, w=memalign_size * 2 + 2)
         self.out.append(Color.colorify(legend, get_gef_setting("theme.table_heading")))
 
@@ -28958,12 +28981,13 @@ class VMMapCommand(GenericCommand):
             line_color += " " + get_gef_setting("theme.address_rwx")
 
         lines = []
-        # if qemu-xxx(32bit arch) runs on x86-64 machine, memalign_size does not match get_memory_alignment()
+        # if qemu-xxx(32bit arch) runs on x86-64 machine, memalign_size does not match
+        # AddressUtil.get_memory_alignment()
         memalign_size = 8 if outer else None
-        lines.append(Color.colorify(format_address(entry.page_start, memalign_size, long_fmt=True), line_color))
-        lines.append(Color.colorify(format_address(entry.page_end, memalign_size, long_fmt=True), line_color))
-        lines.append(Color.colorify(format_address(entry.size, memalign_size, long_fmt=True), line_color))
-        lines.append(Color.colorify(format_address(entry.offset, memalign_size, long_fmt=True), line_color))
+        lines.append(Color.colorify(AddressUtil.format_address(entry.page_start, memalign_size, long_fmt=True), line_color))
+        lines.append(Color.colorify(AddressUtil.format_address(entry.page_end, memalign_size, long_fmt=True), line_color))
+        lines.append(Color.colorify(AddressUtil.format_address(entry.size, memalign_size, long_fmt=True), line_color))
+        lines.append(Color.colorify(AddressUtil.format_address(entry.offset, memalign_size, long_fmt=True), line_color))
         lines.append(Color.colorify(str(entry.permission), line_color))
         lines.append(Color.colorify(entry.path, line_color))
         line = " ".join(lines)
@@ -29022,7 +29046,7 @@ class XFilesCommand(GenericCommand):
         self.dont_repeat()
 
         headers = ["Start", "End", "Name", "File"]
-        width = get_format_address_width()
+        width = AddressUtil.get_format_address_width()
         legend = "{:{w:d}s} {:{w:d}s} {:<21s} {:s}".format(*headers, w=width)
         gef_print(Color.colorify(legend, get_gef_setting("theme.table_heading")))
 
@@ -29051,7 +29075,7 @@ class XInfoCommand(GenericCommand):
     _category_ = "02-c. Process Information - Memory/Section"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", nargs="*", type=parse_address,
+    parser.add_argument("location", metavar="LOCATION", nargs="*", type=AddressUtil.parse_address,
                         help="the memory address to show the information. (default: current_arch.pc)")
     _syntax_ = parser.format_help()
 
@@ -29171,9 +29195,9 @@ class XorMemoryDisplayCommand(GenericCommand):
     _category_ = "03-d. Memory - Calculation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", type=parse_address,
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
                         help="the address of data you want to xor.")
-    parser.add_argument("size", metavar="SIZE", type=parse_address,
+    parser.add_argument("size", metavar="SIZE", type=AddressUtil.parse_address,
                         help="the size of data you want to xor.")
     parser.add_argument("key", metavar="KEY", type=lambda x: bytes.fromhex(x),
                         help="the data you want to xor as key.")
@@ -29215,9 +29239,9 @@ class XorMemoryPatchCommand(GenericCommand):
     _category_ = "03-d. Memory - Calculation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", type=parse_address,
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
                         help="the address of data you want to xor.")
-    parser.add_argument("size", metavar="SIZE", type=parse_address,
+    parser.add_argument("size", metavar="SIZE", type=AddressUtil.parse_address,
                         help="the size of data you want to xor.")
     parser.add_argument("key", metavar="KEY", type=lambda x: bytes.fromhex(x),
                         help="the data you want to xor as key.")
@@ -29282,7 +29306,7 @@ class PatternCreateCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-c", "--charset", help="the charset of pattern. (default: abc..z)")
-    parser.add_argument("size", metavar="SIZE", type=parse_address, nargs="?", help="the size of pattern. (default: 1024)")
+    parser.add_argument("size", metavar="SIZE", type=AddressUtil.parse_address, nargs="?", help="the size of pattern. (default: 1024)")
     _syntax_ = parser.format_help()
 
     @staticmethod
@@ -29316,7 +29340,7 @@ class PatternCreateCommand(GenericCommand):
         elif isinstance(charset, str):
             charset = String.str2bytes(charset)
 
-        cycle = get_memory_alignment()
+        cycle = AddressUtil.get_memory_alignment()
         return bytearray(itertools.islice(PatternCreateCommand.de_bruijn(charset, cycle), length))
 
     @parse_args
@@ -29345,7 +29369,7 @@ class PatternSearchCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-c", "--charset", help="the charset of pattern. (default: abc..z)")
     parser.add_argument("pattern", metavar="PATTERN", help="the pattern you want to offset search.")
-    parser.add_argument("size", metavar="SIZE", type=parse_address, nargs="?", help="the size of pattern. (default: 0x10000)")
+    parser.add_argument("size", metavar="SIZE", type=AddressUtil.parse_address, nargs="?", help="the size of pattern. (default: 0x10000)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $pc\n".format(_cmdline_)
@@ -29398,7 +29422,7 @@ class PatternSearchCommand(GenericCommand):
 
         # 1. check if it's a symbol (like "$sp")
         try:
-            address = parse_address(args.pattern)
+            address = AddressUtil.parse_address(args.pattern)
             value = read_int_from_memory(address)
             self.search("As symbol (with dereference)", cyclic_pattern, pack(value))
         except gdb.error:
@@ -29406,7 +29430,7 @@ class PatternSearchCommand(GenericCommand):
 
         # 2. check if it's a not symbol, but value (like "0x1337")
         try:
-            value = parse_address(args.pattern)
+            value = AddressUtil.parse_address(args.pattern)
             self.search("As value (without dereference)", cyclic_pattern, pack(value))
         except gdb.error:
             pass
@@ -29425,7 +29449,7 @@ class SigreturnCommand(GenericCommand):
     _category_ = "03-b. Memory - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
                         help="the address you want to interpret as the beginning of a sigframe. (default: current_arch.sp)")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
@@ -29915,8 +29939,8 @@ class LinkMapCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("-e", dest="elf_address", type=parse_address, help="the elf address you want to parse.")
-    group.add_argument("-l", dest="link_map_address", type=parse_address, help="the link_map address you want to parse.")
+    group.add_argument("-e", dest="elf_address", type=AddressUtil.parse_address, help="the elf address you want to parse.")
+    group.add_argument("-l", dest="link_map_address", type=AddressUtil.parse_address, help="the link_map address you want to parse.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
@@ -30115,9 +30139,9 @@ class DynamicCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group()
     group.add_argument("-f", dest="filename", help="the filename you want to parse.")
-    group.add_argument("-e", dest="elf_address", type=parse_address, help="the elf address you want to parse.")
-    group.add_argument("-d", dest="dynamic_address", type=parse_address, help="the dynamic address you want to parse.")
-    parser.add_argument("--size", dest="dynamic_size", type=parse_address,
+    group.add_argument("-e", dest="elf_address", type=AddressUtil.parse_address, help="the elf address you want to parse.")
+    group.add_argument("-d", dest="dynamic_address", type=AddressUtil.parse_address, help="the dynamic address you want to parse.")
+    parser.add_argument("--size", dest="dynamic_size", type=AddressUtil.parse_address,
                         help="use specified size of dynamic region.")
     _syntax_ = parser.format_help()
 
@@ -30299,7 +30323,7 @@ class DynamicCommand(GenericCommand):
             info("_DYNAMIC is not found.")
             return
 
-        width = get_format_address_width()
+        width = AddressUtil.get_format_address_width()
 
         fmt = "{:{:d}s}  {:{:d}s} {:{:d}s}     {:s}"
         legend = ["address", width, "tag", width, "value", width, "tag_name"]
@@ -30417,7 +30441,7 @@ class DestructorDumpCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-r", "--remote", action="store_true", help="parse remote binary if download feature is available.")
     parser.add_argument("-f", "--file", help="the file path you want to parse.")
-    parser.add_argument("--tdl", type=parse_address, help="specify the offset of `tls_dtor_list` from TLS base.")
+    parser.add_argument("--tdl", type=AddressUtil.parse_address, help="specify the offset of `tls_dtor_list` from TLS base.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}\n".format(_cmdline_)
@@ -30426,7 +30450,7 @@ class DestructorDumpCommand(GenericCommand):
 
     def C(self, addr):
         base_address_color = get_gef_setting("theme.dereference_base_address")
-        a = Color.colorify("{:#0{:d}x}".format(addr, get_format_address_width()), base_address_color)
+        a = Color.colorify("{:#0{:d}x}".format(addr, AddressUtil.get_format_address_width()), base_address_color)
         try:
             b = "[{!s}]".format(ProcessMap.lookup_address(addr).section.permission)
             return a + b
@@ -30704,12 +30728,12 @@ class DestructorDumpCommand(GenericCommand):
 
         # user specified
         if offset_tls_dtor_list:
-            tls_dtor_list = align_address(current_arch.get_tls() + offset_tls_dtor_list)
+            tls_dtor_list = AddressUtil.align_address(current_arch.get_tls() + offset_tls_dtor_list)
 
         # method 1 (directly)
         if tls_dtor_list is None:
             try:
-                tls_dtor_list = parse_address("&tls_dtor_list")
+                tls_dtor_list = AddressUtil.parse_address("&tls_dtor_list")
                 if not is_valid_addr(tls_dtor_list):
                     tls_dtor_list = None
             except gdb.error:
@@ -30781,7 +30805,7 @@ class DestructorDumpCommand(GenericCommand):
 
     def dump_exit_funcs(self, name):
         try:
-            head_p = parse_address("&" + name)
+            head_p = AddressUtil.parse_address("&" + name)
         except gdb.error:
             err("Not found symbol ({:s})".format(name))
             return
@@ -30817,7 +30841,7 @@ class DestructorDumpCommand(GenericCommand):
         fns_size = ptrsize * 4 # flavor, fn, arg, dso_handle
 
         for i in range(idx.value, -1, -1):
-            addr = align_address(current + fns_size * i)
+            addr = AddressUtil.align_address(current + fns_size * i)
             try:
                 flavor, fn, arg, dso_handle = read_fns(addr)
             except gdb.MemoryError:
@@ -30972,7 +30996,7 @@ class DestructorDumpCommand(GenericCommand):
                 return
 
             entries = []
-            vend = (1 << get_memory_alignment(in_bits=True)) - 1
+            vend = (1 << AddressUtil.get_memory_alignment(in_bits=True)) - 1
             for i in range(shdr.sh_size // current_arch.ptrsize):
                 addr = shdr.sh_addr + current_arch.ptrsize * i
                 func = read_int_from_memory(addr)
@@ -31099,7 +31123,7 @@ class GotCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-f", "--file", help="the filename you want to parse.")
-    parser.add_argument("-e", "--elf-address", type=parse_address, help="the elf address you want to parse.")
+    parser.add_argument("-e", "--elf-address", type=AddressUtil.parse_address, help="the elf address you want to parse.")
     parser.add_argument("-r", "--remote", action="store_true", help="parse remote binary if download feature is available.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
@@ -31265,7 +31289,7 @@ class GotCommand(GenericCommand):
         return ""
 
     def parse_plt_got(self):
-        width = get_format_address_width()
+        width = AddressUtil.get_format_address_width()
 
         # retrieve jump slots using readelf
         jmpslots = self.get_jmp_slots()
@@ -31733,7 +31757,7 @@ class FormatStringSearchCommand(GenericCommand):
         bp_count = 0
         for func_name, num_arg in dangerous_functions.items():
             try:
-                parse_address(func_name)
+                AddressUtil.parse_address(func_name)
             except gdb.error:
                 continue
             gef_print(func_name + ": ", end="")
@@ -31779,7 +31803,7 @@ class TraceMallocRetBreakpoint(gdb.FinishBreakpoint):
         if self.return_value:
             loc = int(self.return_value)
         else:
-            loc = parse_address(current_arch.return_register)
+            loc = AddressUtil.parse_address(current_arch.return_register)
 
         ok("{:s} - {:s}({:#6x})={:#x}".format(Color.colorify("Heap-Analysis", "bold yellow"), self.name, self.size, loc))
         check_heap_overlap = get_gef_setting("heap_analysis_helper.check_heap_overlap")
@@ -31809,7 +31833,7 @@ class TraceMallocRetBreakpoint(gdb.FinishBreakpoint):
         if check_heap_overlap:
             # seek all the currently allocated chunks, read their effective size and check for overlap
             msg = []
-            align = get_memory_alignment()
+            align = AddressUtil.get_memory_alignment()
             for chunk_addr, _ in HeapAnalysisCommand.heap_allocated_list:
                 current_chunk = GlibcHeap.GlibcChunk(chunk_addr)
                 current_chunk_size = current_chunk.get_chunk_size()
@@ -31867,7 +31891,7 @@ class TraceReallocRetBreakpoint(gdb.FinishBreakpoint):
         if self.return_value:
             newloc = int(self.return_value)
         else:
-            newloc = parse_address(current_arch.return_register)
+            newloc = AddressUtil.parse_address(current_arch.return_register)
 
         if self.ptr == 0:
             msg = Color.yellowify("{:#x} (return new chunk)".format(newloc))
@@ -45378,7 +45402,7 @@ class SyscallArgsCommand(GenericCommand):
         for name, register, value in zip(args, arg_regs, values):
             line = "    {:<20} {:<20} ".format(name, register)
             if value is not None:
-                line += to_string_dereference_from(value)
+                line += AddressUtil.recursive_dereference_to_string(value)
             gef_print(line)
         return
 
@@ -45515,7 +45539,7 @@ class HeapbaseCommand(GenericCommand):
         if is_x86():
             try:
                 # symbol and type are defined
-                Cache.cached_heap_base = parse_address("mp_->sbrk_base")
+                Cache.cached_heap_base = AddressUtil.parse_address("mp_->sbrk_base")
                 return Cache.cached_heap_base
             except gdb.error:
                 pass
@@ -45734,7 +45758,7 @@ class MagicCommand(GenericCommand):
         if not self.should_be_print(sym):
             return
 
-        width = get_format_address_width()
+        width = AddressUtil.get_format_address_width()
         try:
             addr = int(gdb.parse_and_eval(f"&{sym}"))
             addr = ProcessMap.lookup_address(addr)
@@ -45779,7 +45803,7 @@ class MagicCommand(GenericCommand):
 
         gef_print(titlify("Legend"))
         fmt = "{:45s} {:{:d}s} {:5s} (+{:10s}) -> {:{:d}s}"
-        width = get_format_address_width()
+        width = AddressUtil.get_format_address_width()
         legend = ["symbol", "addr", width, "perm", "offset", "val", width]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
@@ -45938,7 +45962,7 @@ class KernelMagicCommand(GenericCommand):
         if not self.should_be_print(sym):
             return
 
-        width = get_format_address_width()
+        width = AddressUtil.get_format_address_width()
         if external_func:
             addr = external_func()
             if addr is None:
@@ -45994,7 +46018,7 @@ class KernelMagicCommand(GenericCommand):
 
         gef_print(titlify("Legend"))
         fmt = "{:42s} {:{:d}s} {:5s} (+{:10s}) -> {:{:d}s}"
-        width = get_format_address_width()
+        width = AddressUtil.get_format_address_width()
         legend = ["symbol", "addr", width, "perm", "offset", "val", width]
         gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
 
@@ -47039,7 +47063,7 @@ class ErrnoCommand(GenericCommand):
                 warn("No debugging session active")
                 return
             try:
-                val = parse_address("*__errno_location()")
+                val = AddressUtil.parse_address("*__errno_location()")
             except Exception:
                 err("Failed to get *__errno_location()")
                 return
@@ -47119,7 +47143,7 @@ class FindFakeFastCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--include-heap", action="store_true", help="heap is also included in the search target.")
     parser.add_argument("--aligned", action="store_true", help="search only aligned chunks.")
-    parser.add_argument("size", metavar="SIZE", type=parse_address, help="search target size.")
+    parser.add_argument("size", metavar="SIZE", type=AddressUtil.parse_address, help="search target size.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
@@ -47221,11 +47245,11 @@ class VisualHeapCommand(GenericCommand):
     _category_ = "06-a. Heap - Glibc"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
                         help="the address you want to interpret as the beginning of a contiguous chunk. (default: arena.heap_base)")
-    parser.add_argument("-a", dest="arena_addr", type=parse_address,
+    parser.add_argument("-a", dest="arena_addr", type=AddressUtil.parse_address,
                         help="the address or number you want to interpret as an arena. (default: main_arena)")
-    parser.add_argument("-c", dest="max_count", type=parse_address,
+    parser.add_argument("-c", dest="max_count", type=AddressUtil.parse_address,
                         help="Maximum count to parse. It is used when there is a very large amount of chunks.")
     parser.add_argument("-f", "--full", action="store_true", help="display the same line without omitting.")
     parser.add_argument("-d", "--dark-color", action="store_true", help="use the dark color if chunk is allocated.")
@@ -47425,9 +47449,9 @@ class DistanceCommand(GenericCommand):
     _category_ = "09-f. Misc - Calculation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("address_a", metavar="ADDRESS_A", type=parse_address,
+    parser.add_argument("address_a", metavar="ADDRESS_A", type=AddressUtil.parse_address,
                         help="the address you want to calculate the offset as (A - base_addr_of(A)).")
-    parser.add_argument("address_b", metavar="ADDRESS_B", type=parse_address, nargs="?",
+    parser.add_argument("address_b", metavar="ADDRESS_B", type=AddressUtil.parse_address, nargs="?",
                         help="the address you want to calculate the offset as abs(A - B).")
     _syntax_ = parser.format_help()
 
@@ -47554,7 +47578,7 @@ class UnsignedCommand(GenericCommand):
     _aliases_ = ["us", "signed"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("value", metavar="VALUE", type=parse_address, help="the value you want to convert.")
+    parser.add_argument("value", metavar="VALUE", type=AddressUtil.parse_address, help="the value you want to convert.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} -- -0xa0".format(_cmdline_)
@@ -48017,8 +48041,8 @@ class KernelAddressHeuristicFinderUtil:
             m = re.search(regexp, line)
             if not m:
                 continue
-            v = align_address(int(m.group(1), 16))
-            if not skip_msb_check and not is_msb_on(v):
+            v = AddressUtil.align_address(int(m.group(1), 16))
+            if not skip_msb_check and not AddressUtil.is_msb_on(v):
                 continue
             if read_valid and not is_valid_addr_addr(v): # not is_valid_addr, but is_valid_addr_addr
                 continue
@@ -48112,8 +48136,8 @@ class KernelAddressHeuristicFinderUtil:
                 srcreg = m.group(1)
                 v = int(m.group(2), 0)
                 if srcreg in bases:
-                    w = align_address(bases[srcreg] + v)
-                    if not skip_msb_check and not is_msb_on(w):
+                    w = AddressUtil.align_address(bases[srcreg] + v)
+                    if not skip_msb_check and not AddressUtil.is_msb_on(w):
                         continue
                     if read_valid and not is_valid_addr_addr(w):
                         continue
@@ -48137,8 +48161,8 @@ class KernelAddressHeuristicFinderUtil:
                 srcreg = m.group(2)
                 v = int(m.group(3), 16)
                 if srcreg in bases:
-                    w = align_address(bases[srcreg] + v)
-                    if not skip_msb_check and not is_msb_on(w):
+                    w = AddressUtil.align_address(bases[srcreg] + v)
+                    if not skip_msb_check and not AddressUtil.is_msb_on(w):
                         continue
                     if read_valid and not is_valid_addr_addr(w):
                         continue
@@ -48164,8 +48188,8 @@ class KernelAddressHeuristicFinderUtil:
                 srcreg = m.group(2)
                 v = int(m.group(3), 16)
                 if srcreg in add1time:
-                    w = align_address(add1time[srcreg] + v)
-                    if not skip_msb_check or is_msb_on(w):
+                    w = AddressUtil.align_address(add1time[srcreg] + v)
+                    if not skip_msb_check or AddressUtil.is_msb_on(w):
                         if not read_valid or is_valid_addr_addr(w):
                             if skip <= 0:
                                 yield w
@@ -48198,8 +48222,8 @@ class KernelAddressHeuristicFinderUtil:
                 srcreg = m.group(1)
                 v = int(m.group(2), 0)
                 if srcreg in add1time:
-                    w = align_address(add1time[srcreg] + v)
-                    if not skip_msb_check and not is_msb_on(w):
+                    w = AddressUtil.align_address(add1time[srcreg] + v)
+                    if not skip_msb_check and not AddressUtil.is_msb_on(w):
                         continue
                     if read_valid and not is_valid_addr_addr(w):
                         continue
@@ -48223,8 +48247,8 @@ class KernelAddressHeuristicFinderUtil:
                 reg = m.group(1)
                 v = int(m.group(2), 16) << 16
                 if reg in bases:
-                    w = align_address(bases[reg] + v)
-                    if not skip_msb_check and not is_msb_on(w):
+                    w = AddressUtil.align_address(bases[reg] + v)
+                    if not skip_msb_check and not AddressUtil.is_msb_on(w):
                         continue
                     if read_valid and not is_valid_addr_addr(w):
                         continue
@@ -48256,8 +48280,8 @@ class KernelAddressHeuristicFinderUtil:
                 reg = m.group(1)
                 v = int(m.group(2), 0)
                 if reg in add1time:
-                    w = align_address(add1time[reg] + v)
-                    if not skip_msb_check and not is_msb_on(w):
+                    w = AddressUtil.align_address(add1time[reg] + v)
+                    if not skip_msb_check and not AddressUtil.is_msb_on(w):
                         continue
                     if read_valid and not is_valid_addr_addr(w):
                         continue
@@ -48289,8 +48313,8 @@ class KernelAddressHeuristicFinderUtil:
                 reg = m.group(1)
                 v = int(m.group(2), 0)
                 if reg in add1time:
-                    w = align_address(add1time[reg] + v)
-                    if not skip_msb_check and not is_msb_on(w):
+                    w = AddressUtil.align_address(add1time[reg] + v)
+                    if not skip_msb_check and not AddressUtil.is_msb_on(w):
                         continue
                     if read_valid and not is_valid_addr_addr(w):
                         continue
@@ -48309,8 +48333,8 @@ class KernelAddressHeuristicFinderUtil:
         for line in res.splitlines():
             m = re.search(r"ldr\s+\w+,\s*\[pc,\s*#(\d+)\]", line)
             if m:
-                ofs = align_address(int(m.group(1), 0))
-                pos = align_address(int(line.split()[0].replace(":", ""), 16))
+                ofs = AddressUtil.align_address(int(m.group(1), 0))
+                pos = AddressUtil.align_address(int(line.split()[0].replace(":", ""), 16))
                 v = read_int_from_memory(pos + 4 * 2 + ofs)
                 if is_valid_addr(v):
                     if skip <= 0:
@@ -48319,7 +48343,7 @@ class KernelAddressHeuristicFinderUtil:
                     continue
             m = re.search(r"ldr\s+\w+,\s*\[pc\]", line)
             if m:
-                pos = align_address(int(line.split()[0].replace(":", ""), 16))
+                pos = AddressUtil.align_address(int(line.split()[0].replace(":", ""), 16))
                 v = read_int_from_memory(pos + 4 * 2)
                 if is_valid_addr(v):
                     if read_valid and not is_valid_addr_addr(v):
@@ -48336,17 +48360,17 @@ class KernelAddressHeuristicFinderUtil:
             m = re.search(r"ldr\s+(\w+),\s*\[pc,\s*#(\d+)\]", line)
             if m:
                 reg = m.group(1)
-                ofs = align_address(int(m.group(2), 0))
-                pos = align_address(int(line.split()[0].replace(":", ""), 16))
+                ofs = AddressUtil.align_address(int(m.group(2), 0))
+                pos = AddressUtil.align_address(int(line.split()[0].replace(":", ""), 16))
                 v = read_int_from_memory(pos + 4 * 2 + ofs)
                 bases[reg] = v
                 continue
             m = re.search(r"ldr\s+\w+,\s*\[(\w+),\s*#(\d*)\]", line)
             if m:
                 reg = m.group(1)
-                ofs = align_address(int(m.group(2), 0))
+                ofs = AddressUtil.align_address(int(m.group(2), 0))
                 if reg in bases:
-                    w = align_address(bases[reg] + ofs)
+                    w = AddressUtil.align_address(bases[reg] + ofs)
                     if skip <= 0:
                         yield w
                     skip -= 1
@@ -48355,7 +48379,7 @@ class KernelAddressHeuristicFinderUtil:
             if m:
                 reg = m.group(1)
                 if reg in bases:
-                    w = align_address(bases[reg])
+                    w = AddressUtil.align_address(bases[reg])
                     if read_valid and not is_valid_addr_addr(w):
                         continue
                     if skip <= 0:
@@ -48596,7 +48620,7 @@ class KernelAddressHeuristicFinder:
             current = KernelAddressHeuristicFinder.get_current_task_for_current_thread()
         elif is_x86_64() or is_x86_32():
             current_task = KernelAddressHeuristicFinder.get_current_task()
-            if current_task and is_msb_on(current_task):
+            if current_task and AddressUtil.is_msb_on(current_task):
                 # no __per_cpu_offset
                 current = read_int_from_memory(current_task)
             else:
@@ -49497,16 +49521,16 @@ class KernelAddressHeuristicFinder:
         # calc VMEMMAP_START
         kversion = KernelVersionCommand.kernel_version()
         if kversion < "5.4":
-            PAGE_OFFSET = align_address(0xffffffffffffffff - (1 << (VA_BITS - 1)) + 1)
+            PAGE_OFFSET = AddressUtil.align_address(0xffffffffffffffff - (1 << (VA_BITS - 1)) + 1)
             VMEMMAP_SIZE = 1 << (VA_BITS - PAGE_SHIFT - 1 + STRUCT_PAGE_MAX_SHIFT)
             VMEMMAP_START = PAGE_OFFSET - VMEMMAP_SIZE
         elif kversion < "5.12":
-            PAGE_OFFSET = align_address(-(1 << VA_BITS))
+            PAGE_OFFSET = AddressUtil.align_address(-(1 << VA_BITS))
             PAGE_END = lambda va: -(1 << ((va) - 1))
             VMEMMAP_SIZE = ((PAGE_END(VA_BITS_MIN) - PAGE_OFFSET) >> (PAGE_SHIFT - STRUCT_PAGE_MAX_SHIFT))
             VMEMMAP_START = (-VMEMMAP_SIZE - 0x00200000) & 0xffffffffffffffff
         else: # v5.12~
-            PAGE_OFFSET = align_address(-(1 << VA_BITS))
+            PAGE_OFFSET = AddressUtil.align_address(-(1 << VA_BITS))
             VMEMMAP_SHIFT = PAGE_SHIFT - STRUCT_PAGE_MAX_SHIFT
             VMEMMAP_START = -(1 << (VA_BITS - VMEMMAP_SHIFT)) & 0xffffffffffffffff
         return VMEMMAP_START, PAGE_OFFSET
@@ -50941,7 +50965,7 @@ class KernelAddressHeuristicFinder:
             elif kversion >= "5.2":
                 offset_list = current_arch.ptrsize * 7 # offsetof(struct vmap_area, list)
 
-            bits = get_memory_alignment(in_bits=True)
+            bits = AddressUtil.get_memory_alignment(in_bits=True)
             vend = (1 << bits) - 1
 
             if is_x86():
@@ -52442,7 +52466,7 @@ class KernelTaskCommand(GenericCommand):
         };
         """
         kversion = KernelVersionCommand.kernel_version()
-        offset_stack_canary = align_address_to_size(offset_pid + 4 + 4, current_arch.ptrsize)
+        offset_stack_canary = AddressUtil.align_address_to_size(offset_pid + 4 + 4, current_arch.ptrsize)
         found = True
         for task in task_addrs:
             v1 = read_int_from_memory(task + offset_stack_canary)
@@ -52480,7 +52504,7 @@ class KernelTaskCommand(GenericCommand):
         };
         """
         if offset_kcanary is None:
-            offset_real_parent = align_address_to_size(offset_pid + 4 + 4, current_arch.ptrsize)
+            offset_real_parent = AddressUtil.align_address_to_size(offset_pid + 4 + 4, current_arch.ptrsize)
         else:
             offset_real_parent = offset_kcanary + current_arch.ptrsize
         offset_group_leader = offset_real_parent + current_arch.ptrsize * (1 + 1 + 2 + 2)
@@ -52606,7 +52630,7 @@ class KernelTaskCommand(GenericCommand):
             ...
         };
         """
-        MAX_FDS_DEFAULT = get_memory_alignment(in_bits=True)
+        MAX_FDS_DEFAULT = AddressUtil.get_memory_alignment(in_bits=True)
         files = read_int_from_memory(task_addrs[0] + offset_files)
         for i in range(0x100):
             v = read_int_from_memory(files + current_arch.ptrsize * i)
@@ -54055,9 +54079,13 @@ class KernelTaskCommand(GenericCommand):
                     for k, v in regs.items():
                         if k in syscall_nr_regs and v in syscall_table:
                             syscall_name = syscall_table[v].name
-                            out.append("{:16s}: {:s} ({:s})".format(k, format_address(v, long_fmt=True), syscall_name))
+                            out.append("{:16s}: {:s} ({:s})".format(
+                                k, AddressUtil.format_address(v, long_fmt=True), syscall_name,
+                            ))
                         else:
-                            out.append("{:16s}: {:s}".format(k, format_address(v, long_fmt=True)))
+                            out.append("{:16s}: {:s}".format(
+                                k, AddressUtil.format_address(v, long_fmt=True,
+                            )))
                     if not args.print_fd:
                         out.append(titlify(""))
 
@@ -56439,7 +56467,7 @@ class KernelOperationsCommand(GenericCommand):
     ]
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("mode", choices=types, help="the structure type.")
-    parser.add_argument("address", metavar="ADDRESS", nargs="?", type=parse_address,
+    parser.add_argument("address", metavar="ADDRESS", nargs="?", type=AddressUtil.parse_address,
                         help="the address interpreted as ops.")
     parser.add_argument("-V", "--version", help="use specific kernel version")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
@@ -56896,7 +56924,7 @@ class KernelOperationsCommand(GenericCommand):
                 fmt = "{:5s} {:<10s} {:<20s} {:s}"
                 legend = ["Index", "Type", "Name", "Value"]
                 self.out.append(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
-            width = get_format_address_width()
+            width = AddressUtil.get_format_address_width()
             for idx, ((type, name), address) in enumerate(zip(members, addrs)):
                 if type == "char*":
                     sym = " {!r}".format(read_cstring_from_memory(address))
@@ -57892,7 +57920,7 @@ class KernelClockSourceCommand(GenericCommand):
             info("offsetof(clocksource, list): {:#x}".format(offset_list))
 
         self.out = []
-        width = get_format_address_width()
+        width = AddressUtil.get_format_address_width()
         if not args.quiet:
             fmt = "{:<{:d}s} {:20s} {:<{:d}s}"
             legend = ["address", width, "name", "read", width]
@@ -57996,7 +58024,7 @@ class KernelTimerCommand(GenericCommand):
         if self.cpu_offset == []:
             self.per_cpu_timer_bases = [self.timer_bases]
         else:
-            self.per_cpu_timer_bases = [align_address(x + self.timer_bases) for x in self.cpu_offset]
+            self.per_cpu_timer_bases = [AddressUtil.align_address(x + self.timer_bases) for x in self.cpu_offset]
 
         # len(timer_bases)
         if Symbol.get_ksymaddr("sysctl_timer_migration"):
@@ -58061,7 +58089,7 @@ class KernelTimerCommand(GenericCommand):
         if self.cpu_offset == []:
             self.per_cpu_hrtimer_cpu_bases = [self.hrtimer_bases]
         else:
-            self.per_cpu_hrtimer_cpu_bases = [align_address(x + self.hrtimer_bases) for x in self.cpu_offset]
+            self.per_cpu_hrtimer_cpu_bases = [AddressUtil.align_address(x + self.hrtimer_bases) for x in self.cpu_offset]
 
         """
         struct hrtimer_cpu_base {
@@ -58966,7 +58994,7 @@ class KernelSearchCodePtrCommand(GenericCommand):
 
         for offset in range(0, max_range + current_arch.ptrsize, current_arch.ptrsize):
             # align to 32bit / 64bit
-            cur = align_address(addr + offset)
+            cur = AddressUtil.align_address(addr + offset)
             # is aligned?
             if cur & 0x7 != 0:
                 continue
@@ -59440,9 +59468,9 @@ class StringsCommand(GenericCommand):
     _aliases_ = ["ascii-search"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", type=parse_address,
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
                         help="the location you want to search from.")
-    parser.add_argument("end_location", metavar="END_LOCATION", type=parse_address, nargs="?",
+    parser.add_argument("end_location", metavar="END_LOCATION", type=AddressUtil.parse_address, nargs="?",
                         help="the end location you want to search from. (default: 64)")
     parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP include filter.")
     parser.add_argument("-e", "--exclude", action="append", type=re.compile, default=[], help="REGEXP exclude filter.")
@@ -59642,7 +59670,7 @@ class SyscallTableViewCommand(GenericCommand):
                         is_valid = False
                     elif insn2.mnemonic == "jmp":
                         try:
-                            insn3 = get_insn(parse_address(insn2.operands[-1]))
+                            insn3 = get_insn(AddressUtil.parse_address(insn2.operands[-1]))
                             if insn3 and insn3.mnemonic == "ret":
                                 is_valid = False
                         except (gdb.error, ValueError):
@@ -59665,7 +59693,7 @@ class SyscallTableViewCommand(GenericCommand):
 
         # It maintains the cache both when running with and without symbols.
         try:
-            parse_address("_stext")
+            AddressUtil.parse_address("_stext")
             tag = "symboled_" + orig_tag
         except gdb.error:
             tag = orig_tag
@@ -60802,10 +60830,10 @@ class MemoryCompareCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--phys1", action="store_true", help="treat LOCATION1 as a physical address.")
-    parser.add_argument("location1", metavar="LOCATION1", type=parse_address, help="first address for comparison.")
+    parser.add_argument("location1", metavar="LOCATION1", type=AddressUtil.parse_address, help="first address for comparison.")
     parser.add_argument("--phys2", action="store_true", help="treat LOCATION2 as a physical address.")
-    parser.add_argument("location2", metavar="LOCATION2", type=parse_address, help="second address for comparison.")
-    parser.add_argument("size", metavar="SIZE", type=parse_address, help="the size for comparison.")
+    parser.add_argument("location2", metavar="LOCATION2", type=AddressUtil.parse_address, help="second address for comparison.")
+    parser.add_argument("size", metavar="SIZE", type=AddressUtil.parse_address, help="the size for comparison.")
     parser.add_argument("-f", "--full", action="store_true", help="display the same line without omitting.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
@@ -60904,9 +60932,9 @@ class MemorySetCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--phys", action="store_true", help="treat TO_ADDRESS as a physical address.")
-    parser.add_argument("to_addr", metavar="TO_ADDRESS", type=parse_address, help="destination of memset.")
-    parser.add_argument("value", metavar="VALUE", type=parse_address, help="the value to write.")
-    parser.add_argument("size", metavar="SIZE", type=parse_address, help="the size for memset.")
+    parser.add_argument("to_addr", metavar="TO_ADDRESS", type=AddressUtil.parse_address, help="destination of memset.")
+    parser.add_argument("value", metavar="VALUE", type=AddressUtil.parse_address, help="the value to write.")
+    parser.add_argument("size", metavar="SIZE", type=AddressUtil.parse_address, help="the size for memset.")
     _syntax_ = parser.format_help()
 
     _note_ = "If you want to specify a large value for `VALUE`, use the `patch string` command."
@@ -60963,10 +60991,10 @@ class MemoryCopyCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--phys1", action="store_true", help="treat TO_ADDRESS as a physical address.")
-    parser.add_argument("to_addr", metavar="TO_ADDRESS", type=parse_address, help="destination of memcpy.")
+    parser.add_argument("to_addr", metavar="TO_ADDRESS", type=AddressUtil.parse_address, help="destination of memcpy.")
     parser.add_argument("--phys2", action="store_true", help="treat FROM_ADDRESS as a physical address.")
-    parser.add_argument("from_addr", metavar="FROM_ADDRESS", type=parse_address, help="source of memcpy.")
-    parser.add_argument("size", metavar="SIZE", type=parse_address, help="the size for memcpy.")
+    parser.add_argument("from_addr", metavar="FROM_ADDRESS", type=AddressUtil.parse_address, help="source of memcpy.")
+    parser.add_argument("size", metavar="SIZE", type=AddressUtil.parse_address, help="the size for memcpy.")
     _syntax_ = parser.format_help()
 
     _note_ = "memcpy dst src 8\n"
@@ -61045,10 +61073,10 @@ class MemorySwapCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--phys1", action="store_true", help="treat SWAP_ADDRESS1 as a physical address.")
-    parser.add_argument("swap_addr1", metavar="SWAP_ADDRESS1", type=parse_address, help="swap target address.")
+    parser.add_argument("swap_addr1", metavar="SWAP_ADDRESS1", type=AddressUtil.parse_address, help="swap target address.")
     parser.add_argument("--phys2", action="store_true", help="treat SWAP_ADDRESS2 as a physical address.")
-    parser.add_argument("swap_addr2", metavar="SWAP_ADDRESS2", type=parse_address, help="another swap target address.")
-    parser.add_argument("size", metavar="SIZE", type=parse_address, help="the size for memory swap.")
+    parser.add_argument("swap_addr2", metavar="SWAP_ADDRESS2", type=AddressUtil.parse_address, help="another swap target address.")
+    parser.add_argument("size", metavar="SIZE", type=AddressUtil.parse_address, help="the size for memory swap.")
     _syntax_ = parser.format_help()
 
     _note_ = MemoryCopyCommand._note_
@@ -61133,11 +61161,11 @@ class MemoryInsertCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--phys1", action="store_true", help="treat TO_ADDRESS as a physical address.")
-    parser.add_argument("to_addr", metavar="TO_ADDRESS", type=parse_address, help="destination of meminsert.")
+    parser.add_argument("to_addr", metavar="TO_ADDRESS", type=AddressUtil.parse_address, help="destination of meminsert.")
     parser.add_argument("--phys2", action="store_true", help="treat FROM_ADDRESS as a physical address.")
-    parser.add_argument("from_addr", metavar="FROM_ADDRESS", type=parse_address, help="source of meminsert.")
-    parser.add_argument("size1", metavar="SIZE1", type=parse_address, help="the pushed back size for meminsert.")
-    parser.add_argument("size2", metavar="SIZE2", type=parse_address, help="the inserted(slided) size for meminsert.")
+    parser.add_argument("from_addr", metavar="FROM_ADDRESS", type=AddressUtil.parse_address, help="source of meminsert.")
+    parser.add_argument("size1", metavar="SIZE1", type=AddressUtil.parse_address, help="the pushed back size for meminsert.")
+    parser.add_argument("size2", metavar="SIZE2", type=AddressUtil.parse_address, help="the inserted(slided) size for meminsert.")
     _syntax_ = parser.format_help()
 
     _note_ = MemoryCopyCommand._note_
@@ -61212,8 +61240,8 @@ class HashMemoryCommand(GenericCommand):
     _category_ = "03-d. Memory - Calculation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", type=parse_address, help="start address for hash calculation.")
-    parser.add_argument("size", metavar="SIZE", type=parse_address, help="the size for hash calculation.")
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address, help="start address for hash calculation.")
+    parser.add_argument("size", metavar="SIZE", type=AddressUtil.parse_address, help="the size for hash calculation.")
     parser.add_argument("-v", "--verbose", action="store_true", help="also print crc.")
     _syntax_ = parser.format_help()
 
@@ -61320,8 +61348,8 @@ class IsMemoryZeroCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--phys", action="store_true", help="treat ADDRESS as a physical address.")
-    parser.add_argument("addr", metavar="ADDRESS", type=parse_address, help="target address for checking.")
-    parser.add_argument("size", metavar="SIZE", type=parse_address, help="the size for checking.")
+    parser.add_argument("addr", metavar="ADDRESS", type=AddressUtil.parse_address, help="target address for checking.")
+    parser.add_argument("size", metavar="SIZE", type=AddressUtil.parse_address, help="the size for checking.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -61390,8 +61418,8 @@ class SequenceLengthCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--phys", action="store_true", help="treat ADDRESS as a physical address.")
-    parser.add_argument("addr", metavar="ADDRESS", type=parse_address, help="target address for checking.")
-    parser.add_argument("unit", metavar="UNIT", nargs="?", type=parse_address, default=1,
+    parser.add_argument("addr", metavar="ADDRESS", type=AddressUtil.parse_address, help="target address for checking.")
+    parser.add_argument("unit", metavar="UNIT", nargs="?", type=AddressUtil.parse_address, default=1,
                         help="the size for a target value (default: %(default)s).")
     _syntax_ = parser.format_help()
 
@@ -61407,7 +61435,7 @@ class SequenceLengthCommand(GenericCommand):
         while True:
             # calc read_size
             if current & 0xfff:
-                read_size = align_address_to_size(current, 0x1000) - current
+                read_size = AddressUtil.align_address_to_size(current, 0x1000) - current
             else:
                 read_size = 0x1000
             while read_size < unit:
@@ -61897,8 +61925,8 @@ class IiCommand(GenericCommand):
     _category_ = "01-e. Debugging Support - Assemble"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address, help="the dump start address.")
-    parser.add_argument("-l", "--length", type=parse_address, default=50, help="the dump instruction length.")
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address, help="the dump start address.")
+    parser.add_argument("-l", "--length", type=AddressUtil.parse_address, default=50, help="the dump instruction length.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -62303,7 +62331,7 @@ class SlubDumpCommand(GenericCommand):
                     seen.append(val)
 
                 for cpuoff in self.cpu_offset:
-                    if not is_valid_addr(align_address(val + cpuoff)):
+                    if not is_valid_addr(AddressUtil.align_address(val + cpuoff)):
                         found = False
                         break
 
@@ -62587,7 +62615,7 @@ class SlubDumpCommand(GenericCommand):
             kmem_cache_cpu = cpu_slab + self.cpu_offset[cpu]
         else:
             kmem_cache_cpu = cpu_slab
-        return align_address(kmem_cache_cpu)
+        return AddressUtil.align_address(kmem_cache_cpu)
 
     def page2virt(self, page, kmem_cache, freelist_fastpath=()):
         if not self.args.skip_page2virt:
@@ -64103,14 +64131,14 @@ class SlabDumpCommand(GenericCommand):
                         found = False
                         break
                     node_addr_ptr = kmem_cache - self.kmem_cache_offset_list + candidate_offset + 4 + 4
-                    node_addr_ptr = align_address_to_size(node_addr_ptr, current_arch.ptrsize)
+                    node_addr_ptr = AddressUtil.align_address_to_size(node_addr_ptr, current_arch.ptrsize)
                     node_addr = read_int_from_memory(node_addr_ptr)
                     if not is_valid_addr(node_addr):
                         found = False
                         break
 
                 if found:
-                    self.kmem_cache_offset_node = align_address_to_size(candidate_offset + 4 * 2, current_arch.ptrsize)
+                    self.kmem_cache_offset_node = AddressUtil.align_address_to_size(candidate_offset + 4 * 2, current_arch.ptrsize)
                     self.quiet_info("offsetof(kmem_cache, node): {:#x}".format(self.kmem_cache_offset_node))
                     break
             else:
@@ -64297,7 +64325,7 @@ class SlabDumpCommand(GenericCommand):
             cpu_cache = read_int_from_memory(addr + self.kmem_cache_offset_cpu_cache)
             if len(self.cpu_offset) > 0:
                 # __percpu
-                return align_address(cpu_cache + self.cpu_offset[cpu])
+                return AddressUtil.align_address(cpu_cache + self.cpu_offset[cpu])
             else:
                 # not __percpu
                 return cpu_cache
@@ -65116,7 +65144,7 @@ class SlabContainsCommand(GenericCommand):
     _aliases_ = ["slub-contains", "slub-tiny-contains", "xslub", "xslab"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="target address.")
+    parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address, help="target address.")
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
@@ -65493,9 +65521,9 @@ class BuddyDumpCommand(GenericCommand):
             per_cpu_pageset = read_int_from_memory(self.nodes[0] + self.offset_per_cpu_pageset)
         else:
             per_cpu_pageset = read_int_from_memory(self.nodes[0] + self.offset_per_cpu_pageset) + self.cpu_offset[0]
-            per_cpu_pageset = align_address(per_cpu_pageset)
+            per_cpu_pageset = AddressUtil.align_address(per_cpu_pageset)
 
-        current = align_address_to_size(per_cpu_pageset + 4 * 3, current_arch.ptrsize) # count, high, batch
+        current = AddressUtil.align_address_to_size(per_cpu_pageset + 4 * 3, current_arch.ptrsize) # count, high, batch
         while True:
             # search list_head
             val1 = read_int_from_memory(current)
@@ -65644,7 +65672,7 @@ class BuddyDumpCommand(GenericCommand):
         heap_page_color = get_gef_setting("theme.heap_page_address")
         chunk_size_color = get_gef_setting("theme.heap_chunk_size")
         freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
-        align = get_format_address_width()
+        align = AddressUtil.get_format_address_width()
 
         MIGRATE_PCPTYPES = 3
         order = i // MIGRATE_PCPTYPES
@@ -65708,7 +65736,7 @@ class BuddyDumpCommand(GenericCommand):
         if self.cpu_offset is None:
             per_cpu_pageset = [per_cpu_pageset]
         else:
-            per_cpu_pageset = [align_address(cpuoff + per_cpu_pageset) for cpuoff in self.cpu_offset]
+            per_cpu_pageset = [AddressUtil.align_address(cpuoff + per_cpu_pageset) for cpuoff in self.cpu_offset]
 
         sizeof_list_head = current_arch.ptrsize * 2
         for cpu_num, pcp in enumerate(per_cpu_pageset):
@@ -65722,7 +65750,7 @@ class BuddyDumpCommand(GenericCommand):
         heap_page_color = get_gef_setting("theme.heap_page_address")
         chunk_size_color = get_gef_setting("theme.heap_chunk_size")
         freed_address_color = get_gef_setting("theme.heap_chunk_address_freed")
-        align = get_format_address_width()
+        align = AddressUtil.get_format_address_width()
 
         self.add_msg("  mtype: {:d} (={:s})".format(mtype, self.migrate_types[mtype]))
         seen = [free_list]
@@ -65860,7 +65888,7 @@ class BuddyDumpCommand(GenericCommand):
         if self.sort:
             prev_virt = None
             prev_size = None
-            align = get_format_address_width()
+            align = AddressUtil.get_format_address_width()
 
             out = []
             for page, size, msg in sorted(self.out, key=lambda x: x[0]):
@@ -65903,8 +65931,8 @@ class KernelPipeCommand(GenericCommand):
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-i", "--inode-filter", type=parse_address, default=[], action="append", help="filter by specific struct inode.")
-    parser.add_argument("-f", "--file-filter", type=parse_address, default=[], action="append", help="filter by specific struct file.")
+    parser.add_argument("-i", "--inode-filter", type=AddressUtil.parse_address, default=[], action="append", help="filter by specific struct inode.")
+    parser.add_argument("-f", "--file-filter", type=AddressUtil.parse_address, default=[], action="append", help="filter by specific struct file.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     _syntax_ = parser.format_help()
@@ -66187,7 +66215,7 @@ class KernelPipeCommand(GenericCommand):
         self.offset_flags = self.offset_len + 4 + current_arch.ptrsize
         if not self.quiet:
             info("offsetof(pipe_buffer, flags): {:#x}".format(self.offset_flags))
-        self.sizeof_pipe_buffer = align_address_to_size(self.offset_flags + 4, current_arch.ptrsize) + current_arch.ptrsize
+        self.sizeof_pipe_buffer = AddressUtil.align_address_to_size(self.offset_flags + 4, current_arch.ptrsize) + current_arch.ptrsize
         if not self.quiet:
             info("sizeof(pipe_buffer): {:#x}".format(self.sizeof_pipe_buffer))
         return pipe_files
@@ -66537,10 +66565,10 @@ class KernelBpfCommand(GenericCommand):
         self.offset_jited_len = self.offset_len + 4
         self.offset_tag = self.offset_jited_len + 4
         if kversion >= "5.12":
-            self.offset_aux = align_address_to_size(self.offset_tag + 8, current_arch.ptrsize) + current_arch.ptrsize * 3
+            self.offset_aux = AddressUtil.align_address_to_size(self.offset_tag + 8, current_arch.ptrsize) + current_arch.ptrsize * 3
             self.offset_bpf_func = self.offset_aux - current_arch.ptrsize
         else:
-            self.offset_aux = align_address_to_size(self.offset_tag + 8, current_arch.ptrsize)
+            self.offset_aux = AddressUtil.align_address_to_size(self.offset_tag + 8, current_arch.ptrsize)
             self.offset_bpf_func = self.offset_aux + current_arch.ptrsize * 2
         if not self.quiet:
             info("offsetof(bpf_prog, type): {:#x}".format(self.offset_prog_type))
@@ -66596,7 +66624,7 @@ class KernelBpfCommand(GenericCommand):
             """
             # bpf_array->union_array
             value_size = u32(read_memory(maps[0] + self.offset_value_size, 4))
-            value_size_aligned_8 = align_address_to_size(value_size, 8)
+            value_size_aligned_8 = AddressUtil.align_address_to_size(value_size, 8)
             max_entries = u32(read_memory(maps[0] + self.offset_max_entries, 4))
             k = 1
             while k < max_entries:
@@ -67714,7 +67742,7 @@ class KernelDmaBufCommand(GenericCommand):
                 r = re.findall(r"Phys: \S+ -> Virt: (\S+)", ret)
                 if r:
                     r = [int(x, 16) for x in r]
-                    r = [hex(x) for x in r if is_msb_on(x)]
+                    r = [hex(x) for x in r if AddressUtil.is_msb_on(x)]
                     virt_str = ",".join(r)
 
             offset = u32(read_memory(sg + current_arch.ptrsize, 4))
@@ -68134,7 +68162,7 @@ class KernelIrqCommand(GenericCommand):
                 err("Not found irq_desc->irq_data.irq")
             return False
 
-        ofs_irq = align_address_to_size(self.offset_irq + 4 * 2, current_arch.ptrsize)
+        ofs_irq = AddressUtil.align_address_to_size(self.offset_irq + 4 * 2, current_arch.ptrsize)
         for i in range(100):
             x = read_int_from_memory(desc + ofs_irq + current_arch.ptrsize * i)
             y = read_int_from_memory(desc + ofs_irq + current_arch.ptrsize * (i + 1))
@@ -69555,7 +69583,7 @@ class KsymaddrRemoteCommand(GenericCommand):
 
         else: # kernel_version >= (6, 4):
             position = self.offset_kallsyms_token_index + 0x200
-            position_relative_base = align_address_to_size(position + self.num_symbols * offset_byte_size, 8) # TODO: 0x8? 0x10? ptrsize?
+            position_relative_base = AddressUtil.align_address_to_size(position + self.num_symbols * offset_byte_size, 8) # TODO: 0x8? 0x10? ptrsize?
             relative_base_address_data = self.kernel_img[position_relative_base:position_relative_base + address_byte_size]
             relative_base_address = int.from_bytes(relative_base_address_data, endian_str)
             if not (relative_base_address and (relative_base_address & gef_getpagesize_mask_low()) == 0):
@@ -70184,7 +70212,7 @@ class TcmallocDumpCommand(GenericCommand):
         # The size of central_cache_ is 0x26000, so 0x7ffff7df7ee0 - 0x26000 is central_cache_.
 
         try:
-            init_static_vars = parse_address("&'tcmalloc::Static::InitStaticVars()'")
+            init_static_vars = AddressUtil.parse_address("&'tcmalloc::Static::InitStaticVars()'")
         except gdb.error:
             return None
         res = gdb.execute("x/10i {:#x}".format(init_static_vars), to_string=True)
@@ -70199,7 +70227,7 @@ class TcmallocDumpCommand(GenericCommand):
 
     def get_thread_heaps_(self):
         try:
-            return parse_address("&'tcmalloc::ThreadCache::thread_heaps_'")
+            return AddressUtil.parse_address("&'tcmalloc::ThreadCache::thread_heaps_'")
         except gdb.error:
             return None
 
@@ -70414,8 +70442,8 @@ class GoHeapDumpCommand(GenericCommand):
     # TODO: arena, central, mspan->next
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("--mheap", type=parse_address, help="the address of runtime.mheap_.")
-    parser.add_argument("--mspan", type=parse_address, help="the address of the target mspan.")
+    parser.add_argument("--mheap", type=AddressUtil.parse_address, help="the address of runtime.mheap_.")
+    parser.add_argument("--mspan", type=AddressUtil.parse_address, help="the address of the target mspan.")
     parser.add_argument("-d", "--dump", action="store_true", help="with hexdump.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="display also empty slots.")
@@ -70492,7 +70520,7 @@ class GoHeapDumpCommand(GenericCommand):
     def get_mheap_(self):
         # use symbol
         try:
-            return parse_address("&'runtime.mheap_'")
+            return AddressUtil.parse_address("&'runtime.mheap_'")
         except gdb.error:
             pass
 
@@ -70641,7 +70669,7 @@ class TlsfHeapDumpCommand(GenericCommand):
     _category_ = "06-b. Heap - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("--pool", type=parse_address, help="the address of memory pool.")
+    parser.add_argument("--pool", type=AddressUtil.parse_address, help="the address of memory pool.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="display also empty slots.")
     _syntax_ = parser.format_help()
@@ -70668,7 +70696,7 @@ class TlsfHeapDumpCommand(GenericCommand):
 
     def get_pool(self):
         try:
-            mp = parse_address("&mp")
+            mp = AddressUtil.parse_address("&mp")
         except gdb.error:
             return None
 
@@ -70742,7 +70770,7 @@ class TlsfHeapDumpCommand(GenericCommand):
         sl_bitmap = read_memory(pool + offset_sl_bitmap, 4 * self.REAL_FLI)
         sl_bitmap = slice_unpack(sl_bitmap, 4)
 
-        offset_matrix = align_address_to_size(offset_sl_bitmap + 4 * self.REAL_FLI, current_arch.ptrsize)
+        offset_matrix = AddressUtil.align_address_to_size(offset_sl_bitmap + 4 * self.REAL_FLI, current_arch.ptrsize)
         matrix = read_memory(pool + offset_matrix, current_arch.ptrsize * self.REAL_FLI * self.MAX_SLI)
         matrix = slice_unpack(matrix, current_arch.ptrsize)
         matrix = slicer(matrix, self.MAX_SLI)
@@ -70839,7 +70867,7 @@ class HoardHeapDumpCommand(GenericCommand):
     _category_ = "06-b. Heap - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-b", "--superblock", type=parse_address, action="append", help="the address of superblock.")
+    parser.add_argument("-b", "--superblock", type=AddressUtil.parse_address, action="append", help="the address of superblock.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
@@ -70991,7 +71019,7 @@ class MimallocHeapDumpCommand(GenericCommand):
     _category_ = "06-b. Heap - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-m", "--mi-heap-main", type=parse_address, help="the address of _mi_heap_main.")
+    parser.add_argument("-m", "--mi-heap-main", type=AddressUtil.parse_address, help="the address of _mi_heap_main.")
     parser.add_argument("--v21x", action="store_true", help="for v2.1.x.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
@@ -71074,7 +71102,7 @@ class MimallocHeapDumpCommand(GenericCommand):
 
     def get_mi_heap_main(self):
         try:
-            return parse_address("&_mi_heap_main")
+            return AddressUtil.parse_address("&_mi_heap_main")
         except gdb.error:
             return None
 
@@ -71194,7 +71222,7 @@ class V8Command(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("address", metavar="ADDRESS", type=parse_address, nargs="?", help="target map address.")
+    group.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address, nargs="?", help="target map address.")
     group.add_argument("-l", "--load-v8-gdbinit", action="store_true", help="load gdbinit for v8 from internet")
     _syntax_ = parser.format_help()
 
@@ -71451,7 +71479,7 @@ class PartitionAllocDumpCommand(GenericCommand):
     def get_roots(self, force_heuristic):
         def get_root(root_string):
             try:
-                root_addr = parse_address("&'WTF::Partitions::{:s}'".format(root_string))
+                root_addr = AddressUtil.parse_address("&'WTF::Partitions::{:s}'".format(root_string))
                 Root = collections.namedtuple("Root", ["name", "address"])
                 return [Root(root_string, root_addr)]
             except gdb.error:
@@ -71475,12 +71503,12 @@ class PartitionAllocDumpCommand(GenericCommand):
         """sentinel_slot_span is default slot_span, so search it"""
         sentinel = []
         try:
-            t = parse_address("&'base::internal::SlotSpanMetadata<true>::sentinel_slot_span_'")
+            t = AddressUtil.parse_address("&'base::internal::SlotSpanMetadata<true>::sentinel_slot_span_'")
             sentinel.append(t)
         except gdb.error:
             pass
         try:
-            f = parse_address("&'base::internal::SlotSpanMetadata<false>::sentinel_slot_span_'")
+            f = AddressUtil.parse_address("&'base::internal::SlotSpanMetadata<false>::sentinel_slot_span_'")
             sentinel.append(f)
         except gdb.error:
             pass
@@ -72060,7 +72088,7 @@ class MuslHeapDumpCommand(GenericCommand):
     def get_malloc_context_heuristic(self):
         try:
             # search malloc
-            malloc = parse_address("malloc")
+            malloc = AddressUtil.parse_address("malloc")
             self.info("malloc: {:#x}".format(malloc))
 
             # search __libc_malloc_impl
@@ -72183,7 +72211,7 @@ class MuslHeapDumpCommand(GenericCommand):
 
     def get_malloc_context(self):
         try:
-            return parse_address("&__malloc_context")
+            return AddressUtil.parse_address("&__malloc_context")
         except gdb.error:
             self.info("Symbol is not found. It will use heuristic search")
             return self.get_malloc_context_heuristic()
@@ -72533,10 +72561,10 @@ class uClibcNgHeap:
                 self.chunk_base_address = addr
                 self.address = addr + 2 * self.ptrsize
             else:
-                self.chunk_base_address = align_address(addr - 2 * self.ptrsize)
+                self.chunk_base_address = AddressUtil.align_address(addr - 2 * self.ptrsize)
                 self.address = addr
 
-            self.size_addr = align_address(self.address - self.ptrsize)
+            self.size_addr = AddressUtil.align_address(self.address - self.ptrsize)
             return
 
         def get_chunk_size(self):
@@ -72615,7 +72643,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
     _category_ = "06-b. Heap - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("--malloc_state", type=parse_address, help="use specific address for malloc_context.")
+    parser.add_argument("--malloc_state", type=AddressUtil.parse_address, help="use specific address for malloc_context.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="also dump an empty active index.")
     _syntax_ = parser.format_help()
@@ -72747,12 +72775,12 @@ class UclibcNgHeapDumpCommand(GenericCommand):
     def get_malloc_state(self):
         # fast path
         try:
-            return parse_address("&__malloc_state")
+            return AddressUtil.parse_address("&__malloc_state")
         except gdb.error:
             pass
 
         # slow path
-        # Do not use parse_address("malloc").
+        # Do not use AddressUtil.parse_address("malloc").
         # For libc without symbols, the malloc@plt of the main binary will be resolved.
         # You can definitely get the address of malloc by finding the libc path and looking for the GOT of libc itself.
         libc = ProcessMap.process_lookup_path("libuClibc-")
@@ -73073,10 +73101,10 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
     _category_ = "06-b. Heap - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="LOCATION", nargs="?", type=parse_address,
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
                         help="the address you want to interpret as the beginning of a contiguous chunk. (default: [heap] of vmmap)")
-    parser.add_argument("--malloc_state", type=parse_address, help="use specific address for malloc_context.")
-    parser.add_argument("-c", dest="max_count", type=parse_address,
+    parser.add_argument("--malloc_state", type=AddressUtil.parse_address, help="use specific address for malloc_context.")
+    parser.add_argument("-c", dest="max_count", type=AddressUtil.parse_address,
                         help="Maximum count to parse. It is used when there is a very large amount of chunks.")
     parser.add_argument("-f", "--full", action="store_true", help="display the same line without omitting.")
     parser.add_argument("-d", "--dark-color", action="store_true", help="use the dark color if chunk is allocated.")
@@ -73358,8 +73386,8 @@ class XStringCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("count", metavar="COUNT", nargs="?", help="repeat count for displaying.")
-    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="dump target address.")
-    parser.add_argument("-l", "--max-length", type=parse_address,
+    parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address, help="dump target address.")
+    parser.add_argument("-l", "--max-length", type=AddressUtil.parse_address,
                         help="maximum number of characters to display. 0 means unlimited.")
     parser.add_argument("-H", "--hex", action="store_true", help="show in hex style.")
     parser.add_argument("-q", "--quiet", action="store_true", help="quiet mode.")
@@ -73451,7 +73479,7 @@ class XColoredCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("format", metavar="FMT", nargs="?", default="", help="dump format.")
-    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="dump address.")
+    parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address, help="dump address.")
     parser.add_argument("-i", "--interval", type=lambda x: int(x, 16), help="the line of interval for coloring.")
     parser.add_argument("-c", "--color-num", type=lambda x: int(x, 16), default=4, help="the number of colors used (1-5).")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
@@ -73505,7 +73533,7 @@ class XphysAddrCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("option", metavar="OPTION", nargs="*", help="the argument of xp.")
-    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="dump target address.")
+    parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address, help="dump target address.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} /16xg 0x11223344".format(_cmdline_)
@@ -73544,7 +73572,7 @@ class XSecureMemAddrCommand(GenericCommand):
     group.add_argument("--off", action="store_true", help="treat ADDRESS as offset of secure memory top.")
     group.add_argument("--virt", action="store_true", help="treat ADDRESS as virtual address.")
     parser.add_argument("format", metavar="/FMT", help="specified output format.")
-    parser.add_argument("location", metavar="ADDRESS", type=parse_address, help="dump target address.")
+    parser.add_argument("location", metavar="ADDRESS", type=AddressUtil.parse_address, help="dump target address.")
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
 
@@ -73754,7 +73782,7 @@ class WSecureMemAddrCommand(GenericCommand):
     group.add_argument("--off", action="store_true", help="treat ADDRESS as offset of secure memory top.")
     group.add_argument("--virt", action="store_true", help="treat ADDRESS as virtual address.")
     parser.add_argument("value", metavar="VALUE", help="write value.")
-    parser.add_argument("location", metavar="ADDRESS", type=parse_address, help="write target address.")
+    parser.add_argument("location", metavar="ADDRESS", type=AddressUtil.parse_address, help="write target address.")
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
 
@@ -73875,7 +73903,7 @@ class BreakSecureMemAddrCommand(GenericCommand):
     _category_ = "08-g. Qemu-system Cooperation - TrustZone"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("location", metavar="PHYS_ADDRESS", type=parse_address,
+    parser.add_argument("location", metavar="PHYS_ADDRESS", type=AddressUtil.parse_address,
                         help="the target physical address you want to set a breakpoint.")
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
@@ -73957,9 +73985,9 @@ class OpteeBreakTaAddrCommand(GenericCommand):
     _category_ = "08-g. Qemu-system Cooperation - TrustZone"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("thread_enter_user_mode", metavar="PHYS_ADDR_thread_enter_user_mode", type=parse_address,
+    parser.add_argument("thread_enter_user_mode", metavar="PHYS_ADDR_thread_enter_user_mode", type=AddressUtil.parse_address,
                         help="The physical address of `thread_enter_user_mode` in OPTEE-OS.")
-    parser.add_argument("ta_offset", metavar="TA_OFFSET", type=parse_address,
+    parser.add_argument("ta_offset", metavar="TA_OFFSET", type=AddressUtil.parse_address,
                         help="The breakpoint target offset of OPTEE-TA.")
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
@@ -73992,7 +74020,7 @@ class OpteeBgetDumpCommand(GenericCommand):
     _category_ = "08-g. Qemu-system Cooperation - TrustZone"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-m", "--malloc_ctx", metavar="OFFSET_malloc_ctx", type=parse_address,
+    parser.add_argument("-m", "--malloc_ctx", metavar="OFFSET_malloc_ctx", type=AddressUtil.parse_address,
                         help="The offset of `malloc_ctx` at OPTEE-TA.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
@@ -75196,7 +75224,7 @@ class MsrCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("msr_target", metavar="MSR_NAME|MSR_CONST", nargs="?", help="the MSR name or constant to know the value.")
-    parser.add_argument("msr_value", metavar="MSR_VALUE", nargs="?", type=parse_address, help="the MSR value to update.")
+    parser.add_argument("msr_value", metavar="MSR_VALUE", nargs="?", type=AddressUtil.parse_address, help="the MSR value to update.")
     parser.add_argument("-q", "--quiet", action="store_true", help="quiet mode.")
     _syntax_ = parser.format_help()
 
@@ -75257,7 +75285,9 @@ class MsrCommand(GenericCommand):
             sym = ""
             if is_valid_addr(value):
                 sym = Symbol.get_symbol_string(value)
-            gef_print("{:30s}  {:#010x}  {:30s}  {:s}{:s}".format(name, const, desc, format_address(value), sym))
+            gef_print("{:30s}  {:#010x}  {:30s}  {:s}{:s}".format(
+                name, const, desc, AddressUtil.format_address(value), sym),
+            )
 
         info("See more info: https://elixir.bootlin.com/linux/latest/source/arch/x86/include/asm/msr-index.h")
         return
@@ -75317,9 +75347,9 @@ class MsrCommand(GenericCommand):
                 return
             name = self.lookup_const2name(const)
             if args.quiet:
-                gef_print("{:s}".format(format_address(value)))
+                gef_print("{:s}".format(AddressUtil.format_address(value)))
             else:
-                gef_print("{:s} ({:#x}): {:s}".format(name, const, format_address(value)))
+                gef_print("{:s} ({:#x}): {:s}".format(name, const, AddressUtil.format_address(value)))
 
         else:
             # exec wrmsr
@@ -75338,9 +75368,9 @@ class MteTagsCommand(GenericCommand):
     _category_ = "02-f. Process Information - Security"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("address", metavar="ADDRESS", type=parse_address,
+    parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address,
                         help="the start address you want to display the MTE tag.")
-    parser.add_argument("count", metavar="COUNT", nargs="?", type=parse_address,
+    parser.add_argument("count", metavar="COUNT", nargs="?", type=AddressUtil.parse_address,
                         help="repeat count for MTE tag displaying (every 16 bytes).")
     _syntax_ = parser.format_help()
 
@@ -75981,7 +76011,7 @@ class Virt2PhysCommand(GenericCommand):
                        help="ARMv7: use TTBRn_ELm_S for parsing start register. ARMv8: heuristic search the memory of qemu-system.")
     group.add_argument("-s", dest="force_normal", action="store_true",
                        help="ARMv7/v8: use TTBRn_ELm for parsing start register.")
-    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="the address of data you want to translate.")
+    parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address, help="the address of data you want to translate.")
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose output (for arm64 secure memory).")
     _syntax_ = parser.format_help()
 
@@ -76023,7 +76053,7 @@ class Phys2VirtCommand(GenericCommand):
                        help="ARMv7: use TTBRn_ELm_S for parsing start register. ARMv8: heuristic search the memory of qemu-system.")
     group.add_argument("-s", dest="force_normal", action="store_true",
                        help="ARMv7/v8: use TTBRn_ELm for parsing start register.")
-    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="the address of data you want to translate.")
+    parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address, help="the address of data you want to translate.")
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose output (for arm64 secure memory).")
     _syntax_ = parser.format_help()
 
@@ -76428,8 +76458,8 @@ class PagewalkX64Command(PagewalkCommand):
                         help="show all level pagetables only associated specified address.")
     parser.add_argument("--include-kasan", action="store_true", help="include KASAN shadow memory (sometimes heavy memory use).")
     parser.add_argument("-U", "--user-pt", action="store_true", help="print userland pagetables (for KPTI, only x64, in kernel context).")
-    parser.add_argument("--cr3", type=parse_address, help="use specified value as cr3.")
-    parser.add_argument("--cr4", type=parse_address, help="use specified value as cr4.")
+    parser.add_argument("--cr3", type=AddressUtil.parse_address, help="use specified value as cr3.")
+    parser.add_argument("--cr4", type=AddressUtil.parse_address, help="use specified value as cr4.")
     parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
@@ -80351,7 +80381,7 @@ class PagewalkWithHintsCommand(GenericCommand):
             line = line.split()
             module_name = line[1]
             module_base = int(line[2], 16)
-            module_size = align_address_to_size(int(line[3], 16), gef_getpagesize())
+            module_size = AddressUtil.align_address_to_size(int(line[3], 16), gef_getpagesize())
             description = "kernel module ({:s})".format(module_name)
             self.insert_region(module_base, module_size, description)
         return
@@ -80529,7 +80559,7 @@ class PageCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("mode", choices=["to-virt", "to-phys", "from-virt", "from-phys"], help="conversion mode.")
-    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="the address to convert.")
+    parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address, help="the address to convert.")
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use map cache.")
     _syntax_ = parser.format_help()
 
@@ -80868,7 +80898,7 @@ class PageCommand(GenericCommand):
             # pfn -> virt
             virt = (pfn << self.PAGE_SHIFT) + self.PAGE_OFFSET
 
-        virt = align_address(virt)
+        virt = AddressUtil.align_address(virt)
         if not is_valid_addr(virt):
             err("Address in invalid range")
             return None
@@ -80882,7 +80912,7 @@ class PageCommand(GenericCommand):
         if is_x86_64():
             # virt -> pfn
             if self.START_KERNEL_map <= virt:
-                pfn = align_address(virt - self.START_KERNEL_map + self.phys_base) >> self.PAGE_SHIFT
+                pfn = AddressUtil.align_address(virt - self.START_KERNEL_map + self.phys_base) >> self.PAGE_SHIFT
             else:
                 pfn = (virt - self.PAGE_OFFSET) >> self.PAGE_SHIFT
             if pfn < 0:
@@ -80936,7 +80966,7 @@ class PageCommand(GenericCommand):
             # pfn -> page
             page = self.mem_map + (pfn * self.sizeof_struct_page)
 
-        page = align_address(page)
+        page = AddressUtil.align_address(page)
         if not is_valid_addr(page):
             err("Address in invalid range")
             return None
@@ -81038,7 +81068,7 @@ class Page2VirtCommand(GenericCommand):
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("page", metavar="ADDRESS", type=parse_address, help="the page address you want to translate.")
+    parser.add_argument("page", metavar="ADDRESS", type=AddressUtil.parse_address, help="the page address you want to translate.")
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
     _syntax_ = parser.format_help()
 
@@ -81061,7 +81091,7 @@ class Virt2PageCommand(GenericCommand):
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("virt", metavar="ADDRESS", type=parse_address, help="the virtual address you want to translate.")
+    parser.add_argument("virt", metavar="ADDRESS", type=AddressUtil.parse_address, help="the virtual address you want to translate.")
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
     _syntax_ = parser.format_help()
 
@@ -81084,7 +81114,7 @@ class Page2PhysCommand(GenericCommand):
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("page", metavar="ADDRESS", type=parse_address, help="the page address you want to translate.")
+    parser.add_argument("page", metavar="ADDRESS", type=AddressUtil.parse_address, help="the page address you want to translate.")
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
     _syntax_ = parser.format_help()
 
@@ -81107,7 +81137,7 @@ class Phys2PageCommand(GenericCommand):
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("phys", metavar="ADDRESS", type=parse_address, help="the physical address you want to translate.")
+    parser.add_argument("phys", metavar="ADDRESS", type=AddressUtil.parse_address, help="the physical address you want to translate.")
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
     _syntax_ = parser.format_help()
 
@@ -81212,7 +81242,7 @@ class XUntilCommand(GenericCommand):
     _repeat_ = True
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("address", metavar="ADDRESS", nargs="?", type=parse_address, help="the address you want to stop.")
+    parser.add_argument("address", metavar="ADDRESS", nargs="?", type=AddressUtil.parse_address, help="the address you want to stop.")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -81511,7 +81541,7 @@ class ExecUntilCallCommand(ExecUntilCommand):
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
     parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
     parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
-    parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
+    parser.add_argument("-e", "--exclude", action="append", type=AddressUtil.parse_address, default=[], help="the address to exclude from breakpoints.")
     _syntax_ = parser.format_help()
     _example_ = None
 
@@ -81533,7 +81563,7 @@ class ExecUntilJumpCommand(ExecUntilCommand):
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
     parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
     parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
-    parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
+    parser.add_argument("-e", "--exclude", action="append", type=AddressUtil.parse_address, default=[], help="the address to exclude from breakpoints.")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("-t", "--only-taken", action="store_true", help="break only if jump will be taken.")
     group.add_argument("-T", "--only-not-taken", action="store_true", help="break only if jump will be not taken.")
@@ -81570,7 +81600,7 @@ class ExecUntilIndirectBranchCommand(ExecUntilCommand):
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
     parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
     parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
-    parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
+    parser.add_argument("-e", "--exclude", action="append", type=AddressUtil.parse_address, default=[], help="the address to exclude from breakpoints.")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("-t", "--only-taken", action="store_true", help="break only if jump will be taken.")
     group.add_argument("-T", "--only-not-taken", action="store_true", help="break only if jump will be not taken.")
@@ -81608,7 +81638,7 @@ class ExecUntilAllBranchCommand(ExecUntilCommand):
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
     parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
     parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
-    parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
+    parser.add_argument("-e", "--exclude", action="append", type=AddressUtil.parse_address, default=[], help="the address to exclude from breakpoints.")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("-t", "--only-taken", action="store_true", help="break only if jump will be taken.")
     group.add_argument("-T", "--only-not-taken", action="store_true", help="break only if jump will be not taken.")
@@ -81647,7 +81677,7 @@ class ExecUntilSyscallCommand(ExecUntilCommand):
     parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
     parser.add_argument("-f", "--filter", action="append", default=[], help="filter by specified syscall.")
     parser.add_argument("-i", "--ignore", action="append", default=[], help="ignore specified syscall.")
-    parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
+    parser.add_argument("-e", "--exclude", action="append", type=AddressUtil.parse_address, default=[], help="the address to exclude from breakpoints.")
     _syntax_ = parser.format_help()
     _example_ = None
 
@@ -81682,7 +81712,7 @@ class ExecUntilRetCommand(ExecUntilCommand):
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
     parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
     parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
-    parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
+    parser.add_argument("-e", "--exclude", action="append", type=AddressUtil.parse_address, default=[], help="the address to exclude from breakpoints.")
     _syntax_ = parser.format_help()
     _example_ = None
 
@@ -81704,7 +81734,7 @@ class ExecUntilMemaccessCommand(ExecUntilCommand):
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
     parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
     parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
-    parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
+    parser.add_argument("-e", "--exclude", action="append", type=AddressUtil.parse_address, default=[], help="the address to exclude from breakpoints.")
     _syntax_ = parser.format_help()
     _example_ = None
 
@@ -81726,7 +81756,7 @@ class ExecUntilKeywordReCommand(ExecUntilCommand):
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
     parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
     parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
-    parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
+    parser.add_argument("-e", "--exclude", action="append", type=AddressUtil.parse_address, default=[], help="the address to exclude from breakpoints.")
     parser.add_argument("keyword", metavar="KEYWORD", type=re.compile, nargs="+", help="filter by specified regex keyword.")
     _syntax_ = parser.format_help()
 
@@ -81763,7 +81793,7 @@ class ExecUntilCondCommand(ExecUntilCommand):
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
     parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
     parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
-    parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
+    parser.add_argument("-e", "--exclude", action="append", type=AddressUtil.parse_address, default=[], help="the address to exclude from breakpoints.")
     parser.add_argument("condition", metavar="CONDITION", help="filter by condition.")
     _syntax_ = parser.format_help()
 
@@ -81823,7 +81853,7 @@ class ExecUntilUserCodeCommand(ExecUntilCommand):
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
     parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
     parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
-    parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
+    parser.add_argument("-e", "--exclude", action="append", type=AddressUtil.parse_address, default=[], help="the address to exclude from breakpoints.")
     _syntax_ = parser.format_help()
     _example_ = None
 
@@ -81871,7 +81901,7 @@ class ExecUntilLibcCodeCommand(ExecUntilCommand):
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
     parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
     parser.add_argument("--skip-lib", action="store_true", help="use `ni` instead of `si` if instruction is `call xxx@plt`.")
-    parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
+    parser.add_argument("-e", "--exclude", action="append", type=AddressUtil.parse_address, default=[], help="the address to exclude from breakpoints.")
     _syntax_ = parser.format_help()
     _example_ = None
 
@@ -81914,7 +81944,7 @@ class ExecUntilSecureWorldCommand(ExecUntilCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
     parser.add_argument("-n", "--use-ni", action="store_true", help="use `ni` instead of `si`")
-    parser.add_argument("-e", "--exclude", action="append", type=parse_address, default=[], help="the address to exclude from breakpoints.")
+    parser.add_argument("-e", "--exclude", action="append", type=AddressUtil.parse_address, default=[], help="the address to exclude from breakpoints.")
     _syntax_ = parser.format_help()
     _example_ = None
 
@@ -82149,7 +82179,7 @@ class KmallocRetBreakpoint(gdb.FinishBreakpoint):
         if self.return_value:
             loc = int(self.return_value)
         else:
-            loc = parse_address(current_arch.return_register)
+            loc = AddressUtil.parse_address(current_arch.return_register)
         loc_s = Color.colorify_hex(loc, get_gef_setting("theme.heap_chunk_address_used"))
 
         if self.extra:
@@ -82570,7 +82600,7 @@ class KmallocAllocatedByCommand(GenericCommand):
             if isinstance(arg, bytes):
                 write_memory(sp, arg)
                 gdb.execute("set {:s}={:#x}".format(reg, sp), to_string=True)
-                sp = align_address_to_size(sp + len(arg), current_arch.ptrsize * 2)
+                sp = AddressUtil.align_address_to_size(sp + len(arg), current_arch.ptrsize * 2)
             else:
                 gdb.execute("set {:s}={:#x}".format(reg, arg), to_string=True)
         self.tested_syscall.add(syscall_name)
@@ -84394,9 +84424,9 @@ class AddSymbolTemporaryCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("function_name", metavar="FUNCTION_NAME", help="new symbol name you want to add.")
-    parser.add_argument("function_start", metavar="START_ADDR", type=parse_address,
+    parser.add_argument("function_start", metavar="START_ADDR", type=AddressUtil.parse_address,
                         help="start address you want to add a symbol.")
-    parser.add_argument("function_end", metavar="END_ADDR", type=parse_address, nargs="?",
+    parser.add_argument("function_end", metavar="END_ADDR", type=AddressUtil.parse_address, nargs="?",
                         help="end address you want to add a symbol.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
@@ -84529,7 +84559,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
             return
 
         # check address validity
-        bits = get_memory_alignment(in_bits=True)
+        bits = AddressUtil.get_memory_alignment(in_bits=True)
         max_address = (1 << bits) - 1
 
         if args.function_start > max_address:
@@ -84689,15 +84719,15 @@ class WalkLinkListCommand(GenericCommand):
     _aliases_ = ["chain", "print-list"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-o", dest="next_offset", type=parse_address, default=0,
+    parser.add_argument("-o", dest="next_offset", type=AddressUtil.parse_address, default=0,
                         help="offset of the next(or prev) pointer in the target structure.")
-    parser.add_argument("-A", dest="dump_bytes_after", type=parse_address, default=0,
+    parser.add_argument("-A", dest="dump_bytes_after", type=AddressUtil.parse_address, default=0,
                         help="dump bytes after link-list location.")
-    parser.add_argument("-B", dest="dump_bytes_before", type=parse_address, default=0,
+    parser.add_argument("-B", dest="dump_bytes_before", type=AddressUtil.parse_address, default=0,
                         help="dump bytes before link-list location.")
-    parser.add_argument("--adjust-output", type=parse_address, default=0,
+    parser.add_argument("--adjust-output", type=AddressUtil.parse_address, default=0,
                         help="displays the result of subtracting a specific value to the output.")
-    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="start address you want to walk.")
+    parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address, help="start address you want to walk.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
@@ -84783,7 +84813,7 @@ class PeekPointersCommand(GenericCommand):
     _aliases_ = ["leakfind"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("address", metavar="ADDRESS", type=parse_address, nargs="?",
+    parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address, nargs="?",
                         help="search start address. (default: current_arch.sp)")
     parser.add_argument("name", metavar="NAME", nargs="?", help="what area to search. (default: all area)")
     parser.add_argument("-b", "--nb-byte", type=lambda x: int(x, 0), default=0,
@@ -84802,7 +84832,7 @@ class PeekPointersCommand(GenericCommand):
 
         # get start address section
         start_addr = args.address or current_arch.sp
-        start_addr = ProcessMap.lookup_address(align_address_to_size(start_addr, current_arch.ptrsize))
+        start_addr = ProcessMap.lookup_address(AddressUtil.align_address_to_size(start_addr, current_arch.ptrsize))
         if start_addr.section is None:
             err("{:#x} does not exist".format(start_addr.value))
             return
@@ -84912,7 +84942,7 @@ class StackFrameCommand(GenericCommand):
 
         for offset, address in enumerate(range(addr_lo, addr_hi, ptrsize)):
             pprint_str = DereferenceCommand.pprint_dereferenced(addr_lo, offset)
-            if dereference(address) == saved_ip:
+            if AddressUtil.dereference(address) == saved_ip:
                 pprint_str += " ($savedip)"
             results.append(pprint_str)
 
@@ -84987,7 +85017,7 @@ class XRefTelescopeCommand(SearchPatternCommand):
             locs += self.search_pattern_by_address(pattern, start, end)
 
         for loc, _ustr in locs:
-            self.xref_telescope(format_address(loc), depth - 1, [loc] + history)
+            self.xref_telescope(AddressUtil.format_address(loc), depth - 1, [loc] + history)
         return
 
     @parse_args
@@ -85112,8 +85142,8 @@ class FiletypeMemoryCommand(GenericCommand):
     _category_ = "03-f. Memory - Investigation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="target address.")
-    parser.add_argument("end_address", metavar="END_ADDRESS", nargs="?", type=parse_address,
+    parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address, help="target address.")
+    parser.add_argument("end_address", metavar="END_ADDRESS", nargs="?", type=AddressUtil.parse_address,
                         help="target end address. (default: the end of section of ADDRESS)")
     _syntax_ = parser.format_help()
 
@@ -85175,7 +85205,7 @@ class BinwalkMemoryCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP include filter.")
     parser.add_argument("-e", "--exclude", action="append", type=re.compile, default=[], help="REGEXP exclude filter.")
-    parser.add_argument("-m", "--maxsize", default=0x10000000, type=parse_address,
+    parser.add_argument("-m", "--maxsize", default=0x10000000, type=AddressUtil.parse_address,
                         help="maximum size of a section to be dumped. (default: 256 MB)")
     parser.add_argument("-c", "--commit", action="store_true", help="actually perform binwalk.")
     _syntax_ = parser.format_help()
@@ -85261,9 +85291,9 @@ class BincompareCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("filename", metavar="FILENAME", help="specifies the binary file to be compared")
-    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="specifies the memory address.")
-    parser.add_argument("size", metavar="SIZE", nargs="?", type=parse_address, help="specifies the size.")
-    parser.add_argument("--file-offset", type=parse_address, help="specifies the file offset.")
+    parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address, help="specifies the memory address.")
+    parser.add_argument("size", metavar="SIZE", nargs="?", type=AddressUtil.parse_address, help="specifies the size.")
+    parser.add_argument("--file-offset", type=AddressUtil.parse_address, help="specifies the file offset.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
