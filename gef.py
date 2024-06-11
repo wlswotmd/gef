@@ -12452,106 +12452,109 @@ def is_msb_on(addr):
     return addr & 0x8000000000000000
 
 
-def continue_handler(_event):
-    """GDB event handler for new object continue cases."""
-    return
+class EventHandler:
+    @staticmethod
+    def continue_handler(_event):
+        """GDB event handler for new object continue cases."""
+        return
 
+    @staticmethod
+    def hook_stop_handler(event):
+        """GDB event handler for stop cases."""
+        Cache.reset_gef_caches()
 
-def hook_stop_handler(event):
-    """GDB event handler for stop cases."""
-    Cache.reset_gef_caches()
+        # There seems to be a bug in some architecture (e.g. i386) where temporary breakpoints are
+        # not deleted even if they are hit. I don't know the conditions under which this happens,
+        # but if remains, gef would manually remove them.
+        global __gef_check_disabled_bp__
+        if __gef_check_disabled_bp__:
+            for bp in gdb.breakpoints():
+                if not bp.visible and bp.temporary:
+                    if not bp.enabled:
+                        bp.delete()
+            __gef_check_disabled_bp__ = False
 
-    # There seems to be a bug in some architecture (e.g. i386) where temporary breakpoints are not deleted even if they are hit.
-    # I don't know the conditions under which this happens, but if remains, gef would manually remove them.
-    global __gef_check_disabled_bp__
-    if __gef_check_disabled_bp__:
-        for bp in gdb.breakpoints():
-            if not bp.visible and bp.temporary:
-                if not bp.enabled:
-                    bp.delete()
-        __gef_check_disabled_bp__ = False
+        # when kdb, assume x86-64 or ARM
+        global __gef_check_once__
+        if __gef_check_once__:
+            if is_kgdb():
+                dev = gdb.selected_inferior().connection.details
+                if dev.startswith("/dev/ttyS"):
+                    gdb.execute("set architecture i386:x86-64:intel", to_string=True)
+                elif dev.startswith("/dev/ttyAMA"):
+                    gdb.execute("set architecture armv7", to_string=True)
+                else:
+                    raise
+                Cache.reset_gef_caches()
 
-    # when kdb, assume x86-64 or ARM
-    global __gef_check_once__
-    if __gef_check_once__:
-        if is_kgdb():
-            dev = gdb.selected_inferior().connection.details
-            if dev.startswith("/dev/ttyS"):
-                gdb.execute("set architecture i386:x86-64:intel", to_string=True)
-            elif dev.startswith("/dev/ttyAMA"):
-                gdb.execute("set architecture armv7", to_string=True)
-            else:
-                raise
-            Cache.reset_gef_caches()
+        # set `c`, `ni` and `si` command hooks for qemu-user and pin
+        if __gef_check_once__:
+            if is_qemu_user() or is_pin():
+                gdb.execute("define c\ncontinue-for-qemu-user\nend")
+                if is_or1k() or is_cris():
+                    gdb.execute("define si\nstepi-for-qemu-user\nend")
+                    gdb.execute("define ni\nnexti-for-qemu-user\nend")
 
-    # set `c`, `ni` and `si` command hooks for qemu-user and pin
-    if __gef_check_once__:
-        if is_qemu_user() or is_pin():
-            gdb.execute("define c\ncontinue-for-qemu-user\nend")
-            if is_or1k() or is_cris():
-                gdb.execute("define si\nstepi-for-qemu-user\nend")
-                gdb.execute("define ni\nnexti-for-qemu-user\nend")
+        # GEF will resolve the architecture if it is unknown.
+        if current_arch is None:
+            set_arch(get_arch())
 
-    # GEF will resolve the architecture if it is unknown.
-    if current_arch is None:
-        set_arch(get_arch())
+        # If the silent command is specified for a breakpoint, skip `context` command.
+        context_flag = True
+        if type(event) == gdb.BreakpointEvent:
+            if event.breakpoint.is_valid() and event.breakpoint.enabled:
+                if event.breakpoint.commands:
+                    if event.breakpoint.commands.startswith("silent"):
+                        context_flag = False
+        if context_flag:
+            gdb.execute("context")
 
-    # If the silent command is specified for a breakpoint, skip `context` command.
-    context_flag = True
-    if type(event) == gdb.BreakpointEvent:
-        if event.breakpoint.is_valid() and event.breakpoint.enabled:
-            if event.breakpoint.commands:
-                if event.breakpoint.commands.startswith("silent"):
-                    context_flag = False
-    if context_flag:
-        gdb.execute("context")
+        # Message if file is not loaded.
+        if __gef_check_once__:
+            if not (is_qemu_system() or is_kgdb() or is_vmware()):
+                if not gdb.current_progspace().filename:
+                    err("Missing info about architecture. Please set: `file /path/to/target_binary`")
+                    err("Some architectures may not be automatically recognized. Please set: `set architecture YOUR_ARCH`.")
+            __gef_check_once__ = False
+        return
 
-    # Message if file is not loaded.
-    if __gef_check_once__:
-        if not (is_qemu_system() or is_kgdb() or is_vmware()):
-            if not gdb.current_progspace().filename:
-                err("Missing info about architecture. Please set: `file /path/to/target_binary`")
-                err("Some architectures may not be automatically recognized. Please set: `set architecture YOUR_ARCH`.")
-        __gef_check_once__ = False
-    return
+    @staticmethod
+    def new_objfile_handler(_event):
+        """GDB event handler for new object file cases."""
+        Cache.reset_gef_caches(all=True)
+        if current_arch is None:
+            set_arch(get_arch())
+        load_libc_args()
 
+        # delayed breakpoint for brva
+        if BreakRelativeVirtualAddressCommand.delayed_bp_set is False and is_alive():
+            if not (is_qemu_system() or is_kgdb() or is_vmware()):
+                codebase = get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
+                if codebase is None:
+                    codebase = get_section_base_address(Path.get_filepath_from_info_proc())
+                if codebase:
+                    for offset in BreakRelativeVirtualAddressCommand.delayed_breakpoints:
+                        gdb.execute("b *{:#x}".format(codebase + offset))
+                    BreakRelativeVirtualAddressCommand.delayed_bp_set = True
+        return
 
-def new_objfile_handler(_event):
-    """GDB event handler for new object file cases."""
-    Cache.reset_gef_caches(all=True)
-    if current_arch is None:
-        set_arch(get_arch())
-    load_libc_args()
+    @staticmethod
+    def exit_handler(_event):
+        """GDB event handler for exit cases."""
+        Cache.reset_gef_caches(all=True)
+        return
 
-    # delayed breakpoint for brva
-    if BreakRelativeVirtualAddressCommand.delayed_bp_set is False and is_alive():
-        if not (is_qemu_system() or is_kgdb() or is_vmware()):
-            codebase = get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
-            if codebase is None:
-                codebase = get_section_base_address(Path.get_filepath_from_info_proc())
-            if codebase:
-                for offset in BreakRelativeVirtualAddressCommand.delayed_breakpoints:
-                    gdb.execute("b *{:#x}".format(codebase + offset))
-                BreakRelativeVirtualAddressCommand.delayed_bp_set = True
-    return
+    @staticmethod
+    def memchanged_handler(_event):
+        """GDB event handler for mem changes cases."""
+        Cache.reset_gef_caches()
+        return
 
-
-def exit_handler(_event):
-    """GDB event handler for exit cases."""
-    Cache.reset_gef_caches(all=True)
-    return
-
-
-def memchanged_handler(_event):
-    """GDB event handler for mem changes cases."""
-    Cache.reset_gef_caches()
-    return
-
-
-def regchanged_handler(_event):
-    """GDB event handler for reg changes cases."""
-    Cache.reset_gef_caches()
-    return
+    @staticmethod
+    def regchanged_handler(_event):
+        """GDB event handler for reg changes cases."""
+        Cache.reset_gef_caches()
+        return
 
 
 def load_libc_args():
@@ -13510,68 +13513,66 @@ def only_if_events_supported(event_type):
     return wrap
 
 
-#
-# Event hooking
-#
+class EventHooking:
+    @staticmethod
+    @only_if_events_supported("cont")
+    def gef_on_continue_hook(func):
+        return gdb.events.cont.connect(func)
 
-@only_if_events_supported("cont")
-def gef_on_continue_hook(func):
-    return gdb.events.cont.connect(func)
+    @staticmethod
+    @only_if_events_supported("cont")
+    def gef_on_continue_unhook(func):
+        return gdb.events.cont.disconnect(func)
 
+    @staticmethod
+    @only_if_events_supported("stop")
+    def gef_on_stop_hook(func):
+        return gdb.events.stop.connect(func)
 
-@only_if_events_supported("cont")
-def gef_on_continue_unhook(func):
-    return gdb.events.cont.disconnect(func)
+    @staticmethod
+    @only_if_events_supported("stop")
+    def gef_on_stop_unhook(func):
+        return gdb.events.stop.disconnect(func)
 
+    @staticmethod
+    @only_if_events_supported("exited")
+    def gef_on_exit_hook(func):
+        return gdb.events.exited.connect(func)
 
-@only_if_events_supported("stop")
-def gef_on_stop_hook(func):
-    return gdb.events.stop.connect(func)
+    @staticmethod
+    @only_if_events_supported("exited")
+    def gef_on_exit_unhook(func):
+        return gdb.events.exited.disconnect(func)
 
+    @staticmethod
+    @only_if_events_supported("new_objfile")
+    def gef_on_new_hook(func):
+        return gdb.events.new_objfile.connect(func)
 
-@only_if_events_supported("stop")
-def gef_on_stop_unhook(func):
-    return gdb.events.stop.disconnect(func)
+    @staticmethod
+    @only_if_events_supported("new_objfile")
+    def gef_on_new_unhook(func):
+        return gdb.events.new_objfile.disconnect(func)
 
+    @staticmethod
+    @only_if_events_supported("memory_changed")
+    def gef_on_memchanged_hook(func):
+        return gdb.events.memory_changed.connect(func)
 
-@only_if_events_supported("exited")
-def gef_on_exit_hook(func):
-    return gdb.events.exited.connect(func)
+    @staticmethod
+    @only_if_events_supported("memory_changed")
+    def gef_on_memchanged_unhook(func):
+        return gdb.events.memory_changed.disconnect(func)
 
+    @staticmethod
+    @only_if_events_supported("register_changed")
+    def gef_on_regchanged_hook(func):
+        return gdb.events.register_changed.connect(func)
 
-@only_if_events_supported("exited")
-def gef_on_exit_unhook(func):
-    return gdb.events.exited.disconnect(func)
-
-
-@only_if_events_supported("new_objfile")
-def gef_on_new_hook(func):
-    return gdb.events.new_objfile.connect(func)
-
-
-@only_if_events_supported("new_objfile")
-def gef_on_new_unhook(func):
-    return gdb.events.new_objfile.disconnect(func)
-
-
-@only_if_events_supported("memory_changed")
-def gef_on_memchanged_hook(func):
-    return gdb.events.memory_changed.connect(func)
-
-
-@only_if_events_supported("memory_changed")
-def gef_on_memchanged_unhook(func):
-    return gdb.events.memory_changed.disconnect(func)
-
-
-@only_if_events_supported("register_changed")
-def gef_on_regchanged_hook(func):
-    return gdb.events.register_changed.connect(func)
-
-
-@only_if_events_supported("register_changed")
-def gef_on_regchanged_unhook(func):
-    return gdb.events.register_changed.disconnect(func)
+    @staticmethod
+    @only_if_events_supported("register_changed")
+    def gef_on_regchanged_unhook(func):
+        return gdb.events.register_changed.disconnect(func)
 
 
 #
@@ -25322,14 +25323,14 @@ class EntryPointBreakCommand(GenericCommand):
         # instead of `set stop-on-solib-events 1` because shared object are never loaded.
         # At least gdb 10.1 (Ubuntu 18.04) supports gdb.events.new_objfile.
         ContextCommand.hide_context()
-        gef_on_new_hook(EntryPointBreakCommand.stop_callback)
+        EventHooking.gef_on_new_hook(EntryPointBreakCommand.stop_callback)
         gdb.execute("run {}".format(" ".join(argv)))
         return
 
     @staticmethod
     def stop_callback(_):
         # unhook
-        gef_on_new_unhook(EntryPointBreakCommand.stop_callback)
+        EventHooking.gef_on_new_unhook(EntryPointBreakCommand.stop_callback)
         ContextCommand.unhide_context()
 
         # get section
@@ -25583,8 +25584,8 @@ class ContextCommand(GenericCommand):
         return
 
     def post_load(self):
-        gef_on_continue_hook(self.update_registers)
-        gef_on_continue_hook(self.empty_extra_messages)
+        EventHooking.gef_on_continue_hook(self.update_registers)
+        EventHooking.gef_on_continue_hook(self.empty_extra_messages)
         self.previous_extra_regs = {}
         return
 
@@ -32052,7 +32053,7 @@ class HeapAnalysisCommand(GenericCommand):
         warn("{:s}: The heap analysis slows down the execution noticeably.".format(Color.colorify("Note", "bold underline yellow")))
 
         # when inferior quits, we need to clean everything for a next execution
-        gef_on_exit_hook(self.clean)
+        EventHooking.gef_on_exit_hook(self.clean)
         return
 
     def dump_tracked_allocations(self):
@@ -32094,7 +32095,7 @@ class HeapAnalysisCommand(GenericCommand):
         ok("{:s} - Re-enabling hardware watchpoints".format(Color.colorify("Heap-Analysis", "bold yellow")))
         gdb.execute("set can-use-hw-watchpoints 1")
 
-        gef_on_exit_unhook(self.clean)
+        EventHooking.gef_on_exit_unhook(self.clean)
         return
 
 
@@ -59840,13 +59841,13 @@ class ExecAsm:
         f = open("/dev/null")
         os.dup2(f.fileno(), self.stdout)
         f.close()
-        gef_on_stop_unhook(hook_stop_handler)
+        EventHooking.gef_on_stop_unhook(EventHandler.hook_stop_handler)
         return
 
     def revert_stdout(self):
         if self.debug:
             return
-        gef_on_stop_hook(hook_stop_handler)
+        EventHooking.gef_on_stop_hook(EventHandler.hook_stop_handler)
         os.dup2(self.stdout_bak, self.stdout)
         os.close(self.stdout_bak)
         return
@@ -81404,7 +81405,7 @@ class ExecUntilCommand(GenericCommand):
 
     def exec_next(self):
         bp_list = self.get_breakpoint_list()
-        gef_on_stop_unhook(hook_stop_handler)
+        EventHooking.gef_on_stop_unhook(EventHandler.hook_stop_handler)
         self.close_stdout_stderr()
         self.err = None
 
@@ -81469,7 +81470,7 @@ class ExecUntilCommand(GenericCommand):
 
         finally:
             self.revert_stdout_stderr() # anytime needed
-            gef_on_stop_hook(hook_stop_handler) # anytime needed
+            EventHooking.gef_on_stop_hook(EventHandler.hook_stop_handler) # anytime needed
             Cache.reset_gef_caches()
             if self.err:
                 err(self.err)
@@ -85963,12 +85964,12 @@ class GefReloadCommand(GenericCommand):
             err("Reload aborted")
             return
 
-        gef_on_continue_unhook(continue_handler)
-        gef_on_stop_unhook(hook_stop_handler)
-        gef_on_new_unhook(new_objfile_handler)
-        gef_on_exit_unhook(exit_handler)
-        gef_on_memchanged_unhook(memchanged_handler)
-        gef_on_regchanged_unhook(regchanged_handler)
+        EventHooking.gef_on_continue_unhook(EventHandler.continue_handler)
+        EventHooking.gef_on_stop_unhook(EventHandler.hook_stop_handler)
+        EventHooking.gef_on_new_unhook(EventHandler.new_objfile_handler)
+        EventHooking.gef_on_exit_unhook(EventHandler.exit_handler)
+        EventHooking.gef_on_memchanged_unhook(EventHandler.memchanged_handler)
+        EventHooking.gef_on_regchanged_unhook(EventHandler.regchanged_handler)
         Cache.reset_gef_caches(all=True)
 
         info("Reload {:s}".format(__gef_fpath__))
@@ -86134,8 +86135,6 @@ class GefPyObjListCommand(GenericCommand):
         arch_determinations = []
         decorators = []
         syscall_defines = []
-        hooks = []
-        hook_handlers = []
         gef_print_wrappers = []
         read_write_mems = []
         others = []
@@ -86174,10 +86173,6 @@ class GefPyObjListCommand(GenericCommand):
                 decorators.append("{!s} {!s}".format(t, mod))
             elif mod.endswith(("syscall_tbl", "syscall_list")) or mod.startswith("syscall_defs"):
                 syscall_defines.append("{!s} {!s}".format(t, mod))
-            elif mod.endswith(("_hook", "_unhook")):
-                hooks.append("{!s} {!s}".format(t, mod))
-            elif mod.endswith("_handler"):
-                hook_handlers.append("{!s} {!s}".format(t, mod))
             elif obj.__doc__ and obj.__doc__.startswith("The wrapper of gef_print"):
                 gef_print_wrappers.append("{!s} {!s}".format(t, mod))
             elif re.match(r"(read|write)_.*(memory|physmem).*", mod):
@@ -86203,10 +86198,6 @@ class GefPyObjListCommand(GenericCommand):
         output.extend(sorted(syscall_defines))
         output.append(titlify("Decorators"))
         output.extend(sorted(decorators))
-        output.append(titlify("Hooks"))
-        output.extend(sorted(hooks))
-        output.append(titlify("Hook handlers"))
-        output.extend(sorted(hook_handlers))
         output.append(titlify("gef_print wrapper"))
         output.extend(sorted(gef_print_wrappers))
         output.append(titlify("read/write memory functions"))
@@ -86570,17 +86561,17 @@ def main():
     gdb.execute("save gdb-index {}".format(get_gef_setting("gef.tempdir")))
 
     # gdb events configuration
-    gef_on_continue_hook(continue_handler)
-    gef_on_stop_hook(hook_stop_handler)
-    gef_on_new_hook(new_objfile_handler)
-    gef_on_exit_hook(exit_handler)
-    gef_on_memchanged_hook(memchanged_handler)
-    gef_on_regchanged_hook(regchanged_handler)
+    EventHooking.gef_on_continue_hook(EventHandler.continue_handler)
+    EventHooking.gef_on_stop_hook(EventHandler.hook_stop_handler)
+    EventHooking.gef_on_new_hook(EventHandler.new_objfile_handler)
+    EventHooking.gef_on_exit_hook(EventHandler.exit_handler)
+    EventHooking.gef_on_memchanged_hook(EventHandler.memchanged_handler)
+    EventHooking.gef_on_regchanged_hook(EventHandler.regchanged_handler)
 
     if gdb.current_progspace().filename is not None:
         # if here, we are sourcing gef from a gdb session already attached
         # we must force a call to the new_objfile handler (see issue #278)
-        new_objfile_handler(None)
+        EventHandler.new_objfile_handler(None)
 
     hexon()
     return
