@@ -3455,11 +3455,11 @@ class GlibcHeap:
             if self.heap_base is None:
                 heap_base = "uninitialized"
             else:
-                heap_base = str(lookup_address(self.heap_base))
-            arena_addr = str(lookup_address(self.__addr))
-            top = str(lookup_address(self.top))
-            last_remainder = str(lookup_address(self.last_remainder))
-            next = str(lookup_address(int(self.next)))
+                heap_base = str(ProcessMap.lookup_address(self.heap_base))
+            arena_addr = str(ProcessMap.lookup_address(self.__addr))
+            top = str(ProcessMap.lookup_address(self.top))
+            last_remainder = str(ProcessMap.lookup_address(self.last_remainder))
+            next = str(ProcessMap.lookup_address(int(self.next)))
             system_mem = int(self.system_mem)
             try:
                 next_free = int(self.next_free)
@@ -3879,12 +3879,12 @@ class GlibcHeap:
 
             # large bins
             if arena.is_chunk_in_largebins(self):
-                fd = lookup_address(self.fd)
-                bk = lookup_address(self.bk)
+                fd = ProcessMap.lookup_address(self.fd)
+                bk = ProcessMap.lookup_address(self.bk)
                 if is_valid_addr(self.fd_nextsize) or is_valid_addr(self.bk_nextsize):
                     # largebin and valid (fd|bk)_nextsize
-                    fd_nextsize = lookup_address(self.fd_nextsize)
-                    bk_nextsize = lookup_address(self.bk_nextsize)
+                    fd_nextsize = ProcessMap.lookup_address(self.fd_nextsize)
+                    bk_nextsize = ProcessMap.lookup_address(self.bk_nextsize)
                     fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s}, fd_nextsize={!s}, bk_nextsize={!s})"
                     msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk, fd_nextsize, bk_nextsize)
                 else:
@@ -3893,8 +3893,8 @@ class GlibcHeap:
 
             # small bins / unsorted bin
             elif arena.is_chunk_in_smallbins(self) or arena.is_chunk_in_unsortedbin(self):
-                fd = lookup_address(self.fd)
-                bk = lookup_address(self.bk)
+                fd = ProcessMap.lookup_address(self.fd)
+                bk = ProcessMap.lookup_address(self.bk)
                 fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
                 msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk)
 
@@ -3902,11 +3902,11 @@ class GlibcHeap:
             elif arena.is_chunk_in_fastbins(self) or arena.is_chunk_in_tcache(self):
                 fd = self.get_fwd_ptr(sll=False)
                 if get_libc_version() < (2, 32):
-                    fd = lookup_address(fd)
+                    fd = ProcessMap.lookup_address(fd)
                     fmt = "{:s}(base={:s}. addr={:s}, size={:s}, flags={:s}, fd={!s})"
                     msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd)
                 else:
-                    decoded_fd = lookup_address(self.get_fwd_ptr(sll=True))
+                    decoded_fd = ProcessMap.lookup_address(self.get_fwd_ptr(sll=True))
                     fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={:#x}(={!s}))"
                     msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, decoded_fd)
 
@@ -4137,7 +4137,7 @@ def get_libc_version():
     def get_libc_version_from_path():
         Cache.reset_gef_caches(all=True) # get_process_maps may be caching old information
 
-        sections = get_process_maps()
+        sections = ProcessMap.get_process_maps()
         for section in sections:
             r = RE_LIBC_PATH.search(section.path)
             if r:
@@ -4155,7 +4155,7 @@ def get_libc_version():
             elif is_remote_debug():
                 if is_qemu_user():
                     data = None
-                    for maps in get_process_maps(outer=True):
+                    for maps in ProcessMap.get_process_maps(outer=True):
                         if os.path.basename(maps.path) != os.path.basename(section.path):
                             continue
                         if maps.size != section.size:
@@ -10682,10 +10682,10 @@ def write_memory_qemu_user(pid, addr, data, length):
 
     # heuristic addr search and try use it
     if is_qemu_user():
-        inner_section = lookup_address(addr).section
+        inner_section = ProcessMap.lookup_address(addr).section
         target_path = inner_section.path
 
-        outer_maps = get_process_maps(outer=True)
+        outer_maps = ProcessMap.get_process_maps(outer=True)
         for m in outer_maps:
             if m.path != target_path:
                 continue
@@ -11608,7 +11608,7 @@ def is_qiling():
     pid = Pid.get_pid(remote=True)
     if pid is None or pid < 42000:
         return False
-    for m in get_process_maps():
+    for m in ProcessMap.get_process_maps():
         if m.path == "[hook_mem]":
             return True
     return False
@@ -11816,585 +11816,587 @@ class Path:
         return data
 
 
-@Cache.cache_until_next
-def get_process_maps_linux(pid, remote=False):
-    """Parse the Linux process `/proc/pid/maps` file."""
+class ProcessMap:
+    @staticmethod
+    @Cache.cache_until_next
+    def get_process_maps_linux(pid, remote=False):
+        """Parse the Linux process `/proc/pid/maps` file."""
 
-    # open & read maps
-    proc_map_file = "/proc/{:d}/maps".format(pid)
-    if remote:
-        data = Path.read_remote_file(proc_map_file, as_byte=False)
-        if not data:
-            return []
-        lines = data.splitlines()
-    else:
-        lines = open(proc_map_file, "r").readlines()
-
-    # tls and $sp of each threads
-    extra_info = []
-    if is_x86():
-        tls_list = []
-        orig_thread = gdb.selected_thread()
-        if orig_thread: # orig_thread may be None if under winedbg
-            for thread in gdb.selected_inferior().threads():
-                thread.switch() # change thread
-                # note: for speed up, do not use current_arch.get_tls()
-                tls = get_register("$fs_base" if is_x86_64() else "$gs_base") # get tls address
-                tls_list.append([thread.num, tls, current_arch.sp])
-            orig_thread.switch() # revert thread
-            extra_info = sorted(tls_list)
-
-            # When using gdbserver, thread.num may start from 2 even though there is no thread.
-            # This is confusing, so if there is only the main thread, force it to 1.
-            if len(extra_info) == 1:
-                extra_info = [ [1] + extra_info[0][1:] ]
-
-    # parse
-    maps = []
-    for line in lines:
-        line = line.replace("\t", " ") # for qiling framework
-        line = line.strip()
-        addr, perm, off, _, rest = line.split(" ", 4)
-        addr_start, addr_end = [int(x, 16) for x in addr.split("-")]
-        rest = rest.split(" ", 1)
-        if len(rest) == 1:
-            pathname = ""
-        else:
-            pathname = rest[1].lstrip()
-        inode = int(rest[0])
-
-        for th_num, tls_addr, _ in extra_info:
-            if tls_addr and addr_start <= tls_addr < addr_end:
-                pathname += "<tls-th{:d}>".format(th_num)
-                break
-
-        for th_num, _, stack_addr in extra_info:
-            if th_num > 1 and stack_addr and addr_start <= stack_addr < addr_end:
-                pathname += "<stack-th{:d}>".format(th_num)
-                break
-
-        off = int(off, 16)
-        perm = Permission.from_process_maps(perm)
-        sect = Section(page_start=addr_start, page_end=addr_end, offset=off, permission=perm, inode=inode, path=pathname)
-        maps.append(sect)
-    return maps
-
-
-# get_explored_regions (used at qemu-user mode) is very slow,
-# Because it repeats read_memory many times to find the upper and lower bounds of the page.
-# Cache.cache_until_next is not effective as-is, as it is cleared by Cache.reset_gef_caches() each time the `stepi` runs.
-# Fortunately, memory maps rarely change.
-# I decided to clear and recheck the cache when the `vmmap` command is called explicitly.
-@Cache.cache_this_session
-def get_explored_regions():
-    """Return sections from auxv exploring"""
-
-    if current_arch is None:
-        return []
-
-    def is_valid_addr_fast(addr):
-        try:
-           gdb.selected_inferior().read_memory(addr, 1)
-           return True
-        except gdb.MemoryError:
-            return False
-
-    def get_region_start_end(addr):
-        addr &= gef_getpagesize_mask_high()
-        if not is_valid_addr_fast(addr):
-            return None, None
-        region_start = addr
-        region_end = addr + gef_getpagesize()
-
-        nonlocal regions
-        end_addrs = [r.page_end for r in regions]
-        start_addrs = [r.page_start for r in regions]
-
-        # up search
-        lower_bound = 0
-        while True:
-            if region_start <= lower_bound:
-                break
-            if region_start in end_addrs:
-                break
-            if not is_valid_addr_fast(region_start - gef_getpagesize()):
-                break
-            region_start -= gef_getpagesize()
-
-        upper_bound = 1 << get_memory_alignment(in_bits=True)
-        # down search
-        while True:
-            if region_end >= upper_bound:
-                break
-            if region_end in start_addrs:
-                break
-            if not is_valid_addr_fast(region_end):
-                break
-            region_end += gef_getpagesize()
-        return region_start, region_end
-
-    def make_regions(addr, label, perm="rw-"):
-        if addr is None:
-            return []
-        # check if already in region
-        nonlocal regions
-        for rg in regions:
-            if rg.page_start <= addr < rg.page_end:
+        # open & read maps
+        proc_map_file = "/proc/{:d}/maps".format(pid)
+        if remote:
+            data = Path.read_remote_file(proc_map_file, as_byte=False)
+            if not data:
                 return []
-        # make region
-        start, end = get_region_start_end(addr)
-        if start is None:
-            return []
-        perm = Permission.from_process_maps(perm)
-        sect = Section(page_start=start, page_end=end, permission=perm, path=label)
-        return [sect]
+            lines = data.splitlines()
+        else:
+            lines = open(proc_map_file, "r").readlines()
 
-    def get_ehdr(addr):
-        upper_bound = 1 << get_memory_alignment(in_bits=True)
-        for _ in range(128):
-            if addr < 0 or addr > upper_bound:
-                return None
+        # tls and $sp of each threads
+        extra_info = []
+        if is_x86():
+            tls_list = []
+            orig_thread = gdb.selected_thread()
+            if orig_thread: # orig_thread may be None if under winedbg
+                for thread in gdb.selected_inferior().threads():
+                    thread.switch() # change thread
+                    # note: for speed up, do not use current_arch.get_tls()
+                    tls = get_register("$fs_base" if is_x86_64() else "$gs_base") # get tls address
+                    tls_list.append([thread.num, tls, current_arch.sp])
+                orig_thread.switch() # revert thread
+                extra_info = sorted(tls_list)
+
+                # When using gdbserver, thread.num may start from 2 even though there is no thread.
+                # This is confusing, so if there is only the main thread, force it to 1.
+                if len(extra_info) == 1:
+                    extra_info = [ [1] + extra_info[0][1:] ]
+
+        # parse
+        maps = []
+        for line in lines:
+            line = line.replace("\t", " ") # for qiling framework
+            line = line.strip()
+            addr, perm, off, _, rest = line.split(" ", 4)
+            addr_start, addr_end = [int(x, 16) for x in addr.split("-")]
+            rest = rest.split(" ", 1)
+            if len(rest) == 1:
+                pathname = ""
+            else:
+                pathname = rest[1].lstrip()
+            inode = int(rest[0])
+
+            for th_num, tls_addr, _ in extra_info:
+                if tls_addr and addr_start <= tls_addr < addr_end:
+                    pathname += "<tls-th{:d}>".format(th_num)
+                    break
+
+            for th_num, _, stack_addr in extra_info:
+                if th_num > 1 and stack_addr and addr_start <= stack_addr < addr_end:
+                    pathname += "<stack-th{:d}>".format(th_num)
+                    break
+
+            off = int(off, 16)
+            perm = Permission.from_process_maps(perm)
+            sect = Section(page_start=addr_start, page_end=addr_end, offset=off, permission=perm, inode=inode, path=pathname)
+            maps.append(sect)
+        return maps
+
+    # get_explored_regions (used at qemu-user mode) is very slow,
+    # Because it repeats read_memory many times to find the upper and lower bounds of the page.
+    # Cache.cache_until_next is not effective as-is, as it is cleared by Cache.reset_gef_caches() each time the `stepi` runs.
+    # Fortunately, memory maps rarely change.
+    # I decided to clear and recheck the cache when the `vmmap` command is called explicitly.
+    @staticmethod
+    @Cache.cache_this_session
+    def get_explored_regions():
+        """Return sections from auxv exploring"""
+
+        if current_arch is None:
+            return []
+
+        def is_valid_addr_fast(addr):
             try:
-                if read_memory(addr, 4) == b"\x7fELF":
-                    return Elf.get_elf(addr)
+               gdb.selected_inferior().read_memory(addr, 1)
+               return True
             except gdb.MemoryError:
+                return False
+
+        def get_region_start_end(addr):
+            addr &= gef_getpagesize_mask_high()
+            if not is_valid_addr_fast(addr):
+                return None, None
+            region_start = addr
+            region_end = addr + gef_getpagesize()
+
+            nonlocal regions
+            end_addrs = [r.page_end for r in regions]
+            start_addrs = [r.page_start for r in regions]
+
+            # up search
+            lower_bound = 0
+            while True:
+                if region_start <= lower_bound:
+                    break
+                if region_start in end_addrs:
+                    break
+                if not is_valid_addr_fast(region_start - gef_getpagesize()):
+                    break
+                region_start -= gef_getpagesize()
+
+            upper_bound = 1 << get_memory_alignment(in_bits=True)
+            # down search
+            while True:
+                if region_end >= upper_bound:
+                    break
+                if region_end in start_addrs:
+                    break
+                if not is_valid_addr_fast(region_end):
+                    break
+                region_end += gef_getpagesize()
+            return region_start, region_end
+
+        def make_regions(addr, label, perm="rw-"):
+            if addr is None:
+                return []
+            # check if already in region
+            nonlocal regions
+            for rg in regions:
+                if rg.page_start <= addr < rg.page_end:
+                    return []
+            # make region
+            start, end = get_region_start_end(addr)
+            if start is None:
+                return []
+            perm = Permission.from_process_maps(perm)
+            sect = Section(page_start=start, page_end=end, permission=perm, path=label)
+            return [sect]
+
+        def get_ehdr(addr):
+            upper_bound = 1 << get_memory_alignment(in_bits=True)
+            for _ in range(128):
+                if addr < 0 or addr > upper_bound:
+                    return None
+                try:
+                    if read_memory(addr, 4) == b"\x7fELF":
+                        return Elf.get_elf(addr)
+                except gdb.MemoryError:
+                    return None
+                addr -= gef_getpagesize()
+            return None
+
+        def parse_region_from_ehdr(addr, label):
+            elf = get_ehdr(addr & gef_getpagesize_mask_high())
+            if elf is None:
+                return []
+
+            pages = []
+            for phdr in elf.phdrs:
+                if not phdr.p_memsz:
+                    continue
+
+                vaddr = phdr.p_vaddr
+                if elf.is_pie():
+                    vaddr += elf.addr
+                vaddr_end = vaddr + phdr.p_memsz
+
+                offset = phdr.p_offset
+                flags = phdr.p_flags
+
+                # align
+                vaddr &= gef_getpagesize_mask_high()
+                offset &= gef_getpagesize_mask_high()
+                vaddr_end = (vaddr_end + gef_getpagesize_mask_low()) & gef_getpagesize_mask_high()
+
+                # add per pages
+                for page_addr in range(vaddr, vaddr_end, gef_getpagesize()):
+                    # check already exist
+                    for i, page in enumerate(pages):
+                        if page["vaddr"] == page_addr:
+                            # found, so fix flags
+                            if page["flags"] & Elf.Phdr.PF_X: # already has PF_X
+                                flags |= Elf.Phdr.PF_X
+                            pages[i]["flags"] = flags # overwrite, because RELRO
+                            break
+                    else:
+                        # not found, so add new page
+                        page = {
+                            "vaddr": page_addr,
+                            "memsize": gef_getpagesize(),
+                            "flags": flags,
+                            "offset": offset + (page_addr - vaddr),
+                        }
+                        pages.append(page)
+
+            pages = sorted(pages, key=lambda x: x["vaddr"])
+
+            # merge contiguous
+            prev = pages[0]
+            for page in pages[1:]:
+                prev_vend = prev["vaddr"] + prev["memsize"]
+                if prev["flags"] == page["flags"] and prev_vend == page["vaddr"]:
+                    prev["memsize"] += page["memsize"]
+                    pages.remove(page)
+                else:
+                    prev = page
+
+            # page -> section
+            sects = []
+            for page in pages:
+                perm = Permission.from_process_maps(ElfInfoCommand.pflags[page["flags"]].lower())
+                page_start = page["vaddr"]
+                page_end = page["vaddr"] + page["memsize"]
+                off = page["offset"]
+                sect = Section(page_start=page_start, page_end=page_end, offset=off, permission=perm, path=label)
+                sects.append(sect)
+            return sects
+
+        def get_linker(addr):
+            if addr is None:
                 return None
-            addr -= gef_getpagesize()
-        return None
 
-    def parse_region_from_ehdr(addr, label):
-        elf = get_ehdr(addr & gef_getpagesize_mask_high())
-        if elf is None:
-            return []
-
-        pages = []
-        for phdr in elf.phdrs:
-            if not phdr.p_memsz:
-                continue
+            # get interp
+            elf = get_ehdr(addr & gef_getpagesize_mask_high())
+            phdr = elf.get_phdr(Elf.Phdr.PT_INTERP)
+            if phdr is None:
+                return None
 
             vaddr = phdr.p_vaddr
             if elf.is_pie():
                 vaddr += elf.addr
+
+            linker = read_cstring_from_memory(vaddr)
+            return linker
+
+        def get_link_map(addr):
+            if addr is None:
+                return None
+
+            # get dynamic
+            elf = get_ehdr(addr & gef_getpagesize_mask_high())
+            phdr = elf.get_phdr(Elf.Phdr.PT_DYNAMIC)
+            if phdr is None:
+                return None
+
+            vaddr = phdr.p_vaddr
             vaddr_end = vaddr + phdr.p_memsz
+            if elf.is_pie():
+                vaddr += elf.addr
+                vaddr_end += elf.addr
 
-            offset = phdr.p_offset
-            flags = phdr.p_flags
-
-            # align
-            vaddr &= gef_getpagesize_mask_high()
-            offset &= gef_getpagesize_mask_high()
-            vaddr_end = (vaddr_end + gef_getpagesize_mask_low()) & gef_getpagesize_mask_high()
-
-            # add per pages
-            for page_addr in range(vaddr, vaddr_end, gef_getpagesize()):
-                # check already exist
-                for i, page in enumerate(pages):
-                    if page["vaddr"] == page_addr:
-                        # found, so fix flags
-                        if page["flags"] & Elf.Phdr.PF_X: # already has PF_X
-                            flags |= Elf.Phdr.PF_X
-                        pages[i]["flags"] = flags # overwrite, because RELRO
-                        break
-                else:
-                    # not found, so add new page
-                    page = {
-                        "vaddr": page_addr,
-                        "memsize": gef_getpagesize(),
-                        "flags": flags,
-                        "offset": offset + (page_addr - vaddr),
-                    }
-                    pages.append(page)
-
-        pages = sorted(pages, key=lambda x: x["vaddr"])
-
-        # merge contiguous
-        prev = pages[0]
-        for page in pages[1:]:
-            prev_vend = prev["vaddr"] + prev["memsize"]
-            if prev["flags"] == page["flags"] and prev_vend == page["vaddr"]:
-                prev["memsize"] += page["memsize"]
-                pages.remove(page)
+            # search DT_DEBUG
+            for tag_addr in range(vaddr, vaddr_end, current_arch.ptrsize * 2):
+                tag = read_int_from_memory(tag_addr)
+                if tag == 21: # DT_DEBUG
+                    dt_debug = read_int_from_memory(tag_addr + current_arch.ptrsize)
+                    break
             else:
-                prev = page
+                # not found
+                return None
 
-        # page -> section
-        sects = []
-        for page in pages:
-            perm = Permission.from_process_maps(ElfInfoCommand.pflags[page["flags"]].lower())
-            page_start = page["vaddr"]
-            page_end = page["vaddr"] + page["memsize"]
-            off = page["offset"]
-            sect = Section(page_start=page_start, page_end=page_end, offset=off, permission=perm, path=label)
-            sects.append(sect)
-        return sects
-
-    def get_linker(addr):
-        if addr is None:
-            return None
-
-        # get interp
-        elf = get_ehdr(addr & gef_getpagesize_mask_high())
-        phdr = elf.get_phdr(Elf.Phdr.PT_INTERP)
-        if phdr is None:
-            return None
-
-        vaddr = phdr.p_vaddr
-        if elf.is_pie():
-            vaddr += elf.addr
-
-        linker = read_cstring_from_memory(vaddr)
-        return linker
-
-    def get_link_map(addr):
-        if addr is None:
-            return None
-
-        # get dynamic
-        elf = get_ehdr(addr & gef_getpagesize_mask_high())
-        phdr = elf.get_phdr(Elf.Phdr.PT_DYNAMIC)
-        if phdr is None:
-            return None
-
-        vaddr = phdr.p_vaddr
-        vaddr_end = vaddr + phdr.p_memsz
-        if elf.is_pie():
-            vaddr += elf.addr
-            vaddr_end += elf.addr
-
-        # search DT_DEBUG
-        for tag_addr in range(vaddr, vaddr_end, current_arch.ptrsize * 2):
-            tag = read_int_from_memory(tag_addr)
-            if tag == 21: # DT_DEBUG
-                dt_debug = read_int_from_memory(tag_addr + current_arch.ptrsize)
-                break
-        else:
-            # not found
-            return None
-
-        # get link_map
-        try:
-            link_map = read_int_from_memory(dt_debug + current_arch.ptrsize)
-        except gdb.MemoryError:
-            return None
-        return link_map
-
-    def get_filepath_wrapper():
-        filepath = Path.get_filepath()
-        if filepath:
-            return filepath
-        filepath = gdb.current_progspace().filename
-        if filepath and filepath.startswith("target:"):
-            filepath = filepath[7:]
-        return filepath
-
-    def parse_region_from_link_map(link_map):
-        current = link_map
-        new_regions = []
-        while True:
-            l_addr = read_int_from_memory(current + current_arch.ptrsize * 0)
-            l_name = read_int_from_memory(current + current_arch.ptrsize * 1)
-            l_next = read_int_from_memory(current + current_arch.ptrsize * 3)
-            name = read_cstring_from_memory(l_name)
-            if not name:
-                name = get_filepath_wrapper() or "[code]"
-            new_regions += parse_region_from_ehdr(l_addr, name)
-            if l_next == 0:
-                break
-            current = l_next
-        return new_regions
-
-    def parse_auxv():
-        auxv = gef_get_auxiliary_values()
-        if not auxv:
-            return []
-
-        new_regions = []
-        codebase = auxv.get("AT_PHDR", None) or auxv.get("AT_ENTRY", None)
-
-        # plan1: from link_map info (code, all loaded shared library)
-        link_map = get_link_map(codebase)
-        if link_map:
-            new_regions += parse_region_from_link_map(link_map)
-
-        # plan2: use each auxv info (for code, linker)
-        else:
-            # code
-            if "AT_PHDR" in auxv:
-                new_regions += parse_region_from_ehdr(auxv["AT_PHDR"], get_filepath_wrapper() or "[code]")
-            elif "AT_ENTRY" in auxv:
-                new_regions += parse_region_from_ehdr(auxv["AT_ENTRY"], get_filepath_wrapper() or "[code]")
-            # linker
-            if "AT_BASE" in auxv:
-                new_regions += parse_region_from_ehdr(auxv["AT_BASE"], get_linker(codebase) or "[linker]")
-
-        # vdso
-        if "AT_SYSINFO_EHDR" in auxv:
-            new_regions += parse_region_from_ehdr(auxv["AT_SYSINFO_EHDR"], "[vdso]")
-        elif "AT_SYSINFO" in auxv:
-            new_regions += parse_region_from_ehdr(auxv["AT_SYSINFO"], "[vdso]")
-        return new_regions
-
-    def parse_stack_register():
-        # get permission
-        stack_permission = "rw-" # default
-        auxv = gef_get_auxiliary_values()
-        if auxv and "AT_PHDR" in auxv:
-            elf = get_ehdr(auxv["AT_PHDR"] & gef_getpagesize_mask_high())
-            phdr = elf.get_phdr(Elf.Phdr.PT_GNU_STACK)
-            if phdr:
-                stack_permission = ElfInfoCommand.pflags[phdr.p_flags].lower()
-            else:
-                stack_permission = "rwx" # no GNU_STACK phdr means no-NX
-        # add region
-        return make_regions(current_arch.sp, "[stack]", stack_permission)
-
-    def parse_registers_and_stack():
-        queue = set()
-
-        # registers
-        for regname in current_arch.all_registers:
-            v = get_register(regname)
-            if v is None:
-                continue
-            queue.add(v & gef_getpagesize_mask_high())
-
-        # walk value from stack top
-        sp = current_arch.sp
-        if sp is not None:
+            # get link_map
             try:
-                data = read_memory(sp & gef_getpagesize_mask_high(), gef_getpagesize())
-                data = slice_unpack(data, current_arch.ptrsize)
-                queue |= {d & gef_getpagesize_mask_high() for d in set(data)}
+                link_map = read_int_from_memory(dt_debug + current_arch.ptrsize)
             except gdb.MemoryError:
-                pass
+                return None
+            return link_map
 
-        # contiguous areas are removed from the queue
-        merged_queue = []
-        for addr in sorted(queue):
-            if not is_valid_addr(addr):
-                continue
-            if addr - gef_getpagesize() in merged_queue:
-                continue
-            merged_queue.append(addr)
+        def get_filepath_wrapper():
+            filepath = Path.get_filepath()
+            if filepath:
+                return filepath
+            filepath = gdb.current_progspace().filename
+            if filepath and filepath.startswith("target:"):
+                filepath = filepath[7:]
+            return filepath
 
-        # add regions
-        new_regions = []
-        for addr in merged_queue:
-            skip = False
-            for rg in new_regions:
-                if rg.page_start <= addr < rg.page_end:
-                    skip = True
-            if not skip:
-                new_regions += make_regions(addr, "<explored>")
-        return new_regions
+        def parse_region_from_link_map(link_map):
+            current = link_map
+            new_regions = []
+            while True:
+                l_addr = read_int_from_memory(current + current_arch.ptrsize * 0)
+                l_name = read_int_from_memory(current + current_arch.ptrsize * 1)
+                l_next = read_int_from_memory(current + current_arch.ptrsize * 3)
+                name = read_cstring_from_memory(l_name)
+                if not name:
+                    name = get_filepath_wrapper() or "[code]"
+                new_regions += parse_region_from_ehdr(l_addr, name)
+                if l_next == 0:
+                    break
+                current = l_next
+            return new_regions
 
-    regions = []
-    regions += parse_auxv()
-    regions += parse_stack_register()
+        def parse_auxv():
+            auxv = gef_get_auxiliary_values()
+            if not auxv:
+                return []
 
-    # walk from known map, because qemu may maps extra regions (?)
-    for r in regions.copy():
-        regions += make_regions(r.page_start - 1, "<explored>", str(r.permission))
-        regions += make_regions(r.page_end + 1, "<explored>", str(r.permission))
+            new_regions = []
+            codebase = auxv.get("AT_PHDR", None) or auxv.get("AT_ENTRY", None)
 
-    regions += parse_registers_and_stack()
+            # plan1: from link_map info (code, all loaded shared library)
+            link_map = get_link_map(codebase)
+            if link_map:
+                new_regions += parse_region_from_link_map(link_map)
 
-    # ok
-    regions = sorted(regions, key=lambda x: x.page_start)
-
-    return regions
-
-
-def get_process_maps_from_info_proc():
-    res = gdb.execute("info proc mappings", to_string=True)
-
-    """
-    process 2897541
-    Mapped address spaces:
-
-              Start Addr           End Addr       Size     Offset  Perms  objfile
-                0x400000           0x478000    0x78000        0x0  r-xp   /tmp/a.out
-                0x478000           0x48c000    0x14000        0x0  ---p
-                0x48c000           0x492000     0x6000    0x7c000  rw-p   /tmp/a.out
-                0x492000           0x498000     0x6000        0x0  rw-p
-          0x400000000000     0x400000001000     0x1000        0x0  ---p
-          0x400000001000     0x400000801000   0x800000        0x0  rw-p   [stack]
-          0x400000801000     0x400000802000     0x1000        0x0  r-xp
-    """
-    maps = []
-    for line in res.splitlines()[4:]:
-        line = line.strip()
-        addr_start, addr_end, size, offset, perm, *path = line.split()
-        addr_start = int(addr_start, 16)
-        addr_end = int(addr_end, 16)
-        size = int(size, 16)
-        offset = int(offset, 16)
-        perm = Permission.from_process_maps(perm)
-        if len(path) == 1:
-            path = path[0]
-        else:
-            path = ""
-        sect = Section(page_start=addr_start, page_end=addr_end, offset=offset, permission=perm, inode=None, path=path)
-        maps.append(sect)
-    return maps
-
-
-def get_process_maps_heuristic():
-    global __gef_use_info_proc_mappings__
-    if __gef_use_info_proc_mappings__ is None:
-        try:
-            res = gdb.execute("info proc mappings", to_string=True)
-            if "warning" in res:
-                __gef_use_info_proc_mappings__ = False
-            elif "Perms" not in res: # xtensa-linux-gdb
-                __gef_use_info_proc_mappings__ = False
+            # plan2: use each auxv info (for code, linker)
             else:
-                __gef_use_info_proc_mappings__ = True
-        except gdb.error:
+                # code
+                if "AT_PHDR" in auxv:
+                    new_regions += parse_region_from_ehdr(auxv["AT_PHDR"], get_filepath_wrapper() or "[code]")
+                elif "AT_ENTRY" in auxv:
+                    new_regions += parse_region_from_ehdr(auxv["AT_ENTRY"], get_filepath_wrapper() or "[code]")
+                # linker
+                if "AT_BASE" in auxv:
+                    new_regions += parse_region_from_ehdr(auxv["AT_BASE"], get_linker(codebase) or "[linker]")
+
+            # vdso
+            if "AT_SYSINFO_EHDR" in auxv:
+                new_regions += parse_region_from_ehdr(auxv["AT_SYSINFO_EHDR"], "[vdso]")
+            elif "AT_SYSINFO" in auxv:
+                new_regions += parse_region_from_ehdr(auxv["AT_SYSINFO"], "[vdso]")
+            return new_regions
+
+        def parse_stack_register():
+            # get permission
+            stack_permission = "rw-" # default
+            auxv = gef_get_auxiliary_values()
+            if auxv and "AT_PHDR" in auxv:
+                elf = get_ehdr(auxv["AT_PHDR"] & gef_getpagesize_mask_high())
+                phdr = elf.get_phdr(Elf.Phdr.PT_GNU_STACK)
+                if phdr:
+                    stack_permission = ElfInfoCommand.pflags[phdr.p_flags].lower()
+                else:
+                    stack_permission = "rwx" # no GNU_STACK phdr means no-NX
+            # add region
+            return make_regions(current_arch.sp, "[stack]", stack_permission)
+
+        def parse_registers_and_stack():
+            queue = set()
+
+            # registers
+            for regname in current_arch.all_registers:
+                v = get_register(regname)
+                if v is None:
+                    continue
+                queue.add(v & gef_getpagesize_mask_high())
+
+            # walk value from stack top
+            sp = current_arch.sp
+            if sp is not None:
+                try:
+                    data = read_memory(sp & gef_getpagesize_mask_high(), gef_getpagesize())
+                    data = slice_unpack(data, current_arch.ptrsize)
+                    queue |= {d & gef_getpagesize_mask_high() for d in set(data)}
+                except gdb.MemoryError:
+                    pass
+
+            # contiguous areas are removed from the queue
+            merged_queue = []
+            for addr in sorted(queue):
+                if not is_valid_addr(addr):
+                    continue
+                if addr - gef_getpagesize() in merged_queue:
+                    continue
+                merged_queue.append(addr)
+
+            # add regions
+            new_regions = []
+            for addr in merged_queue:
+                skip = False
+                for rg in new_regions:
+                    if rg.page_start <= addr < rg.page_end:
+                        skip = True
+                if not skip:
+                    new_regions += make_regions(addr, "<explored>")
+            return new_regions
+
+        regions = []
+        regions += parse_auxv()
+        regions += parse_stack_register()
+
+        # walk from known map, because qemu may maps extra regions (?)
+        for r in regions.copy():
+            regions += make_regions(r.page_start - 1, "<explored>", str(r.permission))
+            regions += make_regions(r.page_end + 1, "<explored>", str(r.permission))
+
+        regions += parse_registers_and_stack()
+
+        # ok
+        regions = sorted(regions, key=lambda x: x.page_start)
+
+        return regions
+
+    @staticmethod
+    def get_process_maps_from_info_proc():
+        res = gdb.execute("info proc mappings", to_string=True)
+
+        """
+        process 2897541
+        Mapped address spaces:
+
+                  Start Addr           End Addr       Size     Offset  Perms  objfile
+                    0x400000           0x478000    0x78000        0x0  r-xp   /tmp/a.out
+                    0x478000           0x48c000    0x14000        0x0  ---p
+                    0x48c000           0x492000     0x6000    0x7c000  rw-p   /tmp/a.out
+                    0x492000           0x498000     0x6000        0x0  rw-p
+              0x400000000000     0x400000001000     0x1000        0x0  ---p
+              0x400000001000     0x400000801000   0x800000        0x0  rw-p   [stack]
+              0x400000801000     0x400000802000     0x1000        0x0  r-xp
+        """
+        maps = []
+        for line in res.splitlines()[4:]:
+            line = line.strip()
+            addr_start, addr_end, size, offset, perm, *path = line.split()
+            addr_start = int(addr_start, 16)
+            addr_end = int(addr_end, 16)
+            size = int(size, 16)
+            offset = int(offset, 16)
+            perm = Permission.from_process_maps(perm)
+            if len(path) == 1:
+                path = path[0]
+            else:
+                path = ""
+            sect = Section(page_start=addr_start, page_end=addr_end, offset=offset, permission=perm, inode=None, path=path)
+            maps.append(sect)
+        return maps
+
+    @staticmethod
+    def get_process_maps_heuristic():
+        global __gef_use_info_proc_mappings__
+        if __gef_use_info_proc_mappings__ is None:
+            try:
+                res = gdb.execute("info proc mappings", to_string=True)
+                if "warning" in res:
+                    __gef_use_info_proc_mappings__ = False
+                elif "Perms" not in res: # xtensa-linux-gdb
+                    __gef_use_info_proc_mappings__ = False
+                else:
+                    __gef_use_info_proc_mappings__ = True
+            except gdb.error:
+                __gef_use_info_proc_mappings__ = False
+
+        # fast path
+        if __gef_use_info_proc_mappings__ is True:
+            res = ProcessMap.get_process_maps_from_info_proc() # don't use cache
+            if res:
+                return res
+            # something is wrong
             __gef_use_info_proc_mappings__ = False
 
-    # fast path
-    if __gef_use_info_proc_mappings__ is True:
-        res = get_process_maps_from_info_proc() # don't use cache
-        if res:
-            return res
-        # something is wrong
-        __gef_use_info_proc_mappings__ = False
+        # slow path
+        return ProcessMap.get_explored_regions() # use cache
 
-    # slow path
-    return get_explored_regions() # use cache
+    @staticmethod
+    @Cache.cache_until_next
+    def get_process_maps(outer=False):
+        """Return the mapped memory sections"""
+        if is_qemu_user():
+            if outer:
+                pid = Pid.get_pid()
+                if pid:
+                    return ProcessMap.get_process_maps_linux(pid)
+                return []
+            else: # scan heuristic
+                return ProcessMap.get_process_maps_heuristic()
 
-
-@Cache.cache_until_next
-def get_process_maps(outer=False):
-    """Return the mapped memory sections"""
-    if is_qemu_user():
-        if outer:
+        elif is_pin():
             pid = Pid.get_pid()
             if pid:
-                return get_process_maps_linux(pid)
+                return ProcessMap.get_process_maps_linux(pid)
+
+        elif is_qemu_system():
             return []
-        else: # scan heuristic
-            return get_process_maps_heuristic()
 
-    elif is_pin():
-        pid = Pid.get_pid()
-        if pid:
-            return get_process_maps_linux(pid)
+        elif is_wine():
+            # wine loads the EXE at wine's own virtual address.
+            # Due to pwner's use case, wine itself and its libraries should also be displayed.
+            # However, wine's `monitor mem` does not display them, so I did not adopt them.
+            # It's more reliable to resolve wine's PID and get its maps.
+            pid = Pid.get_pid()
+            if pid:
+                return ProcessMap.get_process_maps_linux(pid)
+            return []
 
-    elif is_qemu_system():
-        return []
+        elif is_remote_debug():
+            remote_pid = Pid.get_pid(remote=True)
+            if remote_pid:
+                return ProcessMap.get_process_maps_linux(remote_pid, remote=True)
 
-    elif is_wine():
-        # wine loads the EXE at wine's own virtual address.
-        # Due to pwner's use case, wine itself and its libraries should also be displayed.
-        # However, wine's `monitor mem` does not display them, so I did not adopt them.
-        # It's more reliable to resolve wine's PID and get its maps.
-        pid = Pid.get_pid()
-        if pid:
-            return get_process_maps_linux(pid)
-        return []
+        elif is_rr():
+            return ProcessMap.get_process_maps_from_info_proc()
 
-    elif is_remote_debug():
-        remote_pid = Pid.get_pid(remote=True)
-        if remote_pid:
-            return get_process_maps_linux(remote_pid, remote=True)
+        else: # normal pattern
+            pid = Pid.get_pid()
+            if pid:
+                return ProcessMap.get_process_maps_linux(pid)
 
-    elif is_rr():
-        return get_process_maps_from_info_proc()
+        return ProcessMap.get_process_maps_heuristic()
 
-    else: # normal pattern
-        pid = Pid.get_pid()
-        if pid:
-            return get_process_maps_linux(pid)
+    # `info files` called from get_info_files is heavy processing.
+    # Moreover, dereference_from causes each address to be resolved every time.
+    # Cache.cache_until_next is not effective as-is, as it is cleared by Cache.reset_gef_caches() each time the `stepi` runs.
+    # Fortunately, zone information rarely changes.
+    # I decided to keep the cache until it is explicitly cleared.
+    @staticmethod
+    @Cache.cache_this_session
+    def get_info_files():
+        """Retrieve all the files loaded by debuggee."""
+        lines = gdb.execute("info files", to_string=True).splitlines()
+        info_files = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                break
+            if not line.startswith("0x"):
+                continue
+            blobs = [x.strip() for x in line.split(" ")]
+            addr_start = int(blobs[0], 16)
+            addr_end = int(blobs[2], 16)
+            section_name = blobs[4]
+            if "system-supplied DSO" in line:
+                filepath = "[vdso]"
+            elif len(blobs) == 7:
+                filepath = blobs[6]
+            else:
+                filepath = Path.get_filepath(append_proc_root_prefix=False)
+            Zone = collections.namedtuple("Zone", ["name", "zone_start", "zone_end", "filename"])
+            info = Zone(section_name, addr_start, addr_end, filepath)
+            info_files.append(info)
+        return info_files
 
-    return get_process_maps_heuristic()
-
-
-# `info files` called from get_info_files is heavy processing.
-# Moreover, dereference_from causes each address to be resolved every time.
-# Cache.cache_until_next is not effective as-is, as it is cleared by Cache.reset_gef_caches() each time the `stepi` runs.
-# Fortunately, zone information rarely changes.
-# I decided to keep the cache until it is explicitly cleared.
-@Cache.cache_this_session
-def get_info_files():
-    """Retrieve all the files loaded by debuggee."""
-    lines = gdb.execute("info files", to_string=True).splitlines()
-    info_files = []
-    for line in lines:
-        line = line.strip()
-        if not line:
-            break
-        if not line.startswith("0x"):
-            continue
-        blobs = [x.strip() for x in line.split(" ")]
-        addr_start = int(blobs[0], 16)
-        addr_end = int(blobs[2], 16)
-        section_name = blobs[4]
-        if "system-supplied DSO" in line:
-            filepath = "[vdso]"
-        elif len(blobs) == 7:
-            filepath = blobs[6]
-        else:
-            filepath = Path.get_filepath(append_proc_root_prefix=False)
-        Zone = collections.namedtuple("Zone", ["name", "zone_start", "zone_end", "filename"])
-        info = Zone(section_name, addr_start, addr_end, filepath)
-        info_files.append(info)
-    return info_files
-
-
-@Cache.cache_until_next
-def process_lookup_address(addr):
-    """Look up for an address in memory. Return an Address object if found, None otherwise."""
-    if not is_alive():
-        err("Process is not running")
-        return None
-    if is_qemu_system() or is_vmware() or is_kgdb():
-        return None
-    for sect in get_process_maps():
-        if sect.page_start <= addr < sect.page_end:
-            return sect
-    return None
-
-
-@Cache.cache_until_next
-def process_lookup_path(names, perm_mask=Permission.ALL):
-    """Look up for paths in the process memory mapping.
-    Return a Section object of load base if found, None otherwise."""
-    if not is_alive():
-        err("Process is not running")
-        return None
-    if isinstance(names, str):
-        names = tuple([names]) # make tuple to iterate
-    for sect in get_process_maps():
-        for name in names:
-            if name in sect.path and sect.permission.value & perm_mask:
+    @staticmethod
+    @Cache.cache_until_next
+    def process_lookup_address(addr):
+        """Look up for an address in memory. Return an Address object if found, None otherwise."""
+        if not is_alive():
+            err("Process is not running")
+            return None
+        if is_qemu_system() or is_vmware() or is_kgdb():
+            return None
+        for sect in ProcessMap.get_process_maps():
+            if sect.page_start <= addr < sect.page_end:
                 return sect
-    return None
-
-
-@Cache.cache_until_next
-def file_lookup_address(addr):
-    """Look up for a file by its address. Return a Zone object if found, None otherwise."""
-    if is_qemu_system() or is_vmware() or is_kgdb():
-        # If FGKASLR is enabled, there are too many sections and it will take a long time, so skip them.
         return None
-    for info in get_info_files():
-        if info.zone_start <= addr < info.zone_end:
-            return info
-    return None
 
+    @staticmethod
+    @Cache.cache_until_next
+    def process_lookup_path(names, perm_mask=Permission.ALL):
+        """Look up for paths in the process memory mapping.
+        Return a Section object of load base if found, None otherwise."""
+        if not is_alive():
+            err("Process is not running")
+            return None
+        if isinstance(names, str):
+            names = tuple([names]) # make tuple to iterate
+        for sect in ProcessMap.get_process_maps():
+            for name in names:
+                if name in sect.path and sect.permission.value & perm_mask:
+                    return sect
+        return None
 
-@Cache.cache_until_next
-def lookup_address(addr):
-    """Try to find the address in the process address space.
-    Return an Address object, with validity flag set based on success."""
-    sect = process_lookup_address(addr)
-    info = file_lookup_address(addr)
-    if sect is None and info is None:
-        # i.e. there is no info on this address
-        return Address(value=addr, valid=False)
-    return Address(value=addr, section=sect, info=info)
+    @staticmethod
+    @Cache.cache_until_next
+    def file_lookup_address(addr):
+        """Look up for a file by its address. Return a Zone object if found, None otherwise."""
+        if is_qemu_system() or is_vmware() or is_kgdb():
+            # If FGKASLR is enabled, there are too many sections and it will take a long time, so skip them.
+            return None
+        for info in ProcessMap.get_info_files():
+            if info.zone_start <= addr < info.zone_end:
+                return info
+        return None
+
+    @staticmethod
+    @Cache.cache_until_next
+    def lookup_address(addr):
+        """Try to find the address in the process address space.
+        Return an Address object, with validity flag set based on success."""
+        sect = ProcessMap.process_lookup_address(addr)
+        info = ProcessMap.file_lookup_address(addr)
+        if sect is None and info is None:
+            # i.e. there is no info on this address
+            return Address(value=addr, valid=False)
+        return Address(value=addr, section=sect, info=info)
 
 
 def is_msb_on(addr):
@@ -12777,7 +12779,7 @@ def is_emulated32():
         # is not able to be detected
         return True
 
-    for m in get_process_maps():
+    for m in ProcessMap.get_process_maps():
         # native x86:
         # 0xbffdf000 0xc0000000 0x021000 0x000000 rw- [stack]
         # emulated x86 on x86_64
@@ -14933,11 +14935,11 @@ class CanaryCommand(GenericCommand):
 
         canary, location = res
         gef_print(titlify("canary value"))
-        info("Found AT_RANDOM at {!s}, reading {} bytes".format(lookup_address(location), current_arch.ptrsize))
+        info("Found AT_RANDOM at {!s}, reading {} bytes".format(ProcessMap.lookup_address(location), current_arch.ptrsize))
         info("The canary is {:s}".format(Color.boldify("{:#x}".format(canary))))
 
         gef_print(titlify("found canary"))
-        vmmap = get_process_maps()
+        vmmap = ProcessMap.get_process_maps()
         unpack = u32 if current_arch.ptrsize == 4 else u64
         sp = current_arch.sp
         for m in vmmap:
@@ -14960,11 +14962,11 @@ class CanaryCommand(GenericCommand):
                 else:
                     path = m.path
                 if prev_addr <= sp <= addr:
-                    info("(Stack pointer is at {!s})".format(lookup_address(sp)))
+                    info("(Stack pointer is at {!s})".format(ProcessMap.lookup_address(sp)))
                 if path == "[stack]":
-                    info("Found at {!s} in {!r} (sp{:+#x})".format(lookup_address(addr), path, addr - sp))
+                    info("Found at {!s} in {!r} (sp{:+#x})".format(ProcessMap.lookup_address(addr), path, addr - sp))
                 else:
-                    info("Found at {!s} in {!r}".format(lookup_address(addr), path))
+                    info("Found at {!s} in {!r}".format(ProcessMap.lookup_address(addr), path))
                 prev_addr = addr
         return
 
@@ -15082,7 +15084,7 @@ class AuxvCommand(GenericCommand):
                     additional_message = "{:s}{:s}".format(RIGHT_ARROW, s)
 
             if is_valid_addr(v):
-                v = str(lookup_address(v))
+                v = str(ProcessMap.lookup_address(v))
             else:
                 v = hex(v)
             gef_print("{:6s} {:22s} {:s}{:s}".format(num, k + ":", v, additional_message))
@@ -15123,7 +15125,7 @@ class ArgvCommand(GenericCommand):
             s = read_cstring_from_memory(addr, gef_getpagesize())
             s = Color.yellowify(repr(s))
             gef_print("{:03d} {!s}: {!s}{:s}{:s}".format(
-                i, lookup_address(pos), lookup_address(addr), RIGHT_ARROW, s,
+                i, ProcessMap.lookup_address(pos), ProcessMap.lookup_address(addr), RIGHT_ARROW, s,
             ))
             i += 1
         return
@@ -15153,14 +15155,14 @@ class ArgvCommand(GenericCommand):
         addr1 = self.get_address_from_symbol("_dl_argv")
         if paddr1 and addr1:
             gef_print(titlify("ARGV from _dl_argv"))
-            info("_dl_argv @ {}".format(lookup_address(paddr1)))
+            info("_dl_argv @ {}".format(ProcessMap.lookup_address(paddr1)))
             self.print_from_mem(addr1, args.verbose)
 
         paddr2 = self.get_address_from_symbol("&__libc_argv")
         addr2 = self.get_address_from_symbol("__libc_argv")
         if paddr2 and addr2:
             gef_print(titlify("ARGV from __libc_argv"))
-            info("__libc_argv @ {}".format(lookup_address(paddr2)))
+            info("__libc_argv @ {}".format(ProcessMap.lookup_address(paddr2)))
             self.print_from_mem(addr2, args.verbose)
 
         if not is_remote_debug():
@@ -15206,7 +15208,7 @@ class EnvpCommand(GenericCommand):
             s = read_cstring_from_memory(addr, gef_getpagesize())
             s = Color.yellowify(repr(s))
             gef_print("{:03d} {!s}: {!s}{:s}{:s}".format(
-                i, lookup_address(pos), lookup_address(addr), RIGHT_ARROW, s,
+                i, ProcessMap.lookup_address(pos), ProcessMap.lookup_address(addr), RIGHT_ARROW, s,
             ))
             i += 1
         return
@@ -15237,7 +15239,7 @@ class EnvpCommand(GenericCommand):
         paddr = self.get_address_from_symbol("&__environ")
         addr = self.get_address_from_symbol("__environ")
         if paddr and addr:
-            info("__environ @ {}".format(lookup_address(paddr)))
+            info("__environ @ {}".format(ProcessMap.lookup_address(paddr)))
             self.print_from_mem(addr, args.verbose)
         elif addr == 0:
             err("___environ is 0x0")
@@ -15248,7 +15250,7 @@ class EnvpCommand(GenericCommand):
         paddr = self.get_address_from_symbol("&last_environ")
         addr = self.get_address_from_symbol("last_environ")
         if paddr and addr:
-            info("last_environ @ {}".format(lookup_address(paddr)))
+            info("last_environ @ {}".format(ProcessMap.lookup_address(paddr)))
             self.print_from_mem(addr, args.verbose)
         elif addr == 0:
             err("last_environ is 0x0")
@@ -15317,7 +15319,7 @@ class VdsoCommand(GenericCommand):
         self.dont_repeat()
 
         # get map entry
-        maps = get_process_maps()
+        maps = ProcessMap.get_process_maps()
         if maps is None:
             err("Failed to get maps")
             return
@@ -15393,7 +15395,7 @@ class VvarCommand(GenericCommand):
         self.dont_repeat()
 
         # get map entry
-        maps = get_process_maps()
+        maps = ProcessMap.get_process_maps()
         if maps is None:
             err("Failed to get maps")
             return
@@ -15448,7 +15450,7 @@ class IouringDumpCommand(GenericCommand):
         self.dont_repeat()
 
         # get map entry
-        maps = get_process_maps()
+        maps = ProcessMap.get_process_maps()
         if maps is None:
             err("Failed to get maps")
             return
@@ -16040,7 +16042,7 @@ class ProcDumpCommand(GenericCommand):
                         else: # argN, sp, pc
                             address = int(elem, 0)
                             sym = get_symbol_string(address)
-                            elem = "{!s}{:s}".format(lookup_address(address), sym)
+                            elem = "{!s}{:s}".format(ProcessMap.lookup_address(address), sym)
                             out.append("{:2d} {:s}: {:s}".format(i + 1, elem_name, elem))
                     continue
 
@@ -16073,7 +16075,7 @@ class ProcDumpCommand(GenericCommand):
                         if i + 1 in [25, 26, 27, 28, 29, 30, 45, 46, 47, 48, 49, 50, 51]:
                             address = int(elem)
                             sym = get_symbol_string(address)
-                            elem = "{!s}{:s}".format(lookup_address(address), sym)
+                            elem = "{!s}{:s}".format(ProcessMap.lookup_address(address), sym)
                         elif i + 1 in [23, 33, 34]:
                             elem = hex(int(elem))
                         out.append("{:2d} {:s}: {:s}".format(i + 1, elem_name, elem))
@@ -16406,7 +16408,7 @@ class SmartMemoryDumpCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     def smart_memory_dump(self):
-        maps = get_process_maps()
+        maps = ProcessMap.get_process_maps()
         if maps is None:
             err("Failed to get maps")
             return
@@ -16583,7 +16585,7 @@ class HijackFdCommand(GenericCommand):
         data = String.str2bytes(data)
 
         # get stack address
-        vmmap = get_process_maps()
+        vmmap = ProcessMap.get_process_maps()
         stack_addrs = [entry.page_start for entry in vmmap if entry.path == "[stack]"]
         if len(stack_addrs) == 0:
             err("Not found stack")
@@ -16701,7 +16703,7 @@ class ScanSectionCommand(GenericCommand):
             except ValueError:
                 pass
 
-        for sect in get_process_maps():
+        for sect in ProcessMap.get_process_maps():
             if haystack in sect.path:
                 haystack_sections.append((sect.page_start, sect.page_end, os.path.basename(sect.path)))
             if needle in sect.path:
@@ -16895,7 +16897,7 @@ class SearchPatternCommand(GenericCommand):
         if is_qemu_system():
             maps_generator = self.get_process_maps_qemu_system()
         else:
-            maps_generator = get_process_maps()
+            maps_generator = ProcessMap.get_process_maps()
 
         for section in maps_generator:
             # permission filter
@@ -17242,7 +17244,7 @@ class SearchMangledPtrCommand(GenericCommand):
             return
 
         # search
-        maps_generator = get_process_maps()
+        maps_generator = ProcessMap.get_process_maps()
         for section in maps_generator:
             if not section.permission & Permission.READ:
                 continue
@@ -17328,7 +17330,7 @@ class SearchCfiGadgetsCommand(GenericCommand):
                         # 0x555555558634 ff2536e90100 <free@plt+0x4> jmp QWORD PTR [rip+0x1e936] # 0x555555576f70
                         r = re.search(r"# (0x\w+)", insn.operands[0])
                         if r:
-                            v = lookup_address(int(r.group(1), 16))
+                            v = ProcessMap.lookup_address(int(r.group(1), 16))
                             if not v.section.is_writable():
                                 valid = False
                     break
@@ -17360,7 +17362,7 @@ class SearchCfiGadgetsCommand(GenericCommand):
         self.dont_repeat()
 
         # get map entry
-        maps = get_process_maps()
+        maps = ProcessMap.get_process_maps()
         if maps is None:
             err("Failed to get maps")
             return
@@ -17691,7 +17693,7 @@ class MprotectCommand(GenericCommand):
         return
 
     def do_mprotect(self, location, perm, patch_only):
-        sect = process_lookup_address(location)
+        sect = ProcessMap.process_lookup_address(location)
         if sect is None:
             err("Unmapped address")
             return
@@ -18976,7 +18978,7 @@ class UnicornEmulateCommand(GenericCommand):
 
         Cache.reset_gef_caches(all=True)
 
-        vmmap = get_process_maps()
+        vmmap = ProcessMap.get_process_maps()
         if not vmmap:
             warn("An error occurred when reading memory map.")
             return
@@ -19755,9 +19757,9 @@ class GlibcHeapBinsCommand(GenericCommand):
             size_str = "any"
 
         m = []
-        bins_addr = lookup_address(bins_addr)
-        fw_ = lookup_address(fw)
-        bk_ = lookup_address(bk)
+        bins_addr = ProcessMap.lookup_address(bins_addr)
+        fw_ = ProcessMap.lookup_address(fw)
+        bk_ = ProcessMap.lookup_address(bk)
         fmt = "{:s}[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}"
         m.append(fmt.format(bin_name, index, size_str, bins_addr, fw_, bk_))
         corrupted_msg_color = get_gef_setting("theme.heap_corrupted_msg")
@@ -19910,8 +19912,8 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
                 else:
                     count = u16(read_memory(tcache_perthread_struct + 2 * i, 2))
                 size = GlibcHeap.get_binsize_table()["tcache"][i]["size"]
-                bins_addr = lookup_address(arena.tcachebins_addr(i))
-                fd = lookup_address(read_int_from_memory(bins_addr.value))
+                bins_addr = ProcessMap.lookup_address(arena.tcachebins_addr(i))
+                fd = ProcessMap.lookup_address(read_int_from_memory(bins_addr.value))
                 gef_print("tcachebins[idx={:d}, size={:#x}, @{!s}]: fd={!s} count={:d}".format(i, size, bins_addr, fd, count))
                 if m:
                     gef_print("\n".join(m))
@@ -20021,8 +20023,8 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
                 bin_table = GlibcHeap.get_binsize_table()["fastbins"]
                 if i in bin_table:
                     size = bin_table[i]["size"]
-                    bins_addr = lookup_address(arena.fastbins_addr(i))
-                    fd = lookup_address(read_int_from_memory(bins_addr.value))
+                    bins_addr = ProcessMap.lookup_address(arena.fastbins_addr(i))
+                    fd = ProcessMap.lookup_address(read_int_from_memory(bins_addr.value))
                     gef_print("fastbins[idx={:d}, size={:#x}, @{!s}]: fd={!s}".format(i, size, bins_addr, fd))
                     if m:
                         gef_print("\n".join(m))
@@ -20532,7 +20534,7 @@ class RpCommand(GenericCommand):
         base_address = 0
         if args.libc:
             libc_targets = ("libc-2.", "libc.so.6", "libuClibc-")
-            libc = process_lookup_path(libc_targets)
+            libc = ProcessMap.process_lookup_path(libc_targets)
             if libc is None:
                 err("libc is not found")
                 return
@@ -25286,7 +25288,7 @@ class EntryPointBreakCommand(GenericCommand):
 
         # get section
         fpath = Path.get_filepath()
-        executable_section = process_lookup_path(fpath, perm_mask=Permission.EXECUTE)
+        executable_section = ProcessMap.process_lookup_path(fpath, perm_mask=Permission.EXECUTE)
 
         if executable_section.page_start <= current_arch.pc < executable_section.page_end:
             # already stopped around entry point.
@@ -25296,7 +25298,7 @@ class EntryPointBreakCommand(GenericCommand):
             EntryBreakBreakpoint("*{:#x}".format(next_insn.address))
         else:
             # stopped in ld, so continue to entry-point.
-            base_address = process_lookup_path(fpath).page_start
+            base_address = ProcessMap.process_lookup_path(fpath).page_start
             entry_address = base_address + Elf.get_elf().e_entry
             info("Breaking at entry-point: {:#x}".format(entry_address))
             EntryBreakBreakpoint("*{:#x}".format(entry_address))
@@ -25625,7 +25627,7 @@ class ContextCommand(GenericCommand):
                 line += "{}: ".format(Color.colorify(padreg, regname_color))
             else:
                 line += "{}: ".format(Color.colorify(padreg, changed_color))
-            line += "{:s} ".format(lookup_address(new_value).long_fmt())
+            line += "{:s} ".format(ProcessMap.lookup_address(new_value).long_fmt())
 
             if i % nb == 0:
                 gef_print(line)
@@ -26586,9 +26588,13 @@ class ContextCommand(GenericCommand):
             # print
             if frame_name:
                 frame_name = Color.colorify(frame_name, "bold yellow")
-                gef_print("{:s}[{}] {!s}{:s} (frame name: {:s})".format(arrow, idx, lookup_address(pc), sym, frame_name))
+                gef_print("{:s}[{}] {!s}{:s} (frame name: {:s})".format(
+                    arrow, idx, ProcessMap.lookup_address(pc), sym, frame_name,
+                ))
             else:
-                gef_print("{:s}[{}] {!s}{:s}".format(arrow, idx, lookup_address(pc), sym))
+                gef_print("{:s}[{}] {!s}{:s}".format(
+                    arrow, idx, ProcessMap.lookup_address(pc), sym,
+                ))
 
             # go next frame
             try:
@@ -26681,7 +26687,7 @@ class ContextCommand(GenericCommand):
                     # if failed, print thread information without frame (but with $pc).
                     pc = get_register("$pc")
                 sym = get_symbol_string(pc, nosymbol_string=" <NO_SYMBOL>")
-                line += " at {!s}{:s}".format(lookup_address(pc), sym)
+                line += " at {!s}{:s}".format(ProcessMap.lookup_address(pc), sym)
                 line += ", reason: {}".format(Color.colorify(reason(), "bold magenta"))
             lines.append([thread.num, line])
 
@@ -27228,9 +27234,14 @@ class PatchCommand(GenericCommand):
         except Exception as e:
             err(e)
             return
-        history_info = {"addr": addr, "before_data": before_data, "after_data": after_data, "physmode": get_current_mmu_mode()}
+        history_info = {
+            "addr": addr,
+            "before_data": before_data,
+            "after_data": after_data,
+            "physmode": get_current_mmu_mode(),
+        }
         PatchCommand.patch_history.insert(0, history_info)
-        ok("Patching {:d} bytes from {!s}".format(length, lookup_address(addr)))
+        ok("Patching {:d} bytes from {!s}".format(length, ProcessMap.lookup_address(addr)))
         return
 
     # for qword, dword, word, byte sub-commands
@@ -28136,7 +28147,7 @@ def to_string_dereference_from(value, skip_idx=0, phys=False):
     # others
     msg = []
     for addr in addrs[skip_idx:]:
-        address = lookup_address(addr)
+        address = ProcessMap.lookup_address(addr)
         msg.append(address.long_fmt() + get_symbol_string(addr))
 
     if error:
@@ -28809,7 +28820,7 @@ class VMMapCommand(GenericCommand):
             # the memory map may be changed, so retry memory exploring in get_process_maps()
             Cache.reset_gef_caches(all=True)
 
-        vmmap = get_process_maps(args.outer)
+        vmmap = ProcessMap.get_process_maps(args.outer)
         if not vmmap:
             for line in gdb.execute("info files", to_string=True).splitlines():
                 if line.startswith("Symbols from"):
@@ -28939,10 +28950,10 @@ class XFilesCommand(GenericCommand):
         legend = "{:{w:d}s} {:{w:d}s} {:<21s} {:s}".format(*headers, w=width)
         gef_print(Color.colorify(legend, get_gef_setting("theme.table_heading")))
 
-        for xfile in get_info_files():
+        for xfile in ProcessMap.get_info_files():
             lines = []
-            lines.append(str(lookup_address(xfile.zone_start)))
-            lines.append(str(lookup_address(xfile.zone_end)))
+            lines.append(str(ProcessMap.lookup_address(xfile.zone_start)))
+            lines.append(str(ProcessMap.lookup_address(xfile.zone_end)))
             lines.append("{:<21s}".format(xfile.name))
             lines.append(xfile.filename)
             line = " ".join(lines)
@@ -28975,7 +28986,7 @@ class XInfoCommand(GenericCommand):
         return
 
     def xinfo(self, address):
-        addr = lookup_address(address)
+        addr = ProcessMap.lookup_address(address)
         if not addr.valid:
             warn("Cannot reach {:#x} in memory space".format(address))
             return
@@ -28983,15 +28994,15 @@ class XInfoCommand(GenericCommand):
         gdb.execute("vmmap {:#x}".format(address))
 
         if addr.section:
-            page_start = lookup_address(addr.section.page_start)
+            page_start = ProcessMap.lookup_address(addr.section.page_start)
             gef_print("Offset (from mapped):  {!s} + {:#x}".format(page_start, addr.value - addr.section.page_start))
 
             if addr.section.path and addr.section.path.startswith("/"):
-                base_start = lookup_address(get_section_base_address(addr.section.path))
+                base_start = ProcessMap.lookup_address(get_section_base_address(addr.section.path))
                 gef_print("Offset (from base):    {!s} + {:#x}".format(base_start, addr.value - base_start.section.page_start))
 
         if addr.info:
-            zone_start = lookup_address(addr.info.zone_start)
+            zone_start = ProcessMap.lookup_address(addr.info.zone_start)
             gef_print("Offset (from segment): {!s} ({:s}) + {:#x}".format(zone_start, addr.info.name, addr.value - addr.info.zone_start))
 
         sym = get_symbol_string(address)
@@ -29920,9 +29931,9 @@ class LinkMapCommand(GenericCommand):
 
         current = link_map.value
         while True:
-            l_name = lookup_address(read_int_from_memory(current + current_arch.ptrsize * 1))
+            l_name = ProcessMap.lookup_address(read_int_from_memory(current + current_arch.ptrsize * 1))
             name = read_cstring_from_memory(l_name.value)
-            l_next = lookup_address(read_int_from_memory(current + current_arch.ptrsize * 3))
+            l_next = ProcessMap.lookup_address(read_int_from_memory(current + current_arch.ptrsize * 3))
 
             if not name:
                 if Path.get_filepath():
@@ -29947,7 +29958,7 @@ class LinkMapCommand(GenericCommand):
         while True:
             tag = read_int_from_memory(current)
             current += current_arch.ptrsize
-            val = lookup_address(read_int_from_memory(current))
+            val = ProcessMap.lookup_address(read_int_from_memory(current))
             current += current_arch.ptrsize
             if tag not in DynamicCommand.DT_TABLE:
                 if not silent:
@@ -29955,14 +29966,14 @@ class LinkMapCommand(GenericCommand):
                 return None
             if DynamicCommand.DT_TABLE[tag] == "DT_DEBUG":
                 dt_debug = val
-                val_addr = lookup_address(current - current_arch.ptrsize)
+                val_addr = ProcessMap.lookup_address(current - current_arch.ptrsize)
                 val_addr_offset = val_addr.value - dynamic.value
                 if not silent:
                     info("_DYNAMIC+{:#x}(=DT_DEBUG): {!s} -> {!s}".format(val_addr_offset, val_addr, dt_debug))
-                link_map_ptr = lookup_address(dt_debug.value + current_arch.ptrsize)
+                link_map_ptr = ProcessMap.lookup_address(dt_debug.value + current_arch.ptrsize)
                 if not is_valid_addr(link_map_ptr.value):
                     return None
-                link_map = lookup_address(read_int_from_memory(link_map_ptr.value))
+                link_map = ProcessMap.lookup_address(read_int_from_memory(link_map_ptr.value))
                 if not silent:
                     info("DT_DEBUG+{:#x}: {!s} -> {!s}".format(current_arch.ptrsize, link_map_ptr, link_map))
                 break
@@ -29979,7 +29990,7 @@ class LinkMapCommand(GenericCommand):
         self.verbose = args.verbose
 
         if args.link_map_address:
-            link_map = lookup_address(args.link_map_address)
+            link_map = ProcessMap.lookup_address(args.link_map_address)
 
         elif args.elf_address:
             try:
@@ -30232,7 +30243,7 @@ class DynamicCommand(GenericCommand):
             else:
                 remain_size -= current_arch.ptrsize * 2
 
-            val = lookup_address(val)
+            val = ProcessMap.lookup_address(val)
             tag_description = self.DT_TABLE.get(tag, "Unknown")
             colored_addr = Color.colorify("{:#0{:d}x}".format(addr, width), base_address_color)
             gef_print("{:s}: {:#0{:d}x} {!s}  |  {:s}".format(colored_addr, tag, width, val, tag_description))
@@ -30266,7 +30277,7 @@ class DynamicCommand(GenericCommand):
             else:
                 dynamic = phdr.p_vaddr
 
-        dynamic = lookup_address(dynamic)
+        dynamic = ProcessMap.lookup_address(dynamic)
         if not silent:
             info("_DNYAMIC: {!s} [{!s}]".format(dynamic, dynamic.section.permission))
         return dynamic
@@ -30278,7 +30289,7 @@ class DynamicCommand(GenericCommand):
         self.dont_repeat()
 
         if args.dynamic_address:
-            dynamic = lookup_address(args.dynamic_address)
+            dynamic = ProcessMap.lookup_address(args.dynamic_address)
 
         elif args.elf_address:
             try:
@@ -30341,7 +30352,7 @@ class DestructorDumpCommand(GenericCommand):
         base_address_color = get_gef_setting("theme.dereference_base_address")
         a = Color.colorify("{:#0{:d}x}".format(addr, get_format_address_width()), base_address_color)
         try:
-            b = "[{!s}]".format(lookup_address(addr).section.permission)
+            b = "[{!s}]".format(ProcessMap.lookup_address(addr).section.permission)
             return a + b
         except Exception:
             return a + "[???]"
@@ -30649,7 +30660,7 @@ class DestructorDumpCommand(GenericCommand):
 
         # parse tls_dtor_list and print
         head_p = tls_dtor_list
-        head = lookup_address(read_int_from_memory(head_p))
+        head = ProcessMap.lookup_address(read_int_from_memory(head_p))
         current = head.value
         if head.section is None:
             gef_print("{:s}: {:s}: {!s}".format("tls_dtor_list", self.C(head_p), head))
@@ -30659,10 +30670,10 @@ class DestructorDumpCommand(GenericCommand):
         ptrsize = current_arch.ptrsize
 
         def read_fns(addr):
-            func = lookup_address(read_int_from_memory(current))
-            obj = lookup_address(read_int_from_memory(current + ptrsize * 1))
-            link_map = lookup_address(read_int_from_memory(current + ptrsize * 2))
-            next = lookup_address(read_int_from_memory(current + ptrsize * 3))
+            func = ProcessMap.lookup_address(read_int_from_memory(current))
+            obj = ProcessMap.lookup_address(read_int_from_memory(current + ptrsize * 1))
+            link_map = ProcessMap.lookup_address(read_int_from_memory(current + ptrsize * 2))
+            next = ProcessMap.lookup_address(read_int_from_memory(current + ptrsize * 3))
             return func, obj, link_map, next
 
         while current:
@@ -30699,7 +30710,7 @@ class DestructorDumpCommand(GenericCommand):
             err("Not found symbol ({:s})".format(name))
             return
 
-        head = lookup_address(read_int_from_memory(head_p))
+        head = ProcessMap.lookup_address(read_int_from_memory(head_p))
         current = head.value
         if head.section is None:
             gef_print("{:s}: {:s}: {!s}".format(name, self.C(head_p), head))
@@ -30711,8 +30722,8 @@ class DestructorDumpCommand(GenericCommand):
         ptrsize = current_arch.ptrsize
 
         try:
-            next = lookup_address(read_int_from_memory(current))
-            idx = lookup_address(read_int_from_memory(current + ptrsize))
+            next = ProcessMap.lookup_address(read_int_from_memory(current))
+            idx = ProcessMap.lookup_address(read_int_from_memory(current + ptrsize))
         except gdb.MemoryError:
             err("Memory access error at {:#x}".format(current))
             return
@@ -30721,10 +30732,10 @@ class DestructorDumpCommand(GenericCommand):
         gef_print("       idx:      {:s}: {!s}".format(self.C(head.value + ptrsize * 1), idx))
 
         def read_fns(addr):
-            flavor = lookup_address(read_int_from_memory(addr))
-            fn = lookup_address(read_int_from_memory(addr + ptrsize * 1))
-            arg = lookup_address(read_int_from_memory(addr + ptrsize * 2))
-            dso_handle = lookup_address(read_int_from_memory(addr + ptrsize * 3))
+            flavor = ProcessMap.lookup_address(read_int_from_memory(addr))
+            fn = ProcessMap.lookup_address(read_int_from_memory(addr + ptrsize * 1))
+            arg = ProcessMap.lookup_address(read_int_from_memory(addr + ptrsize * 2))
+            dso_handle = ProcessMap.lookup_address(read_int_from_memory(addr + ptrsize * 3))
             return flavor, fn, arg, dso_handle
 
         fns_size = ptrsize * 4 # flavor, fn, arg, dso_handle
@@ -31145,7 +31156,7 @@ class GotCommand(GenericCommand):
         return plt_begin, plt_end
 
     def perm(self, addr):
-        sec = lookup_address(addr).section
+        sec = ProcessMap.lookup_address(addr).section
         if sec is None:
             return "[???]"
         return "[{!s}]".format(sec.permission)
@@ -31276,13 +31287,13 @@ class GotCommand(GenericCommand):
             if self.verbose:
                 if plt_address:
                     plt_section = self.get_section_name(plt_address) + self.perm(plt_address)
-                    plt_address = lookup_address(plt_address)
+                    plt_address = ProcessMap.lookup_address(plt_address)
                     plt_info = "{!s} @{:13s} {:#8x} {:9s}".format(plt_address, plt_section, plt_offset, reloc_arg_info)
                 else:
                     plt_info = "{:{:d}s}  {:13s} {:>8s} {:9s}".format("Not found", width, "", "", reloc_arg_info)
             else:
                 if plt_address:
-                    plt_address = lookup_address(plt_address)
+                    plt_address = ProcessMap.lookup_address(plt_address)
                     plt_info = "{!s}".format(plt_address)
                 else:
                     plt_info = "{:{:d}s}".format("Not found", width)
@@ -31290,10 +31301,10 @@ class GotCommand(GenericCommand):
             # make got info
             if self.verbose:
                 got_section = self.get_section_name(got_address) + self.perm(got_address)
-                got_address = lookup_address(got_address)
+                got_address = ProcessMap.lookup_address(got_address)
                 got_info = "{!s} @{:13s} {:#8x}".format(got_address, got_section, got_offset)
             else:
-                got_address = lookup_address(got_address)
+                got_address = ProcessMap.lookup_address(got_address)
                 got_info = "{!s}".format(got_address)
             got_value_info = Color.colorify("{:#0{:d}x}{:s}".format(got_value, width, got_value_sym), color)
 
@@ -31420,7 +31431,7 @@ class GotCommand(GenericCommand):
                 return
             base_address = args.elf_address
         else:
-            vmmap = get_process_maps()
+            vmmap = ProcessMap.get_process_maps()
             target_filepath = vmmap_filepath or local_filepath
 
             # get the address matching the specified path
@@ -31490,7 +31501,7 @@ class GotAllCommand(GenericCommand):
         extra_args = "{:s} {:s}".format(verbose, " ".join(args.filter))
 
         self.out = []
-        for m in get_process_maps():
+        for m in ProcessMap.get_process_maps():
             if not m.path:
                 continue
             if m.path.startswith(("[", "<")) or m.path.endswith(("]", ">")):
@@ -31526,7 +31537,7 @@ class FormatStringBreakpoint(gdb.Breakpoint):
         Cache.reset_gef_caches()
         msg = []
         ptr, addr = current_arch.get_ith_parameter(self.num_args)
-        addr = lookup_address(addr)
+        addr = ProcessMap.lookup_address(addr)
 
         if not addr.valid:
             return False
@@ -45372,11 +45383,11 @@ class SyscallSampleCommand(GenericCommand):
 def get_section_base_address(name):
     if name is None:
         return None
-    section = process_lookup_path(name)
+    section = ProcessMap.process_lookup_path(name)
     if section:
         return section.page_start
     # Fail, retry with real path
-    section = process_lookup_path(os.path.realpath(name))
+    section = ProcessMap.process_lookup_path(os.path.realpath(name))
     if section:
         return section.page_start
     return None
@@ -45533,7 +45544,7 @@ class LibcCommand(GenericCommand):
         gdb.execute(f"set $libc = {libc}")
         gef_print(f"$libc = {libc:#x}")
 
-        libc = process_lookup_path(libc_targets)
+        libc = ProcessMap.process_lookup_path(libc_targets)
         real_libc_path = None
 
         if is_container_attach():
@@ -45545,7 +45556,7 @@ class LibcCommand(GenericCommand):
         elif is_remote_debug():
             if is_qemu_user():
                 data = None
-                for maps in get_process_maps(outer=True):
+                for maps in ProcessMap.get_process_maps(outer=True):
                     if os.path.basename(maps.path) != os.path.basename(libc.path):
                         continue
                     if maps.size != libc.size:
@@ -45602,7 +45613,7 @@ class LdCommand(GenericCommand):
         gdb.execute(f"set $ld = {ld}")
         gef_print(f"$ld = {ld:#x}")
 
-        ld = process_lookup_path(ld_targets)
+        ld = ProcessMap.process_lookup_path(ld_targets)
         real_ld_path = None
 
         if is_container_attach():
@@ -45614,7 +45625,7 @@ class LdCommand(GenericCommand):
         elif is_remote_debug():
             if is_qemu_user():
                 data = None
-                for maps in get_process_maps(outer=True):
+                for maps in ProcessMap.get_process_maps(outer=True):
                     if os.path.basename(maps.path) != os.path.basename(ld.path):
                         continue
                     if maps.size != ld.size:
@@ -45672,14 +45683,14 @@ class MagicCommand(GenericCommand):
         width = get_format_address_width()
         try:
             addr = int(gdb.parse_and_eval(f"&{sym}"))
-            addr = lookup_address(addr)
+            addr = ProcessMap.lookup_address(addr)
             perm = addr.section.permission
             if is_ascii_string(addr.value):
                 val = read_cstring_from_memory(addr.value, ascii_only=True)
                 fmt = "{:45s} {!s} [{!s}] (+{:#010x}) -> {:s}"
                 gef_print(fmt.format(sym, addr, perm, addr.value - base, val))
             else:
-                val = lookup_address(read_int_from_memory(addr.value))
+                val = ProcessMap.lookup_address(read_int_from_memory(addr.value))
                 val_sym = get_symbol_string(val.value)
                 fmt = "{:45s} {!s} [{!s}] (+{:#010x}) -> {:s}{:s}"
                 gef_print(fmt.format(sym, addr, perm, addr.value - base, val.long_fmt(), val_sym))
@@ -46068,7 +46079,7 @@ class OneGadgetCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        libc = process_lookup_path(("libc-2.", "libc.so.6"))
+        libc = ProcessMap.process_lookup_path(("libc-2.", "libc.so.6"))
         if libc is None:
             err("libc is not found")
             return
@@ -47039,7 +47050,7 @@ class ExtractHeapAddrCommand(GenericCommand):
 
         ptr = args.value
         extracted_ptr = self.reveal(ptr)
-        colored_extracted_ptr = str(lookup_address(extracted_ptr))
+        colored_extracted_ptr = str(ProcessMap.lookup_address(extracted_ptr))
         gef_print("Protected fd pointer: {:#x}".format(ptr))
         gef_print(" -> Extracted heap address: {:s} (=fd & ~0xfff)".format(colored_extracted_ptr))
         return
@@ -47065,7 +47076,7 @@ class FindFakeFastCommand(GenericCommand):
 
     def print_result(self, m, pos, size_candidate):
         path = "unknown" if m.path == "" else m.path
-        address = lookup_address(m.page_start + pos)
+        address = ProcessMap.lookup_address(m.page_start + pos)
         self.info("Found at {!s} in {!r} [{!s}]".format(address, path, m.permission))
 
         if is_32bit():
@@ -47097,7 +47108,7 @@ class FindFakeFastCommand(GenericCommand):
     def find_fake_fast(self, target_size):
         mask = ~0x7 if current_arch.ptrsize == 4 else ~0xf
         target_size &= mask
-        vmmap = get_process_maps()
+        vmmap = ProcessMap.get_process_maps()
         unpack = u32 if current_arch.ptrsize == 4 else u64
         for m in vmmap:
             if not (m.permission & Permission.READ) or not (m.permission & Permission.WRITE):
@@ -47255,7 +47266,7 @@ class VisualHeapCommand(GenericCommand):
         return
 
     def generate_visual_heap(self, arena, dump_start, max_count):
-        sect = process_lookup_address(dump_start)
+        sect = ProcessMap.process_ProcessMap.lookup_address(dump_start)
         if sect:
             end = sect.page_end
         else:
@@ -47377,7 +47388,7 @@ class DistanceCommand(GenericCommand):
             gef_print("Offset:  {:#x}".format(offset))
             return
 
-        addr_a = lookup_address(args.address_a)
+        addr_a = ProcessMap.lookup_address(args.address_a)
         if addr_a.section is None:
             err("Not found the base address")
             return
@@ -59440,7 +59451,7 @@ class StringsCommand(GenericCommand):
 
                 if not self.filter or any(filt.search(cstr) for filt in self.filter):
                     if not self.exclude or not any(ex.search(cstr) for ex in self.exclude):
-                        self.out.append("{:s}: {:s}".format(str(lookup_address(address)), cstr))
+                        self.out.append("{:s}: {:s}".format(str(ProcessMap.lookup_address(address)), cstr))
                 seen_cstr.append((address, address + len(cstr) + 1))
 
             # search pointer for recursive search
@@ -61390,7 +61401,7 @@ class SequenceLengthCommand(GenericCommand):
             err("Too large unit size")
             return
 
-        colored_addr = str(lookup_address(args.addr))
+        colored_addr = str(ProcessMap.lookup_address(args.addr))
         colored_unit = Color.boldify("{:#x}".format(args.unit))
         info("Check from {:s} in units of {:s} bytes".format(colored_addr, colored_unit))
 
@@ -61405,7 +61416,7 @@ class SequenceLengthCommand(GenericCommand):
             target = target[:0x100] + b"..."
         colored_count = Color.boldify("{:#x}".format(count))
         colored_size = Color.boldify("{:#x}".format(size))
-        colored_end = str(lookup_address(end))
+        colored_end = str(ProcessMap.lookup_address(end))
         gef_print("{:s} - {:s} is same value".format(colored_addr, colored_end))
         gef_print("{} is found {:s} times, {:s} bytes".format(target, colored_count, colored_size))
         return
@@ -70215,7 +70226,7 @@ class TcmallocDumpCommand(GenericCommand):
             else:
                 chunksize = Color.colorify_hex(chunksize, chunk_size_color)
             fmt = "freelist[idx={:d}, size={:s}, len={:d}] @ {!s}"
-            self.out.append(fmt.format(idx, chunksize, length, lookup_address(freelist)))
+            self.out.append(fmt.format(idx, chunksize, length, ProcessMap.lookup_address(freelist)))
             self.out.extend(out)
         return
 
@@ -70286,7 +70297,7 @@ class TcmallocDumpCommand(GenericCommand):
                     break
             # print
             fmt = "central_cache_[{:d}].tc_slot[{:d}] @ {!s}"
-            self.out.append(fmt.format(_i, _j, lookup_address(freelist)))
+            self.out.append(fmt.format(_i, _j, ProcessMap.lookup_address(freelist)))
             self.out.extend(out)
         return
 
@@ -70534,8 +70545,10 @@ class GoHeapDumpCommand(GenericCommand):
             range_addr_str += Color.colorify_hex(mspan.end_addr, page_address_color)
             range_size = mspan.end_addr - mspan.start_addr
             msg = "mspan @ {!s} [{:s} sz={:#x} chunk_size={:s} next={!s}, prev:{!s}]".format(
-                lookup_address(mspan.address), range_addr_str, range_size, chunk_size_str,
-                lookup_address(mspan.next), lookup_address(mspan.prev),
+                ProcessMap.lookup_address(mspan.address),
+                range_addr_str, range_size, chunk_size_str,
+                ProcessMap.lookup_address(mspan.next),
+                ProcessMap.lookup_address(mspan.prev),
             )
             self.out.append(msg)
             if do_dump:
@@ -70732,7 +70745,8 @@ class TlsfHeapDumpCommand(GenericCommand):
                         Color.colorify_hex(current, freed_address_color),
                         prev_hdr,
                         Color.colorify_hex(size & ~0xf, chunk_size_color),
-                        lookup_address(prev_), lookup_address(next_),
+                        ProcessMap.lookup_address(prev_),
+                        ProcessMap.lookup_address(next_),
                     )
                     self.out.append(msg)
                     current = next_
@@ -70777,7 +70791,7 @@ class HoardHeapDumpCommand(GenericCommand):
 
     def get_super_blocks(self):
         super_blocks = []
-        for m in get_process_maps():
+        for m in ProcessMap.get_process_maps():
             if m.path.startswith(("/", "[")):
                 continue
             if m.permission != Permission.READ | Permission.WRITE:
@@ -71271,15 +71285,16 @@ class PartitionAllocDumpCommand(GenericCommand):
         # the pointers to each root are in the RW area.
         # first, we list up the RW area.
         filepath = Path.get_filepath(append_proc_root_prefix=False)
+        maps = ProcessMap.get_process_maps()
         if is_64bit():
             codebase = get_section_base_address(filepath)
             mask = 0x0000ffff00000000
-            chromium_rw_maps = [p for p in get_process_maps() if p.permission.value == Permission.READ | Permission.WRITE]
+            chromium_rw_maps = [p for p in maps if p.permission.value == Permission.READ | Permission.WRITE]
             chromium_rw_maps = [p for p in chromium_rw_maps if (p.page_start & mask) == (codebase & mask) and p.path != filepath]
         elif is_32bit():
             mask = 0xff000000
             heapbase = HeapbaseCommand.heap_base()
-            chromium_rw_maps = [p for p in get_process_maps() if p.permission.value == Permission.READ | Permission.WRITE]
+            chromium_rw_maps = [p for p in maps if p.permission.value == Permission.READ | Permission.WRITE]
             chromium_rw_maps = [p for p in chromium_rw_maps if p.page_start < heapbase and p.path != filepath]
 
         # n_gram([1,2,3,4,5],3) -> [[1, 2, 3], [2, 3, 4], [3, 4, 5]]
@@ -71728,7 +71743,7 @@ class PartitionAllocDumpCommand(GenericCommand):
                 return Color.colorify_hex(address, management_color)
             current = extent.next
         if is_valid_addr(address):
-            return str(lookup_address(address))
+            return str(ProcessMap.lookup_address(address))
         return "{:#x}".format(address)
 
     def P(self, address):
@@ -71782,7 +71797,7 @@ class PartitionAllocDumpCommand(GenericCommand):
         self.out.append("int16_t global_empty_slot_span_ring_index:             {:#x}".format(root.global_empty_slot_span_ring_index))
         self.out.append("int16_t global_empty_slot_span_ring_size:              {:#x}".format(root.global_empty_slot_span_ring_size))
         inv_inv = root.inverted_self ^ ((1 << (current_arch.ptrsize * 8)) - 1)
-        inv_inv = str(lookup_address(inv_inv))
+        inv_inv = str(ProcessMap.lookup_address(inv_inv))
         self.out.append("uintptr_t inverted_self:                               {:#x} (=~{:s})".format(root.inverted_self, inv_inv))
         self.out.append("std::atomic<int> thread_caches_being_constructed_:     {:#x}".format(root.thread_caches_being_constructed_))
         self.out.append("bool quarantine_always_for_testing:                    {:#x}".format(root.quarantine_always_for_testing))
@@ -71797,7 +71812,7 @@ class PartitionAllocDumpCommand(GenericCommand):
             while current:
                 extent, _ = self.read_extent(current)
                 self.out.append("    -> extent @{:s}".format(self.C(extent.addr)))
-                self.out.append("           root:{!s} ".format(lookup_address(extent.root)))
+                self.out.append("           root:{!s} ".format(ProcessMap.lookup_address(extent.root)))
                 super_page_info = "{:s} - {:s}".format(self.P(extent.super_page_base), self.P(extent.super_page_end))
                 page_info = "(total 0x200000(2MB) * {:d} pages)".format(extent.number_of_consecutive_super_pages)
                 self.out.append("           super_page:{:s} {:s}".format(super_page_info, page_info))
@@ -71841,9 +71856,9 @@ class PartitionAllocDumpCommand(GenericCommand):
 
         slot_size = Color.colorify("{:#7x}".format(bucket.slot_size), chunk_size_color)
         if idx is not None:
-            self.out.append("    buckets[{:3d}](slot_size:{:s}) @{!s}".format(idx, slot_size, lookup_address(bucket.addr)))
+            self.out.append("    buckets[{:3d}](slot_size:{:s}) @{!s}".format(idx, slot_size, ProcessMap.lookup_address(bucket.addr)))
         else:
-            self.out.append("    bucket(slot_size:{:s}) @{!s}".format(slot_size, lookup_address(bucket.addr)))
+            self.out.append("    bucket(slot_size:{:s}) @{!s}".format(slot_size, ProcessMap.lookup_address(bucket.addr)))
         self.out.append("        num_system_pages_per_slot_span:{:#x} ".format(bucket.num_system_pages_per_slot_span))
         self.out.append("        num_full_slot_spans:{:#x} ".format(bucket.num_full_slot_spans))
         self.out.append("        slot_size_reciprocal:{:#x}".format(bucket.slot_size_reciprocal))
@@ -72090,7 +72105,8 @@ class MuslHeapDumpCommand(GenericCommand):
                         if not m:
                             continue
                         __malloc_context_init_done_offset = int(m.group(1), 16)
-                        rw_maps = [p for p in get_process_maps() if p.permission.value == Permission.READ | Permission.WRITE]
+                        maps = ProcessMap.get_process_maps()
+                        rw_maps = [p for p in maps if p.permission.value == Permission.READ | Permission.WRITE]
                         rw_maps = [p for p in rw_maps if "libc.so" in p.path]
                         libc_bss_base = rw_maps[0].page_start
                         __malloc_context_init_done = libc_bss_base + __malloc_context_init_done_offset
@@ -72221,14 +72237,14 @@ class MuslHeapDumpCommand(GenericCommand):
             self.out.append("  size_t pagesize:                    {:#x}".format(ctx.pagesize))
         self.out.append("  int init_done:                      {:#x}".format(ctx.init_done))
         self.out.append("  unsigned int mmap_counter:          {:#x}".format(ctx.mmap_counter))
-        self.out.append("  struct meta* free_meta_head:        {!s}".format(lookup_address(ctx.free_meta_head)))
-        self.out.append("  struct meta* avail_meta:            {!s}".format(lookup_address(ctx.avail_meta)))
+        self.out.append("  struct meta* free_meta_head:        {!s}".format(ProcessMap.lookup_address(ctx.free_meta_head)))
+        self.out.append("  struct meta* avail_meta:            {!s}".format(ProcessMap.lookup_address(ctx.avail_meta)))
         self.out.append("  size_t avail_meta_count:            {:#x}".format(ctx.avail_meta_count))
         self.out.append("  size_t avail_meta_area_count:       {:#x}".format(ctx.avail_meta_area_count))
         self.out.append("  size_t alloc_shift:                 {:#x}".format(ctx.alloc_shift))
-        self.out.append("  struct meta_area* meta_area_head:   {!s}".format(lookup_address(ctx.meta_area_head)))
-        self.out.append("  struct meta_area* meta_area_tail:   {!s}".format(lookup_address(ctx.meta_area_tail)))
-        self.out.append("  unsigned char* avail_meta_areas:    {!s}".format(lookup_address(ctx.avail_meta_areas)))
+        self.out.append("  struct meta_area* meta_area_head:   {!s}".format(ProcessMap.lookup_address(ctx.meta_area_head)))
+        self.out.append("  struct meta_area* meta_area_tail:   {!s}".format(ProcessMap.lookup_address(ctx.meta_area_tail)))
+        self.out.append("  unsigned char* avail_meta_areas:    {!s}".format(ProcessMap.lookup_address(ctx.avail_meta_areas)))
         self.out.append("  struct meta* active[48]:")
         for i in range(48):
             self.out.append("     active[{:2d}] (for chunk_size={:#7x}):     {:#x}".format(i, self.class_to_size(i), ctx.active[i]))
@@ -72238,7 +72254,7 @@ class MuslHeapDumpCommand(GenericCommand):
         self.out.append("  uint8_t unmap_seq[32]:              {}".format(" ".join(["{:02x}".format(x) for x in ctx.unmap_seq])))
         self.out.append("  uint8_t bounces[32]:                {}".format(" ".join(["{:02x}".format(x) for x in ctx.bounces])))
         self.out.append("  uint8_t seq:                        {:#x}".format(ctx.seq))
-        self.out.append("  uintptr_t brk:                      {!s}".format(lookup_address(ctx.brk)))
+        self.out.append("  uintptr_t brk:                      {!s}".format(ProcessMap.lookup_address(ctx.brk)))
         return
 
     def read_meta(self, addr):
@@ -72525,13 +72541,13 @@ class uClibcChunk:
         flags = self.flags_as_string()
 
         if is_fastbin:
-            decoded_fd = lookup_address(self.get_fwd_ptr(sll=True))
+            decoded_fd = ProcessMap.lookup_address(self.get_fwd_ptr(sll=True))
             fd = self.get_fwd_ptr(sll=False)
             fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={:#x}(={!s})"
             msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, decoded_fd)
         else:
-            fd = lookup_address(self.fd)
-            bk = lookup_address(self.bk)
+            fd = ProcessMap.lookup_address(self.fd)
+            bk = ProcessMap.lookup_address(self.bk)
             fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
             msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk)
         return msg
@@ -72684,7 +72700,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
         # Do not use parse_address("malloc").
         # For libc without symbols, the malloc@plt of the main binary will be resolved.
         # You can definitely get the address of malloc by finding the libc path and looking for the GOT of libc itself.
-        libc = process_lookup_path("libuClibc-")
+        libc = ProcessMap.process_lookup_path("libuClibc-")
         if libc is None:
             return None
         ret = gdb.execute("got --no-pager --quiet --file '{:s}' <malloc>".format(libc.path), to_string=True)
@@ -72882,7 +72898,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
     def dump_malloc_state(self, malloc_state):
         chunk_size_color = get_gef_setting("theme.heap_chunk_size")
 
-        self.verbose_print("malloc_state: {!s}".format(lookup_address(malloc_state.address)))
+        self.verbose_print("malloc_state: {!s}".format(ProcessMap.lookup_address(malloc_state.address)))
         max_fast_flags = "|".join(malloc_state.max_fast_flags)
         self.verbose_print("max_fast:            {:#x} ({:s})".format(malloc_state.max_fast, max_fast_flags))
 
@@ -72894,8 +72910,11 @@ class UclibcNgHeapDumpCommand(GenericCommand):
                     colored_size = Color.colorify("{:#4x}".format(size), chunk_size_color)
                 else:
                     colored_size = Color.colorify(size, chunk_size_color)
-                fmt = "fastbins[idx={:d}, size={:s}, @{!s}]: fd={!s}"
-                self.out.append(fmt.format(i, colored_size, lookup_address(addr), lookup_address(n)))
+                self.out.append("fastbins[idx={:d}, size={:s}, @{!s}]: fd={!s}".format(
+                    i, colored_size,
+                    ProcessMap.lookup_address(addr),
+                    ProcessMap.lookup_address(n),
+                ))
 
             if n != 0:
                 seen = []
@@ -72905,8 +72924,8 @@ class UclibcNgHeapDumpCommand(GenericCommand):
                     self.out.append(" -> {}".format(chunk.to_str(is_fastbin=True)))
                     n = chunk.get_fwd_ptr(True)
 
-        self.verbose_print("top:                 {!s}".format(lookup_address(malloc_state.top)))
-        self.verbose_print("last_remainder:      {!s}".format(lookup_address(malloc_state.last_remainder)))
+        self.verbose_print("top:                 {!s}".format(ProcessMap.lookup_address(malloc_state.top)))
+        self.verbose_print("last_remainder:      {!s}".format(ProcessMap.lookup_address(malloc_state.last_remainder)))
 
         self.out.append(titlify("Unsorted Bin / Small Bins"))
         for i in range(len(malloc_state.smallbins)):
@@ -72916,11 +72935,13 @@ class UclibcNgHeapDumpCommand(GenericCommand):
                     colored_size = Color.colorify("{:#x}-{:#x}".format(*size), chunk_size_color)
                 else:
                     colored_size = Color.colorify(size, chunk_size_color)
-                if i == 1:
-                    fmt = "unsorted_bin[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}"
-                else:
-                    fmt = "small_bins[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}"
-                self.out.append(fmt.format(i, colored_size, lookup_address(addr), lookup_address(n), lookup_address(p)))
+                self.out.append("{:s}[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}".format(
+                    ["small_bins", "unsorted_bin"][i == 1],
+                    i, colored_size,
+                    ProcessMap.lookup_address(addr),
+                    ProcessMap.lookup_address(n),
+                    ProcessMap.lookup_address(p),
+                ))
 
             if n and addr - current_arch.ptrsize * 2 != n:
                 seen = [addr - current_arch.ptrsize * 2]
@@ -72938,8 +72959,12 @@ class UclibcNgHeapDumpCommand(GenericCommand):
                     colored_size = Color.colorify("{:#x}-{:#x}".format(*size), chunk_size_color)
                 else:
                     colored_size = Color.colorify(size, chunk_size_color)
-                fmt = "large_bins[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}"
-                self.out.append(fmt.format(self.NSMALLBINS + i, colored_size, lookup_address(addr), lookup_address(n), lookup_address(p)))
+                self.out.append("large_bins[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}".format(
+                    self.NSMALLBINS + i, colored_size,
+                    ProcessMap.lookup_address(addr),
+                    ProcessMap.lookup_address(n),
+                    ProcessMap.lookup_address(p),
+                ))
 
             if addr - current_arch.ptrsize * 2 != n:
                 seen = [addr - current_arch.ptrsize * 2]
@@ -73177,7 +73202,7 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
         return
 
     def generate_visual_heap(self, malloc_state, dump_start, max_count):
-        sect = process_lookup_address(dump_start)
+        sect = ProcessMap.process_lookup_address(dump_start)
         if sect:
             end = sect.page_end
         else:
@@ -73324,9 +73349,9 @@ class XStringCommand(GenericCommand):
                     gef_print("{:s}".format(repr(cs)))
             else:
                 if tohex:
-                    gef_print("{!s}: {:s} ({:#x} bytes)".format(lookup_address(address), cs.hex(), len(s)))
+                    gef_print("{!s}: {:s} ({:#x} bytes)".format(ProcessMap.lookup_address(address), cs.hex(), len(s)))
                 else:
-                    gef_print("{!s}: {:s} ({:#x} bytes)".format(lookup_address(address), repr(cs), len(s)))
+                    gef_print("{!s}: {:s} ({:#x} bytes)".format(ProcessMap.lookup_address(address), repr(cs), len(s)))
 
             # go to next address
             if pos == -1:
@@ -73500,14 +73525,14 @@ class XSecureMemAddrCommand(GenericCommand):
         r = re.search("is (0x[0-9a-f]+)", ret)
         if r:
             secure_memory_page_addr = int(r.group(1), 16)
-            sm = process_lookup_address(secure_memory_page_addr)
+            sm = ProcessMap.process_lookup_address(secure_memory_page_addr)
             if sm:
                 if verbose:
                     info("secure memory page of pid {:d}: {:#x}".format(qemu_system_pid, secure_memory_page_addr))
                 return sm
 
         # slow path
-        maps = get_process_maps_linux(qemu_system_pid)
+        maps = ProcessMap.get_process_maps_linux(qemu_system_pid)
         secure_memory_maps = [m for m in maps if m.size == secure_memory_size]
         if len(secure_memory_maps) == 1:
             if verbose:
@@ -75330,7 +75355,7 @@ class MteTagsCommand(GenericCommand):
                 break
             ret = ExecAsm(codes, regs={"$x0": address}).exec_code()
             tag = (ret["reg"]["$x0"] >> 56) & 0xff
-            gef_print("{!s}: {:#04x} ({:#018x})".format(lookup_address(address), tag, tag << 56))
+            gef_print("{!s}: {:#04x} ({:#018x})".format(ProcessMap.lookup_address(address), tag, tag << 56))
         return
 
 
@@ -81815,7 +81840,8 @@ class ExecUntilUserCodeCommand(ExecUntilCommand):
             if filepath and filepath.startswith("target:"):
                 filepath = filepath[7:]
 
-        self.code_addrs = [p for p in get_process_maps() if p.permission.value & Permission.EXECUTE and p.path == filepath]
+        maps = ProcessMap.get_process_maps()
+        self.code_addrs = [p for p in maps if p.permission.value & Permission.EXECUTE and p.path == filepath]
         if not self.code_addrs:
             err("Not found code address")
             return
@@ -81857,8 +81883,9 @@ class ExecUntilLibcCodeCommand(ExecUntilCommand):
         self.exclude = args.exclude
 
         libc_targets = ("libc-2.", "libc.so.6", "libuClibc-")
-        libc = process_lookup_path(libc_targets)
-        self.libc_addrs = [p for p in get_process_maps() if p.permission.value & Permission.EXECUTE and p.path == libc.path]
+        libc = ProcessMap.process_lookup_path(libc_targets)
+        maps = ProcessMap.get_process_maps()
+        self.libc_addrs = [p for p in maps if p.permission.value & Permission.EXECUTE and p.path == libc.path]
         if not self.libc_addrs:
             err("Not found libc address")
             return
@@ -84702,9 +84729,9 @@ class WalkLinkListCommand(GenericCommand):
                 dump = hexdump(source, base=current, unit=current_arch.ptrsize)
                 for line in dump.splitlines():
                     self.out.append(indent + line)
-            la_flink = lookup_address(flink)
+            la_flink = ProcessMap.lookup_address(flink)
             if self.adjust_output:
-                la_flink_adjusted = lookup_address(flink - self.adjust_output)
+                la_flink_adjusted = ProcessMap.lookup_address(flink - self.adjust_output)
                 self.out.append("[{:d}] -> {!s} (adjusted: {!s})".format(idx, la_flink, la_flink_adjusted))
             else:
                 self.out.append("[{:d}] -> {!s}".format(idx, la_flink))
@@ -84765,13 +84792,13 @@ class PeekPointersCommand(GenericCommand):
 
         # get start address section
         start_addr = args.address or current_arch.sp
-        start_addr = lookup_address(align_address_to_size(start_addr, current_arch.ptrsize))
+        start_addr = ProcessMap.lookup_address(align_address_to_size(start_addr, current_arch.ptrsize))
         if start_addr.section is None:
             err("{:#x} does not exist".format(start_addr.value))
             return
 
         # get target
-        vmmap = get_process_maps()
+        vmmap = ProcessMap.get_process_maps()
         if args.name:
             section_name = args.name
             if section_name == "stack":
@@ -84798,7 +84825,7 @@ class PeekPointersCommand(GenericCommand):
         # search
         out = []
         for off, value in enumerate(data):
-            value = lookup_address(value)
+            value = ProcessMap.lookup_address(value)
             if not value:
                 continue
 
@@ -84813,7 +84840,7 @@ class PeekPointersCommand(GenericCommand):
 
             sym = get_symbol_string(value.value, " <NO_SYMBOL>")
             found_offset = off * current_arch.ptrsize
-            found_addr = lookup_address(start_addr.value + found_offset)
+            found_addr = ProcessMap.lookup_address(start_addr.value + found_offset)
             perm = value.section.permission
             fmt = "Found at {!s} (+{:#x}): {!s}{:s} ('{:s}' [{!s}])"
             out.append(fmt.format(found_addr, found_offset, value, sym, sec_name, perm))
@@ -84923,7 +84950,7 @@ class XRefTelescopeCommand(SearchPatternCommand):
                 else:
                     prefix = "  " * i + RIGHT_ARROW
                 if isinstance(h, int):
-                    addr = lookup_address(h)
+                    addr = ProcessMap.lookup_address(h)
                     path = addr.section.path
                     perm = addr.section.permission
                     self.out.append("{:s}{!s} {:s} [{!s}]".format(prefix, addr, path, perm))
@@ -84938,7 +84965,7 @@ class XRefTelescopeCommand(SearchPatternCommand):
                 pattern = "".join(["\\x" + pattern[i:i + 2] for i in range(len(pattern) - 2, 0, -2)])
 
         locs = []
-        for section in get_process_maps():
+        for section in ProcessMap.get_process_maps():
             if not section.permission & Permission.READ:
                 continue
             if section.path in ["[vvar]", "[vsyscall]", "[vectors]", "[sigpage]"]:
@@ -85094,7 +85121,7 @@ class FiletypeMemoryCommand(GenericCommand):
             if args.end_address is not None:
                 size = args.end_address - args.address
             else:
-                section = lookup_address(args.address).section
+                section = ProcessMap.lookup_address(args.address).section
                 size = section.page_end - args.address
             end_address = start_address + size
         except (AttributeError, ValueError):
@@ -85150,7 +85177,7 @@ class BinwalkMemoryCommand(GenericCommand):
             msg = "Missing `binwalk` package for Python, install with: `apt install binwalk`."
             raise ImportWarning(msg) from err
 
-        maps = get_process_maps()
+        maps = ProcessMap.get_process_maps()
         if maps is None:
             err("Failed to get maps")
             return
@@ -85372,7 +85399,7 @@ class SymbolsCommand(GenericCommand):
                 out.append(line)
                 continue
 
-            fixed_line = r.group(1) + " {:s} {!s} {:s}".format(t, lookup_address(addr), r.group(4))
+            fixed_line = r.group(1) + " {:s} {!s} {:s}".format(t, ProcessMap.lookup_address(addr), r.group(4))
             out.append(fixed_line)
 
         gef_print("\n".join(out), less=not args.no_pager)
