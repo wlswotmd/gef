@@ -4263,40 +4263,6 @@ def info(msg):
     return
 
 
-def show_last_exception():
-    """Display the last Python exception."""
-    def _show_code_line(fname, idx):
-        fname = os.path.expanduser(os.path.expandvars(fname))
-        __data = open(fname, "r").read().splitlines()
-        return __data[idx - 1] if idx < len(__data) else ""
-
-    gef_print("")
-    exc_type, exc_value, exc_traceback = sys.exc_info()
-
-    gef_print(" Exception raised ".center(80, HORIZONTAL_LINE))
-    gef_print("{}: {}".format(Color.colorify(exc_type.__name__, "bold red underline"), exc_value))
-    gef_print(" Detailed stacktrace ".center(80, HORIZONTAL_LINE))
-
-    for fs in traceback.extract_tb(exc_traceback)[::-1]:
-        filename, lineno, method, code = fs
-
-        if not code or not code.strip():
-            code = _show_code_line(filename, lineno)
-
-        filename_c = Color.yellowify(filename)
-        method_c = Color.greenify(method)
-        gef_print('File "{}", line {:d}, in {}()'.format(filename_c, lineno, method_c))
-        gef_print("   {}    {}".format(RIGHT_ARROW, code))
-
-    gef_print(" Last 10 GDB commands ".center(80, HORIZONTAL_LINE))
-    gdb.execute("show commands")
-    gef_print(" Runtime environment ".center(80, HORIZONTAL_LINE))
-    gdb.execute("version --compact")
-    gef_print(HORIZONTAL_LINE * 80)
-    gef_print("")
-    return
-
-
 class String:
     STRING_ASCII_LOWERCASE = "abcdefghijklmnopqrstuvwxyz"
     STRING_ASCII_UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -13635,6 +13601,39 @@ class GenericCommand(gdb.Command):
         self.post_load()
         return
 
+    def show_last_exception(self):
+        """Display the last Python exception."""
+        def _show_code_line(fname, idx):
+            fname = os.path.expanduser(os.path.expandvars(fname))
+            __data = open(fname, "r").read().splitlines()
+            return __data[idx - 1] if idx < len(__data) else ""
+
+        gef_print("")
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+
+        gef_print(" Exception raised ".center(80, HORIZONTAL_LINE))
+        gef_print("{}: {}".format(Color.colorify(exc_type.__name__, "bold red underline"), exc_value))
+        gef_print(" Detailed stacktrace ".center(80, HORIZONTAL_LINE))
+
+        for fs in traceback.extract_tb(exc_traceback)[::-1]:
+            filename, lineno, method, code = fs
+
+            if not code or not code.strip():
+                code = _show_code_line(filename, lineno)
+
+            filename_c = Color.yellowify(filename)
+            method_c = Color.greenify(method)
+            gef_print('File "{}", line {:d}, in {}()'.format(filename_c, lineno, method_c))
+            gef_print("   {}    {}".format(RIGHT_ARROW, code))
+
+        gef_print(" Last 10 GDB commands ".center(80, HORIZONTAL_LINE))
+        gdb.execute("show commands")
+        gef_print(" Runtime environment ".center(80, HORIZONTAL_LINE))
+        gdb.execute("version --compact")
+        gef_print(HORIZONTAL_LINE * 80)
+        gef_print("")
+        return
+
     def invoke(self, args, from_tty):
         try:
             argv = gdb.string_to_argv(args)
@@ -13643,7 +13642,7 @@ class GenericCommand(gdb.Command):
         except Exception:
             # Since we are intercepting cleaning exceptions here, commands preferably should avoid
             # catching generic Exception, but rather specific ones. This is allows a much cleaner use.
-            show_last_exception()
+            self.show_last_exception()
             self.invoke # avoid to be detected as unused # noqa: B018
         return
 
