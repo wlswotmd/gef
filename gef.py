@@ -16862,7 +16862,7 @@ class SearchPatternCommand(GenericCommand):
         return locations
 
     def get_process_maps_qemu_system(self):
-        res = get_maps_by_pagewalk("pagewalk --quiet --no-pager")
+        res = PageMap.get_page_maps_by_pagewalk("pagewalk --quiet --no-pager")
         res = sorted(set(res.splitlines()))
         res = list(filter(lambda line: line.endswith("]"), res))
         res = list(filter(lambda line: "[+]" not in line, res))
@@ -22466,7 +22466,7 @@ class KernelChecksecCommand(GenericCommand):
                 additional = "pti=on is in cmdline"
                 gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
             elif is_in_kernel():
-                lines = get_maps_by_pagewalk("pagewalk --quiet --no-pager --simple").splitlines()
+                lines = PageMap.get_page_maps_by_pagewalk("pagewalk --quiet --no-pager --simple").splitlines()
                 for line in lines:
                     if "USER" in line and "R-X" in line:
                         additional = "USER memory has R-X permission in kernel context"
@@ -51286,7 +51286,7 @@ class KernelbaseCommand(GenericCommand):
     @Cache.cache_until_next
     def get_maps():
         maps = []
-        res = get_maps_by_pagewalk("pagewalk --quiet --no-pager --simple")
+        res = PageMap.get_page_maps_by_pagewalk("pagewalk --quiet --no-pager --simple")
         res = sorted(set(res.splitlines()))
         res = list(filter(lambda line: line.endswith("]"), res))
         res = list(filter(lambda line: "[+]" not in line, res))
@@ -65618,7 +65618,7 @@ class BuddyDumpCommand(GenericCommand):
                 virt = self.page2virt_wrapper(page)
                 phys = None
                 if virt:
-                    phys = Virt2PhysCommand.v2p(virt, self.maps)
+                    phys = PageMap.p2v(virt, self.maps)
                 if virt is not None:
                     virt_str = "{:#0{:d}x}-{:#0{:d}x}".format(virt, align, virt + size, align)
                     virt_str = Color.colorify(virt_str, heap_page_color)
@@ -65681,7 +65681,7 @@ class BuddyDumpCommand(GenericCommand):
                 virt = self.page2virt_wrapper(page)
                 phys = None
                 if virt:
-                    phys = Virt2PhysCommand.v2p(virt, self.maps)
+                    phys = PageMap.p2v(virt, self.maps)
                 if virt is not None:
                     virt_str = "{:#0{:d}x}-{:#0{:d}x}".format(virt, align, virt + size, align)
                     virt_str = Color.colorify(virt_str, heap_page_color)
@@ -65780,7 +65780,7 @@ class BuddyDumpCommand(GenericCommand):
             return
 
         # do not use cache
-        self.maps = Virt2PhysCommand.get_maps(None)
+        self.maps = PageMap.get_page_maps(None)
         if self.maps is None:
             self.quiet_err("Failed to resolve maps")
             return
@@ -65808,7 +65808,7 @@ class BuddyDumpCommand(GenericCommand):
                     # first entry
                     virt = self.page2virt_wrapper(page)
                     if virt is not None:
-                        phys = Virt2PhysCommand.v2p(virt, self.maps)
+                        phys = PageMap.p2v(virt, self.maps)
                         if phys is not None:
                             out.append("    used:{:{:d}s}  size:{:#08x}".format("", align, phys))
                     out.append(msg)
@@ -73518,7 +73518,7 @@ class XSecureMemAddrCommand(GenericCommand):
 
     @staticmethod
     def virt2phys(vaddr, verbose=False): # vaddr -> addr1 or None
-        maps = Virt2PhysCommand.get_maps(FORCE_PREFIX_S=True, verbose=verbose)
+        maps = PageMap.get_page_maps(FORCE_PREFIX_S=True, verbose=verbose)
         if maps is None:
             return None
         for vstart, vend, pstart, _pend in maps:
@@ -73532,7 +73532,7 @@ class XSecureMemAddrCommand(GenericCommand):
 
     @staticmethod
     def phys2virt(paddr, verbose=False): # paddr -> [addr1, addr2, ...] or []
-        maps = Virt2PhysCommand.get_maps(FORCE_PREFIX_S=True, verbose=verbose)
+        maps = PageMap.get_page_maps(FORCE_PREFIX_S=True, verbose=verbose)
         if maps is None:
             return []
         result = []
@@ -73872,11 +73872,11 @@ class OpteeThreadEnterUserModeBreakpoint(gdb.Breakpoint):
     @staticmethod
     def get_ta_loaded_address():
         if is_arm32():
-            res = get_maps_by_pagewalk("pagewalk -S --quiet --no-pager")
+            res = PageMap.get_page_maps_by_pagewalk("pagewalk -S --quiet --no-pager")
             res = sorted(set(res.splitlines()))
             res = list(filter(lambda line: "PL0/R-X" in line, res))
         elif is_arm64():
-            res = get_maps_by_pagewalk("pagewalk 1 --quiet --no-pager")
+            res = PageMap.get_page_maps_by_pagewalk("pagewalk 1 --quiet --no-pager")
             res = sorted(set(res.splitlines()))
             res = list(filter(lambda line: "EL0/R-X" in line, res))
         maps = []
@@ -73992,11 +73992,11 @@ class OpteeBgetDumpCommand(GenericCommand):
 
     def is_readable_virt_memory(self, addr):
         if is_arm32():
-            res = get_maps_by_pagewalk("pagewalk -S --quiet --no-pager")
+            res = PageMap.get_page_maps_by_pagewalk("pagewalk -S --quiet --no-pager")
             res = sorted(set(res.splitlines()))
             res = list(filter(lambda line: "PL0/RW-" in line, res))
         elif is_arm64():
-            res = get_maps_by_pagewalk("pagewalk 1 --quiet --no-pager")
+            res = PageMap.get_page_maps_by_pagewalk("pagewalk 1 --quiet --no-pager")
             res = sorted(set(res.splitlines()))
             res = list(filter(lambda line: "EL0/RW-" in line, res))
         for line in res:
@@ -74009,10 +74009,10 @@ class OpteeBgetDumpCommand(GenericCommand):
 
     def get_ta_rw_address(self, ta_loaded_rx_end):
         if is_arm32():
-            res = get_maps_by_pagewalk("pagewalk -S --quiet --no-pager")
+            res = PageMap.get_page_maps_by_pagewalk("pagewalk -S --quiet --no-pager")
             res = sorted(set(res.splitlines()))
         elif is_arm64():
-            res = get_maps_by_pagewalk("pagewalk 1 --quiet --no-pager")
+            res = PageMap.get_page_maps_by_pagewalk("pagewalk 1 --quiet --no-pager")
             res = sorted(set(res.splitlines()))
         for line in res:
             if not re.search("[PE]L1/RW", line):
@@ -75790,127 +75790,109 @@ class QemuRegistersCommand(GenericCommand):
         return
 
 
-@Cache.cache_until_next
-def get_maps_arm64_optee_secure_memory(verbose=False):
-    # heuristic search of qemu-system memory
-    sm_base, sm_size = XSecureMemAddrCommand.get_secure_memory_base_and_size(verbose)
-    if sm_base is None or sm_size is None:
-        err("Not found memory tree of secure memory (see monitor info mtree -f)")
-        return None
-    sm = XSecureMemAddrCommand.get_secure_memory_qemu_map(sm_base, sm_size, verbose)
-    if sm is None:
-        err("Not found secure memory maps")
-        return None
-    data = XSecureMemAddrCommand.read_secure_memory(sm, 0x0, sm.size, verbose)
-    data_list = slice_unpack(data, 8)
-
-    """
-    enum teecore_memtypes {
-        MEM_AREA_END = 0,
-        MEM_AREA_TEE_RAM,
-        MEM_AREA_TEE_RAM_RX,
-        MEM_AREA_TEE_RAM_RO,
-        MEM_AREA_TEE_RAM_RW,
-        MEM_AREA_INIT_RAM_RO,
-        MEM_AREA_INIT_RAM_RX,
-        MEM_AREA_NEX_RAM_RO,
-        MEM_AREA_NEX_RAM_RW,
-        MEM_AREA_TEE_COHERENT,
-        MEM_AREA_TEE_ASAN,
-        MEM_AREA_IDENTITY_MAP_RX,
-        MEM_AREA_TA_RAM,
-        MEM_AREA_NSEC_SHM,
-        MEM_AREA_RAM_NSEC,
-        MEM_AREA_RAM_SEC,
-        MEM_AREA_IO_NSEC,
-        MEM_AREA_IO_SEC,
-        MEM_AREA_EXT_DT,
-        MEM_AREA_RES_VASPACE,
-        MEM_AREA_SHM_VASPACE,
-        MEM_AREA_TS_VASPACE,
-        MEM_AREA_PAGER_VASPACE,
-        MEM_AREA_SDP_MEM,
-        MEM_AREA_DDR_OVERALL,
-        MEM_AREA_SEC_RAM_OVERALL,
-        MEM_AREA_MAXTYPE
-    };
-    struct tee_mmap_region {
-        unsigned int type; /* enum teecore_memtypes */
-        unsigned int region_size;
-        paddr_t pa;
-        vaddr_t va;
-        size_t size;
-        uint32_t attr; /* TEE_MATTR_* above */
-    };
-    """
-    maps = []
-    old_i = -1
-    for i in range(len(data_list) - 4):
-        type = data_list[i] & 0xffffffff
-        if 26 < type: # enum teecore_memtypes
-            continue
-        region_size = (data_list[i] >> 32) & 0xffffffff
-        if region_size & 0xfff or region_size < 0x1000 or 0xfffff000 < region_size:
-            continue
-        pa, va, size, attr = data_list[i + 1:i + 5]
-        if pa & 0xfff or 0xfffff000 < pa:
-            continue
-        if va & 0xfff or 0xfffff000 < va:
-            continue
-        if size & 0xfff or size < 0x1000 or 0xfffff000 < size:
-            continue
-        if len(maps) > 0 and old_i + 5 != i: # Judging continuity
-            continue
-        maps.append([va, va + size, pa, pa + size])
-        old_i = i
-    if verbose:
-        fmt = "{:37s}  {:37s}  {:12s}"
-        legend = ["Virtual address start-end", "Physical address start-end", "Total size"]
-        gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
-        for va_start, va_end, pa_start, pa_end in maps:
-            fmt = "{:#018x}-{:#018x}  {:#018x}-{:#018x}  {:<#12x}"
-            gef_print(fmt.format(va_start, va_end, pa_start, pa_end, va_end - va_start))
-    return maps
-
-
-@Cache.cache_until_next
-def get_maps_by_pagewalk(command):
-    # for lru cache
-    return gdb.execute(command, to_string=True)
-
-
-@register_command
-class Virt2PhysCommand(GenericCommand):
-    """Transfer from virtual address to physical address."""
-    _cmdline_ = "v2p"
-    _category_ = "08-a. Qemu-system Cooperation - General"
-
-    parser = argparse.ArgumentParser(prog=_cmdline_)
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument("-S", dest="force_secure", action="store_true",
-                       help="ARMv7: use TTBRn_ELm_S for parsing start register. ARMv8: heuristic search the memory of qemu-system.")
-    group.add_argument("-s", dest="force_normal", action="store_true",
-                       help="ARMv7/v8: use TTBRn_ELm for parsing start register.")
-    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="the address of data you want to translate.")
-    parser.add_argument("-v", "--verbose", action="store_true", help="verbose output (for arm64 secure memory).")
-    _syntax_ = parser.format_help()
-
-    _example_ = "{:s} 0xffffffff855041e0".format(_cmdline_)
+class PageMap:
+    @staticmethod
+    @Cache.cache_until_next
+    def get_page_maps_by_pagewalk(command):
+        return gdb.execute(command, to_string=True)
 
     @staticmethod
-    def get_maps(FORCE_PREFIX_S, verbose=False):
+    @Cache.cache_until_next
+    def get_page_maps_arm64_optee_secure_memory(verbose=False):
+        # heuristic search of qemu-system memory
+        sm_base, sm_size = XSecureMemAddrCommand.get_secure_memory_base_and_size(verbose)
+        if sm_base is None or sm_size is None:
+            err("Not found memory tree of secure memory (see monitor info mtree -f)")
+            return None
+        sm = XSecureMemAddrCommand.get_secure_memory_qemu_map(sm_base, sm_size, verbose)
+        if sm is None:
+            err("Not found secure memory maps")
+            return None
+        data = XSecureMemAddrCommand.read_secure_memory(sm, 0x0, sm.size, verbose)
+        data_list = slice_unpack(data, 8)
+
+        """
+        enum teecore_memtypes {
+            MEM_AREA_END = 0,
+            MEM_AREA_TEE_RAM,
+            MEM_AREA_TEE_RAM_RX,
+            MEM_AREA_TEE_RAM_RO,
+            MEM_AREA_TEE_RAM_RW,
+            MEM_AREA_INIT_RAM_RO,
+            MEM_AREA_INIT_RAM_RX,
+            MEM_AREA_NEX_RAM_RO,
+            MEM_AREA_NEX_RAM_RW,
+            MEM_AREA_TEE_COHERENT,
+            MEM_AREA_TEE_ASAN,
+            MEM_AREA_IDENTITY_MAP_RX,
+            MEM_AREA_TA_RAM,
+            MEM_AREA_NSEC_SHM,
+            MEM_AREA_RAM_NSEC,
+            MEM_AREA_RAM_SEC,
+            MEM_AREA_IO_NSEC,
+            MEM_AREA_IO_SEC,
+            MEM_AREA_EXT_DT,
+            MEM_AREA_RES_VASPACE,
+            MEM_AREA_SHM_VASPACE,
+            MEM_AREA_TS_VASPACE,
+            MEM_AREA_PAGER_VASPACE,
+            MEM_AREA_SDP_MEM,
+            MEM_AREA_DDR_OVERALL,
+            MEM_AREA_SEC_RAM_OVERALL,
+            MEM_AREA_MAXTYPE
+        };
+        struct tee_mmap_region {
+            unsigned int type; /* enum teecore_memtypes */
+            unsigned int region_size;
+            paddr_t pa;
+            vaddr_t va;
+            size_t size;
+            uint32_t attr; /* TEE_MATTR_* above */
+        };
+        """
+        maps = []
+        old_i = -1
+        for i in range(len(data_list) - 4):
+            type = data_list[i] & 0xffffffff
+            if 26 < type: # enum teecore_memtypes
+                continue
+            region_size = (data_list[i] >> 32) & 0xffffffff
+            if region_size & 0xfff or region_size < 0x1000 or 0xfffff000 < region_size:
+                continue
+            pa, va, size, attr = data_list[i + 1:i + 5]
+            if pa & 0xfff or 0xfffff000 < pa:
+                continue
+            if va & 0xfff or 0xfffff000 < va:
+                continue
+            if size & 0xfff or size < 0x1000 or 0xfffff000 < size:
+                continue
+            if len(maps) > 0 and old_i + 5 != i: # Judging continuity
+                continue
+            maps.append([va, va + size, pa, pa + size])
+            old_i = i
+        if verbose:
+            fmt = "{:37s}  {:37s}  {:12s}"
+            legend = ["Virtual address start-end", "Physical address start-end", "Total size"]
+            gef_print(Color.colorify(fmt.format(*legend), get_gef_setting("theme.table_heading")))
+            for va_start, va_end, pa_start, pa_end in maps:
+                fmt = "{:#018x}-{:#018x}  {:#018x}-{:#018x}  {:<#12x}"
+                gef_print(fmt.format(va_start, va_end, pa_start, pa_end, va_end - va_start))
+        return maps
+
+    @staticmethod
+    def get_page_maps(FORCE_PREFIX_S, verbose=False):
         if is_arm64():
             if FORCE_PREFIX_S is True:
-                return get_maps_arm64_optee_secure_memory(verbose) # already parsed
+                return PageMap.get_page_maps_arm64_optee_secure_memory(verbose) # already parsed
             else:
-                res = get_maps_by_pagewalk("pagewalk 1 --quiet --no-pager --no-merge")
+                res = PageMap.get_page_maps_by_pagewalk("pagewalk 1 --quiet --no-pager --no-merge")
         else:
             if FORCE_PREFIX_S is None:
-                res = get_maps_by_pagewalk("pagewalk --quiet --no-pager --no-merge")
+                res = PageMap.get_page_maps_by_pagewalk("pagewalk --quiet --no-pager --no-merge")
             elif FORCE_PREFIX_S is True:
-                res = get_maps_by_pagewalk("pagewalk -S --quiet --no-pager --no-merge")
+                res = PageMap.get_page_maps_by_pagewalk("pagewalk -S --quiet --no-pager --no-merge")
             elif FORCE_PREFIX_S is False:
-                res = get_maps_by_pagewalk("pagewalk -s --quiet --no-pager --no-merge")
+                res = PageMap.get_page_maps_by_pagewalk("pagewalk -s --quiet --no-pager --no-merge")
         res = sorted(set(res.splitlines()))
         res = list(filter(lambda line: line.endswith("]"), res))
         res = list(filter(lambda line: "[+]" not in line, res))
@@ -75951,6 +75933,25 @@ class Virt2PhysCommand(GenericCommand):
                 vaddrs.append(vaddr)
         return vaddrs
 
+
+@register_command
+class Virt2PhysCommand(GenericCommand):
+    """Transfer from virtual address to physical address."""
+    _cmdline_ = "v2p"
+    _category_ = "08-a. Qemu-system Cooperation - General"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("-S", dest="force_secure", action="store_true",
+                       help="ARMv7: use TTBRn_ELm_S for parsing start register. ARMv8: heuristic search the memory of qemu-system.")
+    group.add_argument("-s", dest="force_normal", action="store_true",
+                       help="ARMv7/v8: use TTBRn_ELm for parsing start register.")
+    parser.add_argument("address", metavar="ADDRESS", type=parse_address, help="the address of data you want to translate.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="verbose output (for arm64 secure memory).")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0xffffffff855041e0".format(_cmdline_)
+
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
@@ -75966,17 +75967,17 @@ class Virt2PhysCommand(GenericCommand):
                 FORCE_PREFIX_S = True
 
         # do not use cache
-        maps = self.get_maps(FORCE_PREFIX_S, args.verbose)
+        maps = PageMap.get_page_maps(FORCE_PREFIX_S, args.verbose)
         if maps is None:
             return
-        paddr = self.v2p(args.address, maps)
+        paddr = PageMap.v2p(args.address, maps)
         if paddr is not None:
             gef_print("Virt: {:#x} -> Phys: {:#x}".format(args.address, paddr))
         return
 
 
 @register_command
-class Phys2VirtCommand(Virt2PhysCommand):
+class Phys2VirtCommand(GenericCommand):
     """Transfer from physical address to virtual address."""
     _cmdline_ = "p2v"
     _category_ = "08-a. Qemu-system Cooperation - General"
@@ -76008,11 +76009,11 @@ class Phys2VirtCommand(Virt2PhysCommand):
                 FORCE_PREFIX_S = True
 
         # do not use cache
-        maps = self.get_maps(FORCE_PREFIX_S, args.verbose)
+        maps = PageMap.get_page_maps(FORCE_PREFIX_S, args.verbose)
         if maps is None:
             return
 
-        vaddrs = self.p2v(args.address, maps)
+        vaddrs = PageMap.p2v(args.address, maps)
 
         if args.verbose:
             loop_max = len(vaddrs)
@@ -79701,8 +79702,8 @@ class PagewalkArm64Command(PagewalkCommand):
         self.dont_repeat()
 
         if args.optee:
-            Cache.reset_gef_caches(function=get_maps_arm64_optee_secure_memory)
-            get_maps_arm64_optee_secure_memory(True)
+            Cache.reset_gef_caches(function=PageMap.get_page_maps_arm64_optee_secure_memory)
+            PageMap.get_page_maps_arm64_optee_secure_memory(True)
             return
 
         if args.target_el is None:
@@ -79968,7 +79969,7 @@ class PagewalkWithHintsCommand(GenericCommand):
         return
 
     def get_maps(self):
-        res = get_maps_by_pagewalk("pagewalk --quiet --no-pager")
+        res = PageMap.get_page_maps_by_pagewalk("pagewalk --quiet --no-pager")
         res = sorted(set(res.splitlines()))
         res = list(filter(lambda line: line.endswith("]"), res))
         res = list(filter(lambda line: "[+]" not in line, res))
@@ -80367,7 +80368,7 @@ class PagewalkWithHintsCommand(GenericCommand):
         except gdb.error:
             return
 
-        maps = Virt2PhysCommand.get_maps(None)
+        maps = PageMap.get_page_maps(None)
         if maps is None:
             return
 
@@ -80395,7 +80396,7 @@ class PagewalkWithHintsCommand(GenericCommand):
 
             device_name = "device ({:s})".format(m.group(3))
 
-            vaddrs = Virt2PhysCommand.p2v(paddr, maps)
+            vaddrs = PageMap.p2v(paddr, maps)
             for vaddr in vaddrs:
                 self.insert_region(vaddr, size, device_name)
         return
