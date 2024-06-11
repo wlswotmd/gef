@@ -165,9 +165,6 @@ __gef_config__                  = {} # keep gef configs
 __gef_convenience_vars_index__  = 0 # $_gef1, $_gef2, ...
 __gef_libc_args_definitions__   = {} # libc arguments definition
 __gef_prev_arch__               = None # previous valid result of edb.selected_frame().architecture()
-__gef_check_once__              = True # the flag to process only once at startup
-__gef_use_info_proc_mappings__  = None # the flag to use `info proc mappings`
-__gef_check_disabled_bp__       = False # the flag to remove unnecessary breakpoints
 
 current_elf                     = None # keep Elf instance
 current_arch                    = None # keep Architecture instance
@@ -12306,28 +12303,29 @@ class ProcessMap:
             maps.append(sect)
         return maps
 
+    __gef_use_info_proc_mappings__ = None
+
     @staticmethod
     def get_process_maps_heuristic():
-        global __gef_use_info_proc_mappings__
-        if __gef_use_info_proc_mappings__ is None:
+        if ProcessMap.__gef_use_info_proc_mappings__ is None:
             try:
                 res = gdb.execute("info proc mappings", to_string=True)
                 if "warning" in res:
-                    __gef_use_info_proc_mappings__ = False
+                    ProcessMap.__gef_use_info_proc_mappings__ = False
                 elif "Perms" not in res: # xtensa-linux-gdb
-                    __gef_use_info_proc_mappings__ = False
+                    ProcessMap.__gef_use_info_proc_mappings__ = False
                 else:
-                    __gef_use_info_proc_mappings__ = True
+                    ProcessMap.__gef_use_info_proc_mappings__ = True
             except gdb.error:
-                __gef_use_info_proc_mappings__ = False
+                ProcessMap.__gef_use_info_proc_mappings__ = False
 
         # fast path
-        if __gef_use_info_proc_mappings__ is True:
+        if ProcessMap.__gef_use_info_proc_mappings__ is True:
             res = ProcessMap.get_process_maps_from_info_proc() # don't use cache
             if res:
                 return res
             # something is wrong
-            __gef_use_info_proc_mappings__ = False
+            ProcessMap.__gef_use_info_proc_mappings__ = False
 
         # slow path
         return ProcessMap.get_explored_regions() # use cache
@@ -12493,6 +12491,9 @@ class EventHandler:
         """GDB event handler for new object continue cases."""
         return
 
+    __gef_check_once__ = True
+    __gef_check_disabled_bp__ = False
+
     @staticmethod
     def hook_stop_handler(event):
         """GDB event handler for stop cases."""
@@ -12501,17 +12502,15 @@ class EventHandler:
         # There seems to be a bug in some architecture (e.g. i386) where temporary breakpoints are
         # not deleted even if they are hit. I don't know the conditions under which this happens,
         # but if remains, gef would manually remove them.
-        global __gef_check_disabled_bp__
-        if __gef_check_disabled_bp__:
+        if EventHandler.__gef_check_disabled_bp__:
             for bp in gdb.breakpoints():
                 if not bp.visible and bp.temporary:
                     if not bp.enabled:
                         bp.delete()
-            __gef_check_disabled_bp__ = False
+            EventHandler.__gef_check_disabled_bp__ = False
 
         # when kdb, assume x86-64 or ARM
-        global __gef_check_once__
-        if __gef_check_once__:
+        if EventHandler.__gef_check_once__:
             if is_kgdb():
                 dev = gdb.selected_inferior().connection.details
                 if dev.startswith("/dev/ttyS"):
@@ -12523,7 +12522,7 @@ class EventHandler:
                 Cache.reset_gef_caches()
 
         # set `c`, `ni` and `si` command hooks for qemu-user and pin
-        if __gef_check_once__:
+        if EventHandler.__gef_check_once__:
             if is_qemu_user() or is_pin():
                 gdb.execute("define c\ncontinue-for-qemu-user\nend")
                 if is_or1k() or is_cris():
@@ -12545,12 +12544,12 @@ class EventHandler:
             gdb.execute("context")
 
         # Message if file is not loaded.
-        if __gef_check_once__:
+        if EventHandler.__gef_check_once__:
             if not (is_qemu_system() or is_kgdb() or is_vmware()):
                 if not gdb.current_progspace().filename:
                     err("Missing info about architecture. Please set: `file /path/to/target_binary`")
                     err("Some architectures may not be automatically recognized. Please set: `set architecture YOUR_ARCH`.")
-            __gef_check_once__ = False
+            EventHandler.__gef_check_once__ = False
         return
 
     @staticmethod
@@ -14409,8 +14408,7 @@ class SimpleInternalTemporaryBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
-        global __gef_check_disabled_bp__
-        __gef_check_disabled_bp__ = True
+        EventHandler.__gef_check_disabled_bp__ = True
         self.enabled = False
 
         Cache.reset_gef_caches()
@@ -14425,8 +14423,7 @@ class SecondBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
-        global __gef_check_disabled_bp__
-        __gef_check_disabled_bp__ = True
+        EventHandler.__gef_check_disabled_bp__ = True
         self.enabled = False
 
         Cache.reset_gef_caches()
@@ -17731,8 +17728,7 @@ class MprotectBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
-        global __gef_check_disabled_bp__
-        __gef_check_disabled_bp__ = True
+        EventHandler.__gef_check_disabled_bp__ = True
         self.enabled = False
 
         info("Restoring original context")
@@ -25275,8 +25271,7 @@ class EntryBreakBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
-        global __gef_check_disabled_bp__
-        __gef_check_disabled_bp__ = True
+        EventHandler.__gef_check_disabled_bp__ = True
         self.enabled = False
 
         Cache.reset_gef_caches()
@@ -28937,7 +28932,7 @@ class VMMapCommand(GenericCommand):
                     self.dump_entry(entry, args.outer)
 
         if is_qemu_user() and not args.outer:
-            if __gef_use_info_proc_mappings__ is False:
+            if ProcessMap.__gef_use_info_proc_mappings__ is False:
                 self.info("Searched from auxv, registers and stack values. There may be areas that cannot be detected.")
                 self.info("Permission is based on ELF header or default value `rw-`. Dynamic permission changes cannot be detected.")
 
@@ -73743,8 +73738,7 @@ class TemporaryDummyBreakpoint(gdb.Breakpoint):
         return
 
     def stop(self):
-        global __gef_check_disabled_bp__
-        __gef_check_disabled_bp__ = True
+        EventHandler.__gef_check_disabled_bp__ = True
         self.enabled = False
         return False
 
