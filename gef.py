@@ -1479,7 +1479,7 @@ class Elf:
     def __init__(self, elf=None):
         """Instantiate an ELF object."""
         if elf is None:
-            elf = get_filepath()
+            elf = Path.get_filepath()
         if isinstance(elf, str):
             if not os.access(elf, os.R_OK):
                 err("'{:s}' not found/readable".format(elf))
@@ -4069,7 +4069,7 @@ def get_libc_version():
                 continue
 
             if is_container_attach():
-                real_libc_path = append_proc_root(section.path)
+                real_libc_path = Path.append_proc_root(section.path)
                 if not os.path.exists(real_libc_path):
                     continue
                 data = open(real_libc_path, "rb").read()
@@ -4086,7 +4086,7 @@ def get_libc_version():
                         data = open(real_libc_path, "rb").read()
                         break
                 else:
-                    data = read_remote_file(section.path)
+                    data = Path.read_remote_file(section.path)
                 if not data:
                     continue
             else:
@@ -4944,7 +4944,7 @@ class Checksec:
         if is_remote_debug():
             if get_pid(remote=True):
                 remote_status = "/proc/{:d}/status".format(get_pid(remote=True))
-            data = read_remote_file(remote_status, as_byte=True) # qemu-user is failed here, it is ok
+            data = Path.read_remote_file(remote_status, as_byte=True) # qemu-user is failed here, it is ok
             if not data:
                 return None
         else:
@@ -11422,17 +11422,6 @@ def get_register(regname, use_mbed_exec=False, use_monitor=False):
     return None
 
 
-def get_path_from_info_proc():
-    try:
-        response = gdb.execute("info proc", to_string=True)
-    except gdb.error:
-        return None
-    for x in response.splitlines():
-        if x.startswith("exe = "):
-            return x.split(" = ")[1].replace("'", "")
-    return None
-
-
 @Cache.cache_this_session
 def is_remote_debug():
     """"Return True is the current debugging session is running through GDB remote session."""
@@ -11683,81 +11672,95 @@ def get_pid(remote=False):
     return gdb.selected_inferior().pid
 
 
-def append_proc_root(filepath):
-    if filepath is None:
-        return None
-    pid = get_pid()
-    if pid is None:
-        return None
-    if pid == 0: # under gdbserver, when target exited then pid is 0
-        return None
-    prefix = "/proc/{}/root".format(pid)
-    relative_path = filepath.lstrip("/")
-    return os.path.join(prefix, relative_path)
-
-
-@Cache.cache_this_session
-def get_filepath(append_proc_root_prefix=True):
-    """Return the local absolute path of the file currently debugged."""
-    filepath = gdb.current_progspace().filename
-
-    if is_remote_debug():
+class Path:
+    @staticmethod
+    def append_proc_root(filepath):
         if filepath is None:
             return None
-        elif filepath.startswith("target:"):
+        pid = get_pid()
+        if pid is None:
             return None
-        elif filepath.startswith(".gnu_debugdata for target:"):
+        if pid == 0: # under gdbserver, when target exited then pid is 0
             return None
+        prefix = "/proc/{}/root".format(pid)
+        relative_path = filepath.lstrip("/")
+        return os.path.join(prefix, relative_path)
+
+    @staticmethod
+    @Cache.cache_this_session
+    def get_filepath(append_proc_root_prefix=True):
+        """Return the local absolute path of the file currently debugged."""
+        filepath = gdb.current_progspace().filename
+
+        if is_remote_debug():
+            if filepath is None:
+                return None
+            elif filepath.startswith("target:"):
+                return None
+            elif filepath.startswith(".gnu_debugdata for target:"):
+                return None
+            else:
+                return filepath
         else:
+            # inferior probably did not have name, extract cmdline from info proc
+            if filepath is None:
+                filepath = Path.get_filepath_from_info_proc()
+                if append_proc_root_prefix:
+                    # maybe different mnt namespace, so use /proc/<PID>/root
+                    filepath = Path.append_proc_root(filepath)
+            # not remote, but different PID namespace and attaching by pid. it shows with `target:`
+            elif filepath.startswith("target:"):
+                # /proc/PID/root is not given when used for purposes such as comparing with entry in vmmap
+                filepath = filepath[len("target:"):]
+                if append_proc_root_prefix:
+                    # maybe different mnt namespace, so use /proc/<PID>/root
+                    filepath = Path.append_proc_root(filepath)
+            # normal path
             return filepath
-    else:
-        # inferior probably did not have name, extract cmdline from info proc
-        if filepath is None:
-            filepath = get_path_from_info_proc()
-            if append_proc_root_prefix:
-                # maybe different mnt namespace, so use /proc/<PID>/root
-                filepath = append_proc_root(filepath)
-        # not remote, but different PID namespace and attaching by pid. it shows with `target:`
-        elif filepath.startswith("target:"):
-            # /proc/PID/root is not given when used for purposes such as comparing with entry in vmmap
-            filepath = filepath[len("target:"):]
-            if append_proc_root_prefix:
-                # maybe different mnt namespace, so use /proc/<PID>/root
-                filepath = append_proc_root(filepath)
-        # normal path
-        return filepath
 
-
-@Cache.cache_this_session
-def get_filename():
-    """Return the full filename of the file currently debugged."""
-    filename = get_filepath()
-    if filename is None:
+    @staticmethod
+    def get_filepath_from_info_proc():
+        try:
+            response = gdb.execute("info proc", to_string=True)
+        except gdb.error:
+            return None
+        for x in response.splitlines():
+            if x.startswith("exe = "):
+                return x.split(" = ")[1].replace("'", "")
         return None
-    return os.path.basename(filename)
+
+    @staticmethod
+    @Cache.cache_this_session
+    def get_filename():
+        """Return the full filename of the file currently debugged."""
+        filename = Path.get_filepath()
+        if filename is None:
+            return None
+        return os.path.basename(filename)
+
+    @staticmethod
+    def read_remote_file(filepath, as_byte=True):
+        tmp_name = os.path.join(GEF_TEMP_DIR, "read_remote_file.tmp")
+        try:
+            gdb.execute("remote get {:s} {:s}".format(filepath, tmp_name), to_string=True)
+        except gdb.error:
+            return ""
+        if as_byte:
+            data = open(tmp_name, "rb").read()
+        else:
+            data = open(tmp_name, "r").read()
+        os.unlink(tmp_name)
+        return data
 
 
-def read_remote_file(filepath, as_byte=True):
-    tmp_name = os.path.join(GEF_TEMP_DIR, "read_remote_file.tmp")
-    try:
-        gdb.execute("remote get {:s} {:s}".format(filepath, tmp_name), to_string=True)
-    except gdb.error:
-        return ""
-    if as_byte:
-        data = open(tmp_name, "rb").read()
-    else:
-        data = open(tmp_name, "r").read()
-    os.unlink(tmp_name)
-    return data
-
-
+@Cache.cache_until_next
 def get_process_maps_linux(pid, remote=False):
     """Parse the Linux process `/proc/pid/maps` file."""
 
     # open & read maps
     proc_map_file = "/proc/{:d}/maps".format(pid)
     if remote:
-        data = read_remote_file(proc_map_file, as_byte=False)
+        data = Path.read_remote_file(proc_map_file, as_byte=False)
         if not data:
             return []
         lines = data.splitlines()
@@ -12013,7 +12016,7 @@ def get_explored_regions():
         return link_map
 
     def get_filepath_wrapper():
-        filepath = get_filepath()
+        filepath = Path.get_filepath()
         if filepath:
             return filepath
         filepath = gdb.current_progspace().filename
@@ -12270,7 +12273,7 @@ def get_info_files():
         elif len(blobs) == 7:
             filepath = blobs[6]
         else:
-            filepath = get_filepath(append_proc_root_prefix=False)
+            filepath = Path.get_filepath(append_proc_root_prefix=False)
         Zone = collections.namedtuple("Zone", ["name", "zone_start", "zone_end", "filename"])
         info = Zone(section_name, addr_start, addr_end, filepath)
         info_files.append(info)
@@ -12419,9 +12422,9 @@ def new_objfile_handler(_event):
     # delayed breakpoint for brva
     if BreakRelativeVirtualAddressCommand.delayed_bp_set is False and is_alive():
         if not (is_qemu_system() or is_kgdb() or is_vmware()):
-            codebase = get_section_base_address(get_filepath(append_proc_root_prefix=False))
+            codebase = get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
             if codebase is None:
-                codebase = get_section_base_address(get_path_from_info_proc())
+                codebase = get_section_base_address(Path.get_filepath_from_info_proc())
             if codebase:
                 for offset in BreakRelativeVirtualAddressCommand.delayed_breakpoints:
                     gdb.execute("b *{:#x}".format(codebase + offset))
@@ -14723,9 +14726,9 @@ class BreakRelativeVirtualAddressCommand(GenericCommand):
             return
 
         if is_alive():
-            codebase = get_section_base_address(get_filepath(append_proc_root_prefix=False))
+            codebase = get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
             if codebase is None:
-                codebase = get_section_base_address(get_path_from_info_proc())
+                codebase = get_section_base_address(Path.get_filepath_from_info_proc())
             if codebase is None:
                 gef_print("Codebase is not found")
                 return
@@ -15455,7 +15458,7 @@ class FilenameCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        filepath = get_filepath()
+        filepath = Path.get_filepath()
         if filepath:
             gef_print(repr(filepath))
             return
@@ -16236,7 +16239,7 @@ class CapabilityCommand(GenericCommand):
         return
 
     def print_capability_from_file(self, verbose):
-        filepath = get_filepath()
+        filepath = Path.get_filepath()
         if filepath is None:
             return
 
@@ -16650,12 +16653,12 @@ class ScanSectionCommand(GenericCommand):
              .format(Color.yellowify(haystack), Color.yellowify(needle)))
 
         if haystack in ["binary", "bin"]:
-            haystack = get_filepath(append_proc_root_prefix=False)
+            haystack = Path.get_filepath(append_proc_root_prefix=False)
         if is_qemu_user() and haystack is None:
             haystack = "[code]"
 
         if needle in ["binary", "bin"]:
-            needle = get_filepath(append_proc_root_prefix=False)
+            needle = Path.get_filepath(append_proc_root_prefix=False)
         if is_qemu_user() and needle is None:
             needle = "[code]"
 
@@ -16928,7 +16931,7 @@ class SearchPatternCommand(GenericCommand):
                 section_name = ""
                 section_name_info = "whole memory"
             elif args.section in ["binary", "bin"] and not is_qemu_system():
-                section_name = get_filepath(append_proc_root_prefix=False)
+                section_name = Path.get_filepath(append_proc_root_prefix=False)
                 section_name_info = section_name
             else:
                 section_name = args.section
@@ -18633,7 +18636,7 @@ class UnicornEmulateCommand(GenericCommand):
                 filepath = filepath[7:]
             filename = os.path.basename(filepath)
         else:
-            filename = get_filename()
+            filename = Path.get_filename()
 
         content = "#!{:s} -i\n".format(pythonbin)
         content += "#\n"
@@ -20325,7 +20328,7 @@ class RopperCommand(GenericCommand):
             return
 
         if "--file" not in argv:
-            filepath = get_filepath()
+            filepath = Path.get_filepath()
             if filepath is None:
                 err("Missing info about file. Please set: `file /path/to/target_binary`")
                 return
@@ -20446,7 +20449,7 @@ class RpCommand(GenericCommand):
                 return
             path = libc.path
         elif args.bin:
-            binary = get_filepath()
+            binary = Path.get_filepath()
             if binary is None:
                 err("binary is not found")
                 return
@@ -21675,7 +21678,7 @@ class ElfInfoCommand(GenericCommand):
                 err("File name could not be determined.")
                 return
 
-            data = read_remote_file(remote_filepath, as_byte=True) # qemu-user is failed here, it is ok
+            data = Path.read_remote_file(remote_filepath, as_byte=True) # qemu-user is failed here, it is ok
             if not data:
                 err("Failed to read remote filepath.")
                 return
@@ -21691,7 +21694,7 @@ class ElfInfoCommand(GenericCommand):
             if is_qemu_system():
                 err("Argument-less calls are unsupported under qemu-system.")
                 return
-            local_filepath = get_filepath()
+            local_filepath = Path.get_filepath()
 
         if local_filepath is None:
             err("File name could not be determined.")
@@ -22111,7 +22114,7 @@ class ChecksecCommand(GenericCommand):
                 err("File name could not be determined.")
                 return
 
-            data = read_remote_file(remote_filepath, as_byte=True) # qemu-user is failed here, it is ok
+            data = Path.read_remote_file(remote_filepath, as_byte=True) # qemu-user is failed here, it is ok
             if not data:
                 err("Failed to read remote filepath")
                 return
@@ -22127,7 +22130,7 @@ class ChecksecCommand(GenericCommand):
             if is_qemu_system():
                 err("Argument-less calls are unsupported under qemu-system.")
                 return
-            local_filepath = get_filepath()
+            local_filepath = Path.get_filepath()
 
         if local_filepath is None:
             err("File name could not be determined.")
@@ -24938,7 +24941,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                 err("File name could not be determined.")
                 return
 
-            data = read_remote_file(remote_filepath, as_byte=True) # qemu-user is failed here, it is ok
+            data = Path.read_remote_file(remote_filepath, as_byte=True) # qemu-user is failed here, it is ok
             if not data:
                 err("Failed to read remote filepath")
                 return
@@ -25036,9 +25039,9 @@ class MainBreakCommand(GenericCommand):
             elf = Elf.get_elf()
             entry = elf.e_entry
             if elf.is_pie():
-                codebase = get_section_base_address(get_filepath(append_proc_root_prefix=False))
+                codebase = get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
                 if codebase is None:
-                    codebase = get_section_base_address(get_path_from_info_proc())
+                    codebase = get_section_base_address(Path.get_filepath_from_info_proc())
                 if codebase is None:
                     return None
                 entry += codebase
@@ -25143,7 +25146,7 @@ class EntryPointBreakCommand(GenericCommand):
                 return
             gdb.execute("kill", to_string=True)
 
-        fpath = get_filepath()
+        fpath = Path.get_filepath()
         if fpath is None:
             warn("No executable to debug, use `file` to load a binary")
             return
@@ -25193,7 +25196,7 @@ class EntryPointBreakCommand(GenericCommand):
         ContextCommand.unhide_context()
 
         # get section
-        fpath = get_filepath()
+        fpath = Path.get_filepath()
         executable_section = process_lookup_path(fpath, perm_mask=Permission.EXECUTE)
 
         if executable_section.page_start <= current_arch.pc < executable_section.page_end:
@@ -28740,7 +28743,7 @@ class VMMapCommand(GenericCommand):
             if not args.filter:
                 self.dump_entry(entry, args.outer)
                 continue
-            if args.filter == "binary" and get_filepath(append_proc_root_prefix=False) == entry.path:
+            if args.filter == "binary" and Path.get_filepath(append_proc_root_prefix=False) == entry.path:
                 self.dump_entry(entry, args.outer)
             elif args.filter in entry.path:
                 self.dump_entry(entry, args.outer)
@@ -29833,8 +29836,8 @@ class LinkMapCommand(GenericCommand):
             l_next = lookup_address(read_int_from_memory(current + current_arch.ptrsize * 3))
 
             if not name:
-                if get_filepath():
-                    name = "(binary itself: {:s})".format(get_filepath())
+                if Path.get_filepath():
+                    name = "(binary itself: {:s})".format(Path.get_filepath())
                 else:
                     name = "(binary itself)"
             self.out.append(titlify(name))
@@ -29896,7 +29899,7 @@ class LinkMapCommand(GenericCommand):
                 err("Failed to get link_map.")
                 return
         else:
-            filename = get_filepath()
+            filename = Path.get_filepath()
             if filename is None:
                 err("Failed to get filename.")
                 return
@@ -30199,7 +30202,7 @@ class DynamicCommand(GenericCommand):
             if args.filename:
                 filename = args.filename
             else:
-                filename = get_filepath()
+                filename = Path.get_filepath()
                 if filename is None:
                     err("Failed to get filename.")
                     return
@@ -30844,7 +30847,7 @@ class DestructorDumpCommand(GenericCommand):
                 err("File name could not be determined.")
                 return
 
-            data = read_remote_file(remote_filepath, as_byte=True) # qemu-user is failed here, it is ok
+            data = Path.read_remote_file(remote_filepath, as_byte=True) # qemu-user is failed here, it is ok
             if not data:
                 err("Failed to read remote filepath")
                 return
@@ -30857,7 +30860,7 @@ class DestructorDumpCommand(GenericCommand):
             local_filepath = args.file
 
         elif args.file is None:
-            local_filepath = get_filepath()
+            local_filepath = Path.get_filepath()
 
         if local_filepath is None:
             err("File name could not be determined.")
@@ -30873,9 +30876,9 @@ class DestructorDumpCommand(GenericCommand):
         elif local_filepath:
             self.codebase = get_section_base_address(local_filepath)
         if self.codebase is None:
-            self.codebase = get_section_base_address(get_filepath(append_proc_root_prefix=False))
+            self.codebase = get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
         if self.codebase is None:
-            self.codebase = get_section_base_address(get_path_from_info_proc())
+            self.codebase = get_section_base_address(Path.get_filepath_from_info_proc())
         if self.codebase is None:
             warn("Not found codebase")
 
@@ -31286,7 +31289,7 @@ class GotCommand(GenericCommand):
                     err("File name could not be determined.")
                 return
 
-            data = read_remote_file(remote_filepath, as_byte=True) # qemu-user is failed here, it is ok
+            data = Path.read_remote_file(remote_filepath, as_byte=True) # qemu-user is failed here, it is ok
             if not data:
                 if not args.quiet:
                     err("Failed to read remote filepath")
@@ -31300,8 +31303,8 @@ class GotCommand(GenericCommand):
             local_filepath = args.file
 
         elif args.file is None:
-            local_filepath = get_filepath() # /proc/<PID>/root/path/to/binary if another mnt namespace
-            vmmap_filepath = get_filepath(append_proc_root_prefix=False)
+            local_filepath = Path.get_filepath() # /proc/<PID>/root/path/to/binary if another mnt namespace
+            vmmap_filepath = Path.get_filepath(append_proc_root_prefix=False)
 
         if local_filepath is None:
             if not args.quiet:
@@ -31829,7 +31832,7 @@ class UafWatchpoint(gdb.Breakpoint):
         msg = []
         msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
         msg.append("Possible Use-after-Free in '{:s}': pointer {:#x} was freed, but is attempted to be used at {:#x}".format(
-            get_filepath(), self.address, pc,
+            Path.get_filepath(), self.address, pc,
         ))
         msg.append("{:#x}   {:s} {:s}".format(insn.address, insn.mnemonic, Color.yellowify(", ".join(insn.operands))))
         ContextCommand.push_context_message("warn", "\n".join(msg))
@@ -45313,9 +45316,9 @@ class CodebaseCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        codebase = get_section_base_address(get_filepath(append_proc_root_prefix=False))
+        codebase = get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
         if codebase is None:
-            codebase = get_section_base_address(get_path_from_info_proc())
+            codebase = get_section_base_address(Path.get_filepath_from_info_proc())
         if codebase is None:
             gef_print("Codebase is not found")
             return
@@ -45324,7 +45327,7 @@ class CodebaseCommand(GenericCommand):
         gdb.execute(f"set $codebase = {codebase}")
         gef_print(f"$codebase = {codebase:#x}")
 
-        filepath = get_filepath()
+        filepath = Path.get_filepath()
         if not filepath:
             err("Not found filepath")
             return
@@ -45445,7 +45448,7 @@ class LibcCommand(GenericCommand):
         real_libc_path = None
 
         if is_container_attach():
-            real_libc_path = append_proc_root(libc.path)
+            real_libc_path = Path.append_proc_root(libc.path)
             if not os.path.exists(real_libc_path):
                 return
             data = open(real_libc_path, "rb").read()
@@ -45462,7 +45465,7 @@ class LibcCommand(GenericCommand):
                     data = open(real_libc_path, "rb").read()
                     break
             else:
-                data = read_remote_file(libc.path)
+                data = Path.read_remote_file(libc.path)
             if not data:
                 return
         else:
@@ -45514,7 +45517,7 @@ class LdCommand(GenericCommand):
         real_ld_path = None
 
         if is_container_attach():
-            real_ld_path = append_proc_root(ld.path)
+            real_ld_path = Path.append_proc_root(ld.path)
             if not os.path.exists(real_ld_path):
                 return
             data = open(real_ld_path, "rb").read()
@@ -45531,7 +45534,7 @@ class LdCommand(GenericCommand):
                     data = open(real_ld_path, "rb").read()
                     break
             else:
-                data = read_remote_file(ld.path)
+                data = Path.read_remote_file(ld.path)
             if not data:
                 return
         else:
@@ -45613,7 +45616,7 @@ class MagicCommand(GenericCommand):
         return
 
     def magic(self):
-        codebase = get_section_base_address(get_filepath(append_proc_root_prefix=False))
+        codebase = get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
         libc = get_section_base_address_by_list(("libc-2.", "libc.so.6"))
         ld = get_section_base_address_by_list(("ld-2.", "ld-linux-", "ld-linux.so.2"))
         if libc is None or ld is None:
@@ -46006,7 +46009,7 @@ class SeccompCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        path = get_filepath()
+        path = Path.get_filepath()
         try:
             seccomp = which("seccomp-tools")
             gef_print(titlify(f"{seccomp} dump '{path}'"))
@@ -71178,7 +71181,7 @@ class PartitionAllocDumpCommand(GenericCommand):
         """searches for fast_malloc_root, array_buffer_root_ and buffer_root_"""
         # the pointers to each root are in the RW area.
         # first, we list up the RW area.
-        filepath = get_filepath(append_proc_root_prefix=False)
+        filepath = Path.get_filepath(append_proc_root_prefix=False)
         if is_64bit():
             codebase = get_section_base_address(filepath)
             mask = 0x0000ffff00000000
@@ -81716,7 +81719,7 @@ class ExecUntilUserCodeCommand(ExecUntilCommand):
         self.skip_lib = args.skip_lib
         self.exclude = args.exclude
 
-        filepath = get_filepath(append_proc_root_prefix=False)
+        filepath = Path.get_filepath(append_proc_root_prefix=False)
         if not filepath and is_remote_debug():
             filepath = gdb.current_progspace().filename
             if filepath and filepath.startswith("target:"):
@@ -84686,7 +84689,7 @@ class PeekPointersCommand(GenericCommand):
             elif section_name == "heap":
                 sections = [[s.path, s.page_start, s.page_end] for s in vmmap if s.path.startswith("[heap]")]
             elif section_name == "binary":
-                sections = [[s.path, s.page_start, s.page_end] for s in vmmap if s.path == get_filepath()]
+                sections = [[s.path, s.page_start, s.page_end] for s in vmmap if s.path == Path.get_filepath()]
             else:
                 sections = [[s.path, s.page_start, s.page_end] for s in vmmap if section_name in s.path]
         else:
