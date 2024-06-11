@@ -1,5 +1,15 @@
 # Supported mode
 
+## With docker
+* Usage
+    * Attach from the outside of docker as `gdb-multiarch BINARY -p PID`.
+* Supported architectures
+    * x86 and x64
+    * Maybe ARM and ARM64
+* Note
+    * Of course, you can also install and use GEF inside docker.
+    * However, the `--privileged` option is required when `docker run` or `docker exec`.
+
 ## With qemu-system
 * Usage
     * Start qemu-system with the `-s` option and listen on `localhost:1234`.
@@ -77,7 +87,7 @@
     * It runs very slowly and is not recommended. Ctrl+C interrupt does not work.
     * Many commands are UNSUPPORTED in KGDB mode, because there is no way to access physical memory and control registers.
 
-### With VMware
+## With VMware
 * Usage
     * Host OS
         * Add following configurations to vmx file.
@@ -95,7 +105,7 @@
     * It runs faster than KGDB mode and Ctrl+C interrupt works, but it is still slow.
     * Access to physical memory and control registers is possible thanks to the `monitor` command.
 
-### With rr
+## With rr
 * Usage
     * Run first, `rr record /PATH/TO/BINARY`.
     * Then, `rr replay` for time-travel debugging.
@@ -104,7 +114,7 @@
 * Note
     * This is an experimental support. Some commands may not work.
 
-### With wine
+## With wine
 * Usage
     * Run `winedbg --gdb /PATH/TO/BINARY`.
     * Or run `winedbg --gdb --no-start /PATH/TO/BINARY` and attach with `gdb -ex 'target remote localhost:<port>'`.
