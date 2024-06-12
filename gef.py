@@ -12795,8 +12795,8 @@ class EventHandler:
         """GDB event handler for new object continue cases."""
         return
 
-    __gef_check_once__ = True
-    __gef_check_disabled_bp__ = False
+    __gef_check_once__ = True # the flag to process only once at startup
+    __gef_check_disabled_bp__ = False # the flag to remove unnecessary breakpoints
 
     @staticmethod
     def hook_stop_handler(event):
