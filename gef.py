@@ -69890,6 +69890,11 @@ class KsymaddrRemoteCommand(GenericCommand):
                 # Found kernel version string
                 version_string_address = current + r.span()[0]
                 self.version_string = r.group(0)[:-2]
+                version_number = r.group(1).decode("ascii")
+                major = int(version_number.split(".")[0])
+                minor = int(version_number.split(".")[1])
+                self.kernel_version = (major, minor)
+                self.may_use_big_symbol = (major, minor) >= (6, 1)
                 break
             current += step_size
 
