@@ -57063,7 +57063,7 @@ class KernelSysctlCommand(GenericCommand):
             self.seen_ctl_dir.append(ctl_dir)
 
             # parent
-            parent = read_int_from_memory(ctl_dir + self.OFFSET_parent)
+            parent = read_int_from_memory(ctl_dir + self.offset_parent)
             parent_path = self.parent_paths.get(parent, "")
 
             # ctl_table(s)
@@ -57080,7 +57080,7 @@ class KernelSysctlCommand(GenericCommand):
                 self.parent_paths[ctl_dir] = param_path
 
                 # mode
-                mode = u32(read_memory(ctl_table + self.OFFSET_mode, 4))
+                mode = u32(read_memory(ctl_table + self.offset_mode, 4))
 
                 # `net.*` and `user.*` have a symlink attribute and they are redirected to another location.
                 # These must be traced from another root.
@@ -57088,14 +57088,14 @@ class KernelSysctlCommand(GenericCommand):
                     if not self.skip_symlink:
                         ctset = None
                         root = read_int_from_memory(ctl_table + current_arch.ptrsize)
-                        if is_valid_addr(root + self.OFFSET_lookup):
-                            lookup = read_int_from_memory(root + self.OFFSET_lookup)
+                        if is_valid_addr(root + self.offset_lookup):
+                            lookup = read_int_from_memory(root + self.offset_lookup)
                             if lookup == Symbol.get_ksymaddr("net_ctl_header_lookup"): # net.*
                                 ctset = self.net_ctset
                             elif lookup == Symbol.get_ksymaddr("set_lookup"): # user.*
                                 ctset = self.user_ctset
                         if ctset:
-                            symlink_rb_node = read_int_from_memory(ctset + current_arch.ptrsize + self.OFFSET_rb_node)
+                            symlink_rb_node = read_int_from_memory(ctset + current_arch.ptrsize + self.offset_rb_node)
                             if ctset not in self.seen_ctset:
                                 self.seen_ctset.append(ctset)
                                 self.sysctl_dump(symlink_rb_node)
@@ -57103,12 +57103,12 @@ class KernelSysctlCommand(GenericCommand):
                 if self.should_be_print(param_path):
                     # If it's not a directory, it should hold data, so dump it.
                     if (mode & 0o0040000) == 0: # not directory
-                        maxlen = u32(read_memory(ctl_table + self.OFFSET_maxlen, 4))
+                        maxlen = u32(read_memory(ctl_table + self.offset_maxlen, 4))
                         # data
                         data_addr = read_int_from_memory(ctl_table + current_arch.ptrsize)
                         if data_addr and is_valid_addr(data_addr):
                             # type from handler
-                            handler = read_int_from_memory(ctl_table + self.OFFSET_handler)
+                            handler = read_int_from_memory(ctl_table + self.offset_handler)
                             # data length
                             if handler in self.str_types:
                                 data_val = read_cstring_from_memory(data_addr)
@@ -57149,9 +57149,9 @@ class KernelSysctlCommand(GenericCommand):
                             return
 
                 # next array element
-                ctl_table += self.SIZEOF_ctl_table
+                ctl_table += self.sizeof_ctl_table
 
-            rb_node = read_int_from_memory(ctl_dir + self.OFFSET_rb_node) & ~1 # remove RB_BLACK
+            rb_node = read_int_from_memory(ctl_dir + self.offset_rb_node) & ~1 # remove RB_BLACK
             if rb_node:
                 self.sysctl_dump(rb_node)
 
@@ -57181,6 +57181,7 @@ class KernelSysctlCommand(GenericCommand):
                 union {
                     struct {
                         struct ctl_table *ctl_table;
+                        int ctl_table_size;               // 6.6 ~
                         int used;
                         int count;
                         int nreg;
@@ -57196,9 +57197,13 @@ class KernelSysctlCommand(GenericCommand):
                 struct ctl_table_set *set;
                 struct ctl_dir *parent;
                 struct ctl_node *node;
-                struct hlist_head inodes;                 // 4.12.2 <= kernel
-                struct list_head inodes;                  // 4.11 <= kernel < 4.12.2
-                struct hlist_head inodes;                 // 4.9.120 <= kernel < 4.10
+                struct hlist_head inodes;                 // 4.12.2 ~
+                struct list_head inodes;                  // 4.11 ~ 4.12.2
+                struct hlist_head inodes;                 // 4.9.120 ~ 4.10
+                enum {
+                    SYSCTL_TABLE_TYPE_DEFAULT,
+                    SYSCTL_TABLE_TYPE_PERMANENTLY_EMPTY,
+                } type;                                   // 6.10 ~
             } header;
             struct rb_root {
                 struct rb_node *rb_node;
@@ -57219,7 +57224,11 @@ class KernelSysctlCommand(GenericCommand):
             void *data;
             int maxlen;
             umode_t mode;
-            struct ctl_table *child;
+            struct ctl_table *child;                      // ~ 6.5
+            enum {
+                SYSCTL_TABLE_TYPE_DEFAULT,
+                SYSCTL_TABLE_TYPE_PERMANENTLY_EMPTY
+            } type;                                       // 6.5 ~ 6.10
             proc_handler *proc_handler;
             struct ctl_table_poll *poll;
             void *extra1;
@@ -57231,39 +57240,51 @@ class KernelSysctlCommand(GenericCommand):
 
         if is_64bit():
             # struct ctl_dir
-            if kversion >= "4.9.120" and kversion < "4.10":
-                self.OFFSET_rb_node = 0x50
+            if kversion >= "6.10":
+                self.offset_rb_node = 0x58
+            elif kversion >= "4.9.120" and kversion < "4.10":
+                self.offset_rb_node = 0x50
             elif kversion < "4.11":
-                self.OFFSET_rb_node = 0x48
+                self.offset_rb_node = 0x48
             elif kversion < "4.12.2":
-                self.OFFSET_rb_node = 0x58
+                self.offset_rb_node = 0x58
             else:
-                self.OFFSET_rb_node = 0x50
-            self.OFFSET_parent = 0x38
+                self.offset_rb_node = 0x50
+            self.offset_parent = 0x38
             # struct ctl_table
-            self.OFFSET_maxlen = 0x10
-            self.OFFSET_mode = 0x14
-            self.OFFSET_handler = 0x20
-            self.SIZEOF_ctl_table = 0x40
+            self.offset_maxlen = 0x10
+            self.offset_mode = 0x14
+            if kversion >= "6.10":
+                self.offset_handler = 0x18
+                self.sizeof_ctl_table = 0x38
+            else:
+                self.offset_handler = 0x20
+                self.sizeof_ctl_table = 0x40
         else:
             # struct ctl_dir
-            if kversion >= "4.9.120" and kversion < "4.10":
-                self.OFFSET_rb_node = 0x2c
+            if kversion >= "6.10":
+                self.offset_rb_node = 0x30
+            elif kversion >= "4.9.120" and kversion < "4.10":
+                self.offset_rb_node = 0x2c
             elif kversion < "4.11":
-                self.OFFSET_rb_node = 0x28
+                self.offset_rb_node = 0x28
             elif kversion < "4.12.2":
-                self.OFFSET_rb_node = 0x30
+                self.offset_rb_node = 0x30
             else:
-                self.OFFSET_rb_node = 0x2c
-            self.OFFSET_parent = 0x20
+                self.offset_rb_node = 0x2c
+            self.offset_parent = 0x20
             # struct ctl_table
-            self.OFFSET_maxlen = 0x8
-            self.OFFSET_mode = 0xc
-            self.OFFSET_handler = 0x14
-            self.SIZEOF_ctl_table = 0x24
+            self.offset_maxlen = 0x8
+            self.offset_mode = 0xc
+            if kversion >= "6.10":
+                self.offset_handler = 0x10
+                self.sizeof_ctl_table = 0x20
+            else:
+                self.offset_handler = 0x14
+                self.sizeof_ctl_table = 0x24
 
         # struct ctl_table_root
-        self.OFFSET_lookup = current_arch.ptrsize + self.OFFSET_rb_node + current_arch.ptrsize
+        self.offset_lookup = current_arch.ptrsize + self.offset_rb_node + current_arch.ptrsize
 
         # the root for `net.*`; init_nsproxy.net_ns.sysctls
         self.net_ctset = None
@@ -57355,7 +57376,7 @@ class KernelSysctlCommand(GenericCommand):
         self.initialize()
 
         root_ctl_dir = sysctl_table_root + current_arch.ptrsize
-        root_rb_node = read_int_from_memory(root_ctl_dir + self.OFFSET_rb_node)
+        root_rb_node = read_int_from_memory(root_ctl_dir + self.offset_rb_node)
 
         if not args.quiet:
             info("root_ctl_dir: {:#x}".format(root_ctl_dir))
