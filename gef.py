@@ -86511,125 +86511,128 @@ class AliasesListCommand(AliasesCommand):
         return
 
 
-def __gef_prompt__(_current_prompt):
-    """GEF custom prompt function."""
-    if get_gef_setting("gef.readline_compat") is True:
-        return GEF_PROMPT
-    if get_gef_setting("gef.disable_color") is True:
-        return GEF_PROMPT
-    if is_alive():
-        return GEF_PROMPT_ON
-    return GEF_PROMPT_OFF
+class Gef:
+    @staticmethod
+    def gef_prompt(_current_prompt):
+        """GEF custom prompt function."""
+        if get_gef_setting("gef.readline_compat") is True:
+            return GEF_PROMPT
+        if get_gef_setting("gef.disable_color") is True:
+            return GEF_PROMPT
+        if is_alive():
+            return GEF_PROMPT_ON
+        return GEF_PROMPT_OFF
 
+    @staticmethod
+    def fix_venv():
+        # venv check is very slow, so skip if unneeded
+        skip_config = os.path.join(GEF_TEMP_DIR, "skip-venv-check")
+        if os.path.exists(skip_config):
+            return
 
-def fix_venv():
-    # venv check is very slow, so skip if unneeded
-    skip_config = os.path.join(GEF_TEMP_DIR, "skip-venv-check")
-    if os.path.exists(skip_config):
+        try:
+            pythonbin = which("python3")
+        except FileNotFoundError:
+            open(skip_config, "w").close()
+            return
+
+        cmds = [pythonbin, "-c", "import os,sys;print(sys.prefix)"]
+        PREFIX = String.gef_pystring(subprocess.check_output(cmds)).strip("\\n")
+        if PREFIX != sys.base_prefix:
+            cmds = [pythonbin, "-c", "import os,sys;print(os.linesep.join(sys.path).strip())"]
+            SITE_PACKAGES_DIRS = subprocess.check_output(cmds).decode("utf-8").split()
+            sys.path.extend(SITE_PACKAGES_DIRS)
+        else:
+            open(skip_config, "w").close()
         return
 
-    try:
-        pythonbin = which("python3")
-    except FileNotFoundError:
-        open(skip_config, "w").close()
+
+    @staticmethod
+    def main():
+        if GDB_VERSION < GDB_MIN_VERSION:
+            err("GDB is too old. Try upgrading it.")
+            return
+
+        # create tmp dir
+        if not os.path.exists(GEF_TEMP_DIR):
+            os.mkdir(GEF_TEMP_DIR)
+
+        # When using a python virtual environment (pyenv, venv, etc.), GDB still loads the system-installed python,
+        # so GEF doesn't load site-packages dir from environment. In order to fix it, from the shell we run the python3 binary,
+        # take and parse its path, add the path to the current python process.
+        Gef.fix_venv()
+
+        # setup prompt
+        gdb.prompt_hook = Gef.gef_prompt # noqa
+
+        # setup config
+        gdb.execute("set confirm off")
+        gdb.execute("set verbose off")
+        gdb.execute("set pagination off")
+        gdb.execute("set print elements 0")
+
+        # gdb history
+        gdb.execute("set history save on")
+        gdb.execute("set history filename ~/.gdb_history")
+
+        # gdb input and output bases
+        gdb.execute("set output-radix 0x10")
+
+        # pretty print
+        gdb.execute("set print pretty on")
+
+        # array print
+        gdb.execute("set print array on")
+        gdb.execute("set print array-indexes on")
+
+        try:
+            # this will raise a gdb.error unless we're on x86
+            gdb.execute("set disassembly-flavor intel")
+        except gdb.error:
+            # we can safely ignore this
+            pass
+
+        # SIGALRM will simply display a message, but gdb won't forward the signal to the process
+        gdb.execute("handle SIGALRM print nopass")
+
+        # SIGSEGV/SIGTERM/SIG32(for thread creation)
+        gdb.execute("handle SIGSEGV print nopass")
+        gdb.execute("handle SIGTERM print nopass")
+        gdb.execute("handle SIG32 nostop")
+
+        # demangle
+        gdb.execute("set print asm-demangle on")
+
+        # frame args
+        gdb.execute("set print frame-arguments all")
+
+        # object/vtbl
+        gdb.execute("set print object on")
+        gdb.execute("set print vtbl on")
+
+        # load GEF
+        global __gef__
+        __gef__ = GefCommand()
+        __gef__.setup()
+
+        gdb.execute("save gdb-index {}".format(get_gef_setting("gef.tempdir")))
+
+        # gdb events configuration
+        EventHooking.gef_on_continue_hook(EventHandler.continue_handler)
+        EventHooking.gef_on_stop_hook(EventHandler.hook_stop_handler)
+        EventHooking.gef_on_new_hook(EventHandler.new_objfile_handler)
+        EventHooking.gef_on_exit_hook(EventHandler.exit_handler)
+        EventHooking.gef_on_memchanged_hook(EventHandler.memchanged_handler)
+        EventHooking.gef_on_regchanged_hook(EventHandler.regchanged_handler)
+
+        if gdb.current_progspace().filename is not None:
+            # if here, we are sourcing gef from a gdb session already attached
+            # we must force a call to the new_objfile handler (see issue #278)
+            EventHandler.new_objfile_handler(None)
+
+        hexon()
         return
-
-    cmds = [pythonbin, "-c", "import os,sys;print(sys.prefix)"]
-    PREFIX = String.gef_pystring(subprocess.check_output(cmds)).strip("\\n")
-    if PREFIX != sys.base_prefix:
-        cmds = [pythonbin, "-c", "import os,sys;print(os.linesep.join(sys.path).strip())"]
-        SITE_PACKAGES_DIRS = subprocess.check_output(cmds).decode("utf-8").split()
-        sys.path.extend(SITE_PACKAGES_DIRS)
-    else:
-        open(skip_config, "w").close()
-    return
-
-
-def main():
-    if GDB_VERSION < GDB_MIN_VERSION:
-        err("GDB is too old. Try upgrading it.")
-        return
-
-    # create tmp dir
-    if not os.path.exists(GEF_TEMP_DIR):
-        os.mkdir(GEF_TEMP_DIR)
-
-    # When using a python virtual environment (pyenv, venv, etc.), GDB still loads the system-installed python,
-    # so GEF doesn't load site-packages dir from environment. In order to fix it, from the shell we run the python3 binary,
-    # take and parse its path, add the path to the current python process.
-    fix_venv()
-
-    # setup prompt
-    gdb.prompt_hook = __gef_prompt__ # noqa
-
-    # setup config
-    gdb.execute("set confirm off")
-    gdb.execute("set verbose off")
-    gdb.execute("set pagination off")
-    gdb.execute("set print elements 0")
-
-    # gdb history
-    gdb.execute("set history save on")
-    gdb.execute("set history filename ~/.gdb_history")
-
-    # gdb input and output bases
-    gdb.execute("set output-radix 0x10")
-
-    # pretty print
-    gdb.execute("set print pretty on")
-
-    # array print
-    gdb.execute("set print array on")
-    gdb.execute("set print array-indexes on")
-
-    try:
-        # this will raise a gdb.error unless we're on x86
-        gdb.execute("set disassembly-flavor intel")
-    except gdb.error:
-        # we can safely ignore this
-        pass
-
-    # SIGALRM will simply display a message, but gdb won't forward the signal to the process
-    gdb.execute("handle SIGALRM print nopass")
-
-    # SIGSEGV/SIGTERM/SIG32(for thread creation)
-    gdb.execute("handle SIGSEGV print nopass")
-    gdb.execute("handle SIGTERM print nopass")
-    gdb.execute("handle SIG32 nostop")
-
-    # demangle
-    gdb.execute("set print asm-demangle on")
-
-    # frame args
-    gdb.execute("set print frame-arguments all")
-
-    # object/vtbl
-    gdb.execute("set print object on")
-    gdb.execute("set print vtbl on")
-
-    # load GEF
-    global __gef__
-    __gef__ = GefCommand()
-    __gef__.setup()
-
-    gdb.execute("save gdb-index {}".format(get_gef_setting("gef.tempdir")))
-
-    # gdb events configuration
-    EventHooking.gef_on_continue_hook(EventHandler.continue_handler)
-    EventHooking.gef_on_stop_hook(EventHandler.hook_stop_handler)
-    EventHooking.gef_on_new_hook(EventHandler.new_objfile_handler)
-    EventHooking.gef_on_exit_hook(EventHandler.exit_handler)
-    EventHooking.gef_on_memchanged_hook(EventHandler.memchanged_handler)
-    EventHooking.gef_on_regchanged_hook(EventHandler.regchanged_handler)
-
-    if gdb.current_progspace().filename is not None:
-        # if here, we are sourcing gef from a gdb session already attached
-        # we must force a call to the new_objfile handler (see issue #278)
-        EventHandler.new_objfile_handler(None)
-
-    hexon()
-    return
 
 
 if __name__ == "__main__":
-    main()
+    Gef.main()
