@@ -162,7 +162,6 @@ __gef_fpath__                   = os.path.expanduser(http_get.__code__.co_filena
 __gef_commands__                = [] # keep command classes
 __LCO__                         = {} # keep command instances for debug (meaning Loaded Command Objects)
 __gef_config__                  = {} # keep gef configs
-__gef_convenience_vars_index__  = 0 # $_gef1, $_gef2, ...
 __gef_libc_args_definitions__   = {} # libc arguments definition
 __gef_prev_arch__               = None # previous valid result of edb.selected_frame().architecture()
 
@@ -13476,13 +13475,16 @@ def get_ksysctl(sym):
         return None
 
 
-def gef_convenience(value):
-    """Defines a new convenience value."""
-    global __gef_convenience_vars_index__
-    var_name = "$_gef{:d}".format(__gef_convenience_vars_index__)
-    __gef_convenience_vars_index__ += 1
-    gdb.execute("""set {:s} = "{:s}" """.format(var_name, value))
-    return var_name
+class ConvenienceVars:
+    __gef_convenience_vars_index__  = 0 # $_gef1, $_gef2, ...
+
+    @staticmethod
+    def gef_convenience(value):
+        """Defines a new convenience value."""
+        var_name = "$_gef{:d}".format(ConvenienceVars.__gef_convenience_vars_index__)
+        ConvenienceVars.__gef_convenience_vars_index__ += 1
+        gdb.execute("""set {:s} = "{:s}" """.format(var_name, value))
+        return var_name
 
 
 class Auxv:
@@ -29357,7 +29359,7 @@ class PatternCreateCommand(GenericCommand):
         info("Generating a pattern of {:d} bytes".format(size))
         pattern_str = String.gef_pystring(PatternCreateCommand.generate_cyclic_pattern(size, args.charset))
         gef_print(pattern_str)
-        ok("Saved as '{:s}'".format(gef_convenience(pattern_str)))
+        ok("Saved as '{:s}'".format(ConvenienceVars.gef_convenience(pattern_str)))
         return
 
 
