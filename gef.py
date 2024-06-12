@@ -12607,7 +12607,7 @@ class ProcessMap:
             maps.append(sect)
         return maps
 
-    __gef_use_info_proc_mappings__ = None
+    __gef_use_info_proc_mappings__ = None # the flag to use `info proc mappings`
 
     @staticmethod
     def get_process_maps_heuristic():
