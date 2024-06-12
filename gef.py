@@ -11859,6 +11859,8 @@ def is_remote_debug():
     """"Return True is the current debugging session is running through GDB remote session."""
     try:
         connection = gdb.selected_inferior().connection
+        if connection is None:
+            return False
         return connection and connection.type == "remote"
     except AttributeError:
         # before gdb 11.x: AttributeError: 'gdb.Inferior' object has no attribute 'connection'
