@@ -11308,6 +11308,7 @@ def write_physmem(paddr, data):
 
 
 def is_supported_physmode():
+    """GDB mode determination function for physmem support."""
     return QemuMonitor.get_current_mmu_mode() in ["virt", "phys"]
 
 
@@ -11331,15 +11332,6 @@ def disable_phys():
         return True
 
 
-def is_kvm_enabled():
-    try:
-        res = gdb.execute("monitor info kvm", to_string=True)
-        return "enabled" in res
-    except gdb.error:
-        return False
-
-
-@Cache.cache_until_next
 def p8(x, s=False):
     """Pack one byte respecting the current architecture endianness."""
     if not s:
@@ -11428,7 +11420,7 @@ def is_ascii_string(addr):
 
 
 def is_alive():
-    """Check if GDB is running."""
+    """GDB mode determination function for running."""
     try:
         return gdb.selected_inferior().pid > 0
     except gdb.error:
@@ -11811,7 +11803,7 @@ def get_register(regname, use_mbed_exec=False, use_monitor=False):
 
 @Cache.cache_this_session
 def is_remote_debug():
-    """"Return True is the current debugging session is running through GDB remote session."""
+    """GDB mode determination function for remote debugging."""
     try:
         connection = gdb.selected_inferior().connection
         if connection is None:
@@ -11830,12 +11822,14 @@ def is_remote_debug():
 
 @Cache.cache_this_session
 def is_normal_run():
+    """GDB mode determination function for normal running."""
     ret = gdb.execute("info files", to_string=True)
     return "Using the running image of child" in ret
 
 
 @Cache.cache_this_session
 def is_attach():
+    """GDB mode determination function for attaching."""
     try:
         return gdb.selected_inferior().was_attached
     except AttributeError:
@@ -11845,11 +11839,13 @@ def is_attach():
 
 @Cache.cache_this_session
 def is_container_attach():
+    """GDB mode determination function for attaching another namespace."""
     return not is_remote_debug() and is_attach() and gdb.current_progspace().filename.startswith("target:")
 
 
 @Cache.cache_this_session
 def is_pin():
+    """GDB mode determination function for pin and SDE."""
     if not is_remote_debug():
         return False
     try:
@@ -11862,6 +11858,7 @@ def is_pin():
 
 @Cache.cache_this_session
 def is_qemu():
+    """GDB mode determination function for qemu-user or qemu-system."""
     if not is_remote_debug():
         return False
     try:
@@ -11874,6 +11871,7 @@ def is_qemu():
 
 @Cache.cache_this_session
 def is_qemu_user():
+    """GDB mode determination function for qemu-user gdb stub."""
     if is_qemu() is False:
         return False
     try:
@@ -11886,6 +11884,7 @@ def is_qemu_user():
 
 @Cache.cache_this_session
 def is_qemu_system():
+    """GDB mode determination function for qemu-system gdb stub."""
     if is_qemu() is False:
         return False
     try:
@@ -11898,6 +11897,7 @@ def is_qemu_system():
 
 @Cache.cache_this_session
 def is_over_serial():
+    """GDB mode determination function for serial device."""
     if not is_remote_debug():
         return False
     try:
@@ -11909,11 +11909,13 @@ def is_over_serial():
 
 
 def is_kgdb():
+    """GDB mode determination function for KGDB."""
     return is_x86_64() and is_over_serial()
 
 
 @Cache.cache_this_session
 def is_vmware():
+    """GDB mode determination function for VMware gdb stub."""
     if not is_remote_debug():
         return False
     # https://xuanxuanblingbling.github.io/ctf/tools/2021/10/22/vmware/
@@ -11926,6 +11928,7 @@ def is_vmware():
 
 @Cache.cache_this_session
 def is_qiling():
+    """GDB mode determination function for qiling framework gdb stub."""
     if not is_remote_debug():
         return False
     pid = Pid.get_pid(remote=True)
@@ -11939,14 +11942,48 @@ def is_qiling():
 
 @Cache.cache_this_session
 def is_rr():
+    """GDB mode determination function for rr."""
     return Pid.get_pid_from_tcp_session(filepath="rr") is not None
 
 
 @Cache.cache_this_session
 def is_wine():
+    """GDB mode determination function for winedbg."""
     return Pid.get_pid_from_tcp_session(filepath="wineserver") is not None
 
 
+@Cache.cache_until_next
+def is_in_kernel():
+    """GDB mode determination function for kernel mode."""
+    if not is_alive():
+        return False
+    if is_qiling():
+        return False
+    if is_x86():
+        return (get_register("$cs") & 0b11) != 3
+    elif is_arm32():
+        return (get_register(current_arch.flag_register) & 0b11111) not in [0b10000, 0b11010]
+    elif is_arm64():
+        cpsr = get_register(current_arch.flag_register)
+        if cpsr is None: # for qiling framework
+            return False
+        return ((cpsr >> 2) & 0b11) == 1
+    else:
+        # assume it is userland
+        return False
+
+
+@Cache.cache_this_session
+def is_kvm_enabled():
+    """GDB mode determination function for KVM."""
+    try:
+        res = gdb.execute("monitor info kvm", to_string=True)
+        return "enabled" in res
+    except gdb.error:
+        return False
+
+
+@Cache.cache_until_next
 class Pid:
     @staticmethod
     def get_tcp_sess(pid):
@@ -13062,14 +13099,17 @@ def cached_lookup_type(_type):
         return None
 
 def is_64bit():
+    """GDB mode determination function for 64-bit architecture."""
     return AddressUtil.ptr_width() == 8
 
 
 def is_32bit():
+    """GDB mode determination function for 32-bit architecture."""
     return AddressUtil.ptr_width() == 4
 
 
 def is_emulated32():
+    """GDB mode determination function for 32-bit architecture on 64-bit environment."""
     if is_64bit():
         return False
 
@@ -13339,26 +13379,6 @@ def set_arch(arch_str=None):
 
     Cache.reset_gef_caches(all=True)
     return
-
-
-@Cache.cache_until_next
-def is_in_kernel():
-    if not is_alive():
-        return False
-    if is_qiling():
-        return False
-    if is_x86():
-        return (get_register("$cs") & 0b11) != 3
-    elif is_arm32():
-        return (get_register(current_arch.flag_register) & 0b11111) not in [0b10000, 0b11010]
-    elif is_arm64():
-        cpsr = get_register(current_arch.flag_register)
-        if cpsr is None: # for qiling framework
-            return False
-        return ((cpsr >> 2) & 0b11) == 1
-    else:
-        # assume it is userland
-        return False
 
 
 @Cache.cache_until_next
@@ -86167,6 +86187,7 @@ class GefPyObjListCommand(GenericCommand):
         bp_classes = []
         arch_classes = []
         arch_determinations = []
+        gdb_mode_determinations = []
         decorators = []
         syscall_defines = []
         gef_print_wrappers = []
@@ -86203,6 +86224,8 @@ class GefPyObjListCommand(GenericCommand):
                     classes.append("{!s} {!s}".format(t, mod))
             elif obj.__doc__ and obj.__doc__.startswith("Architecture determination function"):
                 arch_determinations.append("{!s} {!s}".format(t, mod))
+            elif obj.__doc__ and obj.__doc__.startswith("GDB mode determination function"):
+                gdb_mode_determinations.append("{!s} {!s}".format(t, mod))
             elif obj.__doc__ and obj.__doc__.startswith("Decorator"):
                 decorators.append("{!s} {!s}".format(t, mod))
             elif mod.endswith(("syscall_tbl", "syscall_list")) or mod.startswith("syscall_defs"):
@@ -86226,6 +86249,8 @@ class GefPyObjListCommand(GenericCommand):
         output.extend(sorted(arch_classes))
         output.append(titlify("Architecture determination function"))
         output.extend(sorted(arch_determinations))
+        output.append(titlify("GDB mode determination function"))
+        output.extend(sorted(gdb_mode_determinations))
         output.append(titlify("Classes"))
         output.extend(sorted(classes))
         output.append(titlify("Syscall defines"))
@@ -86236,7 +86261,7 @@ class GefPyObjListCommand(GenericCommand):
         output.extend(sorted(gef_print_wrappers))
         output.append(titlify("read/write memory functions"))
         output.extend(sorted(read_write_mems))
-        output.append(titlify("Othres"))
+        output.append(titlify("Other functions"))
         output.extend(sorted(others))
         gef_print("\n".join(output), less=not args.no_pager)
         return
