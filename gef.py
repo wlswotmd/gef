@@ -32547,6 +32547,7 @@ asmlinkage long sys_madvise(unsigned long start, size_t len, int behavior);
 asmlinkage long sys_process_madvise(int pidfd, const struct iovec __user *vec, size_t vlen, int behavior, unsigned int flags);
 asmlinkage long sys_process_mrelease(int pidfd, unsigned int flags);
 asmlinkage long sys_remap_file_pages(unsigned long start, unsigned long size, unsigned long prot, unsigned long pgoff, unsigned long flags);
+asmlinkage long sys_mseal(unsigned long start, size_t len, unsigned long flags);
 asmlinkage long sys_mbind(unsigned long start, unsigned long len, unsigned long mode, const unsigned long __user *nmask, unsigned long maxnode, unsigned flags);
 asmlinkage long sys_get_mempolicy(int __user *policy, unsigned long __user *nmask, unsigned long maxnode, unsigned long addr, unsigned long flags);
 asmlinkage long sys_set_mempolicy(int mode, const unsigned long __user *nmask, unsigned long maxnode);
@@ -33203,7 +33204,7 @@ x64_syscall_tbl = """
 450     common  set_mempolicy_home_node sys_set_mempolicy_home_node
 451     common  cachestat               sys_cachestat
 452     common  fchmodat2               sys_fchmodat2
-453     64      map_shadow_stack        sys_map_shadow_stack
+453     common  map_shadow_stack        sys_map_shadow_stack
 454     common  futex_wake              sys_futex_wake
 455     common  futex_wait              sys_futex_wait
 456     common  futex_requeue           sys_futex_requeue
@@ -33212,6 +33213,7 @@ x64_syscall_tbl = """
 459     common  lsm_get_self_attr       sys_lsm_get_self_attr
 460     common  lsm_set_self_attr       sys_lsm_set_self_attr
 461     common  lsm_list_modules        sys_lsm_list_modules
+462     common  mseal                   sys_mseal
 
 #
 # Due to a historical design error, certain syscalls are numbered differently
@@ -33731,6 +33733,7 @@ x86_syscall_tbl = """
 459     i386    lsm_get_self_attr       sys_lsm_get_self_attr
 460     i386    lsm_set_self_attr       sys_lsm_set_self_attr
 461     i386    lsm_list_modules        sys_lsm_list_modules
+462     i386    mseal                   sys_mseal
 """
 
 
@@ -34061,6 +34064,7 @@ arm64_syscall_tbl = """
 459  arm64  lsm_get_self_attr        sys_lsm_get_self_attr
 460  arm64  lsm_set_self_attr        sys_lsm_set_self_attr
 461  arm64  lsm_list_modules         sys_lsm_list_modules
+462  arm64  mseal                    sys_mseal
 """
 
 
@@ -34486,6 +34490,7 @@ arm_compat_syscall_tbl = """
 459  arm  lsm_get_self_attr             sys_lsm_get_self_attr
 460  arm  lsm_set_self_attr             sys_lsm_set_self_attr
 461  arm  lsm_list_modules              sys_lsm_list_modules
+462  arm  mseal                         sys_mseal
 """
 
 # ARM (native)
@@ -34968,6 +34973,7 @@ arm_native_syscall_tbl = """
 459     common  lsm_get_self_attr               sys_lsm_get_self_attr
 460     common  lsm_set_self_attr               sys_lsm_set_self_attr
 461     common  lsm_list_modules                sys_lsm_list_modules
+462     common  mseal                           sys_mseal
 """
 
 
@@ -35423,6 +35429,7 @@ mips_o32_syscall_tbl = """
 459     o32     lsm_get_self_attr               sys_lsm_get_self_attr
 460     o32     lsm_set_self_attr               sys_lsm_set_self_attr
 461     o32     lsm_list_modules                sys_lsm_list_modules
+462     o32     mseal                           sys_mseal
 """
 
 
@@ -35829,6 +35836,7 @@ mips_n32_syscall_tbl = """
 459     n32     lsm_get_self_attr               sys_lsm_get_self_attr
 460     n32     lsm_set_self_attr               sys_lsm_set_self_attr
 461     n32     lsm_list_modules                sys_lsm_list_modules
+462     n32     mseal                           sys_mseal
 """
 
 
@@ -36211,6 +36219,7 @@ mips_n64_syscall_tbl = """
 459     n64     lsm_get_self_attr               sys_lsm_get_self_attr
 460     n64     lsm_set_self_attr               sys_lsm_set_self_attr
 461     n64     lsm_list_modules                sys_lsm_list_modules
+462     n64     mseal                           sys_mseal
 """
 
 
@@ -36765,6 +36774,7 @@ ppc_syscall_tbl = """
 459     common  lsm_get_self_attr               sys_lsm_get_self_attr
 460     common  lsm_set_self_attr               sys_lsm_set_self_attr
 461     common  lsm_list_modules                sys_lsm_list_modules
+462     common  mseal                           sys_mseal
 """
 
 
@@ -37278,6 +37288,7 @@ sparc_syscall_tbl = """
 459     common  lsm_get_self_attr               sys_lsm_get_self_attr
 460     common  lsm_set_self_attr               sys_lsm_set_self_attr
 461     common  lsm_list_modules                sys_lsm_list_modules
+462     common  mseal                           sys_mseal
 """
 
 
@@ -37606,6 +37617,7 @@ riscv64_syscall_tbl = """
 459  riscv64  lsm_get_self_attr        sys_lsm_get_self_attr
 460  riscv64  lsm_set_self_attr        sys_lsm_set_self_attr
 461  riscv64  lsm_list_modules         sys_lsm_list_modules
+462  riscv64  mseal                    sys_mseal
 """
 
 
@@ -37928,6 +37940,7 @@ riscv32_syscall_tbl = """
 459  riscv32  lsm_get_self_attr             sys_lsm_get_self_attr
 460  riscv32  lsm_set_self_attr             sys_lsm_set_self_attr
 461  riscv32  lsm_list_modules              sys_lsm_list_modules
+462  riscv32  mseal                         sys_mseal
 """
 
 
@@ -38398,6 +38411,7 @@ s390x_syscall_tbl = """
 459  common     lsm_get_self_attr       sys_lsm_get_self_attr           sys_lsm_get_self_attr
 460  common     lsm_set_self_attr       sys_lsm_set_self_attr           sys_lsm_set_self_attr
 461  common     lsm_list_modules        sys_lsm_list_modules            sys_lsm_list_modules
+462  common     mseal                   sys_mseal                       sys_mseal
 """
 
 
@@ -38868,6 +38882,7 @@ sh4_syscall_tbl = """
 459     common  lsm_get_self_attr               sys_lsm_get_self_attr
 460     common  lsm_set_self_attr               sys_lsm_set_self_attr
 461     common  lsm_list_modules                sys_lsm_list_modules
+462     common  mseal                           sys_mseal
 """
 
 
@@ -39335,6 +39350,7 @@ m68k_syscall_tbl = """
 459     common  lsm_get_self_attr               sys_lsm_get_self_attr
 460     common  lsm_set_self_attr               sys_lsm_set_self_attr
 461     common  lsm_list_modules                sys_lsm_list_modules
+462     common  mseal                           sys_mseal
 """
 
 
@@ -39815,7 +39831,7 @@ alpha_syscall_tbl = """
 542     common  fsmount                         sys_fsmount
 543     common  fspick                          sys_fspick
 544     common  pidfd_open                      sys_pidfd_open
-# 545 reserved for clone3
+545     common  clone3                          alpha_clone3
 546     common  close_range                     sys_close_range
 547     common  openat2                         sys_openat2
 548     common  pidfd_getfd                     sys_pidfd_getfd
@@ -39842,6 +39858,7 @@ alpha_syscall_tbl = """
 569     common  lsm_get_self_attr               sys_lsm_get_self_attr
 570     common  lsm_set_self_attr               sys_lsm_set_self_attr
 571     common  lsm_list_modules                sys_lsm_list_modules
+572     common  mseal                           sys_mseal
 """
 
 
@@ -40308,6 +40325,7 @@ hppa_syscall_tbl = """
 459     common  lsm_get_self_attr               sys_lsm_get_self_attr
 460     common  lsm_set_self_attr               sys_lsm_set_self_attr
 461     common  lsm_list_modules                sys_lsm_list_modules
+462     common  mseal                           sys_mseal
 """
 
 
@@ -40637,6 +40655,7 @@ or1k_syscall_tbl = """
 459  or1k  lsm_get_self_attr        sys_lsm_get_self_attr
 460  or1k  lsm_set_self_attr        sys_lsm_set_self_attr
 461  or1k  lsm_list_modules         sys_lsm_list_modules
+462  or1k  mseal                    sys_mseal
 """
 
 
@@ -40965,6 +40984,7 @@ nios2_syscall_tbl = """
 459  nios2  lsm_get_self_attr        sys_lsm_get_self_attr
 460  nios2  lsm_set_self_attr        sys_lsm_set_self_attr
 461  nios2  lsm_list_modules         sys_lsm_list_modules
+462  nios2  mseal                    sys_mseal
 """
 
 
@@ -41438,6 +41458,7 @@ microblaze_syscall_tbl = """
 459     common  lsm_get_self_attr               sys_lsm_get_self_attr
 460     common  lsm_set_self_attr               sys_lsm_set_self_attr
 461     common  lsm_list_modules                sys_lsm_list_modules
+462     common  mseal                           sys_mseal
 """
 
 
@@ -41876,6 +41897,7 @@ xtensa_syscall_tbl = """
 459     common  lsm_get_self_attr               sys_lsm_get_self_attr
 460     common  lsm_set_self_attr               sys_lsm_set_self_attr
 461     common  lsm_list_modules                sys_lsm_list_modules
+462     common  mseal                           sys_mseal
 """
 
 
@@ -42568,6 +42590,7 @@ loongarch_syscall_tbl = """
 459  loongarch  lsm_get_self_attr        sys_lsm_get_self_attr
 460  loongarch  lsm_set_self_attr        sys_lsm_set_self_attr
 461  loongarch  lsm_list_modules         sys_lsm_list_modules
+462  loongarch  mseal                    sys_mseal
 """
 
 
@@ -42896,6 +42919,7 @@ arc_syscall_tbl = """
 459  arc  lsm_get_self_attr        sys_lsm_get_self_attr
 460  arc  lsm_set_self_attr        sys_lsm_set_self_attr
 461  arc  lsm_list_modules         sys_lsm_list_modules
+462  arc  mseal                    sys_mseal
 """
 
 
@@ -43223,6 +43247,7 @@ csky_syscall_tbl = """
 459  csky  lsm_get_self_attr        sys_lsm_get_self_attr
 460  csky  lsm_set_self_attr        sys_lsm_set_self_attr
 461  csky  lsm_list_modules         sys_lsm_list_modules
+462  csky  mseal                    sys_mseal
 """
 
 
