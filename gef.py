@@ -163,7 +163,6 @@ __gef_commands__                = [] # keep command classes
 __LCO__                         = {} # keep command instances for debug (meaning Loaded Command Objects)
 __gef_config__                  = {} # keep gef configs
 __gef_libc_args_definitions__   = {} # libc arguments definition
-__gef_prev_arch__               = None # previous valid result of edb.selected_frame().architecture()
 
 current_elf                     = None # keep Elf instance
 current_arch                    = None # keep Architecture instance
@@ -4961,6 +4960,8 @@ def load_ropper(f):
 
 
 class Disasm:
+    __gef_prev_arch__ = None # previous valid result of edb.selected_frame().architecture()
+
     @staticmethod
     def gdb_disassemble(start_pc, nb_insn=None, end_pc=None):
         """Disassemble instructions from `start_pc` (Integer). Return an iterator of Instruction objects.
@@ -4968,16 +4969,15 @@ class Disasm:
         if start_pc is None:
             return None
 
-        global __gef_prev_arch__
         try:
             arch = gdb.selected_frame().architecture()
-            __gef_prev_arch__ = arch
+            Disasm.__gef_prev_arch__ = arch
         except gdb.error:
             # For unknown reasons, gdb.selected_frame() may cause an error (often occurs during kernel startup).
             # At this time arch cannot be resolved, but if it was successful before, it will be used.
-            if __gef_prev_arch__ is None:
+            if Disasm.__gef_prev_arch__ is None:
                 raise
-            arch = __gef_prev_arch__
+            arch = Disasm.__gef_prev_arch__
 
         kwargs = {}
         if nb_insn is not None:
