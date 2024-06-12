@@ -48898,8 +48898,13 @@ class KernelAddressHeuristicFinder:
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v4.6 or later)
-        if kversion and kversion >= "4.6":
+        if kversion and kversion >= "6.6.26":
+            # sys_call_table (on x64) still remains, however, it is no longer in use.
+            # each entry is embeded in `x64_sys_call` as call instruction.
+            pass
+
+        # plan 2 (available v4.6 ~ v6.6.26)
+        if kversion and kversion >= "4.6" and kversion < "6.6.26":
             addr = Symbol.get_ksymaddr("do_syscall_64")
             if addr:
                 res = gdb.execute("x/40i {:#x}".format(addr), to_string=True)
@@ -48924,6 +48929,19 @@ class KernelAddressHeuristicFinder:
                 g = KernelAddressHeuristicFinderUtil.x64_qword_ptr_array_base(res)
                 for x in g:
                     return x
+
+        # plan 5 (search memory)
+        sys_read = Symbol.get_ksymaddr("__x64_sys_read")
+        sys_write = Symbol.get_ksymaddr("__x64_sys_write")
+        sys_open = Symbol.get_ksymaddr("__x64_sys_open")
+        sys_close = Symbol.get_ksymaddr("__x64_sys_close")
+        seq_to_find = p64(sys_read) + p64(sys_write) + p64(sys_open) + p64(sys_close)
+        kinfo = KernelbaseCommand.get_kernel_base()
+        if kinfo and kinfo.ro_base:
+            ro_data = read_memory(kinfo.ro_base, kinfo.ro_size)
+            sys_call_table_offset = ro_data.find(seq_to_find)
+            if sys_call_table_offset >= 0:
+                return kinfo.ro_base + sys_call_table_offset
         return None
 
     @staticmethod
@@ -48942,7 +48960,7 @@ class KernelAddressHeuristicFinder:
         if kversion and kversion < "5.4":
             return None
         if kversion and kversion >= "6.6.26":
-            # x32_sys_call_table is removed from 6.6.26.
+            # x32_sys_call_table (on x64) is removed from 6.6.26.
             # each entry is embeded in `x32_sys_call` as call instruction.
             return None
 
@@ -48973,15 +48991,20 @@ class KernelAddressHeuristicFinder:
 
         kversion = KernelVersionCommand.kernel_version()
 
-        # plan 2 (available v2.6.24 or later)
-        if kversion and kversion >= "6.6.26" and is_x86_64():
-            # ia32_sys_call_table is removed from 6.6.26.
-            # each entry is embeded in `ia32_sys_call` as call instruction.
-            return None
-        elif kversion and kversion >= "6.6.7" and kversion < "6.6.26":
+        if kversion and kversion >= "6.6.26":
             if is_x86_64():
-                # ia32_sys_call_table is still used, but no detection logic
+                # ia32_sys_call_table (on x64) is removed from 6.6.26.
                 return None
+            else:
+                # sys_call_table (on i386) still remains, however, it is no longer in use.
+                # each entry is embeded in `ia32_sys_call` as call instruction.
+                pass
+
+        # plan 2 (available v2.6.24 ~ v6.6.26)
+        if kversion and kversion >= "6.6.7" and kversion < "6.6.26":
+            if is_x86_64():
+                # ia32_sys_call_table is still used, but no detection logic.
+                addr = None
             else:
                 addr = Symbol.get_ksymaddr("do_int80_syscall_32")
         elif kversion and kversion >= "4.6" and kversion < "6.6.7":
@@ -49003,6 +49026,19 @@ class KernelAddressHeuristicFinder:
                 g = KernelAddressHeuristicFinderUtil.x86_dword_ptr_array_base(res)
             for x in g:
                 return x
+
+        # plan 3 (search memory)
+        sys_restart_syscall = Symbol.get_ksymaddr("sys_restart_syscall")
+        sys_exit = Symbol.get_ksymaddr("sys_exit")
+        sys_fork = Symbol.get_ksymaddr("sys_fork")
+        sys_read = Symbol.get_ksymaddr("sys_read")
+        seq_to_find = p32(sys_restart_syscall) + p32(sys_exit) + p32(sys_fork) + p32(sys_read)
+        kinfo = KernelbaseCommand.get_kernel_base()
+        if kinfo and kinfo.ro_base:
+            ro_data = read_memory(kinfo.ro_base, kinfo.ro_size)
+            sys_call_table_offset = ro_data.find(seq_to_find)
+            if sys_call_table_offset >= 0:
+                return kinfo.ro_base + sys_call_table_offset
         return None
 
     @staticmethod
@@ -49011,12 +49047,24 @@ class KernelAddressHeuristicFinder:
             return None
 
         # plan 1 (directly)
-        x = Symbol.get_ksymaddr("sys_call_table")
-        if x:
-            return x
+        if KernelAddressHeuristicFinder.USE_DIRECTLY:
+            x = Symbol.get_ksymaddr("sys_call_table")
+            if x:
+                return x
 
-        # `sys_call_table` is embedded in the .text area even if
-        # `CONFIG_KALLSYMS_ALL=n`, so plan2 is not necessary.
+        # plan 2 (search memory)
+        sys_restart_syscall = Symbol.get_ksymaddr("sys_restart_syscall")
+        sys_exit = Symbol.get_ksymaddr("sys_exit")
+        sys_fork = Symbol.get_ksymaddr("sys_fork")
+        sys_read = Symbol.get_ksymaddr("sys_read")
+        seq_to_find = p32(sys_restart_syscall) + p32(sys_exit) + p32(sys_fork) + p32(sys_read)
+        kinfo = KernelbaseCommand.get_kernel_base()
+        # `sys_call_table` is embedded in the .text area even if `CONFIG_KALLSYMS_ALL=n`
+        if kinfo and kinfo.text_base:
+            text_data = read_memory(kinfo.text_base, kinfo.text_size)
+            sys_call_table_offset = text_data.find(seq_to_find)
+            if sys_call_table_offset >= 0:
+                return kinfo.text_base + sys_call_table_offset
         return None
 
     @staticmethod
@@ -49046,6 +49094,19 @@ class KernelAddressHeuristicFinder:
             g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res, read_valid=True)
             for x in g:
                 return x
+
+        # plan 3 (search memory)
+        sys_io_setup = Symbol.get_ksymaddr("__arm64_sys_io_setup")
+        sys_io_destroy = Symbol.get_ksymaddr("__arm64_sys_io_destroy")
+        sys_io_submit = Symbol.get_ksymaddr("__arm64_sys_io_submit")
+        sys_io_cancel = Symbol.get_ksymaddr("__arm64_sys_io_cancel")
+        seq_to_find = p64(sys_io_setup) + p64(sys_io_destroy) + p64(sys_io_submit) + p64(sys_io_cancel)
+        kinfo = KernelbaseCommand.get_kernel_base()
+        if kinfo and kinfo.ro_base:
+            ro_data = read_memory(kinfo.ro_base, kinfo.ro_size)
+            sys_call_table_offset = ro_data.find(seq_to_find)
+            if sys_call_table_offset >= 0:
+                return kinfo.ro_base + sys_call_table_offset
         return None
 
     @staticmethod
@@ -49075,6 +49136,22 @@ class KernelAddressHeuristicFinder:
             g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add(res, read_valid=True)
             for x in g:
                 return x
+
+        # plan 3 (search memory)
+        sys_restart_syscall = Symbol.get_ksymaddr("__arm64_sys_restart_syscall")
+        sys_exit = Symbol.get_ksymaddr("__arm64_sys_exit")
+        sys_fork = Symbol.get_ksymaddr("__arm64_sys_fork")
+        sys_read = Symbol.get_ksymaddr("__arm64_sys_read")
+        sys_write = Symbol.get_ksymaddr("__arm64_sys_write")
+        sys_open = Symbol.get_ksymaddr("__arm64_compat_sys_open")
+        if sys_open:
+            seq_to_find = p64(sys_restart_syscall) + p64(sys_exit) + p64(sys_fork) + p64(sys_read) + p64(sys_write) + p64(sys_open)
+            kinfo = KernelbaseCommand.get_kernel_base()
+            if kinfo and kinfo.ro_base:
+                ro_data = read_memory(kinfo.ro_base, kinfo.ro_size)
+                sys_call_table_offset = ro_data.find(seq_to_find)
+                if sys_call_table_offset >= 0:
+                    return kinfo.ro_base + sys_call_table_offset
         return None
 
     @staticmethod
