@@ -513,7 +513,7 @@ def gef_print(x="", less=False, *args, **kwargs):
 
     if less:
         try:
-            less = which("less")
+            less = GefUtil.which("less")
         except FileNotFoundError:
             less = False
 
@@ -2085,7 +2085,7 @@ class Elf:
 
     def has_canary_heuristic(self):
         try:
-            objdump_command = which("objdump")
+            objdump_command = GefUtil.which("objdump")
         except FileNotFoundError:
             return None # it means unknown
 
@@ -2178,7 +2178,7 @@ class Elf:
         ]
 
         try:
-            objdump_command = which("objdump")
+            objdump_command = GefUtil.which("objdump")
         except FileNotFoundError:
             return None # it means unknown
 
@@ -4509,7 +4509,7 @@ def get_libc_version():
         return None
 
     def get_system_libc_version():
-        res = gef_execute_external(["cat", "/proc/self/maps"], as_list=True)
+        res = GefUtil.gef_execute_external(["cat", "/proc/self/maps"], as_list=True)
         libc_targets = ("libc-2.", "libc.so.6")
         for line in res:
             if not any(kw in line for kw in libc_targets):
@@ -4538,17 +4538,6 @@ def get_libc_version():
     # set cache
     Config.set_gef_setting("libc.assume_version", libc_version, tuple, "The value returned by get_libc_version if libc is not found")
     return libc_version
-
-
-def get_source(function):
-    import inspect
-    s = inspect.getsource(function)
-    return s.rstrip()
-
-
-def log2(x):
-    import math
-    return int(math.log2(x))
 
 
 def titlify(text, color=None, msg_color=None):
@@ -4710,30 +4699,6 @@ def rol(val, bits, arch_bits=64):
     new_val = (val << bits) | (val >> (arch_bits - bits))
     mask = (1 << arch_bits) - 1
     return new_val & mask
-
-
-@Cache.cache_this_session
-def which(program):
-    """Locate a command on the filesystem."""
-    def is_exe(fpath):
-        return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
-
-    fpath = os.path.split(program)[0]
-    if fpath:
-        if is_exe(program):
-            return program
-    else:
-        env_path = os.getenv("PATH")
-        if not env_path:
-            env_path = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-        env_path_list = env_path.split(os.pathsep)
-        env_path_list += ["/usr/local/bin"] # for rp-lin, vmlinux-to-elf
-        for path in env_path_list:
-            path = path.strip('"')
-            exe_file = os.path.join(path, program)
-            if is_exe(exe_file):
-                return exe_file
-    raise FileNotFoundError("Missing file `{:s}`".format(program))
 
 
 def hexdump(source, length=0x10, separator=".", color=True, show_symbol=True, base=0x00, unit=1):
@@ -5245,15 +5210,6 @@ def get_insn_prev(addr=None):
         return gen.__next__()
     except (gdb.error, StopIteration):
         return None
-
-
-def gef_execute_external(command, as_list=False, *args, **kwargs):
-    """Execute an external command and return the result."""
-    res = subprocess.check_output(command, stderr=subprocess.STDOUT, shell=kwargs.get("shell", False))
-    if as_list:
-        return [String.gef_pystring(x) for x in res.splitlines()]
-    else:
-        return String.gef_pystring(res)
 
 
 class Checksec:
@@ -14119,8 +14075,8 @@ class VersionCommand(GenericCommand):
 
     def os_version(self):
         try:
-            lsb_release_command = which("lsb_release")
-            res = gef_execute_external([lsb_release_command, "-d"], as_list=True)
+            lsb_release_command = GefUtil.which("lsb_release")
+            res = GefUtil.gef_execute_external([lsb_release_command, "-d"], as_list=True)
             for line in res:
                 if line.startswith("Description:"):
                     return line.split(":")[1].strip("\\t")
@@ -14149,8 +14105,8 @@ class VersionCommand(GenericCommand):
 
     def kernel_version_from_uname(self):
         try:
-            uname_command = which("uname")
-            res = gef_execute_external([uname_command, "-a"], as_list=True)
+            uname_command = GefUtil.which("uname")
+            res = GefUtil.gef_execute_external([uname_command, "-a"], as_list=True)
             return res[0]
         except FileNotFoundError:
             return "Not found"
@@ -14162,7 +14118,7 @@ class VersionCommand(GenericCommand):
             return "Not found"
 
     def system_libc_version(self):
-        res = gef_execute_external(["cat", "/proc/self/maps"], as_list=True)
+        res = GefUtil.gef_execute_external(["cat", "/proc/self/maps"], as_list=True)
         libc_targets = ("libc-2.", "libc.so.6", "libuClibc-")
         for line in res:
             if not any(kw in line for kw in libc_targets):
@@ -14182,7 +14138,7 @@ class VersionCommand(GenericCommand):
     def qemu_user_version(self):
         pid = Pid.get_pid()
         try:
-            res = gef_execute_external(["/proc/{:d}/exe".format(pid), "--version"], as_list=True)
+            res = GefUtil.gef_execute_external(["/proc/{:d}/exe".format(pid), "--version"], as_list=True)
             return res[0].strip()
         except (IndexError, FileNotFoundError):
             return "Not recognized"
@@ -14245,50 +14201,50 @@ class VersionCommand(GenericCommand):
 
     def gcc_version(self):
         try:
-            gcc_command = which("gcc")
+            gcc_command = GefUtil.which("gcc")
         except FileNotFoundError:
             return "Not found"
-        res = gef_execute_external([gcc_command, "--version"], as_list=True)
+        res = GefUtil.gef_execute_external([gcc_command, "--version"], as_list=True)
         return res[0]
 
     def readelf_version(self):
         try:
-            readelf_command = which("readelf")
+            readelf_command = GefUtil.which("readelf")
         except FileNotFoundError:
             return "Not found"
-        res = gef_execute_external([readelf_command, "-v"], as_list=True)
+        res = GefUtil.gef_execute_external([readelf_command, "-v"], as_list=True)
         return res[0]
 
     def objdump_version(self):
         try:
-            objdump_command = which("objdump")
+            objdump_command = GefUtil.which("objdump")
         except FileNotFoundError:
             return "Not found"
-        res = gef_execute_external([objdump_command, "-v"], as_list=True)
+        res = GefUtil.gef_execute_external([objdump_command, "-v"], as_list=True)
         return res[0]
 
     def seccomp_tools_version(self):
         try:
-            seccomp_tools_command = which("seccomp-tools")
+            seccomp_tools_command = GefUtil.which("seccomp-tools")
         except FileNotFoundError:
             return "Not found"
-        res = gef_execute_external([seccomp_tools_command, "--version"], as_list=True)
+        res = GefUtil.gef_execute_external([seccomp_tools_command, "--version"], as_list=True)
         return res[0]
 
     def one_gadget_version(self):
         try:
-            one_gadget_command = which("one_gadget")
+            one_gadget_command = GefUtil.which("one_gadget")
         except FileNotFoundError:
             return "Not found"
-        res = gef_execute_external([one_gadget_command, "--version"], as_list=True)
+        res = GefUtil.gef_execute_external([one_gadget_command, "--version"], as_list=True)
         return res[0]
 
     def rp_version(self):
         try:
-            rp_lin_command = which("rp-lin")
+            rp_lin_command = GefUtil.which("rp-lin")
         except FileNotFoundError:
             return "Not found"
-        res = gef_execute_external([rp_lin_command, "--version", "--file", "a"], as_list=True)
+        res = GefUtil.gef_execute_external([rp_lin_command, "--version", "--file", "a"], as_list=True)
         if "You are currently using " in res[0]:
             return res[0].replace("You are currently using ", "")
         return "Not found"
@@ -15805,14 +15761,14 @@ class ProcInfoCommand(GenericCommand):
 
     def get_children_pids(self, pid):
         try:
-            ps = which("ps")
+            ps = GefUtil.which("ps")
         except FileNotFoundError as e:
             err("{}".format(e))
             return []
 
         cmd = [ps, "-o", "pid", "--ppid", "{}".format(pid), "--noheaders"]
         try:
-            return [int(x) for x in gef_execute_external(cmd, as_list=True)]
+            return [int(x) for x in GefUtil.gef_execute_external(cmd, as_list=True)]
         except (subprocess.CalledProcessError, ValueError):
             return []
 
@@ -16274,21 +16230,21 @@ class ProcDumpCommand(GenericCommand):
 
                 if f == "rt_acct":
                     try:
-                        hexdump_command = which("hexdump")
+                        hexdump_command = GefUtil.which("hexdump")
                     except FileNotFoundError as e:
                         out.append("{}".format(e))
                         continue
-                    ret = gef_execute_external([hexdump_command, "-C", path], as_list=True)
+                    ret = GefUtil.gef_execute_external([hexdump_command, "-C", path], as_list=True)
                     out.extend(ret)
                     continue
 
                 if f == "status":
                     try:
-                        column_command = which("column")
+                        column_command = GefUtil.which("column")
                     except FileNotFoundError as e:
                         out.append("{}".format(e))
                         continue
-                    ret = gef_execute_external([column_command, "-s:", "-t", path], as_list=True)
+                    ret = GefUtil.gef_execute_external([column_command, "-s:", "-t", path], as_list=True)
                     for line in ret:
                         k, v = line.split(maxsplit=1)
                         k = k.strip() + ":"
@@ -16298,17 +16254,17 @@ class ProcDumpCommand(GenericCommand):
 
                 if f in ["mounts", "mountinfo", "mountstats", "unix", "protocols"]:
                     try:
-                        column_command = which("column")
+                        column_command = GefUtil.which("column")
                     except FileNotFoundError as e:
                         out.append("{}".format(e))
                         continue
-                    ret = gef_execute_external([column_command, "-t", path], as_list=True)
+                    ret = GefUtil.gef_execute_external([column_command, "-t", path], as_list=True)
                     out.extend(ret)
                     continue
 
                 if f in ["raw", "tcp", "udp", "icmp", "raw6", "tcp6", "udp6", "icmp6", "udplite", "udplite6"]:
                     try:
-                        column_command = which("column")
+                        column_command = GefUtil.which("column")
                     except FileNotFoundError as e:
                         out.append("{}".format(e))
                         continue
@@ -16317,14 +16273,14 @@ class ProcDumpCommand(GenericCommand):
                     data = data.replace(b" tr ", b" tr:")
                     tmp_fd, tmp_filename = tempfile.mkstemp(dir=GEF_TEMP_DIR, prefix="proc-dump-")
                     os.fdopen(tmp_fd, "wb").write(data)
-                    ret = gef_execute_external([column_command, "-t", tmp_filename], as_list=True)
+                    ret = GefUtil.gef_execute_external([column_command, "-t", tmp_filename], as_list=True)
                     os.unlink(tmp_filename)
                     out.extend(ret)
                     continue
 
                 if f == "dev":
                     try:
-                        column_command = which("column")
+                        column_command = GefUtil.which("column")
                     except FileNotFoundError as e:
                         out.append("{}".format(e))
                         continue
@@ -16334,7 +16290,7 @@ class ProcDumpCommand(GenericCommand):
                     data = re.sub(rb"\|\s*Transmit", b"|Transmit", data)
                     tmp_fd, tmp_filename = tempfile.mkstemp(dir=GEF_TEMP_DIR, prefix="proc-dump-")
                     os.fdopen(tmp_fd, "wb").write(data)
-                    ret = gef_execute_external([column_command, "-t", tmp_filename], as_list=True)
+                    ret = GefUtil.gef_execute_external([column_command, "-t", tmp_filename], as_list=True)
                     os.unlink(tmp_filename)
                     wrong = ret[0].rfind("|")
                     rright = ret[1].rfind("|")
@@ -17270,7 +17226,7 @@ class PtrDemangleCommand(GenericCommand):
         self.dont_repeat()
 
         if args.source:
-            s = get_source(current_arch.decode_cookie)
+            s = GefUtil.get_source(current_arch.decode_cookie)
             gef_print(s)
             return
 
@@ -17310,7 +17266,7 @@ class PtrMangleCommand(GenericCommand):
         self.dont_repeat()
 
         if args.source:
-            s = get_source(current_arch.encode_cookie)
+            s = GefUtil.get_source(current_arch.encode_cookie)
             gef_print(s)
             return
 
@@ -18898,7 +18854,7 @@ class UnicornEmulateCommand(GenericCommand):
         unicorn_registers = UnicornKeystoneCapstone.get_unicorn_registers(to_string=True, add_sse=kwargs["add_sse"])
         cs_arch, cs_mode = UnicornKeystoneCapstone.get_capstone_arch(to_string=True)
 
-        pythonbin = which("python3")
+        pythonbin = GefUtil.which("python3")
         if is_remote_debug():
             filepath = gdb.current_progspace().filename
             if filepath.startswith("target:"):
@@ -19238,7 +19194,7 @@ class UnicornEmulateCommand(GenericCommand):
             ok(fmt.format(start_insn_addr, RIGHT_ARROW, kwargs["nb_gadget"]))
 
         try:
-            res = gef_execute_external([pythonbin, tmp_filename], as_list=True)
+            res = GefUtil.gef_execute_external([pythonbin, tmp_filename], as_list=True)
             gef_print("\n".join(res))
         except subprocess.CalledProcessError as e:
             gef_print(e.output.decode("utf-8").rstrip())
@@ -20709,14 +20665,14 @@ class RpCommand(GenericCommand):
         self.dont_repeat()
 
         try:
-            rp = which("rp-lin")
+            rp = GefUtil.which("rp-lin")
         except FileNotFoundError as e:
             err("{}".format(e))
             return
 
         if args.kernel:
             try:
-                nm = which("nm")
+                nm = GefUtil.which("nm")
             except FileNotFoundError as e:
                 err("{}".format(e))
                 return
@@ -20754,7 +20710,7 @@ class RpCommand(GenericCommand):
             path = symboled_vmlinux_file
 
             cmd = "{:s} '{:s}' | grep ' _stext$'".format(nm, symboled_vmlinux_file)
-            out = gef_execute_external(cmd, as_list=True, shell=True)
+            out = GefUtil.gef_execute_external(cmd, as_list=True, shell=True)
             if len(out) != 1:
                 err("Failed to resolve _stext")
                 return
@@ -21232,12 +21188,12 @@ class ProcessSearchCommand(GenericCommand):
 
     def __init__(self):
         super().__init__()
-        ps = which("ps")
+        ps = GefUtil.which("ps")
         self.add_setting("ps_command", "{:s} auxww".format(ps), "`ps` command to get process information")
         return
 
     def get_processes(self):
-        output = gef_execute_external(self.get_setting("ps_command").split(), True)
+        output = GefUtil.gef_execute_external(self.get_setting("ps_command").split(), True)
         names = [x.lower().replace("%", "") for x in output[0].split()]
 
         for line in output[1:]:
@@ -31146,9 +31102,9 @@ class GotCommand(GenericCommand):
 
     def get_jmp_slots(self):
         try:
-            readelf = which("readelf")
+            readelf = GefUtil.which("readelf")
             cmd = [readelf, "--relocs", "--wide", self.filename]
-            lines = gef_execute_external(cmd, as_list=True)
+            lines = GefUtil.gef_execute_external(cmd, as_list=True)
         except (FileNotFoundError, subprocess.CalledProcessError):
             return []
 
@@ -31216,9 +31172,9 @@ class GotCommand(GenericCommand):
 
     def get_plt_addresses(self):
         try:
-            objdump = which("objdump")
+            objdump = GefUtil.which("objdump")
             cmd = [objdump, "-j", ".plt", "-j", ".plt.sec", "-j", ".plt.got", "-d", self.filename]
-            lines = gef_execute_external(cmd, as_list=True)
+            lines = GefUtil.gef_execute_external(cmd, as_list=True)
         except (FileNotFoundError, subprocess.CalledProcessError):
             return {}
 
@@ -31448,8 +31404,8 @@ class GotCommand(GenericCommand):
         self.dont_repeat()
 
         try:
-            which("objdump")
-            which("readelf")
+            GefUtil.which("objdump")
+            GefUtil.which("readelf")
         except FileNotFoundError as e:
             if not args.quiet:
                 err("{}".format(e))
@@ -45503,7 +45459,7 @@ class SyscallSampleCommand(GenericCommand):
             err("Unsupported architecture")
             return
 
-        s = get_source(target_arch.mprotect_asm)
+        s = GefUtil.get_source(target_arch.mprotect_asm)
         for line in s.splitlines():
             line = re.sub("^    ", "", line)
             gef_print(line)
@@ -46194,7 +46150,7 @@ class OneGadgetCommand(GenericCommand):
             return
 
         try:
-            one_gadget = which("one_gadget")
+            one_gadget = GefUtil.which("one_gadget")
             gef_print(titlify(f"{one_gadget} '{libc.path}' -l 1"))
             os.system(f"{one_gadget} '{libc.path}' -l 1")
         except Exception:
@@ -46220,7 +46176,7 @@ class SeccompCommand(GenericCommand):
 
         path = Path.get_filepath()
         try:
-            seccomp = which("seccomp-tools")
+            seccomp = GefUtil.which("seccomp-tools")
             gef_print(titlify(f"{seccomp} dump '{path}'"))
             os.system(f"{seccomp} dump '{path}'")
         except Exception:
@@ -47153,7 +47109,7 @@ class ExtractHeapAddrCommand(GenericCommand):
         self.dont_repeat()
 
         if args.source:
-            s = get_source(ExtractHeapAddrCommand.reveal)
+            s = GefUtil.get_source(ExtractHeapAddrCommand.reveal)
             gef_print(s)
             return
 
@@ -49529,7 +49485,7 @@ class KernelAddressHeuristicFinder:
         T1SZ = (get_register("$TCR_EL1") >> 16) & 0b111111
         region_end = 2 ** 64
         region_start = region_end - (2 ** (64 - T1SZ))
-        region_bits = log2(region_end - region_start)
+        region_bits = GefUtil.log2(region_end - region_start)
 
         ID_AA64MMFR2_EL1 = get_register("$ID_AA64MMFR2_EL1")
         if ID_AA64MMFR2_EL1 is not None:
@@ -61791,7 +61747,7 @@ class DiffOutputColordiffCommand(DiffOutputCommand):
         self.dont_repeat()
 
         try:
-            self.colordiff = which("colordiff")
+            self.colordiff = GefUtil.which("colordiff")
         except FileNotFoundError as e:
             err("{}".format(e))
             return
@@ -61850,7 +61806,7 @@ class DiffOutputGitDiffCommand(DiffOutputCommand):
         self.dont_repeat()
 
         try:
-            self.git = which("git")
+            self.git = GefUtil.which("git")
         except FileNotFoundError as e:
             err("{}".format(e))
             return
@@ -69919,7 +69875,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
         """Dump the kernel from the memory, then apply vmlinux-to-elf to create symboled ELF."""
         # check
         try:
-            vmlinux2elf = which("vmlinux-to-elf")
+            vmlinux2elf = GefUtil.which("vmlinux-to-elf")
         except FileNotFoundError as e:
             err("{}".format(e))
             return None
@@ -79308,7 +79264,7 @@ class PagewalkArm64Command(PagewalkCommand):
             return
         region_start = 0
         region_end = region_start + (2 ** (64 - T0SZ))
-        region_bits = log2(region_end - region_start)
+        region_bits = GefUtil.log2(region_end - region_start)
         page_size = 2 ** (granule_bits - 10)
         intermediate_pa_size = 32 + (IPS * 4)
 
@@ -79356,7 +79312,7 @@ class PagewalkArm64Command(PagewalkCommand):
             return
         region_end = 2 ** 64
         region_start = region_end - (2 ** (64 - T1SZ))
-        region_bits = log2(region_end - region_start)
+        region_bits = GefUtil.log2(region_end - region_start)
         page_size = 2 ** (granule_bits - 10)
         intermediate_pa_size = 32 + (IPS * 4)
 
@@ -79409,7 +79365,7 @@ class PagewalkArm64Command(PagewalkCommand):
             return
         region_start = 0
         region_end = region_start + (2 ** (64 - T0SZ))
-        region_bits = log2(region_end - region_start)
+        region_bits = GefUtil.log2(region_end - region_start)
         page_size = 2 ** (granule_bits - 10)
         pa_size = 32 + (PS * 4)
 
@@ -79526,7 +79482,7 @@ class PagewalkArm64Command(PagewalkCommand):
             return
         region_start = 0
         region_end = region_start + (2 ** (64 - T0SZ))
-        region_bits = log2(region_end - region_start)
+        region_bits = GefUtil.log2(region_end - region_start)
         page_size = 2 ** (granule_bits - 10)
         if self.EL2_E2H:
             intermediate_pa_size = 32 + (IPS * 4)
@@ -79590,7 +79546,7 @@ class PagewalkArm64Command(PagewalkCommand):
             return
         region_end = 2 ** 64
         region_start = region_end - (2 ** (64 - T1SZ))
-        region_bits = log2(region_end - region_start)
+        region_bits = GefUtil.log2(region_end - region_start)
         page_size = 2 ** (granule_bits - 10)
         intermediate_pa_size = 32 + (IPS * 4)
 
@@ -79638,7 +79594,7 @@ class PagewalkArm64Command(PagewalkCommand):
             return
         region_start = 0
         region_end = region_start + (2 ** (64 - T0SZ))
-        region_bits = log2(region_end - region_start)
+        region_bits = GefUtil.log2(region_end - region_start)
         page_size = 2 ** (granule_bits - 10)
         pa_size = 32 + (PS * 4)
 
@@ -81239,13 +81195,13 @@ class QemuDeviceInfoCommand(GenericCommand):
 
         # get symbol related device
         try:
-            nm = which("nm")
+            nm = GefUtil.which("nm")
         except FileNotFoundError as e:
             err("{}".format(e))
             return
 
         try:
-            result = gef_execute_external([nm, qemu_path], as_list=True)
+            result = GefUtil.gef_execute_external([nm, qemu_path], as_list=True)
         except subprocess.CalledProcessError:
             err("Executing `nm` error")
             return
@@ -84467,13 +84423,13 @@ class AddSymbolTemporaryCommand(GenericCommand):
     @staticmethod
     def create_blank_elf(text_base, text_end):
         try:
-            objcopy = which("objcopy")
+            objcopy = GefUtil.which("objcopy")
         except FileNotFoundError as e:
             err("{}".format(e))
             return None
 
         try:
-            gcc = which("gcc")
+            gcc = GefUtil.which("gcc")
         except FileNotFoundError:
             gcc = None
 
@@ -84584,7 +84540,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
         self.dont_repeat()
 
         try:
-            objcopy = which("objcopy")
+            objcopy = GefUtil.which("objcopy")
         except FileNotFoundError as e:
             err("{}".format(e))
             return
@@ -84686,7 +84642,7 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
             info("{:d} entries will be added".format(len(cmd_string_arr) // 2))
 
         # embedding symbols
-        objcopy = which("objcopy")
+        objcopy = GefUtil.which("objcopy")
         processed_count = 0
         for cmd_string_arr_sliced in slicer(cmd_string_arr, 10000 * 2):
             subprocess.check_output([objcopy] + cmd_string_arr_sliced + [blank_elf])
@@ -84710,7 +84666,7 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
         self.dont_repeat()
 
         try:
-            which("objcopy")
+            GefUtil.which("objcopy")
         except FileNotFoundError as e:
             err("{}".format(e))
             return
@@ -85211,14 +85167,14 @@ class FiletypeMemoryCommand(GenericCommand):
 
         try:
             gef_print(titlify("file {:s}".format(filepath)))
-            file_command = which("file")
+            file_command = GefUtil.which("file")
             os.system("{:s} {:s}".format(file_command, filepath))
         except FileNotFoundError as e:
             warn("{}".format(e))
 
         try:
             gef_print(titlify("magika {:s}".format(filepath)))
-            magika_command = which("magika")
+            magika_command = GefUtil.which("magika")
             os.system("{:s} {:s}".format(magika_command, filepath))
         except FileNotFoundError as e:
             warn("{}".format(e))
@@ -86031,7 +85987,7 @@ class GefReloadCommand(GenericCommand):
         info("Check syntax {:s}".format(__gef_fpath__))
 
         try:
-            pythonbin = which("python3")
+            pythonbin = GefUtil.which("python3")
         except FileNotFoundError as e:
             err("{}, failed to reload".format(e))
             return
@@ -86338,7 +86294,7 @@ class GefAvailableCommandListCommand(GenericCommand):
         return False
 
     def get_arch_name(self):
-        s = get_source(only_if_specific_arch).replace("\n", "")
+        s = GefUtil.get_source(only_if_specific_arch).replace("\n", "")
         r = re.search(r"dic = (\{.*\})", s)
         dic = eval(r.group(1))
 
@@ -86367,7 +86323,7 @@ class GefAvailableCommandListCommand(GenericCommand):
 
         out = []
         for cmdline, (cmd_class, _) in __gef__.loaded_commands.items():
-            s = get_source(cmd_class.do_invoke)
+            s = GefUtil.get_source(cmd_class.do_invoke)
             decorators = [line for line in s.splitlines() if line.lstrip().startswith("@")]
             if not self.check_include_mode(decorators):
                 out.append("{:<30s}: {:s} ({:s})".format(cmdline, Color.colorify("Unavailable", "red bold"), "Unsupported gdb mode"))
@@ -86535,6 +86491,52 @@ class AliasesListCommand(AliasesCommand):
         return
 
 
+class GefUtil:
+    @staticmethod
+    def get_source(function):
+        import inspect
+        s = inspect.getsource(function)
+        return s.rstrip()
+
+    @staticmethod
+    def log2(x):
+        import math
+        return int(math.log2(x))
+
+    @staticmethod
+    @Cache.cache_this_session
+    def which(program):
+        """Locate a command on the filesystem."""
+        def is_exe(fpath):
+            return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
+
+        fpath = os.path.split(program)[0]
+        if fpath:
+            if is_exe(program):
+                return program
+        else:
+            env_path = os.getenv("PATH")
+            if not env_path:
+                env_path = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            env_path_list = env_path.split(os.pathsep)
+            env_path_list += ["/usr/local/bin"] # for rp-lin, vmlinux-to-elf
+            for path in env_path_list:
+                path = path.strip('"')
+                exe_file = os.path.join(path, program)
+                if is_exe(exe_file):
+                    return exe_file
+        raise FileNotFoundError("Missing file `{:s}`".format(program))
+
+    @staticmethod
+    def gef_execute_external(command, as_list=False, *args, **kwargs):
+        """Execute an external command and return the result."""
+        res = subprocess.check_output(command, stderr=subprocess.STDOUT, shell=kwargs.get("shell", False))
+        if as_list:
+            return [String.gef_pystring(x) for x in res.splitlines()]
+        else:
+            return String.gef_pystring(res)
+
+
 class Gef:
     @staticmethod
     def gef_prompt(_current_prompt):
@@ -86555,7 +86557,7 @@ class Gef:
             return
 
         try:
-            pythonbin = which("python3")
+            pythonbin = GefUtil.which("python3")
         except FileNotFoundError:
             open(skip_config, "w").close()
             return
