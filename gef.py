@@ -162,7 +162,6 @@ __gef_fpath__                   = os.path.expanduser(http_get.__code__.co_filena
 __gef_commands__                = [] # keep command classes
 __LCO__                         = {} # keep command instances for debug (meaning Loaded Command Objects)
 __gef_config__                  = {} # keep gef configs
-__gef_libc_args_definitions__   = {} # libc arguments definition
 
 current_elf                     = None # keep Elf instance
 current_arch                    = None # keep Architecture instance
@@ -12862,7 +12861,7 @@ class EventHandler:
         Cache.reset_gef_caches(all=True)
         if current_arch is None:
             set_arch(get_arch())
-        load_libc_args()
+        ContextCommand.load_libc_args()
 
         # delayed breakpoint for brva
         if BreakRelativeVirtualAddressCommand.delayed_bp_set is False and is_alive():
@@ -12893,45 +12892,6 @@ class EventHandler:
         """GDB event handler for reg changes cases."""
         Cache.reset_gef_caches()
         return
-
-
-def load_libc_args():
-    # load libc function arguments' definitions
-    if not get_gef_setting("context.libc_args"):
-        return
-
-    path = get_gef_setting("context.libc_args_path")
-    if path is None:
-        warn("Config `context.libc_args_path` is not set but `context.libc_args` is True. Make sure you have `gef-extras` installed")
-        return
-
-    path = os.path.realpath(os.path.expanduser(path))
-
-    if not os.path.isdir(path):
-        warn("Config `context.libc_args_path` set but it's not a directory")
-        return
-
-    _arch_mode = "{}_{}".format(current_arch.arch.lower(), current_arch.mode)
-    _libc_args_file = "{}/{}.json".format(path, _arch_mode)
-
-    global __gef_libc_args_definitions__
-
-    # current arch and mode already loaded
-    if _arch_mode in __gef_libc_args_definitions__:
-        return
-
-    __gef_libc_args_definitions__[_arch_mode] = {}
-    import json
-    try:
-        with open(_libc_args_file) as _libc_args:
-            __gef_libc_args_definitions__[_arch_mode] = json.load(_libc_args)
-    except FileNotFoundError:
-        del __gef_libc_args_definitions__[_arch_mode]
-        warn("Config context.libc_args is set but definition cannot be loaded: file {} not found".format(_libc_args_file))
-    except json.decoder.JSONDecodeError as e:
-        del __gef_libc_args_definitions__[_arch_mode]
-        warn("Config context.libc_args is set but definition cannot be loaded from file {}: {}".format(_libc_args_file, e))
-    return
 
 
 def get_terminal_size():
@@ -25708,6 +25668,7 @@ class ContextCommand(GenericCommand):
     context_comments = {}
     context_messages = []
     context_extra_commands = []
+    libc_args_definitions = {}
 
     @staticmethod
     def hide_context():
@@ -26563,6 +26524,43 @@ class ContextCommand(GenericCommand):
         self.print_guessed_arguments(function_name)
         return
 
+    @staticmethod
+    def load_libc_args():
+        # load libc function arguments' definitions
+        if not get_gef_setting("context.libc_args"):
+            return
+
+        path = get_gef_setting("context.libc_args_path")
+        if path is None:
+            warn("Config `context.libc_args_path` is not set but `context.libc_args` is True. Make sure you have `gef-extras` installed")
+            return
+
+        path = os.path.realpath(os.path.expanduser(path))
+
+        if not os.path.isdir(path):
+            warn("Config `context.libc_args_path` set but it's not a directory")
+            return
+
+        arch_mode = "{}_{}".format(current_arch.arch.lower(), current_arch.mode)
+        libc_args_file = "{}/{}.json".format(path, arch_mode)
+
+        # current arch and mode already loaded
+        if arch_mode in ContextCommand.libc_args_definitions:
+            return
+
+        ContextCommand.libc_args_definitions[arch_mode] = {}
+        import json
+        try:
+            with open(libc_args_file) as libc_args:
+                ContextCommand.libc_args_definitions[arch_mode] = json.load(libc_args)
+        except FileNotFoundError:
+            del ContextCommand.libc_args_definitions[arch_mode]
+            warn("Config context.libc_args is set but definition cannot be loaded: file {} not found".format(libc_args_file))
+        except json.decoder.JSONDecodeError as e:
+            del ContextCommand.libc_args_definitions[arch_mode]
+            warn("Config context.libc_args is set but definition cannot be loaded from file {}: {}".format(libc_args_file, e))
+        return
+
     def print_arguments_from_symbol(self, sym_obj, function_name):
         """If symbols were found, parse them and print the argument adequately."""
         args = []
@@ -26609,7 +26607,7 @@ class ContextCommand(GenericCommand):
         if function_name.endswith("@plt"):
             _function_name = function_name.split("@")[0]
             try:
-                nb_argument = len(__gef_libc_args_definitions__[_arch_mode][_function_name])
+                nb_argument = len(ContextCommand.libc_args_definitions[_arch_mode][_function_name])
             except KeyError:
                 pass
 
@@ -26621,7 +26619,7 @@ class ContextCommand(GenericCommand):
             except Exception:
                 break
             try:
-                libc_args_def = __gef_libc_args_definitions__[_arch_mode][_function_name][_key]
+                libc_args_def = ContextCommand.libc_args_definitions[_arch_mode][_function_name][_key]
                 args.append("{} = {} (def: {})".format(Color.colorify(_key, arg_key_color), _value, libc_args_def))
             except KeyError:
                 args.append("{} = {}".format(Color.colorify(_key, arg_key_color), _value))
