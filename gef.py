@@ -48069,8 +48069,18 @@ class KernelAddressHeuristicFinderUtil:
         return KernelAddressHeuristicFinderUtil.common_addr_gen(res, regexp, skip, skip_msb_check, read_valid)
 
     @staticmethod
+    def x64_lea_reg_const(res, reg=r"\w+", skip=0, skip_msb_check=False, read_valid=False):
+        regexp = r"lea\s+" + reg + r"\s*,\s*\[.*([+-]0x\w+)\]"
+        return KernelAddressHeuristicFinderUtil.common_addr_gen(res, regexp, skip, skip_msb_check, read_valid)
+
+    @staticmethod
     def x64_x86_cmp_const(res, reg=r"\w+", skip=0, skip_msb_check=False, read_valid=False):
-        regexp = r"cmp\s+" + reg + r",\s*(0x\w+)"
+        regexp = r"cmp\s+" + reg + r"\s*,\s*(0x\w+)"
+        return KernelAddressHeuristicFinderUtil.common_addr_gen(res, regexp, skip, skip_msb_check, read_valid)
+
+    @staticmethod
+    def x64_byte_ptr(res, skip=0, skip_msb_check=False, read_valid=False):
+        regexp = r"BYTE PTR \[.*([+-]0x\w+)\]"
         return KernelAddressHeuristicFinderUtil.common_addr_gen(res, regexp, skip, skip_msb_check, read_valid)
 
     @staticmethod
@@ -51016,7 +51026,10 @@ class KernelAddressHeuristicFinder:
             if addr:
                 res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, skip_msb_check=True)
+                    g = itertools.chain(
+                        KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, skip_msb_check=True),
+                        KernelAddressHeuristicFinderUtil.x64_lea_reg_const(res, skip_msb_check=True),
+                    )
                     g2 = KernelAddressHeuristicFinderUtil.x64_qword_ptr(res)
                 elif is_x86_32():
                     g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, skip_msb_check=True)
@@ -51028,7 +51041,10 @@ class KernelAddressHeuristicFinder:
                     g = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res, skip_msb_check=True)
                     g2 = []
                 # pattern1: per_cpu
-                #    0xffffffff8cf25b05 <run_timer_softirq+5>:    mov    rdi,0x24b40 <-- timer_bases
+                #    pattern1-a:
+                #        0xffffffff8cf25b05 <run_timer_softirq+5>:    mov    rdi,0x24b40 <-- timer_bases
+                #    pattern1-b:
+                #        0xffffffffa440831e <run_timer_softirq+46>:   lea    rbx,[rax+0x22400]
                 for x in g:
                     if not is_valid_addr(x) and (x & 0x7) == 0:
                         return x
@@ -51060,7 +51076,11 @@ class KernelAddressHeuristicFinder:
             if addr:
                 res = gdb.execute("x/20i {:#x}".format(addr), to_string=True)
                 if is_x86_64():
-                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, skip_msb_check=True)
+                    g = itertools.chain(
+                        KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, skip_msb_check=True),
+                        KernelAddressHeuristicFinderUtil.x64_byte_ptr(res, skip_msb_check=True),
+                        KernelAddressHeuristicFinderUtil.x64_lea_reg_const(res, skip_msb_check=True),
+                    )
                     g2 = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
                 elif is_x86_32():
                     g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, skip_msb_check=True)
@@ -51072,15 +51092,21 @@ class KernelAddressHeuristicFinder:
                     g = KernelAddressHeuristicFinderUtil.arm32_movw_movt(res, skip_msb_check=True)
                     g2 = []
                 # pattern1: per_cpu
-                #    0xffffffff9b127acb:  mov    rbx,0x27040 <-- hrtimer_bases
+                #    pattern1-a:
+                #        0xffffffff9b127acb:  mov    rbx,0x27040 <-- hrtimer_bases
+                #    pattern1-b:
+                #        0xffffffffa440b87d <hrtimer_run_queues+13>:  test   BYTE PTR [rax+0x25b90],0x1
+                #        The exact value is 0x25b80, but don't worry about a slight deviation.
+                #    pattern1-c:
+                #        0xffffffff818f57b5 <hrtimer_run_queues+21>:  lea    rbx,[rax+0x1df00]
                 for x in g:
                     if not is_valid_addr(x) and (x & 0x7) == 0:
                         return x
                 # pattern2: not per_cpu
-                #   0xffffffffbb8668bc <hrtimer_run_queues+12>:  mov    rdx,0xffffffffbc046138
-                #   0xffffffffbb8668c3 <hrtimer_run_queues+19>:  mov    rcx,0xffffffffbc046178
-                #   0xffffffffbb8668ca <hrtimer_run_queues+26>:  mov    rsi,0xffffffffbc0460f8
-                #   0xffffffffbb8668d1 <hrtimer_run_queues+33>:  mov    rdi,0xffffffffbc046048 <-- hrtimer_bases+8
+                #    0xffffffffbb8668bc <hrtimer_run_queues+12>:  mov    rdx,0xffffffffbc046138
+                #    0xffffffffbb8668c3 <hrtimer_run_queues+19>:  mov    rcx,0xffffffffbc046178
+                #    0xffffffffbb8668ca <hrtimer_run_queues+26>:  mov    rsi,0xffffffffbc0460f8
+                #    0xffffffffbb8668d1 <hrtimer_run_queues+33>:  mov    rdi,0xffffffffbc046048 <-- hrtimer_bases+8
                 addrs = [x for x in g2 if is_valid_addr(x)]
                 if addrs:
                     return min(addrs)
@@ -51314,7 +51340,7 @@ class KernelAddressHeuristicFinder:
         if kversion and kversion >= "6.5":
             return False
 
-        # plan 2 (available v2.6.37 ~ 6.4 or later)
+        # plan 2 (available v2.6.37 ~ 6.4)
         if kversion and kversion >= "2.6.37" and kversion < "6.5":
             addr = Symbol.get_ksymaddr("irq_to_desc")
             if addr:
