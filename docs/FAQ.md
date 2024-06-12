@@ -324,10 +324,10 @@ Also, depending on the assembly output by the compiler, it may not be possible t
 
 # About python interface
 
-## Can I access each GEF command object from `python-interactive`?
-Yes, you can access it using `__LCO__` that means loaded command objects.
+## Can I access each GEF command instance from `python-interactive`?
+Yes, you can access it using `__gef_command_instances__` or `GCI`.
 
-For example, `pi __LCO__["vmmap"]`.
+For example, `pi __gef_command_instances__["vmmap"]` or `GCI["vmmap"]`.
 
 ## The class name `KernelAddressHeuristicFinder` is too long.
 You can access it using `KF`.

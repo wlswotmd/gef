@@ -156,35 +156,36 @@ except ImportError:
     sys.exit(0)
 
 
-__gef__                         = None # keep GefCommand instance
-__gef_fpath__                   = os.path.expanduser(http_get.__code__.co_filename) # the full path of GEF
-                                # note: __file__ will no longer be available from gdb 15
-__gef_commands__                = [] # keep command classes
-__LCO__                         = {} # keep command instances for debug (meaning Loaded Command Objects)
-__gef_config__                  = {} # keep gef configs
+__gef__                     = None # keep GefCommand instance
+__gef_fpath__               = os.path.expanduser(http_get.__code__.co_filename) # the full path of GEF
+                            # note: __file__ will no longer be available from gdb 15
+__gef_commands__            = [] # keep command classes
+__gef_command_instances__   = {} # keep command instances
+__gef_config__              = {} # keep gef configs
 
-current_elf                     = None # keep Elf instance
-current_arch                    = None # keep Architecture instance
+current_elf                 = None # keep Elf instance
+current_arch                = None # keep Architecture instance
 
-GEF_RC                          = os.getenv("GEF_RC") or os.path.join(os.getenv("HOME") or "~", ".gef.rc")
-GEF_TEMP_DIR                    = os.path.join(tempfile.gettempdir(), "gef")
-GEF_PROMPT                      = "gef> "
-GEF_PROMPT_ON                   = "\001\033[1;32m\002{:s}\001\033[0m\002".format(GEF_PROMPT)
-GEF_PROMPT_OFF                  = "\001\033[1;31m\002{:s}\001\033[0m\002".format(GEF_PROMPT)
+GEF_RC                      = os.getenv("GEF_RC") or os.path.join(os.getenv("HOME") or "~", ".gef.rc")
+GEF_TEMP_DIR                = os.path.join(tempfile.gettempdir(), "gef")
+GEF_PROMPT                  = "gef> "
+GEF_PROMPT_ON               = "\001\033[1;32m\002{:s}\001\033[0m\002".format(GEF_PROMPT)
+GEF_PROMPT_OFF              = "\001\033[1;31m\002{:s}\001\033[0m\002".format(GEF_PROMPT)
 
-GDB_MIN_VERSION                 = (9, 2) # ubuntu 20.04
-GDB_VERSION                     = tuple(map(int, re.search(r"(\d+)[^\d]+(\d+)", gdb.VERSION).groups()))
+GDB_MIN_VERSION             = (9, 2) # ubuntu 20.04
+GDB_VERSION                 = tuple(map(int, re.search(r"(\d+)[^\d]+(\d+)", gdb.VERSION).groups()))
 
-DEFAULT_PAGE_SIZE               = 1 << 12
-DEFAULT_PAGE_SIZE_MASK_LOW      = DEFAULT_PAGE_SIZE - 1
-DEFAULT_PAGE_SIZE_MASK_HIGH     = ~DEFAULT_PAGE_SIZE_MASK_LOW
+DEFAULT_PAGE_SIZE           = 1 << 12
+DEFAULT_PAGE_SIZE_MASK_LOW  = DEFAULT_PAGE_SIZE - 1
+DEFAULT_PAGE_SIZE_MASK_HIGH = ~DEFAULT_PAGE_SIZE_MASK_LOW
 
-LEFT_ARROW                      = " <- "
-RIGHT_ARROW                     = " -> "
-HORIZONTAL_LINE                 = "-"
-VERTICAL_LINE                   = "|"
-BP_GLYPH                        = "*"
+LEFT_ARROW                  = " <- "
+RIGHT_ARROW                 = " -> "
+HORIZONTAL_LINE             = "-"
+VERTICAL_LINE               = "|"
+BP_GLYPH                    = "*"
 
+GCI                         = __gef_command_instances__ # short cut for debug # noqa: F841
 
 def perf(f): # noqa
     """Decorator wrapper to perf."""
@@ -2396,7 +2397,6 @@ class Elf:
             return "<{:s}.{:s} object at {:#x}, p_type={:#x}>".format(
                 self.__module__, self.__class__.__name__, id(self), self.p_type,
             )
-
 
     class Shdr:
         # sh_type
@@ -69338,29 +69338,29 @@ class KsymaddrRemoteCommand(GenericCommand):
             # 0xffffffffb46b4b48: 0x00*  0x00   0x00   0x00   0xb0   0x0a   0x00   0x00 (*: start of kallsyms_markers)
             #
             # 0x0c: number of tokens
-            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0x44]
+            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0x44]
             # 'D' (= symbol type)
-            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0xff]
+            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0xff]
             # '__'
-            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0xf5]
+            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0xf5]
             # 'in'
-            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0x8d]
+            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0x8d]
             # 'it_'
-            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0x73]
+            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0x73]
             # 's'
-            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0x63]
+            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0x63]
             # 'c'
-            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0x72]
+            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0x72]
             # 'r'
-            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0xe8]
+            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0xe8]
             # 'at'
-            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0xbf]
+            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0xbf]
             # 'ch'
-            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0x5f]
+            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0x5f]
             # '_'
-            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0xee]
+            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0xee]
             # 'en'
-            # gef> pi __LCO__["ksymaddr-remote"].get_token_table()[0x64]
+            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0x64]
             # 'd'
             # (=`__init_scratch_end`)
             #
@@ -85619,9 +85619,9 @@ class GefCommand(GenericCommand):
             ))
 
         # save globally for debug
-        global __LCO__
+        global __gef_command_instances__
         for cmdline, (_, instance) in self.loaded_commands.items():
-            __LCO__[cmdline] = instance
+            __gef_command_instances__[cmdline] = instance
         return
 
     def gef_execute_gdb_script(self, commands):
