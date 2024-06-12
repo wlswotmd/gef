@@ -401,7 +401,7 @@ def hexoff(): # noqa
 
 
 class Cache:
-    gef_caches = {
+    __gef_caches__ = {
         "until_next": {},
         "this_session": {},
     }
@@ -421,12 +421,12 @@ class Cache:
             _id = id(f)
 
             try:
-                return Cache.gef_caches[LIFE_TIME][f.__name__, _id][args, kw]
+                return Cache.__gef_caches__[LIFE_TIME][f.__name__, _id][args, kw]
             except KeyError:
                 ret = f(*args, **kwargs)
-                if (f.__name__, _id) not in Cache.gef_caches[LIFE_TIME]:
-                    Cache.gef_caches[LIFE_TIME][f.__name__, _id] = {}
-                Cache.gef_caches[LIFE_TIME][f.__name__, _id][args, kw] = ret
+                if (f.__name__, _id) not in Cache.__gef_caches__[LIFE_TIME]:
+                    Cache.__gef_caches__[LIFE_TIME][f.__name__, _id] = {}
+                Cache.__gef_caches__[LIFE_TIME][f.__name__, _id][args, kw] = ret
                 return ret
 
         return wrapper
@@ -443,12 +443,12 @@ class Cache:
             _id = id(f)
 
             try:
-                return Cache.gef_caches[LIFE_TIME][f.__name__, _id][args, kw]
+                return Cache.__gef_caches__[LIFE_TIME][f.__name__, _id][args, kw]
             except KeyError:
                 ret = f(*args, **kwargs)
-                if (f.__name__, _id) not in Cache.gef_caches[LIFE_TIME]:
-                    Cache.gef_caches[LIFE_TIME][f.__name__, _id] = {}
-                Cache.gef_caches[LIFE_TIME][f.__name__, _id][args, kw] = ret
+                if (f.__name__, _id) not in Cache.__gef_caches__[LIFE_TIME]:
+                    Cache.__gef_caches__[LIFE_TIME][f.__name__, _id] = {}
+                Cache.__gef_caches__[LIFE_TIME][f.__name__, _id][args, kw] = ret
                 return ret
 
         return wrapper
@@ -456,17 +456,17 @@ class Cache:
     @staticmethod
     def reset_gef_caches(function=None, all=False):
         if function:
-            for v in Cache.gef_caches.values():
+            for v in Cache.__gef_caches__.values():
                 try:
                     del v[function.__name__, id(function)]
                 except KeyError:
                     pass
             return
 
-        Cache.gef_caches["until_next"] = {}
+        Cache.__gef_caches__["until_next"] = {}
 
         if all:
-            Cache.gef_caches["this_session"] = {}
+            Cache.__gef_caches__["this_session"] = {}
 
         if all:
             Cache.cached_context_legend = None
