@@ -11332,6 +11332,7 @@ def disable_phys():
         return True
 
 
+@Cache.cache_until_next
 def p8(x, s=False):
     """Pack one byte respecting the current architecture endianness."""
     if not s:
@@ -11428,19 +11429,15 @@ def is_alive():
     return False
 
 
-class ArgparseExitProxyException(Exception):
-    pass
-
-
 def parse_args(f):
     """Decorator wrapper to parse args for command."""
 
     @functools.wraps(f)
     def wrapper(self, argv, **kwargs):
         try:
-            self.parser.exit = lambda *_: exec("if _: print(_[1]);\nraise(ArgparseExitProxyException(_))")
+            self.parser.exit = lambda *_: exec("if _: print(_[1]);\nraise(GefUtil.ArgparseExitProxyException(_))")
             args = self.parser.parse_args(argv)
-        except ArgparseExitProxyException as e:
+        except GefUtil.ArgparseExitProxyException as e:
             if not e.args[0]: # when --help or -h
                 if hasattr(self, "_example_") and self._example_:
                     gef_print("\nexample:\n" + "  " + self._example_.strip().replace("\n", "\n  "))
@@ -11983,7 +11980,6 @@ def is_kvm_enabled():
         return False
 
 
-@Cache.cache_until_next
 class Pid:
     @staticmethod
     def get_tcp_sess(pid):
@@ -13410,18 +13406,6 @@ def get_ksysctl(sym):
         return int(res.split()[1], 16)
     except (gdb.error, IndexError, ValueError):
         return None
-
-
-class ConvenienceVars:
-    __gef_convenience_vars_index__  = 0 # $_gef1, $_gef2, ...
-
-    @staticmethod
-    def gef_convenience(value):
-        """Defines a new convenience value."""
-        var_name = "$_gef{:d}".format(ConvenienceVars.__gef_convenience_vars_index__)
-        ConvenienceVars.__gef_convenience_vars_index__ += 1
-        gdb.execute("""set {:s} = "{:s}" """.format(var_name, value))
-        return var_name
 
 
 class Auxv:
@@ -29334,7 +29318,7 @@ class PatternCreateCommand(GenericCommand):
         info("Generating a pattern of {:d} bytes".format(size))
         pattern_str = String.gef_pystring(PatternCreateCommand.generate_cyclic_pattern(size, args.charset))
         gef_print(pattern_str)
-        ok("Saved as '{:s}'".format(ConvenienceVars.gef_convenience(pattern_str)))
+        ok("Saved as '{:s}'".format(GefUtil.gef_convenience(pattern_str)))
         return
 
 
@@ -86646,6 +86630,19 @@ class AliasesListCommand(AliasesCommand):
 
 
 class GefUtil:
+    __gef_convenience_vars_index__  = 0 # $_gef1, $_gef2, ...
+
+    @staticmethod
+    def gef_convenience(value):
+        """Defines a new convenience value."""
+        var_name = "$_gef{:d}".format(GefUtil.__gef_convenience_vars_index__)
+        GefUtil.__gef_convenience_vars_index__ += 1
+        gdb.execute("""set {:s} = "{:s}" """.format(var_name, value))
+        return var_name
+
+    class ArgparseExitProxyException(Exception):
+        pass
+
     @staticmethod
     def get_source(function):
         import inspect
