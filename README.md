@@ -32,21 +32,18 @@ Many other commands have been added and improved. Enjoy!
 
 ## Setup
 
-### Install (Ubuntu 23.04 or after)
+### Install
 ```bash
-# Ubuntu 23.04 restricts global installation with pip3, so you need --break-system-packages option.
-wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sed -e 's/\(pip3 install\)/\1 --break-system-packages/g' | sh
+# Ubuntu 23.04 or later restrict global installation of python packages with pip3.
+# So you need --break-system-packages option.
+wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sed -e 's/pip3 install/pip3 install --break-system-packages/g' | sh
+
 ```
 
-* To simplify the installation script, GEF (`gef.py`) is installed to a fixed path (`/root/.gdbinit-gef.py`).
-* Also, it registers the GEF path to `/root/.gdbinit`.
-* If you want to change the location, please modify both yourself.
-    * NOTE: Do not include a tilde (`~`) when describing the GEF path in `.gdbinit`. See [docs/FAQ.md](https://github.com/bata24/gef/blob/dev/docs/FAQ.md#the-command-to-get-the-source-eg-ptr-mangle---source-doesnt-work) for the reason.
-
-### Install (Ubuntu 22.04 or before)
-```bash
-wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sh
-```
+* Note
+    * To simplify the installation script, GEF (`gef.py`) is installed to a fixed path (`/root/.gdbinit-gef.py`).
+    * Also, it registers the GEF path to `/root/.gdbinit`.
+    * If you want to change the location, please modify both of them yourself.
 
 ### Upgrade
 ```bash
