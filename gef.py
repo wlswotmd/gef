@@ -31756,7 +31756,19 @@ class TraceMallocBreakpoint(gdb.Breakpoint):
 class TraceMallocRetBreakpoint(gdb.FinishBreakpoint):
     """Internal temporary breakpoint to retrieve the return value of malloc()."""
     def __init__(self, size, name):
-        super().__init__(gdb.newest_frame(), internal=True)
+        try:
+            frame = gdb.newest_frame()
+            while frame and frame.is_valid():
+                pc = frame.older().pc()
+                if current_arch.is_call(get_insn_prev(pc)):
+                    break
+                frame = frame.older()
+            if not frame:
+                return
+        except gdb.error:
+            return
+
+        super().__init__(frame, internal=True)
         self.size = size
         self.name = name
         self.silent = True
@@ -31768,7 +31780,11 @@ class TraceMallocRetBreakpoint(gdb.FinishBreakpoint):
         else:
             loc = AddressUtil.parse_address(current_arch.return_register)
 
-        ok("{:s} - {:s}({:#6x})={:#x}".format(Color.colorify("Heap-Analysis", "bold yellow"), self.name, self.size, loc))
+        ok("{:s} - {:s}({:#6x})={:#x}    // #allocated: {:d}, #freed: {:d}".format(
+            Color.colorify("Heap-Analysis", "bold yellow"), self.name, self.size, loc,
+            len(HeapAnalysisCommand.heap_allocated_list),
+            len(HeapAnalysisCommand.heap_freed_list),
+        ))
         check_heap_overlap = Config.get_gef_setting("heap_analysis_helper.check_heap_overlap")
 
         # pop from freed list if it was in it
@@ -31785,7 +31801,7 @@ class TraceMallocRetBreakpoint(gdb.FinishBreakpoint):
         if HeapAnalysisCommand.heap_uaf_watchpoints:
             idx = 0
             for wp in HeapAnalysisCommand.heap_uaf_watchpoints:
-                if loc <= wp.address < loc + self.size:
+                if loc <= wp.ptr < loc + self.size:
                     HeapAnalysisCommand.heap_uaf_watchpoints.remove(wp)
                     wp.enabled = False
                     continue
@@ -31823,7 +31839,12 @@ class TraceMallocRetBreakpoint(gdb.FinishBreakpoint):
         return False
 
     def out_of_scope(self): # noqa
-        print("{:s}: abnormal finish".format(self.name))
+        if self.enabled:
+            ok("{:s} - {:s}({:#6x}) {:s}".format(
+                Color.colorify("Heap-Analysis", "bold red"), self.name, self.size,
+                Color.redify("(abnormal finish)"),
+            ))
+            self.enabled = False
         return
 
 
@@ -31837,6 +31858,16 @@ class TraceReallocBreakpoint(gdb.Breakpoint):
     def stop(self):
         _, ptr = current_arch.get_ith_parameter(0)
         _, size = current_arch.get_ith_parameter(1)
+
+        if ptr == 0:
+            # When ptr is NULL, realloc internally calls malloc, which are tracked separately.
+            # Therefore realloc just displays its arguments, but don't track it.
+            ok("{:s} - __libc_realloc({:#x}, {:#x}) {:s}".format(
+                Color.colorify("Heap-Analysis", "bold yellow"), ptr, size,
+                Color.greenify("(redirected to malloc)"),
+            ))
+            return False
+
         self.retbp = TraceReallocRetBreakpoint(ptr, size)
         return False
 
@@ -31844,7 +31875,19 @@ class TraceReallocBreakpoint(gdb.Breakpoint):
 class TraceReallocRetBreakpoint(gdb.FinishBreakpoint):
     """Internal temporary breakpoint to retrieve the return value of realloc()."""
     def __init__(self, ptr, size):
-        super().__init__(gdb.newest_frame(), internal=True)
+        try:
+            frame = gdb.newest_frame()
+            while frame and frame.is_valid():
+                pc = frame.older().pc()
+                if current_arch.is_call(get_insn_prev(pc)):
+                    break
+                frame = frame.older()
+            if not frame:
+                return
+        except gdb.error:
+            return
+
+        super().__init__(frame, internal=True)
         self.ptr = ptr
         self.size = size
         self.silent = True
@@ -31862,8 +31905,10 @@ class TraceReallocRetBreakpoint(gdb.FinishBreakpoint):
             msg = Color.redify("{:#x} (return another chunk)".format(newloc))
         else:
             msg = Color.greenify("{:#x} (return same chunk)".format(newloc))
-        ok("{:s} - realloc({:#x}, {:#6x})={:s}".format(
+        ok("{:s} - __libc_realloc({:#x}, {:#x})={:s}    // #allocated: {:d}, #freed: {:d}".format(
             Color.colorify("Heap-Analysis", "bold yellow"), self.ptr, self.size, msg,
+            len(HeapAnalysisCommand.heap_allocated_list),
+            len(HeapAnalysisCommand.heap_freed_list),
         ))
 
         item = (newloc, self.size)
@@ -31883,7 +31928,12 @@ class TraceReallocRetBreakpoint(gdb.FinishBreakpoint):
         return False
 
     def out_of_scope(self): # noqa
-        print("realloc: abnormal finish")
+        if self.enabled:
+            ok("{:s} - __libc_realloc({:#x}, {:#x}) {:s}".format(
+                Color.colorify("Heap-Analysis", "bold red"), self.ptr, self.size,
+                Color.redify("(abnormal finish)"),
+            ))
+            self.enabled = False
         return
 
 
@@ -31896,28 +31946,25 @@ class TraceFreeBreakpoint(gdb.Breakpoint):
 
     def stop(self):
         Cache.reset_gef_caches()
-        _, addr = current_arch.get_ith_parameter(0)
+        _, ptr = current_arch.get_ith_parameter(0)
         msg = []
-        check_free_null = Config.get_gef_setting("heap_analysis_helper.check_free_null")
         check_double_free = Config.get_gef_setting("heap_analysis_helper.check_double_free")
         check_weird_free = Config.get_gef_setting("heap_analysis_helper.check_weird_free")
         check_uaf = Config.get_gef_setting("heap_analysis_helper.check_uaf")
 
-        ok("{:s} - free({:#x})".format(Color.colorify("Heap-Analysis", "bold yellow"), addr))
-        if addr == 0:
-            if check_free_null:
-                msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
-                msg.append("Attempting to free(NULL) at {:#x}".format(current_arch.pc))
-                msg.append("Reason: if NULL page is allocatable, this can lead to code execution.")
-                ContextCommand.push_context_message("warn", "\n".join(msg))
-                return True
+        ok("{:s} - free({:#x})    // #allocated: {:d}, #freed: {:d}".format(
+            Color.colorify("Heap-Analysis", "bold yellow"), ptr,
+            len(HeapAnalysisCommand.heap_allocated_list),
+            len(HeapAnalysisCommand.heap_freed_list),
+        ))
+        if ptr == 0:
             return False
 
-        if addr in [x for (x, y) in HeapAnalysisCommand.heap_freed_list]:
+        if ptr in [x for (x, y) in HeapAnalysisCommand.heap_freed_list]:
             if check_double_free:
                 msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
                 msg.append("Double-free detected {:s} free({:#x}) is called at {:#x} but is already in the freed list".format(
-                    RIGHT_ARROW, addr, current_arch.pc,
+                    RIGHT_ARROW, ptr, current_arch.pc,
                 ))
                 msg.append("Execution will likely crash...")
                 ContextCommand.push_context_message("warn", "\n".join(msg))
@@ -31928,14 +31975,14 @@ class TraceFreeBreakpoint(gdb.Breakpoint):
         # 1. move alloc-ed item to free list
         try:
             # pop from alloc-ed list
-            idx = [x for x, y in HeapAnalysisCommand.heap_allocated_list].index(addr)
+            idx = [x for x, y in HeapAnalysisCommand.heap_allocated_list].index(ptr)
             item = HeapAnalysisCommand.heap_allocated_list.pop(idx)
 
         except ValueError:
             if check_weird_free:
                 msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
                 msg.append("Heap inconsistency detected:")
-                msg.append("Attempting to free an unknown value: {:#x}".format(addr))
+                msg.append("Attempting to free an unknown value: {:#x}".format(ptr))
                 ContextCommand.push_context_message("warn", "\n".join(msg))
                 return True
             return False
@@ -31946,34 +31993,39 @@ class TraceFreeBreakpoint(gdb.Breakpoint):
         self.retbp = None
         if check_uaf:
             # 3. (opt.) add a watchpoint on pointer
-            self.retbp = TraceFreeRetBreakpoint(addr)
+            self.retbp = TraceFreeRetBreakpoint(ptr)
         return False
 
 
 class TraceFreeRetBreakpoint(gdb.FinishBreakpoint):
     """Internal temporary breakpoint to track free()d values."""
-    def __init__(self, addr):
+    def __init__(self, ptr):
         super().__init__(gdb.newest_frame(), internal=True)
         self.silent = True
-        self.addr = addr
+        self.ptr = ptr
         return
 
     def stop(self):
         Cache.reset_gef_caches()
-        wp = UafWatchpoint(self.addr)
+        wp = UafWatchpoint(self.ptr)
         HeapAnalysisCommand.heap_uaf_watchpoints.append(wp)
         return False
 
     def out_of_scope(self): # noqa
-        print("free: abnormal finish")
+        if self.enabled:
+            ok("{:s} - __libc_free({:#x}) {:s}".format(
+                Color.colorify("Heap-Analysis", "bold red"), self.ptr,
+                Color.redify("(abnormal finish)"),
+            ))
+            self.enabled = False
         return
 
 
 class UafWatchpoint(gdb.Breakpoint):
     """Custom watchpoints set TraceFreeBreakpoint() to monitor free()d pointers being used."""
-    def __init__(self, addr):
-        super().__init__("*{:#x}".format(addr), gdb.BP_WATCHPOINT, internal=True)
-        self.address = addr
+    def __init__(self, ptr):
+        super().__init__("*{:#x}".format(ptr), gdb.BP_WATCHPOINT, internal=True)
+        self.ptr = ptr
         self.silent = True
         self.enabled = True
         return
@@ -31991,13 +32043,11 @@ class UafWatchpoint(gdb.Breakpoint):
         # software watchpoints stop after the next statement
         # see https://sourceware.org/gdb/onlinedocs/gdb/Set-Watchpoints.html
         pc = Disasm.gdb_get_nth_previous_instruction_address(current_arch.pc, 2)
-        insn = get_insn()
         msg = []
         msg.append(Color.colorify("Heap-Analysis", "bold yellow"))
         msg.append("Possible Use-after-Free in '{:s}': pointer {:#x} was freed, but is attempted to be used at {:#x}".format(
-            Path.get_filepath(), self.address, pc,
+            Path.get_filepath(), self.ptr, pc,
         ))
-        msg.append("{:#x}   {:s} {:s}".format(insn.address, insn.mnemonic, Color.yellowify(", ".join(insn.operands))))
         ContextCommand.push_context_message("warn", "\n".join(msg))
         return True
 
@@ -32021,7 +32071,6 @@ class HeapAnalysisCommand(GenericCommand):
 
     def __init__(self, *args, **kwargs):
         super().__init__()
-        self.add_setting("check_free_null", False, "Break execution when a free(NULL) is encountered")
         self.add_setting("check_double_free", True, "Break execution when a double free is encountered")
         self.add_setting("check_weird_free", True, "Break execution when free() is called against a non-tracked pointer")
         self.add_setting("check_uaf", True, "Break execution when a possible Use-after-Free condition is found")
@@ -32043,7 +32092,6 @@ class HeapAnalysisCommand(GenericCommand):
             return
 
         if args.config:
-            gdb.execute("gef config heap_analysis_helper.check_free_null")
             gdb.execute("gef config heap_analysis_helper.check_double_free")
             gdb.execute("gef config heap_analysis_helper.check_weird_free")
             gdb.execute("gef config heap_analysis_helper.check_uaf")
