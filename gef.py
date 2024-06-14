@@ -1426,7 +1426,7 @@ class AddressUtil:
         def to_ascii(v):
             s = ""
             while v & 0xff: # \0
-                if chr(v & 0xff) in String.STRING_CHARSET:
+                if chr(v & 0xff) in String.STRING_PRINTABLE:
                     s += chr(v & 0xff)
                 else:
                     return ""
@@ -4590,7 +4590,6 @@ class String:
     STRING_PUNCTUATION = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
     STRING_WHITESPACE = " \t\n\r\x0b\x0c"
     STRING_PRINTABLE = STRING_DIGITS + STRING_ASCII_LETTERS + STRING_PUNCTUATION + STRING_WHITESPACE
-    STRING_CHARSET = STRING_DIGITS + STRING_ASCII_LETTERS + STRING_PUNCTUATION + " "
 
     @staticmethod
     def gef_pystring(x):
@@ -4702,27 +4701,25 @@ def rol(val, bits, arch_bits=64):
 def hexdump(source, length=0x10, separator=".", color=True, show_symbol=True, base=0x00, unit=1):
     """Return the hexdump of `src` argument."""
 
+    style = {
+        "nonprintable": "yellow",
+        "printable": "white",
+        "00": "bright_black",
+        "0a": "blue",
+        "ff": "green",
+    }
+
     def style_byte(b, color=True):
-        style = {
-            "nonprintable": "yellow",
-            "printable": "white",
-            "00": "bright_black",
-            "0a": "blue",
-            "ff": "green",
-        }
         sbyte = "{:02x}".format(b)
         if not color or Config.get_gef_setting("highlight.regex"):
             return sbyte
-
         if sbyte in style:
             st = style[sbyte]
-        elif chr(b) in String.STRING_CHARSET:
-            st = style.get("printable")
+        elif chr(b) in String.STRING_PRINTABLE:
+            st = style["printable"]
         else:
-            st = style.get("nonprintable")
-        if st:
-            sbyte = Color.colorify(sbyte, st)
-        return sbyte
+            st = style["nonprintable"]
+        return Color.colorify(sbyte, st)
 
     align = AddressUtil.get_format_address_width()
 
@@ -4763,8 +4760,9 @@ def hexdump(source, length=0x10, separator=".", color=True, show_symbol=True, ba
 
     result = []
     for addr, sym, _, data, text in tmp:
-        fmt = "{addr:#0{aw}x}:{sym:<{sym_width}}    {data}    |  {text}  |"
-        result.append(fmt.format(aw=align, addr=addr, sym=sym, sym_width=max_sym_width, data=data, text=text))
+        result.append("{:#0{:d}x}:{:<{:d}}    {:s}    |  {:s}  |".format(
+            addr, align, sym, max_sym_width, data, text,
+        ))
     return "\n".join(result)
 
 
@@ -15227,12 +15225,12 @@ class ArgvCommand(GenericCommand):
             return None
 
     def print_from_mem(self, array, verbose):
-        fmt = "{:3s} {:{:d}s}  {:{:d}s} -> {:s}"
+        fmt = "{:3s} {:{:d}s}  {:{:d}s}{:s}{:s}"
         legend = [
             "#",
             "ArrAddr", AddressUtil.get_format_address_width(),
             "StrAddr", AddressUtil.get_format_address_width(),
-            "String",
+            RIGHT_ARROW, "String",
         ]
         gef_print(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
 
@@ -15315,12 +15313,12 @@ class EnvpCommand(GenericCommand):
             return None
 
     def print_from_mem(self, array, verbose):
-        fmt = "{:3s} {:{:d}s}  {:{:d}s} -> {:s}"
+        fmt = "{:3s} {:{:d}s}  {:{:d}s}{:s}{:s}"
         legend = [
             "#",
             "ArrAddr", AddressUtil.get_format_address_width(),
             "StrAddr", AddressUtil.get_format_address_width(),
-            "String",
+            RIGHT_ARROW, "String",
         ]
         gef_print(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
 
@@ -16112,7 +16110,7 @@ class ProcDumpCommand(GenericCommand):
                 out.append(titlify(path))
 
                 if os.path.islink(path):
-                    out.append(Color.colorify("{:s} -> {:s}".format(path, os.readlink(path)), "blue"))
+                    out.append(Color.colorify("{:s}{:s}{:s}".format(path, RIGHT_ARROW, os.readlink(path)), "blue"))
                     continue
 
                 if f in ["pagemap", "mem"]:
@@ -16891,35 +16889,47 @@ class SearchPatternCommand(GenericCommand):
     """Search a pattern in memory."""
     _cmdline_ = "search-pattern"
     _category_ = "03-a. Memory - Search"
-    _aliases_ = ["find"] # note: overwrite original "find" command.
+    _aliases_ = ["find"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("--hex", action="store_true", help="interpret PATTERN as hex. invalid character is ignored.")
-    parser.add_argument("--big", action="store_true", help="interpret PATTERN as big endian if PATTERN is 0xXXXXXXXX style.")
-    parser.add_argument("-a", "--aligned", type=int, default=1, help="alignment unit. (default: %(default)s)")
+    parser.add_argument("--hex", action="store_true",
+                        help="interpret PATTERN as hex. invalid character is ignored.")
+    parser.add_argument("--big", action="store_true",
+                        help="interpret PATTERN as big endian if PATTERN is 0xXXXXXXXX style.")
+    parser.add_argument("-a", "--aligned", type=int, default=1,
+                        help="alignment unit. (default: %(default)s)")
     parser.add_argument("-i", "--interval", type=lambda x: int(x, 0),
                         help="the interval to skip searching from the last found position within the same section.")
-    parser.add_argument("-l", "--limit", type=lambda x: int(x, 0), help="the limit of the search result.")
+    parser.add_argument("-l", "--limit", type=lambda x: int(x, 0),
+                        help="the limit of the search result.")
     parser.add_argument("-s", "--max-region-size", type=lambda x: int(x, 0), default=0x10000000,
                         help="maximum size of search region. (default: %(default)s)")
-    parser.add_argument("-d", "--disable-utf16", action="store_true", help="disable utf16 search if PATTERN is ascii string.")
-    parser.add_argument("-p", "--perm", default="r??", help="the filter by permission. (default: %(default)s)")
-    parser.add_argument("-v", "--verbose", action="store_true", help="shows the section you are currently searching.")
-    parser.add_argument("pattern", metavar="PATTERN", help='search target value. "double-espaced string" or 0xXXXXXXXX style.')
-    parser.add_argument("section", metavar="SECTION_OR_START_ADDR", nargs="?", help="section name or starting address of search range.")
-    parser.add_argument("size", metavar="SIZE", nargs="?", help="search range size. valid only when a start address is specified.")
+    parser.add_argument("-d", "--disable-utf16", action="store_true",
+                        help="disable utf16 search if PATTERN is ascii string.")
+    parser.add_argument("-p", "--perm", default="r??",
+                        help="the filter by permission. (default: %(default)s)")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="shows the section you are currently searching.")
+    parser.add_argument("pattern", metavar="PATTERN",
+                        help='search target value. "double-espaced string" or 0xXXXXXXXX style.')
+    parser.add_argument("section", metavar="SECTION_OR_START_ADDR", nargs="?",
+                        help="section name or starting address of search range.")
+    parser.add_argument("size", metavar="SIZE", nargs="?",
+                        help="search range size. valid only when a start address is specified.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} AAAA                       # search 'AAAA' from whole memory\n".format(_cmdline_)
-    _example_ += "{:s} 0x41414141                 # search 0x41414141 from whole memory\n".format(_cmdline_)
-    _example_ += '{:s} --hex "41 41 41 41" stack  # another valid format\n'.format(_cmdline_)
-    _example_ += "{:s} 0x555555554000 stack       # search 0x555555554000 (6byte) from stack\n".format(_cmdline_)
-    _example_ += "{:s} 0x0000555555554000 stack   # search 0x0000555555554000 (8byte) from stack\n".format(_cmdline_)
-    _example_ += "{:s} AAAA binary                # 'binary' means the area executable itself (only usermode)\n".format(_cmdline_)
-    _example_ += "{:s} AAAA 0x400000-0x404000     # search 'AAAA' from specific range\n".format(_cmdline_)
-    _example_ += "{:s} AAAA 0x400000 0x4000       # search 'AAAA' from specific range (another valid format)\n".format(_cmdline_)
-    _example_ += "{:s} AAAA heap --aligned 16     # search with aligned\n".format(_cmdline_)
-    _example_ += "{:s} AAAA -p r?-                # search from r-- or rw-, but not from r-x or rwx\n".format(_cmdline_)
+    _example_ = "{:s} AAAA                      # search 'AAAA' from whole memory\n".format(_cmdline_)
+    _example_ += "{:s} 0x41414141                # search 0x41414141 from whole memory\n".format(_cmdline_)
+    _example_ += '{:s} --hex "41 41 41 41"       # another valid format\n'.format(_cmdline_)
+    _example_ += "{:s} 0x555555554000 stack      # search 0x555555554000 (6byte) from stack\n".format(_cmdline_)
+    _example_ += "{:s} 0x0000555555554000 stack  # search 0x0000555555554000 (8byte) from stack\n".format(_cmdline_)
+    _example_ += "{:s} AAAA binary               # 'binary' means the area executable itself (only usermode)\n".format(_cmdline_)
+    _example_ += "{:s} AAAA 0x400000-0x404000    # search 'AAAA' from specific range\n".format(_cmdline_)
+    _example_ += "{:s} AAAA 0x400000 0x4000      # another valid format\n".format(_cmdline_)
+    _example_ += "{:s} AAAA heap --aligned 16    # search with aligned\n".format(_cmdline_)
+    _example_ += "{:s} AAAA -p r?-               # search from r-- or rw-, but not from r-x or rwx".format(_cmdline_)
+
+    _note_ = "This command overwrites original \"find\" command."
 
     def print_section(self, section):
         if isinstance(section, Address):
@@ -28138,7 +28148,7 @@ class PatchHistoryCommand(PatchCommand):
                     a += " ..."
                 sym = Symbol.get_symbol_string(hist["addr"])
                 i_str = Color.boldify("{:d}".format(i))
-                gef_print("[{:s}] {:#x}{:s}: {:s} -> {:s}".format(i_str, hist["addr"], sym, b, a))
+                gef_print("[{:s}] {:#x}{:s}: {:s}{:s}{:s}".format(i_str, hist["addr"], sym, b, RIGHT_ARROW, a))
             gef_print("[OLD]")
         else:
             info("Patch history is empty.")
@@ -28194,7 +28204,7 @@ class PatchRevertCommand(PatchCommand):
             if len(hist["after_data"]) > 0x10:
                 a += " ..."
             sym = Symbol.get_symbol_string(hist["addr"])
-            info("revert {:#x}{:s}: {:s} -> {:s}".format(hist["addr"], sym, a, b))
+            info("revert {:#x}{:s}: {:s}{:s}{:s}".format(hist["addr"], sym, a, RIGHT_ARROW, b))
 
             if is_supported_physmode():
                 orig_mode = QemuMonitor.get_current_mmu_mode()
@@ -30027,13 +30037,13 @@ class LinkMapCommand(GenericCommand):
                 val_addr = ProcessMap.lookup_address(current - current_arch.ptrsize)
                 val_addr_offset = val_addr.value - dynamic.value
                 if not silent:
-                    info("_DYNAMIC+{:#x}(=DT_DEBUG): {!s} -> {!s}".format(val_addr_offset, val_addr, dt_debug))
+                    info("_DYNAMIC+{:#x}(=DT_DEBUG): {!s}{:s}{!s}".format(val_addr_offset, val_addr, RIGHT_ARROW, dt_debug))
                 link_map_ptr = ProcessMap.lookup_address(dt_debug.value + current_arch.ptrsize)
                 if not is_valid_addr(link_map_ptr.value):
                     return None
                 link_map = ProcessMap.lookup_address(read_int_from_memory(link_map_ptr.value))
                 if not silent:
-                    info("DT_DEBUG+{:#x}: {!s} -> {!s}".format(current_arch.ptrsize, link_map_ptr, link_map))
+                    info("DT_DEBUG+{:#x}: {!s}{:s}{!s}".format(current_arch.ptrsize, link_map_ptr, RIGHT_ARROW, link_map))
                 break
         return link_map
 
@@ -30750,14 +30760,18 @@ class DestructorDumpCommand(GenericCommand):
             else:
                 valid_msg = Color.colorify("invalid", "bold red")
 
-            fmt = "    -> func:     {:s}: {!s} (={:s}{:s}) [{:s}]"
-            gef_print(fmt.format(self.C(current), func, decoded_fn_s, sym, valid_msg))
-            fmt = "       obj:      {:s}: {!s}"
-            gef_print(fmt.format(self.C(current + ptrsize * 1), obj))
-            fmt = "       link_map: {:s}: {!s}"
-            gef_print(fmt.format(self.C(current + ptrsize * 2), link_map))
-            fmt = "       next:     {:s}: {!s}"
-            gef_print(fmt.format(self.C(current + ptrsize * 3), next))
+            gef_print("   {:s}func:     {:s}: {!s} (={:s}{:s}) [{:s}]".format(
+                RIGHT_ARROW, self.C(current), func, decoded_fn_s, sym, valid_msg,
+            ))
+            gef_print("       obj:      {:s}: {!s}".format(
+                self.C(current + ptrsize * 1), obj,
+            ))
+            gef_print("       link_map: {:s}: {!s}".format(
+                self.C(current + ptrsize * 2), link_map,
+            ))
+            gef_print("       next:     {:s}: {!s}".format(
+                self.C(current + ptrsize * 3), next,
+            ))
             current = next.value
         return
 
@@ -30786,7 +30800,7 @@ class DestructorDumpCommand(GenericCommand):
             err("Memory access error at {:#x}".format(current))
             return
         current += ptrsize * 2
-        gef_print("    -> next:     {:s}: {!s}".format(self.C(head.value + ptrsize * 0), next))
+        gef_print("   {:s}next:     {:s}: {!s}".format(RIGHT_ARROW, self.C(head.value + ptrsize * 0), next))
         gef_print("       idx:      {:s}: {!s}".format(self.C(head.value + ptrsize * 1), idx))
 
         def read_fns(addr):
@@ -30877,7 +30891,7 @@ class DestructorDumpCommand(GenericCommand):
                 gef_print(link_map.name)
                 sym = Symbol.get_symbol_string(fini)
                 func_s = Color.boldify("{:#x}".format(fini))
-                gef_print("    -> {:s}{:s}".format(func_s, sym))
+                gef_print("   {:s}{:s}{:s}".format(RIGHT_ARROW, func_s, sym))
         else:
             # Static binary has no _DYNAMIC, but we can resolve the target address
             # from section name due to local file path.
@@ -30892,7 +30906,7 @@ class DestructorDumpCommand(GenericCommand):
             gef_print(self.local_filepath)
             sym = Symbol.get_symbol_string(fini)
             func_s = Color.boldify("{:#x}".format(fini))
-            gef_print("    -> {:s}{:s}".format(func_s, sym))
+            gef_print("   {:s}{:s}{:s}".format(RIGHT_ARROW, func_s, sym))
         return
 
     def dump_fini_array(self):
@@ -30944,7 +30958,7 @@ class DestructorDumpCommand(GenericCommand):
                 for addr, func in entries:
                     sym = Symbol.get_symbol_string(func)
                     func_s = Color.boldify("{:#x}".format(func))
-                    gef_print("    -> {:s}: {:s}{:s}".format(self.C(addr), func_s, sym))
+                    gef_print("   {:s}{:s}: {:s}{:s}".format(RIGHT_ARROW, self.C(addr), func_s, sym))
         else:
             # Static binary has no _DYNAMIC, but we can resolve the target address
             # from section name due to local file path.
@@ -30968,7 +30982,7 @@ class DestructorDumpCommand(GenericCommand):
             for addr, func in entries:
                 sym = Symbol.get_symbol_string(func)
                 func_s = Color.boldify("{:#x}".format(func))
-                gef_print("    -> {:s}: {:s}{:s}".format(self.C(addr), func_s, sym))
+                gef_print("   {:s}{:s}: {:s}{:s}".format(RIGHT_ARROW, self.C(addr), func_s, sym))
         return
 
     @parse_args
@@ -45433,7 +45447,7 @@ class SyscallArgsCommand(GenericCommand):
             gef_print("    {:<20} {:<20} {:<20}".format("RET", ret, "-"))
 
         # syscall number
-        gef_print("    {:<20} {:<20} {:#x}".format("_NR", syscall_register, nr))
+        gef_print("    {:<20} {:<20} {:#x}".format("NR", syscall_register, nr))
 
         # syscall args
         values = self.get_values(arg_regs)
@@ -45803,13 +45817,15 @@ class MagicCommand(GenericCommand):
             perm = addr.section.permission
             if is_ascii_string(addr.value):
                 val = read_cstring_from_memory(addr.value, ascii_only=True)
-                fmt = "{:45s} {!s} [{!s}] (+{:#010x}) -> {:s}"
-                gef_print(fmt.format(sym, addr, perm, addr.value - base, val))
+                gef_print("{:45s} {!s} [{!s}] (+{:#010x}){:s}{:s}".format(
+                    sym, addr, perm, addr.value - base, RIGHT_ARROW, val,
+                ))
             else:
                 val = ProcessMap.lookup_address(read_int_from_memory(addr.value))
                 val_sym = Symbol.get_symbol_string(val.value)
-                fmt = "{:45s} {!s} [{!s}] (+{:#010x}) -> {:s}{:s}"
-                gef_print(fmt.format(sym, addr, perm, addr.value - base, val.long_fmt(), val_sym))
+                gef_print("{:45s} {!s} [{!s}] (+{:#010x}){:s}{:s}{:s}".format(
+                    sym, addr, perm, addr.value - base, RIGHT_ARROW, val.long_fmt(), val_sym,
+                ))
         except Exception:
             gef_print("{:45s} {:>{:d}s}".format(sym, "Not found", width))
         return
@@ -45840,9 +45856,9 @@ class MagicCommand(GenericCommand):
             return
 
         gef_print(titlify("Legend"))
-        fmt = "{:45s} {:{:d}s} {:5s} (+{:10s}) -> {:{:d}s}"
+        fmt = "{:45s} {:{:d}s} {:5s} (+{:10s}){:s}{:{:d}s}"
         width = AddressUtil.get_format_address_width()
-        legend = ["symbol", "addr", width, "perm", "offset", "val", width]
+        legend = ["symbol", "addr", width, "perm", "offset", RIGHT_ARROW, "val", width]
         gef_print(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
 
         gef_print(titlify("Heap"))
@@ -46024,22 +46040,27 @@ class KernelMagicCommand(GenericCommand):
                     return
 
         if not is_valid_addr(addr):
-            gef_print("{:42s} {:#0{:d}x} [---]               -> Inaccessible".format(sym, addr, width))
+            gef_print("{:42s} {:#0{:d}x} [---]              {:s}Inaccessible".format(
+                sym, addr, width, RIGHT_ARROW,
+            ))
             return
 
         perm = get_permission(addr, maps)
         if base is None:
             val = read_int_from_memory(addr)
-            fmt = "{:42s} {:#0{:d}x} [{:3s}]               -> {:#0{:d}x}"
-            gef_print(fmt.format(sym, addr, width, perm, val, width))
+            gef_print("{:42s} {:#0{:d}x} [{:3s}]              {:s}{:#0{:d}x}".format(
+                sym, addr, width, perm, RIGHT_ARROW, val, width,
+            ))
         elif to_string:
             val = read_cstring_from_memory(addr, ascii_only=True) or "???"
-            fmt = "{:42s} {:#0{:d}x} [{:3s}] (+{:#010x}) -> {:s}"
-            gef_print(fmt.format(sym, addr, width, perm, addr - base, val))
+            gef_print("{:42s} {:#0{:d}x} [{:3s}] (+{:#010x}){:s}{:s}".format(
+                sym, addr, width, perm, addr - base, RIGHT_ARROW, val,
+            ))
         else:
             val = read_int_from_memory(addr)
-            fmt = "{:42s} {:#0{:d}x} [{:3s}] (+{:#010x}) -> {:#0{:d}x}"
-            gef_print(fmt.format(sym, addr, width, perm, addr - base, val, width))
+            gef_print("{:42s} {:#0{:d}x} [{:3s}] (+{:#010x}){:s}{:#0{:d}x}".format(
+                sym, addr, width, perm, addr - base, RIGHT_ARROW, val, width,
+            ))
         return
 
     def magic_kernel(self):
@@ -46055,9 +46076,9 @@ class KernelMagicCommand(GenericCommand):
         gef_print("{:42s} {:#x} ({:#x} bytes)".format("kernel_base", text_base, text_size))
 
         gef_print(titlify("Legend"))
-        fmt = "{:42s} {:{:d}s} {:5s} (+{:10s}) -> {:{:d}s}"
+        fmt = "{:42s} {:{:d}s} {:5s} (+{:10s}){:s}{:{:d}s}"
         width = AddressUtil.get_format_address_width()
-        legend = ["symbol", "addr", width, "perm", "offset", "val", width]
+        legend = ["symbol", "addr", width, "perm", "offset", RIGHT_ARROW, "val", width]
         gef_print(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
 
         gef_print(titlify("Credential"))
@@ -47168,7 +47189,7 @@ class ExtractHeapAddrCommand(GenericCommand):
         extracted_ptr = self.reveal(ptr)
         colored_extracted_ptr = str(ProcessMap.lookup_address(extracted_ptr))
         gef_print("Protected fd pointer: {:#x}".format(ptr))
-        gef_print(" -> Extracted heap address: {:s} (=fd & ~0xfff)".format(colored_extracted_ptr))
+        gef_print("{:s}Extracted heap address: {:s} (=fd & ~0xfff)".format(RIGHT_ARROW, colored_extracted_ptr))
         return
 
 
@@ -56564,7 +56585,10 @@ class KernelCharacterDevicesCommand(GenericCommand):
         self.out = []
         if not self.quiet:
             fmt = "{:<18s} {:<18s} {:<24s} {:<6s} {:<6s} {:<18s} {:<18s} {:18s} {:<s}"
-            legend = ["chrdev", "name", "name (guessed)", "major", "minor", "cdev", "cdev->kobj.parent", "parent_name", "cdev->ops"]
+            legend = [
+                "chrdev", "name", "name (guessed)", "major", "minor",
+                "cdev", "cdev->kobj.parent", "parent_name", "cdev->ops",
+            ]
             self.out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
 
         for (major, minor), m in sorted(merged.items()):
@@ -60290,9 +60314,12 @@ class FsbaseCommand(GenericCommand):
     """Display fsbase address."""
     _cmdline_ = "fsbase"
     _category_ = "02-b. Process Information - Base Address"
+    _aliases_ = ["fs"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
+
+    _note_ = "This command overwrites original \"fs (=tui focus)\" command."
 
     @parse_args
     @only_if_gdb_running
@@ -60311,6 +60338,7 @@ class GsbaseCommand(GenericCommand):
     """Display gsbase address."""
     _cmdline_ = "gsbase"
     _category_ = "02-b. Process Information - Base Address"
+    _aliases_ = ["gs"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
@@ -86323,6 +86351,7 @@ class GefPyObjListCommand(GenericCommand):
             "__spec__",
             "__package__",
             "__annotations__",
+            "__warningregistry__",
             "GdbRemoveReadlineFinder",
         ]
 
