@@ -31559,10 +31559,13 @@ class GotAllCommand(GenericCommand):
         extra_args = "{:s} {:s}".format(verbose, " ".join(args.filter))
 
         self.out = []
+        processed = []
         for m in ProcessMap.get_process_maps():
             if not m.path:
                 continue
             if m.path.startswith(("[", "<")) or m.path.endswith(("]", ">")):
+                continue
+            if m.path in processed:
                 continue
 
             if not is_valid_addr(m.page_start):
@@ -31575,6 +31578,7 @@ class GotAllCommand(GenericCommand):
             if "<" in Color.remove_color(ret): # at least one element is hit
                 self.out.extend(ret.splitlines())
                 self.out.append("")
+            processed.append(m.path)
 
         if len(self.out) > get_terminal_size()[0]:
             gef_print("\n".join(self.out), less=not args.no_pager)
