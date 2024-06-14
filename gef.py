@@ -161,8 +161,6 @@ __gef_fpath__               = os.path.expanduser(http_get.__code__.co_filename) 
                             # note: __file__ will no longer be available from gdb 15
 __gef_commands__            = [] # keep command classes
 __gef_command_instances__   = {} # keep command instances
-
-current_elf                 = None # keep Elf instance
 current_arch                = None # keep Architecture instance
 
 GEF_RC                      = os.getenv("GEF_RC") or os.path.join(os.getenv("HOME") or "~", ".gef.rc")
@@ -13332,7 +13330,7 @@ def set_arch(arch_str=None):
     If an arch is explicitly specified, use that one, otherwise try to parse it out of the current target.
     If that fails, and default is specified, select and set that arch.
     Return the selected arch, or raise an OSError."""
-    global current_arch, current_elf
+    global current_arch
 
     # get defined arch
     arches = {}
@@ -13349,15 +13347,12 @@ def set_arch(arch_str=None):
 
     else:
         # Determined from loaded ELF
-        if not current_elf:
-            elf = Elf.get_elf()
-            if elf and elf.is_valid():
-                current_elf = elf
-            else:
-                raise OSError("Could not determine architecture.")
+        elf = Elf.get_elf()
+        if not elf or not elf.is_valid():
+            raise OSError("Could not determine architecture.")
 
-        if current_elf.e_machine not in [Elf.EM_MIPS, Elf.EM_RISCV, Elf.EM_PARISC]:
-            key = current_elf.e_machine
+        if elf.e_machine not in [Elf.EM_MIPS, Elf.EM_RISCV, Elf.EM_PARISC]:
+            key = elf.e_machine
 
         else:
             # On some architectures, it is not possible to determine whether it is 32-bit or 64-bit
@@ -86370,7 +86365,7 @@ class GefPyObjListCommand(GenericCommand):
             # classify
             if mod.startswith("__") and t != function_type:
                 global_configs.append("{!s} {!s}".format(t, mod))
-            elif mod in ["current_elf", "current_arch"]:
+            elif mod in ["current_arch"]:
                 global_configs.append("{!s} {!s}".format(t, mod))
             elif mod.upper() == mod and type(obj) != class_type:
                 global_configs.append("{!s} {!s}".format(t, mod))
