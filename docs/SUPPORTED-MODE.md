@@ -2,12 +2,12 @@
 
 ## With docker
 * Usage
-    * Attach from the outside of docker as `gdb-multiarch BINARY -p PID`.
+    * Attach from outside of the docker as `gdb-multiarch /PATH/TO/BINARY -p PID`.
 * Supported architectures
     * x86 and x64
     * Maybe ARM and ARM64
 * Note
-    * Of course, you can also install and use GEF inside docker.
+    * Of course, you can also install and use GEF inside the docker.
     * However, the `--privileged` option is required when `docker run` or `docker exec`.
 
 ## With qemu-system
@@ -83,7 +83,7 @@
 * Supported architectures
     * x64 only.
 * Note
-    * It needs gdb 12.x or after.
+    * It needs gdb 12.x or later.
     * It runs very slowly and is not recommended. Ctrl+C interrupt does not work.
     * Many commands are UNSUPPORTED in KGDB mode, because there is no way to access physical memory and control registers.
 
