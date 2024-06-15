@@ -172,14 +172,14 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * Even with such an address (object), this command may be able to resolve `kmem_cache`.
 * `buddy-dump`: dumps zone of page allocator (buddy allocator) free-list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/buddy-dump.png)
-* `vmalloc-dump`: dumps vmalloc used list and freed list.
+* `vmalloc-dump`: dumps `vmalloc` used-list and freed-list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/vmalloc-dump.png)
-* `page`: displays transformation struct page <-> virtual/physical address.
+* `page`: displays transformation `struct page` <-> virtual/physical address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/page.png)
     * There are shortcuts: `virt2page`, `page2virt`, `phys2page` and `page2phys`.
-* `kmalloc-tracer`: collects and displays information when kmalloc/kfree.
+* `kmalloc-tracer`: collects and displays information when `kmalloc`/`kfree`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-tracer.png)
-* `kmalloc-allocated-by`: calls a predefined set of system calls and prints structures allocated by kmalloc or freed by kfree.
+* `kmalloc-allocated-by`: calls a predefined set of system calls and prints structures allocated by `kmalloc` or freed by `kfree`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-allocated-by.png)
 * `kmagic`: displays useful addresses in kernel.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmagic.png)
