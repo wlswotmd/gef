@@ -65675,6 +65675,25 @@ class BuddyDumpCommand(GenericCommand):
         else:
             self.cpu_offset = KernelCurrentCommand.get_each_cpu_offset(__per_cpu_offset)
 
+        """
+        struct per_cpu_pageset { // ~5.14
+            struct per_cpu_pages pcp;
+            ...
+        }
+
+        struct per_cpu_pages {
+            spinlock_t lock; // 5.14~
+            int count;
+            int high;
+            int batch;
+            short free_factor; // 5.14~
+        #ifdef CONFIG_NUMA
+            short expire; // 5.14~
+        #endif
+            struct list_head lists[NR_PCP_LISTS]; // 5.14~
+            struct list_head lists[MIGRATE_PCPTYPES]; // ~5.14
+        } ____cacheline_aligned_in_smp;
+        """
         # per_cpu_pageset->lists
         if __per_cpu_offset is None:
             per_cpu_pageset = read_int_from_memory(self.nodes[0] + self.offset_per_cpu_pageset)
@@ -65687,7 +65706,7 @@ class BuddyDumpCommand(GenericCommand):
             # search list_head
             val1 = read_int_from_memory(current)
             val2 = read_int_from_memory(current + current_arch.ptrsize)
-            if is_valid_addr(val1) and is_valid_addr(val2):
+            if is_double_link_list(val1) and is_double_link_list(val2):
                 break
             current += current_arch.ptrsize
         self.offset_lists = current - per_cpu_pageset
@@ -65698,7 +65717,7 @@ class BuddyDumpCommand(GenericCommand):
         while True:
             val1 = read_int_from_memory(current)
             val2 = read_int_from_memory(current + current_arch.ptrsize)
-            if not is_valid_addr(val1) and not is_valid_addr(val2):
+            if not (is_double_link_list(val1) and is_double_link_list(val2)):
                 break
             current += current_arch.ptrsize * 2
         self.NR_PCP_LISTS = ((current - per_cpu_pageset) - self.offset_lists) // (current_arch.ptrsize * 2)
