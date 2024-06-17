@@ -13391,14 +13391,6 @@ def set_arch(arch_str=None):
     return
 
 
-def get_ksysctl(sym):
-    try:
-        res = gdb.execute("ksysctl --quiet --no-pager --exact --filter {:s}".format(sym), to_string=True)
-        return int(res.split()[1], 16)
-    except (gdb.error, IndexError, ValueError):
-        return None
-
-
 class Auxv:
     @staticmethod
     def get_auxiliary_walk(offset=0):
@@ -22415,7 +22407,7 @@ class KernelChecksecCommand(GenericCommand):
             return "Unknown"
 
         if gdb.execute("ksymaddr-remote --quiet --no-pager slub_", to_string=True):
-            kversion = KernelVersionCommand.kernel_version()
+            kversion = Kernel.kernel_version()
             if kversion < "6.2":
                 return "SLUB"
             else:
@@ -22430,13 +22422,13 @@ class KernelChecksecCommand(GenericCommand):
         return "Unknown"
 
     def check_basic_information(self):
-        kcmdline = KernelCmdlineCommand.kernel_cmdline()
+        kcmdline = Kernel.kernel_cmdline()
         if kcmdline is None or kcmdline.cmdline is None:
             gef_print("{:<40s}: {:s}".format("Kernel cmdline", "Not found"))
         else:
             gef_print("{:<40s}: {:s}".format("Kernel cmdline", kcmdline.cmdline.strip()))
 
-        kinfo = KernelbaseCommand.get_kernel_base()
+        kinfo = Kernel.get_kernel_base()
         if kinfo.text_base is None:
             gef_print("{:<40s}: {:s}".format("Kernel base (heuristic)", "Not found"))
         else:
@@ -22540,7 +22532,7 @@ class KernelChecksecCommand(GenericCommand):
 
     def check_kaslr(self):
         cfg = "CONFIG_RANDOMIZE_BASE (KASLR)"
-        kcmdline = KernelCmdlineCommand.kernel_cmdline()
+        kcmdline = Kernel.kernel_cmdline()
         ksym_ret = gdb.execute("ksymaddr-remote --quiet --no-pager kaslr_", to_string=True)
 
         if not ksym_ret:
@@ -22562,7 +22554,7 @@ class KernelChecksecCommand(GenericCommand):
             return
 
         cfg = "CONFIG_FG_KASLR (FGKASLR)"
-        kcmdline = KernelCmdlineCommand.kernel_cmdline()
+        kcmdline = Kernel.kernel_cmdline()
         swapgs_restore_regs_and_return_to_usermode = Symbol.get_ksymaddr("swapgs_restore_regs_and_return_to_usermode")
         commit_creds = Symbol.get_ksymaddr("commit_creds")
 
@@ -22607,7 +22599,7 @@ class KernelChecksecCommand(GenericCommand):
 
     def check_kpti(self):
         cfg = "CONFIG_PAGE_TABLE_ISOLATION (KPTI)"
-        kcmdline = KernelCmdlineCommand.kernel_cmdline()
+        kcmdline = Kernel.kernel_cmdline()
 
         if is_x86():
             pti_init = Symbol.get_ksymaddr("pti_init")
@@ -22665,7 +22657,7 @@ class KernelChecksecCommand(GenericCommand):
 
     def check_rwx_page(self):
         cfg = "RWX kernel page"
-        kinfo = KernelbaseCommand.get_kernel_base()
+        kinfo = Kernel.get_kernel_base()
         for m in kinfo.maps:
             if m[2] == "RWX":
                 gef_print("{:<40s}: {:s}".format(cfg, Color.colorify("Found", "bold red")))
@@ -22710,7 +22702,7 @@ class KernelChecksecCommand(GenericCommand):
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unsupported", "bold red"), additional))
             return
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion < "4.17":
             selinux_enabled_addr = Symbol.get_ksymaddr("selinux_enabled")
             selinux_enforcing_addr = Symbol.get_ksymaddr("selinux_enforcing")
@@ -22841,7 +22833,7 @@ class KernelChecksecCommand(GenericCommand):
             additional = "apparmor_init: Found, apparmor_initialized: Not detected"
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, "Supported", additional))
         else:
-            kversion = KernelVersionCommand.kernel_version()
+            kversion = Kernel.kernel_version()
             if kversion < "5.1":
                 apparmor_enabled = u8(read_memory(apparmor_enabled_addr, 1)) # bool
             else:
@@ -23003,7 +22995,7 @@ class KernelChecksecCommand(GenericCommand):
 
     def check_unprivileged_userfaultfd(self):
         cfg = "vm.unprivileged_userfaultfd"
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion < "5.2":
             additional = "{:s}: implemented from linux 5.2".format(cfg)
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unimplemented", "bold red"), additional))
@@ -23032,7 +23024,7 @@ class KernelChecksecCommand(GenericCommand):
 
     def check_unprivileged_bpf_disabled(self):
         cfg = "kernel.unprivileged_bpf_disabled"
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion < "4.4":
             additional = "{:s}: implemented from linux 4.4".format(cfg)
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unimplemented", "bold red"), additional))
@@ -23061,7 +23053,7 @@ class KernelChecksecCommand(GenericCommand):
 
     def check_kexec_load_disabled(self):
         cfg = "kernel.kexec_load_disabled"
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion < "3.14":
             additional = "{:s}: implemented from linux 3.14".format(cfg)
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unimplemented", "bold red"), additional))
@@ -23095,8 +23087,8 @@ class KernelChecksecCommand(GenericCommand):
         return
 
     def check_namespaces(self):
-        kversion = KernelVersionCommand.kernel_version()
-        ksysctl_ret = gdb.execute("ksysctl --quiet --no-pager --exact --filter kernel.version", to_string=True)
+        kversion = Kernel.kernel_version()
+        ksysctl_ret = Kernel.get_ksysctl("kernel.version")
         cfgs = [
             ["4.9", "user.max_user_namespaces"],
             ["4.9", "user.max_pid_namespaces"],
@@ -23117,11 +23109,11 @@ class KernelChecksecCommand(GenericCommand):
                 additional = "{:s}: Not found".format(cfg)
                 gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
                 continue
-            if prev_fail: # get_ksysctl is very slow, so skip if previous get_ksysctl() was failed
+            if prev_fail: # Kernel.get_ksysctl is very slow, so skip if previous Kernel.get_ksysctl() was failed
                 additional = "{:s}: Not found".format(cfg)
                 gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
                 continue
-            addr = get_ksysctl(cfg) # very slow
+            addr = Kernel.get_ksysctl(cfg) # very slow
             if addr is None:
                 additional = "{:s}: Not found".format(cfg)
                 gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
@@ -23136,7 +23128,7 @@ class KernelChecksecCommand(GenericCommand):
 
     def check_unprivileged_userns_clone(self):
         cfg = "kernel.unprivileged_userns_clone"
-        addr = get_ksysctl(cfg)
+        addr = Kernel.get_ksysctl(cfg)
         if addr is None:
             additional = "{:s}: Not found, Only present in debian-based environments".format(cfg)
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
@@ -23152,7 +23144,7 @@ class KernelChecksecCommand(GenericCommand):
 
     def check_userns_restrict(self):
         cfg = "kernel.userns_restrict"
-        addr = get_ksysctl(cfg)
+        addr = Kernel.get_ksysctl(cfg)
         if addr is None:
             additional = "{:s}: Not found, Only present in ALT-linux-based environments".format(cfg)
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.grayify("Unknown"), additional))
@@ -23195,7 +23187,7 @@ class KernelChecksecCommand(GenericCommand):
         # Each structure parsed by ksysctl has no difference among kernel versions, except for `struct ctl_dir.inodes`.
         # Additionally, the first member of struct ctl_table is a *char procname, which will almost certainly readable something.
         # If this fails, it can be determined that the randstruct is used.
-        ksysctl_ret = gdb.execute("ksysctl --quiet --no-pager --exact --filter kernel.version", to_string=True)
+        ksysctl_ret = Kernel.get_ksysctl("kernel.version")
         if not ksysctl_ret:
             additional = "ksysctl was failed"
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Enabled", "bold green"), additional))
@@ -23206,7 +23198,7 @@ class KernelChecksecCommand(GenericCommand):
 
     def check_CONFIG_STATIC_USERMODEHELPER(self):
         def get_permission(addr):
-            maps = KernelbaseCommand.get_maps()
+            maps = Kernel.get_maps()
             if not maps:
                 return None
             for vaddr, size, perm in maps:
@@ -23215,7 +23207,7 @@ class KernelChecksecCommand(GenericCommand):
             return None
 
         cfg = "CONFIG_STATIC_USERMODEHELPER"
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion < "4.11":
             additional = "{:s}: implemented from linux 4.11".format(cfg)
             gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Unimplemented", "bold red"), additional))
@@ -23302,7 +23294,7 @@ class KernelChecksecCommand(GenericCommand):
 
     def check_kadr_kallsyms(self):
         cfg = "KADR (kallsyms)"
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion < "4.15":
             kptr_restrict = KernelAddressHeuristicFinder.get_kptr_restrict()
             if kptr_restrict is None:
@@ -23397,7 +23389,7 @@ class KernelChecksecCommand(GenericCommand):
 
     def print_security_properties_qemu_system(self):
         gef_print(titlify("Kernel information"))
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion is None:
             err("Linux kernel is not found")
             return
@@ -46063,9 +46055,9 @@ class KernelMagicCommand(GenericCommand):
 
     def magic_kernel(self):
         info("Wait for memory scan")
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
-        kinfo = KernelbaseCommand.get_kernel_base()
+        kinfo = Kernel.get_kernel_base()
         maps = kinfo.maps
         text_base = kinfo.text_base
         text_size = kinfo.text_size
@@ -48467,7 +48459,7 @@ class KernelAddressHeuristicFinder:
         # Do not use Symbol.get_ksymaddr as this function is used to discover KPTI.
         # This is because Symbol.get_ksymaddr uses a cache.
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 1 (available v2.6.28 or later)
         if kversion and kversion >= "2.6.28":
@@ -48501,7 +48493,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v4.1 or later)
         if kversion and kversion >= "4.1":
@@ -48552,7 +48544,7 @@ class KernelAddressHeuristicFinder:
             # plan 2 (from stack top)
             # We need to consider the case where Linux and RTOS are running on different CPUs at the same time.
             # If the stack is not the address the kernel expects to use, it should not be interpreted as a task.
-            maps = KernelbaseCommand.get_maps()
+            maps = Kernel.get_maps()
             if not maps:
                 return None
             kern_min = maps[0][0]
@@ -48570,7 +48562,7 @@ class KernelAddressHeuristicFinder:
             if current_thread_info < PAGE_OFFSET:
                 return None
 
-            kversion = KernelVersionCommand.kernel_version()
+            kversion = Kernel.kernel_version()
 
             try:
                 """
@@ -48607,7 +48599,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # Detecting `init_task` is very difficult.
         # This is because `init_task` itself is rarely used, and `init_task.tasks` is most often used.
@@ -48702,7 +48694,7 @@ class KernelAddressHeuristicFinder:
             offset_tasks = get_offset_tasks(current)
             if offset_tasks:
                 task_list = get_task_list(current, offset_tasks)
-                kinfo = KernelbaseCommand.get_kernel_base()
+                kinfo = Kernel.get_kernel_base()
                 min_distance_task = (None, 0xffffffffffffffff)
                 for task in task_list:
                     distance = abs((kinfo.rw_base or kinfo.text_base) - task)
@@ -48753,7 +48745,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v2.6.35 or later)
         if kversion and kversion >= "2.6.35":
@@ -48801,7 +48793,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v2.6.39 or later)
         if kversion and kversion >= "2.6.39":
@@ -48829,7 +48821,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v3.7.5 or later)
         if kversion and kversion >= "3.7.5":
@@ -48860,7 +48852,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         def is_single_link_list(x):
             seen = []
@@ -48912,7 +48904,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v2.5.70 or later)
         if kversion and kversion >= "2.5.70":
@@ -48946,7 +48938,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         if kversion and kversion >= "6.6.26":
             # sys_call_table (on x64) still remains, however, it is no longer in use.
@@ -48986,7 +48978,7 @@ class KernelAddressHeuristicFinder:
         sys_open = Symbol.get_ksymaddr("__x64_sys_open")
         sys_close = Symbol.get_ksymaddr("__x64_sys_close")
         seq_to_find = p64(sys_read) + p64(sys_write) + p64(sys_open) + p64(sys_close)
-        kinfo = KernelbaseCommand.get_kernel_base()
+        kinfo = Kernel.get_kernel_base()
         if kinfo and kinfo.ro_base:
             ro_data = read_memory(kinfo.ro_base, kinfo.ro_size)
             sys_call_table_offset = ro_data.find(seq_to_find)
@@ -49006,7 +48998,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion and kversion < "5.4":
             return None
         if kversion and kversion >= "6.6.26":
@@ -49039,7 +49031,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         if kversion and kversion >= "6.6.26":
             if is_x86_64():
@@ -49083,7 +49075,7 @@ class KernelAddressHeuristicFinder:
         sys_fork = Symbol.get_ksymaddr("sys_fork")
         sys_read = Symbol.get_ksymaddr("sys_read")
         seq_to_find = p32(sys_restart_syscall) + p32(sys_exit) + p32(sys_fork) + p32(sys_read)
-        kinfo = KernelbaseCommand.get_kernel_base()
+        kinfo = Kernel.get_kernel_base()
         if kinfo and kinfo.ro_base:
             ro_data = read_memory(kinfo.ro_base, kinfo.ro_size)
             sys_call_table_offset = ro_data.find(seq_to_find)
@@ -49108,7 +49100,7 @@ class KernelAddressHeuristicFinder:
         sys_fork = Symbol.get_ksymaddr("sys_fork")
         sys_read = Symbol.get_ksymaddr("sys_read")
         seq_to_find = p32(sys_restart_syscall) + p32(sys_exit) + p32(sys_fork) + p32(sys_read)
-        kinfo = KernelbaseCommand.get_kernel_base()
+        kinfo = Kernel.get_kernel_base()
         # `sys_call_table` is embedded in the .text area even if `CONFIG_KALLSYMS_ALL=n`
         if kinfo and kinfo.text_base:
             text_data = read_memory(kinfo.text_base, kinfo.text_size)
@@ -49128,7 +49120,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v3.7 or later)
         if kversion and kversion >= "5.6":
@@ -49151,7 +49143,7 @@ class KernelAddressHeuristicFinder:
         sys_io_submit = Symbol.get_ksymaddr("__arm64_sys_io_submit")
         sys_io_cancel = Symbol.get_ksymaddr("__arm64_sys_io_cancel")
         seq_to_find = p64(sys_io_setup) + p64(sys_io_destroy) + p64(sys_io_submit) + p64(sys_io_cancel)
-        kinfo = KernelbaseCommand.get_kernel_base()
+        kinfo = Kernel.get_kernel_base()
         if kinfo and kinfo.ro_base:
             ro_data = read_memory(kinfo.ro_base, kinfo.ro_size)
             sys_call_table_offset = ro_data.find(seq_to_find)
@@ -49170,7 +49162,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v3.7 or later)
         if kversion and kversion >= "5.6":
@@ -49196,7 +49188,7 @@ class KernelAddressHeuristicFinder:
         sys_open = Symbol.get_ksymaddr("__arm64_compat_sys_open")
         if sys_open:
             seq_to_find = p64(sys_restart_syscall) + p64(sys_exit) + p64(sys_fork) + p64(sys_read) + p64(sys_write) + p64(sys_open)
-            kinfo = KernelbaseCommand.get_kernel_base()
+            kinfo = Kernel.get_kernel_base()
             if kinfo and kinfo.ro_base:
                 ro_data = read_memory(kinfo.ro_base, kinfo.ro_size)
                 sys_call_table_offset = ro_data.find(seq_to_find)
@@ -49213,7 +49205,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v3.3 or later)
         if kversion and kversion >= "3.3":
@@ -49249,7 +49241,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v4.9 or later)
         if kversion and kversion >= "4.9":
@@ -49369,7 +49361,7 @@ class KernelAddressHeuristicFinder:
 
         # plan 2 (from ksysctl)
         if KernelAddressHeuristicFinder.USE_KSYSCTL:
-            x = get_ksysctl("kernel.modprobe")
+            x = Kernel.get_ksysctl("kernel.modprobe")
             if x:
                 return x
         return None
@@ -49385,7 +49377,7 @@ class KernelAddressHeuristicFinder:
 
         # plan 2 (from ksysctl)
         if KernelAddressHeuristicFinder.USE_KSYSCTL:
-            x = get_ksysctl("kernel.poweroff_cmd")
+            x = Kernel.get_ksysctl("kernel.poweroff_cmd")
             if x:
                 return x
         return None
@@ -49401,7 +49393,7 @@ class KernelAddressHeuristicFinder:
 
         # plan 2 (from ksysctl)
         if KernelAddressHeuristicFinder.USE_KSYSCTL:
-            x = get_ksysctl("kernel.core_pattern")
+            x = Kernel.get_ksysctl("kernel.core_pattern")
             if x:
                 return x
         return None
@@ -49418,7 +49410,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return read_int_from_memory(x)
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v2.6.24 or later)
         if kversion and kversion >= "2.6.24":
@@ -49463,7 +49455,7 @@ class KernelAddressHeuristicFinder:
                 return x
 
         # plan 2 (from pagewalk)
-        kinfo = KernelbaseCommand.get_kernel_base()
+        kinfo = Kernel.get_kernel_base()
         page_offset_base_raw = kinfo.maps[0][0]
         ro_data = read_memory(kinfo.ro_base, kinfo.ro_size)
         ro_data = slice_unpack(ro_data, current_arch.ptrsize)
@@ -49481,7 +49473,7 @@ class KernelAddressHeuristicFinder:
             return None
 
         # plan 1 (fixed address)
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion and kversion < "4.8":
             # kASLR and Level5 pagetable is unsupported, so fixed address
             return 0xffff880000000000
@@ -49492,7 +49484,7 @@ class KernelAddressHeuristicFinder:
             return read_int_from_memory(page_offset_base)
 
         # plan 3 (from pagewalk)
-        kinfo = KernelbaseCommand.get_kernel_base()
+        kinfo = Kernel.get_kernel_base()
         if kinfo.maps and len(kinfo.maps) > 0:
             page_offset_base_raw = kinfo.maps[0][0]
             return page_offset_base_raw
@@ -49505,7 +49497,7 @@ class KernelAddressHeuristicFinder:
             return None
 
         # plan 1 (fixed address)
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion and kversion < "4.8":
             # kASLR and Level5 pagetable is unsupported, so fixed address
             return 0xffffc90000000000
@@ -49559,7 +49551,7 @@ class KernelAddressHeuristicFinder:
                 s, _ = vrange.split("-")
                 s = int(s, 16)
 
-                kinfo = KernelbaseCommand.get_kernel_base()
+                kinfo = Kernel.get_kernel_base()
                 prev = None
                 for vstart, _, _ in kinfo.maps:
                     if vstart == s:
@@ -49580,7 +49572,7 @@ class KernelAddressHeuristicFinder:
             return None
 
         # plan 1 (fixed address)
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion and kversion < "4.8":
             # kASLR and Level5 pagetable is unsupported, so fixed address
             return 0xffffea0000000000
@@ -49662,7 +49654,7 @@ class KernelAddressHeuristicFinder:
         STRUCT_PAGE_MAX_SHIFT = 6
 
         # calc VMEMMAP_START
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion < "5.4":
             PAGE_OFFSET = AddressUtil.align_address(0xffffffffffffffff - (1 << (VA_BITS - 1)) + 1)
             VMEMMAP_SIZE = 1 << (VA_BITS - PAGE_SHIFT - 1 + STRUCT_PAGE_MAX_SHIFT)
@@ -49690,7 +49682,7 @@ class KernelAddressHeuristicFinder:
             if addr:
                 return addr
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v4.8 ~ v5.15)
         if kversion and kversion >= "4.8" and kversion < "5.15":
@@ -49714,7 +49706,7 @@ class KernelAddressHeuristicFinder:
             if addr:
                 return read_int_from_memory(addr)
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v2.4.0 or later)
         if kversion and kversion >= "2.4":
@@ -49747,7 +49739,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v4.16.8 or later)
         if kversion and kversion >= "4.16.8":
@@ -49771,7 +49763,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v2.6.21 or later / v2.6.32 or later)
         if kversion and kversion >= "2.6.21":
@@ -49814,7 +49806,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v4.6 or later)
         if kversion and kversion >= "4.6":
@@ -49845,7 +49837,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v2.6.37 or later)
         if kversion and kversion >= "2.6.37":
@@ -49890,7 +49882,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v3.4 or later)
         if kversion and kversion >= "3.4":
@@ -49921,7 +49913,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v5.0 ~ v6.3)
         if kversion and kversion >= "5.0" and kversion < "6.4":
@@ -49949,7 +49941,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v4.12 or later)
         if kversion and kversion >= "4.12":
@@ -49977,7 +49969,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v4.12 or later)
         if kversion and kversion >= "4.12":
@@ -50019,11 +50011,11 @@ class KernelAddressHeuristicFinder:
 
         # plan 2 (from ksysctl)
         if KernelAddressHeuristicFinder.USE_KSYSCTL:
-            x = get_ksysctl("vm.mmap_min_addr")
+            x = Kernel.get_ksysctl("vm.mmap_min_addr")
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 3 (available v4.19.27 or later)
         if kversion and kversion >= "4.19.27":
@@ -50053,7 +50045,7 @@ class KernelAddressHeuristicFinder:
 
         # plan 2 (from ksysctl)
         if KernelAddressHeuristicFinder.USE_KSYSCTL:
-            x = get_ksysctl("vm.unprivileged_userfaultfd")
+            x = Kernel.get_ksysctl("vm.unprivileged_userfaultfd")
             if x:
                 return x
         return None
@@ -50069,11 +50061,11 @@ class KernelAddressHeuristicFinder:
 
         # plan 2 (from ksysctl)
         if KernelAddressHeuristicFinder.USE_KSYSCTL:
-            x = get_ksysctl("kernel.unprivileged_bpf_disabled")
+            x = Kernel.get_ksysctl("kernel.unprivileged_bpf_disabled")
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 3 (available v4.9.91 ~ v5.18.19)
         if kversion and kversion >= "4.9.91" and kversion < "5.19":
@@ -50103,11 +50095,11 @@ class KernelAddressHeuristicFinder:
 
         # plan 2 (from ksysctl)
         if KernelAddressHeuristicFinder.USE_KSYSCTL:
-            x = get_ksysctl("kernel.kptr_restrict")
+            x = Kernel.get_ksysctl("kernel.kptr_restrict")
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 3 (available v4.15 or later)
         if kversion and kversion >= "4.15":
@@ -50137,11 +50129,11 @@ class KernelAddressHeuristicFinder:
 
         # plan 2 (from ksysctl)
         if KernelAddressHeuristicFinder.USE_KSYSCTL:
-            x = get_ksysctl("kernel.perf_event_paranoid")
+            x = Kernel.get_ksysctl("kernel.perf_event_paranoid")
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 3 (available v4.15 or later)
         if kversion and kversion >= "4.15":
@@ -50171,11 +50163,11 @@ class KernelAddressHeuristicFinder:
 
         # plan 2 (from ksysctl)
         if KernelAddressHeuristicFinder.USE_KSYSCTL:
-            x = get_ksysctl("kernel.dmesg_restrict")
+            x = Kernel.get_ksysctl("kernel.dmesg_restrict")
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 3 (available v3.11 or later)
         if kversion and kversion >= "3.11":
@@ -50205,7 +50197,7 @@ class KernelAddressHeuristicFinder:
 
         # plan 2 (from ksysctl)
         if KernelAddressHeuristicFinder.USE_KSYSCTL:
-            x = get_ksysctl("kernel.kexec_load_disabled")
+            x = Kernel.get_ksysctl("kernel.kexec_load_disabled")
             if x:
                 return x
         return None
@@ -50215,7 +50207,7 @@ class KernelAddressHeuristicFinder:
     def get_loadpin_enabled():
         # plan 1 (from ksysctl)
         if KernelAddressHeuristicFinder.USE_KSYSCTL:
-            x = get_ksysctl("kernel.loadpin.enabled")
+            x = Kernel.get_ksysctl("kernel.loadpin.enabled")
             if x:
                 return x
         return None
@@ -50231,7 +50223,7 @@ class KernelAddressHeuristicFinder:
 
         # plan 2 (from ksysctl)
         if KernelAddressHeuristicFinder.USE_KSYSCTL:
-            x = get_ksysctl("kernel.yama.ptrace_scope")
+            x = Kernel.get_ksysctl("kernel.yama.ptrace_scope")
             if x:
                 return x
         return None
@@ -50248,7 +50240,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v4.2 or later)
         if kversion and kversion >= "4.2":
@@ -50289,7 +50281,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v4.2 or later)
         if kversion and kversion >= "4.2":
@@ -50315,7 +50307,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v4.2 or later)
         if kversion and kversion >= "4.2":
@@ -50359,7 +50351,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # vdso_info is introduced from v5.8
         if kversion < "5.8":
@@ -50383,7 +50375,7 @@ class KernelAddressHeuristicFinder:
                 .vdso_code_end = vdso_end,
             },
         """
-        kinfo = KernelbaseCommand.get_kernel_base()
+        kinfo = Kernel.get_kernel_base()
         if kinfo.ro_base and kinfo.ro_size:
             ro_data = read_memory(kinfo.ro_base, kinfo.ro_size)
             pos = -1
@@ -50429,7 +50421,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # vdso_info is introduced until v5.8
         if kversion and (kversion >= "5.8" or kversion < "5.3"):
@@ -50453,7 +50445,7 @@ class KernelAddressHeuristicFinder:
                 .vdso_code_end = vdso_end,
             },
         """
-        kinfo = KernelbaseCommand.get_kernel_base()
+        kinfo = Kernel.get_kernel_base()
         if kinfo.ro_base and kinfo.ro_size:
             ro_data = read_memory(kinfo.ro_base, kinfo.ro_size)
             pos = -1
@@ -50499,7 +50491,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (from vdso_info or vdso_lookup)
         if kversion and is_arm64():
@@ -50515,7 +50507,7 @@ class KernelAddressHeuristicFinder:
                         return x
 
         # plan 3 (from .rodata)
-        kinfo = KernelbaseCommand.get_kernel_base()
+        kinfo = Kernel.get_kernel_base()
         if kinfo.ro_base and kinfo.ro_size:
             ro_data = read_memory(kinfo.ro_base, kinfo.ro_size)
             pos = -1
@@ -50539,7 +50531,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (from vdso_info or vdso_lookup)
         if kversion:
@@ -50566,7 +50558,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v2.5.7 or later)
         if kversion and kversion >= "2.5.7":
@@ -50600,7 +50592,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v5.13 or later)
         if kversion and kversion >= "5.13":
@@ -50644,7 +50636,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # this is old dmesg structure
         if kversion and kversion >= "5.10":
@@ -50682,7 +50674,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # this is old dmesg structure
         if kversion and kversion >= "5.10":
@@ -50721,7 +50713,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # this is old dmesg structure
         if kversion and kversion >= "5.10":
@@ -50771,7 +50763,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # this is old dmesg structure
         if kversion and kversion >= "5.10":
@@ -50887,7 +50879,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v2.6.17 or later)
         if kversion and kversion >= "2.6.17":
@@ -50919,7 +50911,7 @@ class KernelAddressHeuristicFinder:
         # when CONFIG_NUMA=n
         # This method can only be called when `get_node_data()` fails.
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 1 (available v2.6.17 or later)
         if kversion and kversion >= "2.6.17":
@@ -50950,7 +50942,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v4.13 or later)
         # In certain cases it may return `prog_idr_lock` instead of `prog_idr`.
@@ -50983,7 +50975,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v4.13 or later)
         # In certain cases it may return `map_idr_lock` instead of `map_idr`.
@@ -51016,7 +51008,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         def is_looped_link_list(x):
             seen = []
@@ -51098,7 +51090,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (from get_vmap_area_list; v5.2~)
         if kversion and kversion >= "5.2":
@@ -51143,7 +51135,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v4.8 or later)
         if kversion and kversion >= "4.8":
@@ -51193,7 +51185,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v4.8 or later)
         if kversion and kversion >= "4.8":
@@ -51246,7 +51238,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v2.6.18 or later)
         if kversion and kversion >= "2.6.18":
@@ -51274,7 +51266,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v2.5.71 or later)
         if kversion and kversion >= "2.5.71":
@@ -51302,7 +51294,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v3.3 or later)
         if kversion and kversion >= "3.3":
@@ -51330,7 +51322,7 @@ class KernelAddressHeuristicFinder:
                             return x
 
         # plan 3 (from .rodata)
-        kinfo = KernelbaseCommand.get_kernel_base()
+        kinfo = Kernel.get_kernel_base()
         if kinfo.ro_base and kinfo.ro_size:
             ro_data = read_memory(kinfo.ro_base, kinfo.ro_size)
             if kinfo.rw_base and kinfo.rw_size:
@@ -51414,7 +51406,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # plan 2 (available v5.10 or later)
         if kversion and kversion >= "5.10":
@@ -51460,7 +51452,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         if kversion and kversion >= "6.5":
             return False
@@ -51491,7 +51483,7 @@ class KernelAddressHeuristicFinder:
             if x:
                 return x
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         if kversion and kversion < "6.5":
             return False
@@ -51518,17 +51510,7 @@ KF = KernelAddressHeuristicFinder # for convenience using from python-interactiv
 KFU = KernelAddressHeuristicFinderUtil # for convenience using from python-interactive # noqa: F841
 
 
-@register_command
-class KernelbaseCommand(GenericCommand):
-    """Display kernel base address."""
-    _cmdline_ = "kbase"
-    _category_ = "08-b. Qemu-system Cooperation - Linux Basic"
-
-    parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
-    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
-    _syntax_ = parser.format_help()
-
+class Kernel:
     @staticmethod
     @Cache.cache_until_next
     def get_maps():
@@ -51586,7 +51568,7 @@ class KernelbaseCommand(GenericCommand):
     @Cache.cache_this_session
     def get_kernel_base():
         dic = {
-            "maps": KernelbaseCommand.get_maps(),
+            "maps": Kernel.get_maps(),
             "text_base": None,
             "text_size": None,
             "text_end": None,
@@ -51756,51 +51738,6 @@ class KernelbaseCommand(GenericCommand):
         dic["has_none"] = None in dic.values()
         return Kinfo(*dic.values())
 
-    @parse_args
-    @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
-    @only_if_in_kernel_or_kpti_disabled
-    def do_invoke(self, args):
-        self.dont_repeat()
-
-        if args.reparse:
-            Cache.reset_gef_caches(all=True)
-
-        # resolve text_base, ro_base
-        if not args.quiet:
-            info("Wait for memory scan")
-        kinfo = self.get_kernel_base()
-
-        self.out = []
-        if kinfo.text_base:
-            self.out.append("kernel text:   {:#x}-{:#x} ({:#x} bytes)".format(kinfo.text_base, kinfo.text_end, kinfo.text_size))
-        else:
-            err("Failed to resolve kernel text")
-        if kinfo.ro_base:
-            self.out.append("kernel rodata: {:#x}-{:#x} ({:#x} bytes)".format(kinfo.ro_base, kinfo.ro_end, kinfo.ro_size))
-        else:
-            err("Failed to resolve kerel rodata")
-        if kinfo.rw_base:
-            self.out.append("kernel data:   {:#x}-{:#x} ({:#x} bytes)".format(kinfo.rw_base, kinfo.rw_end, kinfo.rw_size))
-        else:
-            err("Failed to resolve kernel data")
-        if self.out:
-            gef_print("\n".join(self.out))
-        return
-
-
-@register_command
-class KernelVersionCommand(GenericCommand):
-    """Display kernel version string."""
-    _cmdline_ = "kversion"
-    _category_ = "08-b. Qemu-system Cooperation - Linux Basic"
-
-    parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
-    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
-    _syntax_ = parser.format_help()
-
     class KernelVersion:
         def __init__(self, address, version_string, major, minor, patch):
             self.address = address
@@ -51850,10 +51787,10 @@ class KernelVersionCommand(GenericCommand):
             r = re.search(r"Linux version (\d)\.(\d+)\.(\d+)", version_string)
             if r:
                 major, minor, patch = int(r.group(1)), int(r.group(2)), int(r.group(3))
-                return KernelVersionCommand.KernelVersion(linux_banner, version_string, major, minor, patch)
+                return Kernel.KernelVersion(linux_banner, version_string, major, minor, patch)
 
         # slow path
-        kinfo = KernelbaseCommand.get_kernel_base()
+        kinfo = Kernel.get_kernel_base()
         if kinfo.has_none:
             return None
         area = []
@@ -51881,9 +51818,88 @@ class KernelVersionCommand(GenericCommand):
             r = re.search(r"Linux version (\d)\.(\d+)\.(\d+)", version_string)
             major, minor, patch = int(r.group(1)), int(r.group(2)), int(r.group(3))
 
-            return KernelVersionCommand.KernelVersion(address, version_string, major, minor, patch)
-
+            return Kernel.KernelVersion(address, version_string, major, minor, patch)
         return None
+
+    @staticmethod
+    @Cache.cache_this_session
+    def kernel_cmdline():
+        saved_command_line = KernelAddressHeuristicFinder.get_saved_command_line()
+        if saved_command_line is None:
+            return None
+        try:
+            ptr = read_int_from_memory(saved_command_line)
+            cmdline = read_cstring_from_memory(ptr, max_length=0x1000)
+            Kcmdline = collections.namedtuple("Kcmdline", ["address", "cmdline"])
+            return Kcmdline(ptr, cmdline)
+        except Exception:
+            return None
+
+    @staticmethod
+    @Cache.cache_this_session
+    def get_ksysctl(sym):
+        try:
+            res = gdb.execute("ksysctl --quiet --no-pager --exact --filter {:s}".format(sym), to_string=True)
+            return int(res.split()[1], 16)
+        except (gdb.error, IndexError, ValueError):
+            return None
+
+
+@register_command
+class KernelbaseCommand(GenericCommand):
+    """Display kernel base address."""
+    _cmdline_ = "kbase"
+    _category_ = "08-b. Qemu-system Cooperation - Linux Basic"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel_or_kpti_disabled
+    def do_invoke(self, args):
+        self.dont_repeat()
+
+        if args.reparse:
+            Cache.reset_gef_caches(all=True)
+
+        # resolve text_base, ro_base
+        if not args.quiet:
+            info("Wait for memory scan")
+        kinfo = Kernel.get_kernel_base()
+
+        self.out = []
+        if kinfo.text_base:
+            self.out.append("kernel text:   {:#x}-{:#x} ({:#x} bytes)".format(kinfo.text_base, kinfo.text_end, kinfo.text_size))
+        else:
+            err("Failed to resolve kernel text")
+        if kinfo.ro_base:
+            self.out.append("kernel rodata: {:#x}-{:#x} ({:#x} bytes)".format(kinfo.ro_base, kinfo.ro_end, kinfo.ro_size))
+        else:
+            err("Failed to resolve kerel rodata")
+        if kinfo.rw_base:
+            self.out.append("kernel data:   {:#x}-{:#x} ({:#x} bytes)".format(kinfo.rw_base, kinfo.rw_end, kinfo.rw_size))
+        else:
+            err("Failed to resolve kernel data")
+        if self.out:
+            gef_print("\n".join(self.out))
+        return
+
+
+@register_command
+class KernelVersionCommand(GenericCommand):
+    """Display kernel version string."""
+    _cmdline_ = "kversion"
+    _category_ = "08-b. Qemu-system Cooperation - Linux Basic"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
+    _syntax_ = parser.format_help()
 
     @parse_args
     @only_if_gdb_running
@@ -51898,7 +51914,7 @@ class KernelVersionCommand(GenericCommand):
 
         if not args.quiet:
             info("Wait for memory scan")
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion is None:
             if not args.quiet:
                 err("Failed to resolve")
@@ -51922,20 +51938,6 @@ class KernelCmdlineCommand(GenericCommand):
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
-    @staticmethod
-    @Cache.cache_this_session
-    def kernel_cmdline():
-        saved_command_line = KernelAddressHeuristicFinder.get_saved_command_line()
-        if saved_command_line is None:
-            return None
-        try:
-            ptr = read_int_from_memory(saved_command_line)
-            cmdline = read_cstring_from_memory(ptr, max_length=0x1000)
-            Kcmdline = collections.namedtuple("Kcmdline", ["address", "cmdline"])
-            return Kcmdline(ptr, cmdline)
-        except Exception:
-            return None
-
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
@@ -51949,7 +51951,7 @@ class KernelCmdlineCommand(GenericCommand):
 
         if not args.quiet:
             info("Wait for memory scan")
-        kcmdline = KernelCmdlineCommand.kernel_cmdline()
+        kcmdline = Kernel.kernel_cmdline()
         if kcmdline is None:
             if not args.quiet:
                 err("Failed to resolve")
@@ -52324,7 +52326,7 @@ class KernelTaskCommand(GenericCommand):
         r = read_int_from_memory(task_addr + offset_mm)
         if 0 < r <= 0xffffffff:
             # maybe prio, so CONFIG_SMP is y
-            kversion = KernelVersionCommand.kernel_version()
+            kversion = Kernel.kernel_version()
             if kversion >= "3.14":
                 offset_mm = offset_tasks + 10 * current_arch.ptrsize
             else:
@@ -52623,7 +52625,7 @@ class KernelTaskCommand(GenericCommand):
             ...
         };
         """
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         offset_stack_canary = AddressUtil.align_address_to_size(offset_pid + 4 + 4, current_arch.ptrsize)
         found = True
         for task in task_addrs:
@@ -52682,7 +52684,7 @@ class KernelTaskCommand(GenericCommand):
             ...
         };
         """
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion >= "4.19":
             offset_thread_group = offset_group_leader + current_arch.ptrsize * (1 + 2 + 2 + 1 + (2 * 4))
         else:
@@ -52746,7 +52748,7 @@ class KernelTaskCommand(GenericCommand):
         """
         base = offset_comm + 16 # comm
         base += current_arch.ptrsize # nameidata
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion >= "4.2":
             repeat_times = 6
         else:
@@ -52952,7 +52954,7 @@ class KernelTaskCommand(GenericCommand):
         0xc1aabc48|+0x0068|+026: 0xc1aa6b80  ->  0x00000068 // user
         0xc1aabc4c|+0x006c|+027: 0xc1aa6be0  ->  0x00000001 // user_ns
         """
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         uid_gid_size = 4 * 8 # uid_t:4byte. len([uid,gid,suid,sgid,euid,egid,fsuid,fsgid]) == 8
         sizeof_securebits = 4
         if kversion >= "4.3":
@@ -52984,7 +52986,7 @@ class KernelTaskCommand(GenericCommand):
 
         def __init__(self, mm, quiet):
             self.quiet = quiet
-            kversion = KernelVersionCommand.kernel_version()
+            kversion = Kernel.kernel_version()
             """
             struct mm_struct {
                 struct {
@@ -53104,7 +53106,7 @@ class KernelTaskCommand(GenericCommand):
             return
 
     def get_vm_area_struct(self, mm):
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion < "6.1":
             """
             struct mm_struct {
@@ -53283,7 +53285,7 @@ class KernelTaskCommand(GenericCommand):
             # now, `current` points vm_flags
             current += current_arch.ptrsize
             if is_32bit():
-                mask = KernelbaseCommand.get_kernel_base().text_base & 0xf0000000
+                mask = Kernel.get_kernel_base().text_base & 0xf0000000
             else:
                 mask = 0xffff_0000_0000_0000
             while True:
@@ -53387,7 +53389,7 @@ class KernelTaskCommand(GenericCommand):
             ...
         };
         """
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         if kversion < "6.5":
             offset_mnt = current_arch.ptrsize * 2
@@ -53604,7 +53606,7 @@ class KernelTaskCommand(GenericCommand):
 
     def add_lwp_task(self, task_addrs):
         lwp_task_addrs = []
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         for task in task_addrs:
             seen = []
@@ -53709,7 +53711,7 @@ class KernelTaskCommand(GenericCommand):
             wait_queue_head_t signalfd_wqh;
         };
         """
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         if kversion >= "5.3":
             # search signalfd_wqh.list_head
@@ -53847,7 +53849,7 @@ class KernelTaskCommand(GenericCommand):
         return None
 
     def initialize(self, args):
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         # init_task
         init_task = KernelAddressHeuristicFinder.get_init_task()
@@ -54154,7 +54156,7 @@ class KernelTaskCommand(GenericCommand):
                 tqdm = lambda x, leave: x # noqa: F841
 
         if args.print_namespace:
-            kversion = KernelVersionCommand.kernel_version()
+            kversion = Kernel.kernel_version()
             nsproxy_members = ["count", "uts_ns", "ipc_ns", "mnt_ns", "pid_ns_for_children", "net_ns"]
             if kversion >= "5.6":
                 nsproxy_members += ["time_ns", "time_ns_for_children"]
@@ -54904,7 +54906,7 @@ class KernelModuleCommand(GenericCommand):
             char *typetab; // v5.2~
         };
         """
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         for i in range(300):
             offset_kallsyms = i * current_arch.ptrsize
             valid = True
@@ -54946,7 +54948,7 @@ class KernelModuleCommand(GenericCommand):
         return None
 
     def parse_kallsyms(self, kallsyms):
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         symtab = read_int_from_memory(kallsyms + current_arch.ptrsize * 0)
         sizeof_symtab_entry = 24 if is_64bit() else 16
@@ -55007,7 +55009,7 @@ class KernelModuleCommand(GenericCommand):
         if offset_name is None:
             return
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion >= "6.4":
             offset_mem = self.get_offset_mem(module_addrs)
             if offset_mem is None:
@@ -55393,7 +55395,7 @@ class KernelBlockDevicesCommand(GenericCommand):
         };
         """
         if self.offset_bd_dev is None:
-            kversion = KernelVersionCommand.kernel_version()
+            kversion = Kernel.kernel_version()
             if kversion < "5.11":
                 self.offset_bd_dev = 0
             elif kversion < "5.16":
@@ -57059,9 +57061,9 @@ class KernelOperationsCommand(GenericCommand):
             else:
                 err("Failed to parse version string")
                 return
-            kversion = KernelVersionCommand.KernelVersion(None, args.version, major, minor, patch)
+            kversion = Kernel.KernelVersion(None, args.version, major, minor, patch)
         else:
-            kversion = KernelVersionCommand.kernel_version()
+            kversion = Kernel.kernel_version()
 
         if self.initialize(kversion) is False:
             return
@@ -57364,7 +57366,7 @@ class KernelSysctlCommand(GenericCommand):
         };
         """
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         if is_64bit():
             # struct ctl_dir
@@ -57774,7 +57776,7 @@ class KernelFileSystemsCommand(GenericCommand):
         } __randomize_layout;
         """
         # mount->mnt_instance
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion < "5.12":
             self.offset_mount_mnt_instance = current_arch.ptrsize * 14
         else:
@@ -58386,7 +58388,7 @@ class KernelTimerCommand(GenericCommand):
         self.offset_get_time = ktime_get_ofs - self.offset_clock_base
         self.offset_rb_root = self.offset_get_time - current_arch.ptrsize * 2
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion < "4.16":
             self.num_of_clock_base = 4
         else:
@@ -58540,7 +58542,7 @@ class KernelTimerCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion < "4.8":
             err("Unsupported v4.8 or before")
             return
@@ -59085,7 +59087,7 @@ class KernelConfigCommand(GenericCommand):
             if not args.quiet:
                 info("Wait for memory scan")
 
-            kinfo = KernelbaseCommand.get_kernel_base()
+            kinfo = Kernel.get_kernel_base()
             if kinfo.ro_base is None:
                 err("Not recognized .rodata")
                 return
@@ -59214,7 +59216,7 @@ class KernelSearchCodePtrCommand(GenericCommand):
 
         info("Wait for memory scan")
 
-        self.kinfo = KernelbaseCommand.get_kernel_base()
+        self.kinfo = Kernel.get_kernel_base()
         if self.kinfo.has_none or self.kinfo.rwx:
             err("Unsupported environment which has RWX data area")
             return
@@ -59583,7 +59585,7 @@ class KernelDmesgCommand(GenericCommand):
 
         self.quiet = args.quiet
         self.out = []
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         if kversion >= "5.10":
             # new structure
@@ -59937,7 +59939,7 @@ class SyscallTableViewCommand(GenericCommand):
             sys_call_table_addr = KernelAddressHeuristicFinder.get_sys_call_table_x64()
             self.syscall_table_view("x86_64", sys_call_table_addr, get_syscall_table("X86", "64"))
 
-            kversion = KernelVersionCommand.kernel_version()
+            kversion = Kernel.kernel_version()
 
             if not self.quiet:
                 self.out.append(titlify("ia32_sys_call_table"))
@@ -62683,7 +62685,7 @@ class SlubDumpCommand(GenericCommand):
         self.quiet_info("offsetof(kmem_cache_cpu, partial): {:#x}".format(self.kmem_cache_cpu_offset_partial))
 
         # offsetof(page, next)
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion < "4.16" and is_32bit():
             self.page_offset_next = current_arch.ptrsize * 5
         elif kversion < "4.18":
@@ -64255,7 +64257,7 @@ class SlabDumpCommand(GenericCommand):
             self.ncpus = len(self.cpu_offset)
 
         # offsetof(kmem_cache, list)
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion < "3.18":
             self.kmem_cache_offset_list = current_arch.ptrsize * 6 + 4 * 10
         elif kversion < "6.1":
@@ -64336,7 +64338,7 @@ class SlabDumpCommand(GenericCommand):
             self.quiet_info("offsetof(kmem_cache, array): {:#x}".format(self.kmem_cache_offset_array))
 
         # offsetof(page, next)
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion < "4.16":
             self.page_offset_next = current_arch.ptrsize * 3 + 4 * 2
         elif kversion < "4.18":
@@ -64502,7 +64504,7 @@ class SlabDumpCommand(GenericCommand):
         return read_cstring_from_memory(name_addr)
 
     def get_array_cache_cpu(self, addr, cpu):
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion >= "3.18":
             cpu_cache = read_int_from_memory(addr + self.kmem_cache_offset_cpu_cache)
             if len(self.cpu_offset) > 0:
@@ -64527,7 +64529,7 @@ class SlabDumpCommand(GenericCommand):
         return freelist
 
     def walk_node_list(self, node_page_head, current_node_page, kmem_cache):
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         node_page_list = []
         seen = [] # avoid infinity loop
         while current_node_page != node_page_head:
@@ -64560,7 +64562,7 @@ class SlabDumpCommand(GenericCommand):
         return node_page_list
 
     def walk_caches(self, target_names, cpus):
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         current_kmem_cache = self.get_next_kmem_cache(self.slab_caches, point_to_base=False)
         parsed_caches = [{"name": "slab_caches", "next": current_kmem_cache}]
 
@@ -65029,7 +65031,7 @@ class SlobDumpCommand(GenericCommand):
             self.quiet_info("free_slob_small: {:#x}".format(self.free_slob_small))
 
         # offsetof(kmem_cache, list)
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion < "4.16":
             self.kmem_cache_offset_list = current_arch.ptrsize * 3 + 4 * 4
         else:
@@ -65053,7 +65055,7 @@ class SlobDumpCommand(GenericCommand):
         self.quiet_info("offsetof(kmem_cache, flags): {:#x}".format(self.kmem_cache_offset_flags))
 
         # offsetof(page, next)
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion < "4.16":
             self.page_offset_next = current_arch.ptrsize * 3 + 4 * 2
         elif kversion < "4.18":
@@ -65430,7 +65432,7 @@ class SlabContainsCommand(GenericCommand):
         current = args.address & gef_getpagesize_mask_high()
         chunk_label_color = Config.get_gef_setting("theme.heap_chunk_label")
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         try:
             while True:
                 page = self.virt2page_wrapper(current)
@@ -66150,7 +66152,7 @@ class KernelPipeCommand(GenericCommand):
 
     def initialize(self):
         # kbase
-        self.kinfo = KernelbaseCommand.get_kernel_base()
+        self.kinfo = Kernel.get_kernel_base()
         if self.kinfo.has_none:
             if not self.quiet:
                 err("The kernel .text area could not be determined correctly.")
@@ -66274,7 +66276,7 @@ class KernelPipeCommand(GenericCommand):
             struct user_struct *user;
         };
         """
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         pipe_inode_info = read_int_from_memory(inode + self.offset_i_pipe)
         for i in range(0x80):
             v = read_int_from_memory(pipe_inode_info + current_arch.ptrsize * i)
@@ -66433,7 +66435,7 @@ class KernelPipeCommand(GenericCommand):
         heap_page_color = Config.get_gef_setting("theme.heap_page_address")
         freed_address_color = Config.get_gef_setting("theme.heap_chunk_address_freed")
         used_address_color = Config.get_gef_setting("theme.heap_chunk_address_used")
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         inodes = {}
         for file, inode in pipe_files:
@@ -66634,7 +66636,7 @@ class KernelBpfCommand(GenericCommand):
         if not self.quiet:
             info("map_idr: {:#x}".format(map_idr))
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         """
         struct xarray {
@@ -66992,7 +66994,7 @@ class KernelBpfCommand(GenericCommand):
             info("Wait for memory scan")
         self.verbose = args.verbose
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion < "4.20":
             # xarray is introduced from 4.20
             if not self.quiet:
@@ -67142,7 +67144,7 @@ class KernelIpcsCommand(GenericCommand):
             } ids[3];
             ...
         """
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion >= "5.11":
             self.offset_ids = 0
         else:
@@ -67462,7 +67464,7 @@ class KernelIpcsCommand(GenericCommand):
         if not self.quiet:
             info("Wait for memory scan")
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion < "4.20":
             # xarray is introduced from 4.20
             if not self.quiet:
@@ -67581,7 +67583,7 @@ class KernelDeviceIOCommand(GenericCommand):
 
         ret = [(addr, start, end, name, flags)]
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion > "4.5":
             parent = read_int_from_memory(addr + self.sizeof_resource_size_t * 2 + current_arch.ptrsize * 3)
             ret += self.dump_resource(parent)
@@ -68016,7 +68018,7 @@ class KernelDmaBufCommand(GenericCommand):
         if not self.quiet:
             info("Wait for memory scan")
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion < "5.11":
             err("Unsupported v5.10 or before")
             return
@@ -68114,7 +68116,7 @@ class KernelIrqCommand(GenericCommand):
         MAPLE_ARANGE_64 = 3
 
         def __init__(self, ptr):
-            kversion = KernelVersionCommand.kernel_version()
+            kversion = Kernel.kernel_version()
 
             # ____cacheline_aligned_in_smp attribute, spinlock_t and lockdep_map_p can be different size
             # in each environment or situation, so search heuristically.
@@ -68211,7 +68213,7 @@ class KernelIrqCommand(GenericCommand):
         if self.initialized:
             return True
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         if kversion < "6.5":
             self.irq_desc_tree = KernelAddressHeuristicFinder.get_irq_desc_tree()
@@ -68402,7 +68404,7 @@ class KernelIrqCommand(GenericCommand):
         return True
 
     def dump_irq(self, verbose):
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         if kversion < "6.5":
             descs = self.parse_xarray(self.irq_desc_tree, root=True)
@@ -68450,7 +68452,7 @@ class KernelIrqCommand(GenericCommand):
         if not self.quiet:
             info("Wait for memory scan")
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion < "4.20":
             # xarray is introduced from 4.20
             if not self.quiet:
@@ -68592,7 +68594,7 @@ class KernelNetDeviceCommand(GenericCommand):
             name = read_cstring_from_memory(netdev)
             self.out.append("{:#018x} {:s}".format(netdev, name))
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion >= "6.8":
             info("In kernel 6.8 and later, the order of the members of `struct net_device` has changed significantly.")
             info("Please note that the address detected as `net_device` is precisely the address of &net_device.name.")
@@ -68715,7 +68717,7 @@ class VmallocDumpCommand(GenericCommand):
         };
         """
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
 
         self.vmap_area_list = KernelAddressHeuristicFinder.get_vmap_area_list()
         if not self.vmap_area_list:
@@ -68867,7 +68869,7 @@ class VmallocDumpCommand(GenericCommand):
         if not args.only_freed:
             areas += self.parse_vmap_area_list(self.vmap_area_list, used=True)
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion and kversion >= "5.2":
             if not args.only_used:
                 areas += self.parse_vmap_area_list(self.free_vmap_area_list, used=False)
@@ -69014,7 +69016,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         return
 
     def get_kernel_version(self):
-        # don't use KernelVersionCommand, since it refers ksymaddr-remote
+        # don't use Kernel.kernel_version, since it refers ksymaddr-remote
         r = re.search(rb"Linux version (\d+\.[\d.]*\d)[ -~]+", self.kernel_img)
         if r is None:
             self.verbose_err("Could not find kernel version")
@@ -69988,7 +69990,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 return True
 
         # Slow path
-        kinfo = KernelbaseCommand.get_kernel_base()
+        kinfo = Kernel.get_kernel_base()
         if kinfo.has_none:
             return False
 
@@ -70081,7 +70083,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
             return None
 
         # resolve kversion for saved file name
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         h = hashlib.sha256(String.str2bytes(kversion.version_string)).hexdigest()[-16:]
         dumped_mem_file = os.path.join(GEF_TEMP_DIR, "dump-memory-{:s}.raw".format(h))
         symboled_vmlinux_file = os.path.join(GEF_TEMP_DIR, "dump-memory-{:s}.elf".format(h))
@@ -70092,7 +70094,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
             return symboled_vmlinux_file
 
         # resolve text_base, ro_base
-        kinfo = KernelbaseCommand.get_kernel_base()
+        kinfo = Kernel.get_kernel_base()
         if None in (kinfo.text_base, kinfo.text_size, kinfo.ro_base, kinfo.ro_size):
             err("Failed to resolve")
             return None
@@ -70178,7 +70180,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
 
         info("Wait for memory scan")
 
-        kinfo = KernelbaseCommand.get_kernel_base()
+        kinfo = Kernel.get_kernel_base()
         if kinfo.text_base is None:
             err("Failed to resolve kbase")
             return
@@ -80244,7 +80246,7 @@ class PagewalkWithHintsCommand(GenericCommand):
     def resolve_kbase(self):
         if not self.quiet:
             info("resolve kbase")
-        kinfo = KernelbaseCommand.get_kernel_base()
+        kinfo = Kernel.get_kernel_base()
 
         # .text
         _stext = Symbol.get_ksymaddr("_stext")
@@ -80893,7 +80895,7 @@ class PageCommand(GenericCommand):
 
         elif is_x86_32():
             # calc PAGE_OFFSET
-            maps = KernelbaseCommand.get_maps()
+            maps = Kernel.get_maps()
             if not maps:
                 err("Not found maps")
                 return False
@@ -80994,7 +80996,7 @@ class PageCommand(GenericCommand):
 
         elif is_arm32():
             # calc PAGE_OFFSET
-            maps = KernelbaseCommand.get_maps()
+            maps = Kernel.get_maps()
             if not maps:
                 err("Not found maps")
                 return False
@@ -81171,7 +81173,7 @@ class PageCommand(GenericCommand):
             self.initialized = False
 
         if is_arm64():
-            kversion = KernelVersionCommand.kernel_version()
+            kversion = Kernel.kernel_version()
             if kversion < "4.7":
                 err("Unsupported v4.6 or before")
                 return
@@ -82298,7 +82300,7 @@ class ThunkTracerCommand(GenericCommand):
         self.dont_repeat()
 
         info("Wait for memory scan")
-        maps = KernelbaseCommand.get_maps() # [vaddr, size, perm]
+        maps = Kernel.get_maps() # [vaddr, size, perm]
         info("Resolving thunk function addresses")
         for reg in current_arch.gpr_registers:
             if reg in ["$esp", "$rsp", "$eip", "$rip"]:
@@ -82634,7 +82636,7 @@ class KmallocTracerCommand(GenericCommand):
         * kzalloc_node -> kmalloc_node
         """
 
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         if kversion < "6.1":
             # number is the argument index of the size.
             # -1 means index 0 is `struct kmem_cache*`.
@@ -84876,7 +84878,7 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
         self.quiet = args.quiet
 
         # resolve kversion for saved file name
-        kversion = KernelVersionCommand.kernel_version()
+        kversion = Kernel.kernel_version()
         h = hashlib.sha256(String.str2bytes(kversion.version_string)).hexdigest()[-16:]
         sym_elf_path = os.path.join(GEF_TEMP_DIR, "ks-apply-{:s}.elf".format(h))
         if (not args.reparse) and os.path.exists(sym_elf_path) and os.path.getsize(sym_elf_path) > 0:
@@ -86397,7 +86399,7 @@ class GefPyObjListCommand(GenericCommand):
             elif type(obj) == class_type:
                 if mod.endswith("Command"):
                     command_classes.append("{!s} {!s}".format(t, mod))
-                elif mod.endswith("Breakpoint"):
+                elif mod.endswith("Breakpoint") or mod.endswith("Watchpoint"):
                     bp_classes.append("{!s} {!s}".format(t, mod))
                 elif obj in arch_list:
                     arch_classes.append("{!s} {!s}".format(t, mod))
