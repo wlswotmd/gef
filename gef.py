@@ -11017,164 +11017,6 @@ def read_memory(addr, length):
     return gdb.selected_inferior().read_memory(addr, length).tobytes()
 
 
-class QemuMonitor:
-    @staticmethod
-    @Cache.cache_this_session
-    def get_gic_addrs():
-        """Return physical addresses of ARM GIC(General Interrupt Controller)."""
-        if not is_qemu_system():
-            return []
-
-        if not is_arm32() and not is_arm64():
-            return []
-
-        try:
-            res = gdb.execute("monitor info mtree -f", to_string=True)
-        except gdb.error:
-            return []
-
-        gic_list = []
-        for line in res.splitlines():
-            # gef> monitor info mtree -f # these are physical addresses
-            #   0000000008000000-0000000008000fff (prio 0, i/o): gic_dist
-            #   0000000008010000-0000000008011fff (prio 0, i/o): gic_cpu
-            if not line.startswith("  "):
-                continue
-            m = re.search(r"  ([0-9a-f]+)-([0-9a-f]+).*i/o\): gic_(dist|cpu)", line)
-            if not m:
-                continue
-            paddr = int(m.group(1), 16)
-            pend = int(m.group(2), 16)
-            # fix size
-            size = pend - paddr
-            if (size & 0xfff) == 0xfff:
-                size += 1
-            gic_list.append([paddr, paddr + size])
-        return gic_list
-
-    @staticmethod
-    @Cache.cache_until_next
-    def check_gic_address(vaddr):
-        gic_addrs = QemuMonitor.get_gic_addrs()
-        if not gic_addrs:
-            return False
-
-        try:
-            ret = gdb.execute("monitor gva2gpa {:#x}".format(vaddr), to_string=True)
-        except gdb.error:
-            return False
-        r = re.search(r"gpa: (0x\S+)", ret)
-        if not r:
-            return False
-        paddr = int(r.group(1), 16)
-
-        for s, e in gic_addrs:
-            if s <= paddr < e:
-                return True
-        return False
-
-    @staticmethod
-    def get_current_mmu_mode():
-        if is_qemu_system():
-            try:
-                response = gdb.execute("maintenance packet qqemu.PhyMemMode", to_string=True, from_tty=False)
-                if 'received: "0"' in response:
-                    return "virt"
-                elif 'received: "1"' in response:
-                    return "phys"
-                else:
-                    return False
-            except gdb.error:
-                return False
-        elif is_vmware():
-            try:
-                read_memory(0, 1)
-                return "phys"
-            except gdb.MemoryError:
-                return "virt"
-        return None
-
-    @staticmethod
-    def get_secure_memory_base_and_size(verbose=False):
-        result = gdb.execute("monitor info mtree -f", to_string=True)
-        for line in result.splitlines():
-            m = re.search(r"([0-9a-f]{16})-([0-9a-f]{16}).*virt.secure-ram", line)
-            if m:
-                secure_memory_base = int(m.group(1), 16)
-                secure_memory_size = int(m.group(2), 16) + 1 - secure_memory_base
-                break
-        else:
-            return None, None
-        if verbose:
-            start = secure_memory_base
-            end = secure_memory_base + secure_memory_size
-            info("secure memory base: {:#x}-{:#x} ({:#x} bytes)".format(start, end, secure_memory_size))
-        return secure_memory_base, secure_memory_size
-
-    @staticmethod
-    def get_secure_memory_qemu_map(secure_memory_base, secure_memory_size, verbose=False):
-        qemu_system_pid = Pid.get_pid()
-        if qemu_system_pid is None:
-            err("Not found qemu-system pid")
-            return None
-        # fast path
-        ret = gdb.execute("monitor gpa2hva {:#x}".format(secure_memory_base), to_string=True)
-        r = re.search("is (0x[0-9a-f]+)", ret)
-        if r:
-            secure_memory_page_addr = int(r.group(1), 16)
-            sm = ProcessMap.process_lookup_address(secure_memory_page_addr)
-            if sm:
-                if verbose:
-                    info("secure memory page of pid {:d}: {:#x}".format(qemu_system_pid, secure_memory_page_addr))
-                return sm
-
-        # slow path
-        maps = ProcessMap.get_process_maps_linux(qemu_system_pid)
-        secure_memory_maps = [m for m in maps if m.size == secure_memory_size]
-        if len(secure_memory_maps) == 1:
-            if verbose:
-                secure_memory_page_addr = secure_memory_maps[0].page_start
-                info("secure memory page of pid {:d}: {:#x}".format(qemu_system_pid, secure_memory_page_addr))
-            return secure_memory_maps[0]
-        return None
-
-
-@Cache.cache_until_next
-def is_valid_addr(addr):
-    if addr < 0:
-        return False
-
-    if is_x86_16():
-        if current_arch.A20:
-            shift = 21
-        else:
-            shift = 20
-    elif is_64bit():
-        shift = 64
-    elif is_32bit():
-        shift = 32
-
-    if (1 << shift) - 1 < addr:
-        return False
-
-    if is_qemu_system():
-        if QemuMonitor.check_gic_address(addr):
-            return False
-
-    try:
-        gdb.selected_inferior().read_memory(addr, 1)
-        return True
-    except gdb.MemoryError:
-        return False
-
-
-def is_valid_addr_addr(addr):
-    if is_valid_addr(addr):
-        v = read_int_from_memory(addr)
-        return is_valid_addr(v)
-    return False
-
-
 def read_int_from_memory(addr):
     """Return an integer read from memory."""
     sz = current_arch.ptrsize
@@ -11315,6 +11157,188 @@ def write_physmem(paddr, data):
         if orig_mode == "virt":
             disable_phys()
     return ret
+
+
+@Cache.cache_until_next
+def is_valid_addr(addr):
+    if addr < 0:
+        return False
+
+    if is_x86_16():
+        if current_arch.A20:
+            shift = 21
+        else:
+            shift = 20
+    elif is_64bit():
+        shift = 64
+    elif is_32bit():
+        shift = 32
+
+    if (1 << shift) - 1 < addr:
+        return False
+
+    if is_qemu_system():
+        if QemuMonitor.check_gic_address(addr):
+            return False
+
+    try:
+        gdb.selected_inferior().read_memory(addr, 1)
+        return True
+    except gdb.MemoryError:
+        return False
+
+
+@Cache.cache_until_next
+def is_valid_addr_addr(addr):
+    if is_valid_addr(addr):
+        v = read_int_from_memory(addr)
+        return is_valid_addr(v)
+    return False
+
+
+@Cache.cache_until_next
+def is_double_link_list(addr):
+    # list up next pointer
+    seen = []
+    while True:
+        if not is_valid_addr(addr):
+            return False
+        if addr in seen:
+            break
+        seen.append(addr)
+        addr = read_int_from_memory(addr)
+
+    if addr != seen[0]:
+        return False
+
+    # check prev pointer
+    for i, x in enumerate(seen):
+        p = read_int_from_memory(x + current_arch.ptrsize)
+        if p != seen[i - 1]:
+            return False
+    return True
+
+
+class QemuMonitor:
+    @staticmethod
+    @Cache.cache_this_session
+    def get_gic_addrs():
+        """Return physical addresses of ARM GIC(General Interrupt Controller)."""
+        if not is_qemu_system():
+            return []
+
+        if not is_arm32() and not is_arm64():
+            return []
+
+        try:
+            res = gdb.execute("monitor info mtree -f", to_string=True)
+        except gdb.error:
+            return []
+
+        gic_list = []
+        for line in res.splitlines():
+            # gef> monitor info mtree -f # these are physical addresses
+            #   0000000008000000-0000000008000fff (prio 0, i/o): gic_dist
+            #   0000000008010000-0000000008011fff (prio 0, i/o): gic_cpu
+            if not line.startswith("  "):
+                continue
+            m = re.search(r"  ([0-9a-f]+)-([0-9a-f]+).*i/o\): gic_(dist|cpu)", line)
+            if not m:
+                continue
+            paddr = int(m.group(1), 16)
+            pend = int(m.group(2), 16)
+            # fix size
+            size = pend - paddr
+            if (size & 0xfff) == 0xfff:
+                size += 1
+            gic_list.append([paddr, paddr + size])
+        return gic_list
+
+    @staticmethod
+    @Cache.cache_until_next
+    def check_gic_address(vaddr):
+        gic_addrs = QemuMonitor.get_gic_addrs()
+        if not gic_addrs:
+            return False
+
+        try:
+            ret = gdb.execute("monitor gva2gpa {:#x}".format(vaddr), to_string=True)
+        except gdb.error:
+            return False
+        r = re.search(r"gpa: (0x\S+)", ret)
+        if not r:
+            return False
+        paddr = int(r.group(1), 16)
+
+        for s, e in gic_addrs:
+            if s <= paddr < e:
+                return True
+        return False
+
+    @staticmethod
+    def get_current_mmu_mode():
+        if is_qemu_system():
+            try:
+                response = gdb.execute("maintenance packet qqemu.PhyMemMode", to_string=True, from_tty=False)
+                if 'received: "0"' in response:
+                    return "virt"
+                elif 'received: "1"' in response:
+                    return "phys"
+                else:
+                    return False
+            except gdb.error:
+                return False
+        elif is_vmware():
+            try:
+                read_memory(0, 1)
+                return "phys"
+            except gdb.MemoryError:
+                return "virt"
+        return None
+
+    @staticmethod
+    def get_secure_memory_base_and_size(verbose=False):
+        result = gdb.execute("monitor info mtree -f", to_string=True)
+        for line in result.splitlines():
+            m = re.search(r"([0-9a-f]{16})-([0-9a-f]{16}).*virt.secure-ram", line)
+            if m:
+                secure_memory_base = int(m.group(1), 16)
+                secure_memory_size = int(m.group(2), 16) + 1 - secure_memory_base
+                break
+        else:
+            return None, None
+        if verbose:
+            start = secure_memory_base
+            end = secure_memory_base + secure_memory_size
+            info("secure memory base: {:#x}-{:#x} ({:#x} bytes)".format(start, end, secure_memory_size))
+        return secure_memory_base, secure_memory_size
+
+    @staticmethod
+    def get_secure_memory_qemu_map(secure_memory_base, secure_memory_size, verbose=False):
+        qemu_system_pid = Pid.get_pid()
+        if qemu_system_pid is None:
+            err("Not found qemu-system pid")
+            return None
+        # fast path
+        ret = gdb.execute("monitor gpa2hva {:#x}".format(secure_memory_base), to_string=True)
+        r = re.search("is (0x[0-9a-f]+)", ret)
+        if r:
+            secure_memory_page_addr = int(r.group(1), 16)
+            sm = ProcessMap.process_lookup_address(secure_memory_page_addr)
+            if sm:
+                if verbose:
+                    info("secure memory page of pid {:d}: {:#x}".format(qemu_system_pid, secure_memory_page_addr))
+                return sm
+
+        # slow path
+        maps = ProcessMap.get_process_maps_linux(qemu_system_pid)
+        secure_memory_maps = [m for m in maps if m.size == secure_memory_size]
+        if len(secure_memory_maps) == 1:
+            if verbose:
+                secure_memory_page_addr = secure_memory_maps[0].page_start
+                info("secure memory page of pid {:d}: {:#x}".format(qemu_system_pid, secure_memory_page_addr))
+            return secure_memory_maps[0]
+        return None
 
 
 def is_supported_physmode():
@@ -13382,29 +13406,6 @@ def set_arch(arch_str=None):
 
     Cache.reset_gef_caches(all=True)
     return
-
-
-@Cache.cache_until_next
-def is_double_link_list(addr):
-    # list up next pointer
-    seen = []
-    while True:
-        if not is_valid_addr(addr):
-            return False
-        if addr in seen:
-            break
-        seen.append(addr)
-        addr = read_int_from_memory(addr)
-
-    if addr != seen[0]:
-        return False
-
-    # check prev pointer
-    for i, x in enumerate(seen):
-        p = read_int_from_memory(x + current_arch.ptrsize)
-        if p != seen[i - 1]:
-            return False
-    return True
 
 
 def get_ksysctl(sym):
