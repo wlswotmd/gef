@@ -16951,13 +16951,7 @@ class SearchPatternCommand(GenericCommand):
             step = 0x400 * gef_getpagesize()
         locations = []
 
-        tqdm = lambda x, leave: x # noqa: F841
-        if self.args.verbose:
-            try:
-                from tqdm import tqdm
-            except ImportError:
-                pass
-
+        tqdm = GefUtil.get_tqdm(self.args.verbose)
         for chunk_addr in tqdm(range(start_address, end_address, step), leave=False):
             if chunk_addr + step > end_address:
                 chunk_size = end_address - chunk_addr
@@ -54167,14 +54161,6 @@ class KernelTaskCommand(GenericCommand):
             legend = ["task", "K/U", "lwpid", "task->comm", "task->cred", uids_str, "kstack", "kcanary"]
             out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
 
-        if args.quiet:
-            tqdm = lambda x, leave: x # noqa: F841
-        else:
-            try:
-                from tqdm import tqdm
-            except ImportError:
-                tqdm = lambda x, leave: x # noqa: F841
-
         if args.print_namespace:
             kversion = Kernel.kernel_version()
             nsproxy_members = ["count", "uts_ns", "ipc_ns", "mnt_ns", "pid_ns_for_children", "net_ns"]
@@ -54188,6 +54174,7 @@ class KernelTaskCommand(GenericCommand):
                 init_nsproxy = read_int_from_memory(task_addrs[0] + self.offset_nsproxy)
 
         # task parse
+        tqdm = GefUtil.get_tqdm(not args.quiet)
         for task in tqdm(task_addrs, leave=False):
             comm_string = read_cstring_from_memory(task + self.offset_comm)
             if args.filter:
@@ -55054,14 +55041,7 @@ class KernelModuleCommand(GenericCommand):
             legend = ["module", "module->name", "base", "size"]
             self.out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
 
-        if args.quiet:
-            tqdm = lambda x, leave: x # noqa: F841
-        else:
-            try:
-                from tqdm import tqdm
-            except ImportError:
-                tqdm = lambda x, leave: x # noqa: F841
-
+        tqdm = GefUtil.get_tqdm(not args.quiet)
         for module in tqdm(module_addrs, leave=False):
             name_string = read_cstring_from_memory(module + offset_name)
             if args.filter:
@@ -59249,11 +59229,7 @@ class KernelSearchCodePtrCommand(GenericCommand):
         rw_data = read_memory(self.kinfo.rw_base, self.kinfo.rw_size)
         rw_data = slice_unpack(rw_data, current_arch.ptrsize)
 
-        try:
-            from tqdm import tqdm
-        except ImportError:
-            tqdm = lambda x, leave, total: x # noqa: F841
-
+        tqdm = GefUtil.get_tqdm()
         for i, rw_d in tqdm(enumerate(rw_data), leave=False, total=len(rw_data)):
             rw_addr = self.kinfo.rw_base + i * current_arch.ptrsize
             backtrack_info = [(rw_addr, 0)]
@@ -62961,14 +62937,7 @@ class SlubDumpCommand(GenericCommand):
             return parsed_caches
 
         # second, parse kmem_cache_cpu
-        if self.args.quiet:
-            tqdm = lambda x, leave: x # noqa: F841
-        else:
-            try:
-                from tqdm import tqdm
-            except ImportError:
-                tqdm = lambda x, leave: x # noqa: F841
-
+        tqdm = GefUtil.get_tqdm(not self.args.quiet)
         for kmem_cache in tqdm(parsed_caches[1:], leave=False): # parsed_caches[0] is slab_caches, so skip
             # parse kmem_cache_cpu
             kmem_cache["kmem_cache_cpu"] = {}
@@ -63782,14 +63751,7 @@ class SlubTinyDumpCommand(GenericCommand):
             return parsed_caches
 
         # second, parse node then update
-        if self.args.quiet:
-            tqdm = lambda x, leave: x # noqa: F841
-        else:
-            try:
-                from tqdm import tqdm
-            except ImportError:
-                tqdm = lambda x, leave: x # noqa: F841
-
+        tqdm = GefUtil.get_tqdm(not self.args.quiet)
         for kmem_cache in tqdm(parsed_caches[1:], leave=False): # parsed_caches[0] is slab_caches, so skip
             # parse node
             kmem_cache["nodes"] = []
@@ -64611,14 +64573,7 @@ class SlabDumpCommand(GenericCommand):
             return parsed_caches
 
         # second, parse array_cache and node
-        if self.args.quiet:
-            tqdm = lambda x, leave: x # noqa: F841
-        else:
-            try:
-                from tqdm import tqdm
-            except ImportError:
-                tqdm = lambda x, leave: x # noqa: F841
-
+        tqdm = GefUtil.get_tqdm(not self.args.quiet)
         for kmem_cache in tqdm(parsed_caches[1:], leave=False): # parsed_caches[0] is slab_caches, so skip
             # parse array_cache
             kmem_cache["array_cache"] = {}
@@ -66017,14 +65972,7 @@ class BuddyDumpCommand(GenericCommand):
         self.add_msg(titlify("per_cpu_pageset"))
         self.dump_pcp(zone, is_highmem)
 
-        if self.quiet:
-            tqdm = lambda x, leave: x # noqa: F841
-        else:
-            try:
-                from tqdm import tqdm
-            except ImportError:
-                tqdm = lambda x, leave: x # noqa: F841
-
+        tqdm = GefUtil.get_tqdm(not self.quiet)
         self.add_msg(titlify("free_area"))
         free_area_array = zone + self.offset_free_area
         for order in tqdm(range(self.MAX_ORDER), leave=False):
@@ -76994,13 +76942,7 @@ class PagewalkX64Command(PagewalkCommand):
         COUNT = 0
         flag_cache = {}
 
-        tqdm = lambda x, leave: x # noqa: F841
-        if not self.quiet:
-            try:
-                from tqdm import tqdm
-            except ImportError:
-                pass
-
+        tqdm = GefUtil.get_tqdm(not self.quiet)
         for va_base, table_base, parent_flags in tqdm(self.TABLES, leave=False):
             entries = self.read_physmem_cache(table_base, 2 ** self.bits["PT_BITS"] * self.bits["ENTRY_SIZE"])
             entries = slice_unpack(entries, self.bits["ENTRY_SIZE"])
@@ -77639,13 +77581,7 @@ class PagewalkArmCommand(PagewalkCommand):
         SMALL = []
         COUNT = 0
 
-        tqdm = lambda x, leave: x # noqa: F841
-        if not self.quiet:
-            try:
-                from tqdm import tqdm
-            except ImportError:
-                pass
-
+        tqdm = GefUtil.get_tqdm(not self.quiet)
         for va_base, table_base, parent_flags in tqdm(LEVEL1, leave=False):
             entries = self.read_physmem_cache(table_base, 4 * (2 ** 8))
             entries = slice_unpack(entries, 4)
@@ -77917,13 +77853,7 @@ class PagewalkArmCommand(PagewalkCommand):
         KB = []
         COUNT = 0
 
-        tqdm = lambda x, leave: x # noqa: F841
-        if not self.quiet:
-            try:
-                from tqdm import tqdm
-            except ImportError:
-                pass
-
+        tqdm = GefUtil.get_tqdm(not self.quiet)
         for va_base, table_base, parent_flags in tqdm(LEVEL2, leave=False):
             entries = self.read_physmem_cache(table_base, 8 * (2 ** 9))
             entries = slice_unpack(entries, 8)
@@ -79278,13 +79208,7 @@ class PagewalkArm64Command(PagewalkCommand):
             COUNT = 0
             flag_cache = {}
 
-            tqdm = lambda x, leave: x # noqa: F841
-            if not self.quiet:
-                try:
-                    from tqdm import tqdm
-                except ImportError:
-                    pass
-
+            tqdm = GefUtil.get_tqdm(not self.quiet)
             for va_base, table_base, parent_flags in tqdm(LEVEL2, leave=False):
                 entries = self.read_mem_wrapper(table_base, 8 * entries_per_table)
                 entries = slice_unpack(entries, 8)
@@ -80426,11 +80350,7 @@ class PagewalkWithHintsCommand(GenericCommand):
             info("resolve slub (search full slab cache; skip if target region size >= 0x200000)")
         old_regions = list(self.regions.items())[::]
 
-        try:
-            from tqdm import tqdm
-        except ImportError:
-            tqdm = lambda x, leave: x # noqa: F841
-
+        tqdm = GefUtil.get_tqdm()
         for _region_addr, region in tqdm(old_regions, leave=False):
             if "slab cache" in region.description:
                 continue
@@ -85674,11 +85594,6 @@ class TypesCommand(GenericCommand):
             "bool",
         ]
 
-        try:
-            from tqdm import tqdm
-        except ImportError:
-            tqdm = lambda x, leave: x # noqa: F841
-
         ret = gdb.execute("info types", to_string=True).strip()
         out = []
         for line in ret.splitlines():
@@ -85706,6 +85621,7 @@ class TypesCommand(GenericCommand):
 
         if args.verbose:
             new_out = []
+            tqdm = GefUtil.get_tqdm()
             for type_name in tqdm(out, leave=False):
                 ret = gdb.execute('dt -n "{:s}"'.format(type_name), to_string=True)
                 if not ret or (" is not struct or union" in ret) or ("Not found " in ret):
@@ -86714,6 +86630,17 @@ class GefUtil:
             return gdb.lookup_type(_type).strip_typedefs()
         except RuntimeError:
             return None
+
+    @staticmethod
+    def get_tqdm(use_tqdm=True):
+        tqdm = lambda x, leave=None, total=None: x # noqa: F841
+        if not use_tqdm:
+            return tqdm
+        try:
+            from tqdm import tqdm
+        except ImportError:
+            pass
+        return tqdm
 
     __gef_convenience_vars_index__  = 0 # $_gef1, $_gef2, ...
 
