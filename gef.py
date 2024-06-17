@@ -85679,7 +85679,6 @@ class GefCommand(GenericCommand):
         self.add_setting("autosave_breakpoints_file", "", "Automatically save and restore breakpoints")
         self.add_setting("extra_plugins_dir", "", "Autoload additional GEF commands from external directory")
         self.add_setting("disable_color", False, "Disable all colors in GEF")
-        self.add_setting("tempdir", GEF_TEMP_DIR, "Directory to use for temporary/cache content")
         self.add_setting("always_no_pager", False, "Always disable pager in gef_print()")
         self.add_setting("keep_pager_result", False, "Leaves temporary files in gef_print()")
         self.loaded_commands = {}
@@ -86082,7 +86081,7 @@ class GefRestoreCommand(GenericCommand):
                     pass
 
         # ensure that the temporary directory always exists
-        abspath = os.path.expanduser(Config.__gef_config__["gef.tempdir"][0])
+        abspath = os.path.expanduser(GEF_TEMP_DIR)
         abspath = os.path.realpath(abspath)
         if not os.path.isdir(abspath):
             os.makedirs(abspath, mode=0o755, exist_ok=True)
@@ -86776,8 +86775,9 @@ class Gef:
         if not os.path.exists(GEF_TEMP_DIR):
             os.mkdir(GEF_TEMP_DIR)
 
-        # When using a python virtual environment (pyenv, venv, etc.), GDB still loads the system-installed python,
-        # so GEF doesn't load site-packages dir from environment. In order to fix it, from the shell we run the python3 binary,
+        # When using a python virtual environment (pyenv, venv, etc.), GDB still loads
+        # the system-installed python, so GEF doesn't load site-packages dir from environment.
+        # In order to fix it, from the shell we run the python3 binary,
         # take and parse its path, add the path to the current python process.
         Gef.fix_venv()
 
@@ -86834,7 +86834,8 @@ class Gef:
         __gef__ = GefCommand()
         __gef__.setup()
 
-        gdb.execute("save gdb-index {}".format(Config.get_gef_setting("gef.tempdir")))
+        # index file
+        gdb.execute("save gdb-index {}".format(GEF_TEMP_DIR))
 
         # gdb events configuration
         EventHooking.gef_on_continue_hook(EventHandler.continue_handler)
@@ -86849,6 +86850,7 @@ class Gef:
             # we must force a call to the new_objfile handler (see issue #278)
             EventHandler.new_objfile_handler(None)
 
+        # python-interactive
         hexon()
         return
 
