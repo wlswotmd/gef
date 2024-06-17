@@ -4775,9 +4775,7 @@ class Symbol:
     @staticmethod
     @Cache.cache_this_session
     def gdb_get_location(address):
-        """Retrieve the location of the `address` argument from the symbol table.
-        Return a tuple with the name and offset if found, None otherwise."""
-
+        """ex: 0xffffffff9f6bd2a0 -> ('commit_creds', 0)"""
         if address is None:
             return None
 
@@ -4803,6 +4801,7 @@ class Symbol:
     @staticmethod
     @Cache.cache_this_session
     def get_symbol_string(addr, nosymbol_string=""):
+        """ex: 0xffffffff9f6bd2a1 -> ' <commit_creds+0x1>'"""
         try:
             if isinstance(addr, str):
                 addr = Color.remove_color(addr)
@@ -4825,6 +4824,7 @@ class Symbol:
 
     @staticmethod
     def get_ksymaddr(sym):
+        """ex: 'commit_creds' -> 0xffffffff9f6bd2a0"""
         try:
             res = gdb.execute("ksymaddr-remote --quiet --no-pager --exact {:s}".format(sym), to_string=True)
             return int(res.split()[0], 16)
@@ -4832,7 +4832,21 @@ class Symbol:
             return None
 
     @staticmethod
+    def get_ksymaddr_multiple(sym):
+        """ex: 'set_is_seen' -> [0xffffffffba146db0,0xffffffffba6d84e0,0xffffffffba6dd170]"""
+        out = []
+        try:
+            ret = gdb.execute("ksymaddr-remote --quiet --no-pager --exact {:s}".format(sym), to_string=True)
+            for line in ret.splitlines():
+                addr = int(line.split()[0], 16)
+                out.append(addr)
+            return out
+        except (gdb.error, IndexError, ValueError):
+            return None
+
+    @staticmethod
     def get_ksymaddr_symbol(addr):
+        """ex: 0xffffffff9f6bd2a0 -> 'commit_creds'"""
         try:
             res = gdb.execute("ksymaddr-remote --quiet --no-pager {:#x}".format(addr), to_string=True)
             res = res.splitlines()[-1]
@@ -49339,26 +49353,25 @@ class KernelAddressHeuristicFinder:
 
         # plan 7 (available v2.6.24 ~ v3.10 and CONFIG_SLABINFO=y)
         if kversion and kversion >= "2.6.24" and kversion < "3.11":
-            ret = gdb.execute("ksymaddr-remote --quiet --no-pager --exact s_next", to_string=True)
-            # returns multiple results
-            for line in ret.splitlines():
-                s_next = int(line.split()[0], 16)
-                res = gdb.execute("x/20i {:#x}".format(s_next), to_string=True)
-                if is_x86_64():
-                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, read_valid=True)
-                elif is_x86_32():
-                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, read_valid=True)
-                elif is_arm64():
-                    # TODO
-                    g = []
-                elif is_arm32():
-                    # TODO
-                    g = []
-                for x in g:
-                    v1 = read_int_from_memory(x)
-                    v2 = read_int_from_memory(x + current_arch.ptrsize)
-                    if is_valid_addr(v1) and is_valid_addr(v2):
-                        return x
+            addrs = Symbol.get_ksymaddr_multiple("s_next")
+            if addrs:
+                for s_next in addrs:
+                    res = gdb.execute("x/20i {:#x}".format(s_next), to_string=True)
+                    if is_x86_64():
+                        g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, read_valid=True)
+                    elif is_x86_32():
+                        g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, read_valid=True)
+                    elif is_arm64():
+                        # TODO
+                        g = []
+                    elif is_arm32():
+                        # TODO
+                        g = []
+                    for x in g:
+                        v1 = read_int_from_memory(x)
+                        v2 = read_int_from_memory(x + current_arch.ptrsize)
+                        if is_valid_addr(v1) and is_valid_addr(v2):
+                            return x
         return None
 
     @staticmethod
@@ -51055,22 +51068,21 @@ class KernelAddressHeuristicFinder:
 
         # plan 3 (available v4.10~)
         if kversion and kversion >= "4.10":
-            ret = gdb.execute("ksymaddr-remote --quiet --no-pager --exact s_next", to_string=True)
-            # returns multiple results
-            for line in ret.splitlines()[::-1]:
-                s_next = int(line.split()[0], 16)
-                res = gdb.execute("x/20i {:#x}".format(s_next), to_string=True)
-                if is_x86_64():
-                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "rsi")
-                elif is_x86_32():
-                    g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "e.x")
-                elif is_arm64():
-                    g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add_add(res, read_valid=True)
-                elif is_arm32():
-                    g = KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative(res)
-                for x in g:
-                    if is_looped_link_list(x):
-                        return x
+            addrs = Symbol.get_ksymaddr_multiple("s_next")
+            if addrs:
+                for s_next in addrs:
+                    res = gdb.execute("x/20i {:#x}".format(s_next), to_string=True)
+                    if is_x86_64():
+                        g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "rsi")
+                    elif is_x86_32():
+                        g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res, "e.x")
+                    elif is_arm64():
+                        g = KernelAddressHeuristicFinderUtil.aarch64_adrp_add_add(res, read_valid=True)
+                    elif is_arm32():
+                        g = KernelAddressHeuristicFinderUtil.arm32_ldr_pc_relative(res)
+                    for x in g:
+                        if is_looped_link_list(x):
+                            return x
 
         # plan 4 (available v2.6.28 ~ v5.1)
         if kversion and kversion >= "2.6.28" and kversion < "5.2":
@@ -57438,11 +57450,7 @@ class KernelSysctlCommand(GenericCommand):
         if init_user_ns:
             current = init_user_ns
             # set_is_seen is found in 3 places (v5.19~), so Symbol.get_ksymaddr should not be used.
-            set_is_seen = []
-            ret = gdb.execute("ksymaddr-remote --quiet --no-pager --exact set_is_seen", to_string=True)
-            for line in ret.splitlines():
-                addr = int(line.split()[0], 16)
-                set_is_seen.append(addr)
+            set_is_seen = Symbol.get_ksymaddr_multiple("set_is_seen")
             if set_is_seen:
                 while True:
                     v = read_int_from_memory(current)
