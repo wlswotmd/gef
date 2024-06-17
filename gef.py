@@ -28472,7 +28472,7 @@ class DereferenceCommand(GenericCommand):
             # dump slab cache
             if args.slab_contains or args.slab_contains_unaligned:
                 v = read_int_from_memory(current_address)
-                ret = Kernel.get_slab_contains(v, args.slab_contains_unaligned)
+                ret = Kernel.get_slab_contains(v, allow_unaligned=args.slab_contains_unaligned, keep_color=True)
                 if ret:
                     out.append("  {:#x}: {:s}".format(v, ret))
 
@@ -51828,7 +51828,7 @@ class Kernel:
 
     @staticmethod
     @Cache.cache_until_next
-    def get_slab_contains(addr, allow_unaligned=False):
+    def get_slab_contains(addr, allow_unaligned=False, keep_color=False):
         if not is_valid_addr(addr):
             return None
         ret = gdb.execute("slab-contains --quiet {:#x}".format(addr), to_string=True).strip()
@@ -51836,7 +51836,9 @@ class Kernel:
             return None
         if not allow_unaligned and "(unaligned?)" in ret:
             return None
-        return ret
+        if keep_color:
+            return ret
+        return Color.remove_color(ret)
 
 
 @register_command
@@ -53392,6 +53394,7 @@ class KernelTaskCommand(GenericCommand):
             for i in range(0x40):
                 cand_offset_mnt = current_arch.ptrsize * i
                 mnt = read_int_from_memory(file + cand_offset_mnt)
+
                 """
                 gef> slab-contains 0xffff9f49811d33e0
                 slab: 0xfffff93f800474c0
@@ -53400,8 +53403,9 @@ class KernelTaskCommand(GenericCommand):
                 name: mnt_cache  size: 0x140  num_pages: 0x1 (unaligned?)
                 """
                 # f_path.mnt points in the middle of the chunk, so the "unaligned?" warning is not a problem.
-                ret = gdb.execute("slab-contains --quiet {:#x}".format(mnt), to_string=True)
-                ret = Color.remove_color(ret)
+                ret = Kernel.get_slab_contains(mnt, allow_unaligned=True)
+                if not ret:
+                    continue
                 if "mnt_cache" in ret:
                     offset_mnt = cand_offset_mnt
                     break
@@ -66204,8 +66208,8 @@ class KernelPipeCommand(GenericCommand):
             if v < 0x10000 or not is_valid_addr(v):
                 continue
             # skip invalid chunk
-            ret = gdb.execute("slab-contains --quiet {:#x}".format(v), to_string=True)
-            if "unaligned?" in ret:
+            ret = Kernel.get_slab_contains(v)
+            if ret is None:
                 continue
             # pipe_inode_info is allocated from kmalloc-192 (x64) or kmalloc-256 (arm64).
             # sometimes it is allocated from kmalloc-512, kmalloc-128, kmalloc-96 and kmalloc-64.
@@ -66281,8 +66285,8 @@ class KernelPipeCommand(GenericCommand):
             if v == pipe_inode_info:
                 continue
             # skip invalid chunk
-            ret = gdb.execute("slab-contains {:#x}".format(v), to_string=True)
-            if "unaligned?" in ret:
+            ret = Kernel.get_slab_contains(v)
+            if ret is None:
                 continue
             # pipe_inode_info is allocated from kmalloc-1k (x64) or kmalloc-512 (x86)
             if re.search(r"kmalloc(-cg)?-(1k|1024|512)", ret):
@@ -80415,8 +80419,11 @@ class PagewalkWithHintsCommand(GenericCommand):
                 continue
             current = region.addr_start
             while current < region.addr_end:
-                res = gdb.execute("slab-contains --quiet {:#x}".format(current), to_string=True)
-                res = Color.remove_color(res)
+                res = Kernel.get_slab_contains(current)
+                if not res:
+                    current += gef_getpagesize()
+                    continue
+
                 r = re.search(r"name: (\S+)  size: \S+  num_pages: (\S+)", res)
                 if not r:
                     current += gef_getpagesize()
@@ -82530,12 +82537,12 @@ class KmallocTracerCommand(GenericCommand):
 
     @staticmethod
     def virt2name_and_size(extra, vaddr):
-        ret = gdb.execute("slab-contains --quiet {:#x}".format(vaddr), to_string=True)
-        ret = Color.remove_color(ret)
+        ret = Kernel.get_slab_contains(vaddr)
+        if not ret:
+            return None
         r = re.search(r"name: (\S+)  size: (\S+)", ret)
         if not r:
             return None
-
         slab_cache_name = r.group(1)
         slab_cache_size = int(r.group(2), 16)
         return slab_cache_name, slab_cache_size
