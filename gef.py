@@ -13516,23 +13516,6 @@ class Auxv:
 
 
 @Cache.cache_this_session
-def gef_read_canary():
-    """Read the canary of a running process using Auxiliary Vector.
-    Return a tuple of (canary, location) if found, None otherwise."""
-    auxval = Auxv.get_auxiliary_values()
-    if not auxval:
-        return None
-
-    try:
-        canary_location = auxval["AT_RANDOM"]
-        canary = read_int_from_memory(canary_location)
-        canary &= ~0xFF
-        return canary, canary_location
-    except (KeyError, gdb.MemoryError):
-        return None
-
-
-@Cache.cache_this_session
 def gef_getpagesize():
     """Get the page size from auxiliary values."""
     auxval = Auxv.get_auxiliary_values()
@@ -15034,8 +15017,24 @@ class CanaryCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
 
+    @staticmethod
+    @Cache.cache_this_session
+    def gef_read_canary():
+        """Read the canary of a running process using Auxiliary Vector.
+        Return a tuple of (canary, location) if found, None otherwise."""
+        auxval = Auxv.get_auxiliary_values()
+        if not auxval:
+            return None
+        try:
+            canary_location = auxval["AT_RANDOM"]
+            canary = read_int_from_memory(canary_location)
+            canary &= ~0xFF
+            return canary, canary_location
+        except (KeyError, gdb.MemoryError):
+            return None
+
     def dump_canary(self):
-        res = gef_read_canary()
+        res = CanaryCommand.gef_read_canary()
         if not res:
             err("Failed to get the canary")
             return
@@ -22239,7 +22238,7 @@ class ChecksecCommand(GenericCommand):
         # Canary
         msg = self.get_colored_msg(sec["Canary"])
         if sec["Canary"] is True and is_alive():
-            res = gef_read_canary()
+            res = CanaryCommand.gef_read_canary()
             if not res:
                 msg += " (Could not get the canary value)"
             else:
@@ -28348,7 +28347,7 @@ class DereferenceCommand(GenericCommand):
 
         # canary info
         if not is_qemu_system() and not is_vmware() and not is_kgdb():
-            res = gef_read_canary()
+            res = CanaryCommand.gef_read_canary()
             if res:
                 canary, location = res
                 if current_address_value == canary:
