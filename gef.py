@@ -246,7 +246,7 @@ class DisplayHook:
             return "  " * (idt + 1)
 
         name = type(o).__name__
-        width = get_terminal_size()[0] + len(I1())
+        width = GefUtil.get_terminal_size()[0] + len(I1())
 
         if name in ("int", "long"):
             return hex(o)
@@ -1173,9 +1173,9 @@ class AddressUtil:
     @staticmethod
     @Cache.cache_this_session
     def ptr_width():
-        void = cached_lookup_type("void")
+        void = GefUtil.cached_lookup_type("void")
         if void is None:
-            uintptr_t = cached_lookup_type("uintptr_t")
+            uintptr_t = GefUtil.cached_lookup_type("uintptr_t")
             return uintptr_t.sizeof
         else:
             return void.pointer().sizeof
@@ -1200,7 +1200,7 @@ class AddressUtil:
         elif is_64bit():
             return 8 if not in_bits else 64
 
-        res = cached_lookup_type("size_t")
+        res = GefUtil.cached_lookup_type("size_t")
         if res is not None:
             return res.sizeof if not in_bits else res.sizeof * 8
 
@@ -1328,13 +1328,13 @@ class AddressUtil:
             return "u16"
 
         try:
-            ulong_t = cached_lookup_type(use_stdtype())
+            ulong_t = GefUtil.cached_lookup_type(use_stdtype())
             if not ulong_t:
-                ulong_t = cached_lookup_type(use_default_type())
+                ulong_t = GefUtil.cached_lookup_type(use_default_type())
                 if not ulong_t:
-                    ulong_t = cached_lookup_type(use_golang_type())
+                    ulong_t = GefUtil.cached_lookup_type(use_golang_type())
                     if not ulong_t:
-                        ulong_t = cached_lookup_type(use_rust_type())
+                        ulong_t = GefUtil.cached_lookup_type(use_rust_type())
             unsigned_long_type = ulong_t.pointer()
             res = gdb.Value(addr).cast(unsigned_long_type).dereference()
             # GDB does lazy fetch by default so we need to force access to the value
@@ -2858,11 +2858,11 @@ class GlibcHeap:
                 MALLOC_ALIGNMENT = 0x8
             self.MALLOC_ALIGN_MASK = MALLOC_ALIGNMENT - 1
 
-            self.char_t = cached_lookup_type("char")
-            self.size_t = cached_lookup_type("size_t")
+            self.char_t = GefUtil.cached_lookup_type("char")
+            self.size_t = GefUtil.cached_lookup_type("size_t")
             if not self.size_t:
                 ptr_type = "unsigned long" if current_arch.ptrsize == 8 else "unsigned int"
-                self.size_t = cached_lookup_type(ptr_type)
+                self.size_t = GefUtil.cached_lookup_type(ptr_type)
             return
 
         # struct offsets
@@ -2960,13 +2960,13 @@ class GlibcHeap:
         def __init__(self, addr):
             self.__addr = addr
 
-            self.char_t = cached_lookup_type("char")
-            self.int_t = cached_lookup_type("int")
-            self.long_t = cached_lookup_type("long")
-            self.size_t = cached_lookup_type("size_t")
+            self.char_t = GefUtil.cached_lookup_type("char")
+            self.int_t = GefUtil.cached_lookup_type("int")
+            self.long_t = GefUtil.cached_lookup_type("long")
+            self.size_t = GefUtil.cached_lookup_type("size_t")
             if not self.size_t:
                 ptr_type = "unsigned long" if current_arch.ptrsize == 8 else "unsigned int"
-                self.size_t = cached_lookup_type(ptr_type)
+                self.size_t = GefUtil.cached_lookup_type(ptr_type)
             return
 
         # struct offsets
@@ -3272,11 +3272,11 @@ class GlibcHeap:
             self.num_binmap = 4
             self.__addr = addr
 
-            self.int_t = cached_lookup_type("int")
-            self.size_t = cached_lookup_type("size_t")
+            self.int_t = GefUtil.cached_lookup_type("int")
+            self.size_t = GefUtil.cached_lookup_type("size_t")
             if not self.size_t:
                 ptr_type = "unsigned long" if current_arch.ptrsize == 8 else "unsigned int"
-                self.size_t = cached_lookup_type(ptr_type)
+                self.size_t = GefUtil.cached_lookup_type(ptr_type)
             return
 
         # struct offsets
@@ -3581,7 +3581,7 @@ class GlibcHeap:
             # get type
             try:
                 arena = gdb.parse_and_eval("*{:#x}".format(self.__addr))
-                malloc_state_t = cached_lookup_type("struct malloc_state")
+                malloc_state_t = GefUtil.cached_lookup_type("struct malloc_state")
                 self.__arena = arena.cast(malloc_state_t)
                 self.__size = malloc_state_t.sizeof
             except RuntimeError:
@@ -4540,7 +4540,7 @@ def get_libc_version():
 
 def titlify(text, color=None, msg_color=None):
     """Print a centered title."""
-    cols = get_terminal_size()[1]
+    cols = GefUtil.get_terminal_size()[1]
     if color is None:
         color = Config.__gef_config__.get("theme.default_title_line")[0]
     if msg_color is None:
@@ -12918,16 +12918,6 @@ class EventHandler:
         return
 
 
-def get_terminal_size():
-    """Return the current terminal size."""
-    TIOCGWINSZ = 0x5413
-    try:
-        tty_rows, tty_columns = struct.unpack("hh", fcntl.ioctl(1, TIOCGWINSZ, "1234"))
-        return tty_rows, tty_columns
-    except OSError:
-        return 600, 100
-
-
 class UnicornKeystoneCapstone:
     @staticmethod
     def get_generic_arch(module, prefix, arch, mode, big_endian, to_string):
@@ -13120,13 +13110,6 @@ class UnicornKeystoneCapstone:
 
         return enc
 
-
-@Cache.cache_until_next
-def cached_lookup_type(_type):
-    try:
-        return gdb.lookup_type(_type).strip_typedefs()
-    except RuntimeError:
-        return None
 
 def is_64bit():
     """GDB mode determination function for 64-bit architecture."""
@@ -14861,7 +14844,7 @@ class DisplayTypeCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        tp = cached_lookup_type(args.type) or cached_lookup_type("struct {:s}".format(args.type))
+        tp = GefUtil.cached_lookup_type(args.type) or GefUtil.cached_lookup_type("struct {:s}".format(args.type))
         if tp is None:
             err("Not found {:s}".format(args.type))
             return
@@ -14899,7 +14882,7 @@ class DisplayTypeCommand(GenericCommand):
                 out.append(msg)
 
             out.append("}} // total: {:#x} bytes".format(tp.sizeof))
-            if len(out) > get_terminal_size()[0]:
+            if len(out) > GefUtil.get_terminal_size()[0]:
                 gef_print("\n".join(out), less=not args.no_pager)
             else:
                 gef_print("\n".join(out), less=False)
@@ -19667,7 +19650,7 @@ class GlibcHeapArenaCommand(GenericCommand):
             out[i] = re.sub(" = (0x[0-9a-f]+)", " = \033[34m\\1\033[0m", out[i])
 
         out = "\n".join(out)
-        if len(out.splitlines()) > get_terminal_size()[0]:
+        if len(out.splitlines()) > GefUtil.get_terminal_size()[0]:
             gef_print(out, less=not args.no_pager)
         else:
             gef_print(out, less=False)
@@ -19863,7 +19846,7 @@ class GlibcHeapChunksCommand(GenericCommand):
         self.out = []
         self.print_heap_chunks(arena, dump_start, nb)
 
-        if len(self.out) > get_terminal_size()[0]:
+        if len(self.out) > GefUtil.get_terminal_size()[0]:
             gef_print("\n".join(self.out), less=not args.no_pager)
         else:
             gef_print("\n".join(self.out), less=False)
@@ -21295,7 +21278,7 @@ class ProcessSearchCommand(GenericCommand):
             line = [process[i] for i in ("pid", "user", "cpu", "mem", "tty", "command")]
             out.append("\t".join(line))
 
-        if len(out) > get_terminal_size()[0]:
+        if len(out) > GefUtil.get_terminal_size()[0]:
             gef_print("\n".join(out), less=not args.no_pager)
         else:
             gef_print("\n".join(out), less=False)
@@ -25784,7 +25767,7 @@ class ContextCommand(GenericCommand):
         widest = x = current_arch.get_aliased_registers_name_max()
         x += 5
         x += current_arch.ptrsize * 2
-        nb = get_terminal_size()[1] // x
+        nb = GefUtil.get_terminal_size()[1] // x
         i = 1
         line = ""
         changed_color = Config.get_gef_setting("theme.registers_value_changed")
@@ -27001,7 +26984,7 @@ class ContextCommand(GenericCommand):
         if not current_layout:
             return
 
-        self.tty_rows, self.tty_columns = get_terminal_size()
+        self.tty_rows, self.tty_columns = GefUtil.get_terminal_size()
 
         if self.get_setting("clear_screen") and len(args.commands) == 0:
             # this is more faster than executing "shell clear -x"
@@ -28939,7 +28922,7 @@ class VMMapCommand(GenericCommand):
                 self.info("Searched from auxv, registers and stack values. There may be areas that cannot be detected.")
                 self.info("Permission is based on ELF header or default value `rw-`. Dynamic permission changes cannot be detected.")
 
-        if len(self.out) > get_terminal_size()[0]:
+        if len(self.out) > GefUtil.get_terminal_size()[0]:
             gef_print("\n".join(self.out), less=not args.no_pager)
         else:
             gef_print("\n".join(self.out), less=False)
@@ -31553,7 +31536,7 @@ class GotCommand(GenericCommand):
 
         # doit
         self.parse_plt_got()
-        if len(self.out) > get_terminal_size()[0]:
+        if len(self.out) > GefUtil.get_terminal_size()[0]:
             gef_print("\n".join(self.out), less=not args.no_pager)
         else:
             gef_print("\n".join(self.out), less=False)
@@ -31609,7 +31592,7 @@ class GotAllCommand(GenericCommand):
                 self.out.append("")
             processed.append(m.path)
 
-        if len(self.out) > get_terminal_size()[0]:
+        if len(self.out) > GefUtil.get_terminal_size()[0]:
             gef_print("\n".join(self.out), less=not args.no_pager)
         else:
             gef_print("\n".join(self.out), less=False)
@@ -32283,7 +32266,7 @@ class SyscallSearchCommand(GenericCommand):
         self.out = []
         self.make_output(syscall_table, syscall_num, syscall_name_pattern)
 
-        if len(self.out) > get_terminal_size()[0]:
+        if len(self.out) > GefUtil.get_terminal_size()[0]:
             gef_print("\n".join(self.out), less=not args.no_pager)
         else:
             gef_print("\n".join(self.out), less=False)
@@ -55089,7 +55072,7 @@ class KernelModuleCommand(GenericCommand):
                 self.out.append(titlify(""))
 
         if self.out:
-            if len(self.out) > get_terminal_size()[0]:
+            if len(self.out) > GefUtil.get_terminal_size()[0]:
                 gef_print("\n".join(self.out), less=not args.no_pager)
             else:
                 gef_print("\n".join(self.out), less=False)
@@ -55468,7 +55451,7 @@ class KernelBlockDevicesCommand(GenericCommand):
             self.out.append(fmt.format(bdev, name, major, minor))
 
         if self.out:
-            if len(self.out) > get_terminal_size()[0]:
+            if len(self.out) > GefUtil.get_terminal_size()[0]:
                 gef_print("\n".join(self.out), less=not args.no_pager)
             else:
                 gef_print("\n".join(self.out), less=False)
@@ -56614,7 +56597,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
                                        m["cdev"], m["parent"], m["parent_name"], m["ops"], m["ops_sym"]))
 
         if self.out:
-            if len(self.out) > get_terminal_size()[0]:
+            if len(self.out) > GefUtil.get_terminal_size()[0]:
                 gef_print("\n".join(self.out), less=not args.no_pager)
             else:
                 gef_print("\n".join(self.out), less=False)
@@ -57119,7 +57102,7 @@ class KernelOperationsCommand(GenericCommand):
                 self.out.append("{:<5d} {:10s} {:20s}".format(idx, type, name))
 
         if self.out:
-            if len(self.out) > get_terminal_size()[0]:
+            if len(self.out) > GefUtil.get_terminal_size()[0]:
                 gef_print("\n".join(self.out), less=not args.no_pager)
             else:
                 gef_print("\n".join(self.out), less=False)
@@ -58020,7 +58003,7 @@ class KernelFileSystemsCommand(GenericCommand):
         self.parse_file_systems(args.skip_mount_path)
 
         if self.out:
-            if len(self.out) > get_terminal_size()[0]:
+            if len(self.out) > GefUtil.get_terminal_size()[0]:
                 gef_print("\n".join(self.out), less=not args.no_pager)
             else:
                 gef_print("\n".join(self.out), less=False)
@@ -58131,7 +58114,7 @@ class KernelClockSourceCommand(GenericCommand):
             current = read_int_from_memory(current)
 
         if self.out:
-            if len(self.out) > get_terminal_size()[0]:
+            if len(self.out) > GefUtil.get_terminal_size()[0]:
                 gef_print("\n".join(self.out), less=not args.no_pager)
             else:
                 gef_print("\n".join(self.out), less=False)
@@ -58575,7 +58558,7 @@ class KernelTimerCommand(GenericCommand):
         self.dump_hrtimer()
 
         if self.out:
-            if len(self.out) > get_terminal_size()[0]:
+            if len(self.out) > GefUtil.get_terminal_size()[0]:
                 gef_print("\n".join(self.out), less=not args.no_pager)
             else:
                 gef_print("\n".join(self.out), less=False)
@@ -59062,7 +59045,7 @@ class KernelPciDeviceCommand(GenericCommand):
         self.dump_pci()
 
         if self.out:
-            if len(self.out) > get_terminal_size()[0]:
+            if len(self.out) > GefUtil.get_terminal_size()[0]:
                 gef_print("\n".join(self.out), less=not args.no_pager)
             else:
                 gef_print("\n".join(self.out), less=False)
@@ -60311,7 +60294,7 @@ class TlsCommand(GenericCommand):
         self.out.extend(r.rstrip().splitlines())
 
         if self.out:
-            if len(self.out) > get_terminal_size()[0]:
+            if len(self.out) > GefUtil.get_terminal_size()[0]:
                 gef_print("\n".join(self.out), less=not args.no_pager)
             else:
                 gef_print("\n".join(self.out), less=False)
@@ -66551,7 +66534,7 @@ class KernelPipeCommand(GenericCommand):
 
         # print
         if self.out:
-            if len(self.out) > get_terminal_size()[0]:
+            if len(self.out) > GefUtil.get_terminal_size()[0]:
                 gef_print("\n".join(self.out), less=not args.no_pager)
             else:
                 gef_print("\n".join(self.out), less=False)
@@ -67043,7 +67026,7 @@ class KernelBpfCommand(GenericCommand):
 
         # print
         if self.out:
-            if len(self.out) > get_terminal_size()[0]:
+            if len(self.out) > GefUtil.get_terminal_size()[0]:
                 gef_print("\n".join(self.out), less=not args.no_pager)
             else:
                 gef_print("\n".join(self.out), less=False)
@@ -67503,7 +67486,7 @@ class KernelIpcsCommand(GenericCommand):
             self.dump_ipc_shm_ids(ipc_ns + self.offset_ids + self.sizeof_ipc_ids * 2)
 
         if self.out:
-            if len(self.out) > get_terminal_size()[0]:
+            if len(self.out) > GefUtil.get_terminal_size()[0]:
                 gef_print("\n".join(self.out), less=not args.no_pager)
             else:
                 gef_print("\n".join(self.out), less=False)
@@ -67718,7 +67701,7 @@ class KernelDeviceIOCommand(GenericCommand):
 
         # print
         if self.out:
-            if len(self.out) > get_terminal_size()[0]:
+            if len(self.out) > GefUtil.get_terminal_size()[0]:
                 gef_print("\n".join(self.out), less=not args.no_pager)
             else:
                 gef_print("\n".join(self.out), less=False)
@@ -68046,7 +68029,7 @@ class KernelDmaBufCommand(GenericCommand):
         self.dump_db_list()
 
         if self.out:
-            if len(self.out) > get_terminal_size()[0]:
+            if len(self.out) > GefUtil.get_terminal_size()[0]:
                 gef_print("\n".join(self.out), less=not args.no_pager)
             else:
                 gef_print("\n".join(self.out), less=False)
@@ -68482,7 +68465,7 @@ class KernelIrqCommand(GenericCommand):
         self.dump_irq(args.verbose)
 
         if self.out:
-            if len(self.out) > get_terminal_size()[0]:
+            if len(self.out) > GefUtil.get_terminal_size()[0]:
                 gef_print("\n".join(self.out), less=not args.no_pager)
             else:
                 gef_print("\n".join(self.out), less=False)
@@ -68635,7 +68618,7 @@ class KernelNetDeviceCommand(GenericCommand):
         self.dump_net()
 
         if self.out:
-            if len(self.out) > get_terminal_size()[0]:
+            if len(self.out) > GefUtil.get_terminal_size()[0]:
                 gef_print("\n".join(self.out), less=not args.no_pager)
             else:
                 gef_print("\n".join(self.out), less=False)
@@ -70069,7 +70052,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         self.print_kallsyms(args.keyword, args.type)
 
         if self.out:
-            if len(self.out) > get_terminal_size()[0]:
+            if len(self.out) > GefUtil.get_terminal_size()[0]:
                 gef_print("\n".join(self.out), less=not args.no_pager)
             else:
                 gef_print("\n".join(self.out), less=False)
@@ -73722,7 +73705,7 @@ class XColoredCommand(GenericCommand):
                 color_func = self.color[:args.color_num][0]
             out.append(color_func(line))
 
-        if len(out) > get_terminal_size()[0]:
+        if len(out) > GefUtil.get_terminal_size()[0]:
             gef_print("\n".join(out), less=not args.no_pager)
         else:
             gef_print("\n".join(out), less=False)
@@ -85098,7 +85081,7 @@ class PeekPointersCommand(GenericCommand):
                 except gdb.MemoryError:
                     pass
 
-        if len(out) > get_terminal_size()[0]:
+        if len(out) > GefUtil.get_terminal_size()[0]:
             gef_print("\n".join(out), less=not args.no_pager)
         else:
             gef_print("\n".join(out), less=False)
@@ -86715,6 +86698,14 @@ class AliasesListCommand(AliasesCommand):
 
 
 class GefUtil:
+    @staticmethod
+    @Cache.cache_until_next
+    def cached_lookup_type(_type):
+        try:
+            return gdb.lookup_type(_type).strip_typedefs()
+        except RuntimeError:
+            return None
+
     __gef_convenience_vars_index__  = 0 # $_gef1, $_gef2, ...
 
     @staticmethod
@@ -86729,12 +86720,24 @@ class GefUtil:
         pass
 
     @staticmethod
+    def get_terminal_size():
+        """Return the current terminal size."""
+        TIOCGWINSZ = 0x5413
+        try:
+            tty_rows, tty_columns = struct.unpack("hh", fcntl.ioctl(1, TIOCGWINSZ, "1234"))
+            return tty_rows, tty_columns
+        except OSError:
+            return 600, 100
+
+    @staticmethod
     def get_source(function):
+        """Return the source of function."""
         import inspect
         s = inspect.getsource(function)
         return s.rstrip()
 
     @staticmethod
+    @Cache.cache_this_session
     def log2(x):
         import math
         return int(math.log2(x))
@@ -86807,7 +86810,6 @@ class Gef:
         else:
             open(skip_config, "w").close()
         return
-
 
     @staticmethod
     def main():
