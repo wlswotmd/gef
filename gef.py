@@ -51840,6 +51840,28 @@ class Kernel:
             return ret
         return Color.remove_color(ret)
 
+    @staticmethod
+    @Cache.cache_until_next
+    def p2v(paddr): # return list
+        ret = gdb.execute("p2v {:#x}".format(paddr), to_string=True)
+        return [int(x, 16) for x in re.findall(r"Phys: \S+ -> Virt: (\S+)", ret)]
+
+    @staticmethod
+    @Cache.cache_until_next
+    def v2p(vaddr):
+        # v2p is slow since it needs maps parsing for each time.
+        # more faster using gva2gpa if available.
+        ret = gdb.execute("monitor gva2gpa {:#x}".format(vaddr), to_string=True)
+        r = re.search(r"gpa: (0x\S+)", ret)
+        if r:
+            return int(r.group(1), 16)
+
+        ret = gdb.execute("v2p {:#x}".format(vaddr), to_string=True)
+        r = re.search(r"Virt: 0x\S+ -> Phys: (0x\S+)", ret)
+        if r:
+            return int(r.group(1), 16)
+        return None
+
 
 @register_command
 class KernelbaseCommand(GenericCommand):
@@ -65893,7 +65915,7 @@ class BuddyDumpCommand(GenericCommand):
                 virt = self.page2virt_wrapper(page)
                 phys = None
                 if virt:
-                    phys = PageMap.p2v(virt, self.maps)
+                    phys = PageMap.v2p_from_map(virt, self.maps)
                 if virt is not None:
                     virt_str = "{:#0{:d}x}-{:#0{:d}x}".format(virt, align, virt + size, align)
                     virt_str = Color.colorify(virt_str, heap_page_color)
@@ -65956,7 +65978,7 @@ class BuddyDumpCommand(GenericCommand):
                 virt = self.page2virt_wrapper(page)
                 phys = None
                 if virt:
-                    phys = PageMap.p2v(virt, self.maps)
+                    phys = PageMap.v2p_from_map(virt, self.maps)
                 if virt is not None:
                     virt_str = "{:#0{:d}x}-{:#0{:d}x}".format(virt, align, virt + size, align)
                     virt_str = Color.colorify(virt_str, heap_page_color)
@@ -66083,7 +66105,7 @@ class BuddyDumpCommand(GenericCommand):
                     # first entry
                     virt = self.page2virt_wrapper(page)
                     if virt is not None:
-                        phys = PageMap.p2v(virt, self.maps)
+                        phys = PageMap.v2p_from_map(virt, self.maps)
                         if phys is not None:
                             out.append("    used:{:{:d}s}  size:{:#08x}".format("", align, phys))
                     out.append(msg)
@@ -67920,10 +67942,8 @@ class KernelDmaBufCommand(GenericCommand):
 
             virt_str = "???"
             if phys:
-                ret = gdb.execute("p2v {:#x}".format(phys), to_string=True)
-                r = re.findall(r"Phys: \S+ -> Virt: (\S+)", ret)
+                r = Kernel.p2v(phys)
                 if r:
-                    r = [int(x, 16) for x in r]
                     r = [hex(x) for x in r if AddressUtil.is_msb_on(x)]
                     virt_str = ",".join(r)
 
@@ -76168,7 +76188,7 @@ class PageMap:
         return maps
 
     @staticmethod
-    def v2p(address, maps):
+    def v2p_from_map(address, maps):
         for vstart, vend, pstart, _pend in maps:
             if vstart <= address < vend:
                 offset = address - vstart
@@ -76177,7 +76197,7 @@ class PageMap:
         return None
 
     @staticmethod
-    def p2v(address, maps):
+    def p2v_from_map(address, maps): # return list
         vaddrs = []
         for vstart, _vend, pstart, pend in maps:
             if pstart <= address < pend:
@@ -76223,7 +76243,7 @@ class Virt2PhysCommand(GenericCommand):
         maps = PageMap.get_page_maps(FORCE_PREFIX_S, args.verbose)
         if maps is None:
             return
-        paddr = PageMap.v2p(args.address, maps)
+        paddr = PageMap.v2p_from_map(args.address, maps)
         if paddr is not None:
             gef_print("Virt: {:#x} -> Phys: {:#x}".format(args.address, paddr))
         return
@@ -76266,7 +76286,7 @@ class Phys2VirtCommand(GenericCommand):
         if maps is None:
             return
 
-        vaddrs = PageMap.p2v(args.address, maps)
+        vaddrs = PageMap.p2v_from_map(args.address, maps)
 
         if args.verbose:
             loop_max = len(vaddrs)
@@ -80652,7 +80672,7 @@ class PagewalkWithHintsCommand(GenericCommand):
 
             device_name = "device ({:s})".format(m.group(3))
 
-            vaddrs = PageMap.p2v(paddr, maps)
+            vaddrs = PageMap.p2v_from_map(paddr, maps)
             for vaddr in vaddrs:
                 self.insert_region(vaddr, size, device_name)
         return
@@ -80797,19 +80817,6 @@ class PageCommand(GenericCommand):
         super().__init__()
         self.initialized = False
         return
-
-    def v2p_fast(self, vaddr):
-        # v2p is slow since it needs maps parsing for each time.
-        # more faster using gva2gpa if available.
-        ret = gdb.execute("monitor gva2gpa {:#x}".format(vaddr), to_string=True)
-        r = re.search(r"gpa: (0x\S+)", ret)
-        if not r:
-            ret = gdb.execute("v2p {:#x}".format(vaddr), to_string=True)
-            r = re.search(r"Virt: 0x\S+ -> Phys: (0x\S+)", ret)
-        if not r:
-            return None
-        paddr = int(r.group(1), 16)
-        return paddr
 
     def get_page_virt_pair(self):
         allocator = KernelChecksecCommand.get_slab_type()
@@ -81205,7 +81212,7 @@ class PageCommand(GenericCommand):
                 return
 
             # Get the physical addresses pointed to by those virtual addresses.
-            paddr = self.v2p_fast(vaddr)
+            paddr = Kernel.v2p(vaddr)
             if not paddr:
                 err("Failed to resolve")
                 return
@@ -81230,15 +81237,13 @@ class PageCommand(GenericCommand):
                 warn("The address must be 0x1000 aligned, round down and then calculate.")
                 paddr = args.address & gef_getpagesize_mask_high()
 
-            ret = gdb.execute("p2v {:#x}".format(paddr), to_string=True)
-            r = re.findall(r"Phys: 0x\S+ -> Virt: (0x\S+)", ret)
+            r = Kernel.p2v(paddr)
             if not r:
                 err("Failed to resolve")
                 return
 
             for vaddr in r:
                 # A virtual address is always associated with one page.
-                vaddr = int(vaddr, 16)
                 page = self.virt2page(vaddr)
                 if page is None:
                     err("Failed to resolve")
