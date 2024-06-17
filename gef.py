@@ -28374,40 +28374,17 @@ class DereferenceCommand(GenericCommand):
             line += Color.colorify(extra_str, registers_color)
         return line
 
-    def get_slab_contains(self, addr, allow_unaligned):
-        if addr in self.slab_contains_cache:
-            return self.slab_contains_cache[addr]
-
-        val = read_int_from_memory(addr)
-        if is_valid_addr(val):
-            ret = gdb.execute("slab-contains --quiet {:#x}".format(val), to_string=True).strip()
-            if allow_unaligned:
-                if not ret:
-                    ret = None
-                else:
-                    ret = "  {:#x}: {:s}".format(val, ret)
-            else:
-                if not ret or "unaligned?" in ret:
-                    ret = None
-                else:
-                    ret = "  {:#x}: {:s}".format(val, ret)
-        else:
-            ret = None
-        self.slab_contains_cache[addr] = ret
-        return ret
-
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        if args.location is None:
-            start_address = current_arch.sp
-        else:
-            start_address = args.location
-
         if args.slab_contains or args.slab_contains_unaligned or args.phys:
             if not (is_qemu_system() or is_kgdb() or is_vmware()):
                 err("Unsupported gdb mode")
                 return
+
+        if (args.slab_contains or args.slab_contains_unaligned) and args.phys:
+            err("Unsupported option pairs")
+            return
 
         if args.tag:
             tags_dict = {}
@@ -28426,6 +28403,11 @@ class DereferenceCommand(GenericCommand):
         else:
             _read_int_from_memory = read_int_from_memory
 
+        if args.location is None:
+            start_address = current_arch.sp
+        else:
+            start_address = args.location
+
         from_idx = args.nb_lines * self.repeat_count
         to_idx = args.nb_lines * (self.repeat_count + 1)
 
@@ -28439,13 +28421,13 @@ class DereferenceCommand(GenericCommand):
 
         # dereference line by line
         out = []
-        self.slab_contains_cache = {}
         seen = []
         for idx in range(from_idx, to_idx, step):
+            current_address = start_address + idx * current_arch.ptrsize
             try:
                 # uniq filtering
                 if args.uniq:
-                    v = _read_int_from_memory(start_address + idx * current_arch.ptrsize)
+                    v = _read_int_from_memory(current_address)
                     if v in seen:
                         if out == [] or out[-1] != "*":
                             out.append("*")
@@ -28454,13 +28436,13 @@ class DereferenceCommand(GenericCommand):
 
                 # valid address filtering
                 if args.is_addr:
-                    v = _read_int_from_memory(start_address + idx * current_arch.ptrsize)
+                    v = _read_int_from_memory(current_address)
                     if not is_valid_addr(v):
                         continue
 
                 # invalid address filtering
                 if args.is_not_addr:
-                    v = _read_int_from_memory(start_address + idx * current_arch.ptrsize)
+                    v = _read_int_from_memory(current_address)
                     if is_valid_addr(v):
                         continue
 
@@ -28474,7 +28456,7 @@ class DereferenceCommand(GenericCommand):
                 # register info
                 regs_info = []
                 for regname, regvalue in DereferenceCommand.get_target_registers_value():
-                    if start_address + idx * current_arch.ptrsize == regvalue:
+                    if current_address == regvalue:
                         regs_info.append(regname)
                 regs_info_str = regs_info[0] if regs_info else ""
                 regs_info_ex = "+" if len(regs_info) > 1 else " "
@@ -28483,20 +28465,21 @@ class DereferenceCommand(GenericCommand):
                 out.append(line)
             except (RuntimeError, gdb.MemoryError):
                 # e.g.: nop DWORD PTR [rax+rax*1+0x0]
-                msg = "Cannot access memory at address {:#x}".format(start_address + idx * current_arch.ptrsize)
+                msg = "Cannot access memory at address {:#x}".format(current_address)
                 out.append("{} {}".format(Color.colorify("[!]", "bold red"), msg))
                 break
 
             # dump slab cache
             if args.slab_contains or args.slab_contains_unaligned:
-                line = self.get_slab_contains(start_address + idx * current_arch.ptrsize, args.slab_contains_unaligned)
-                if line:
-                    out.append(line)
+                v = read_int_from_memory(current_address)
+                ret = Kernel.get_slab_contains(v, args.slab_contains_unaligned)
+                if ret:
+                    out.append("  {:#x}: {:s}".format(v, ret))
 
             # link list
             if args.list_head:
                 # next
-                if is_double_link_list(start_address + idx * current_arch.ptrsize):
+                if is_double_link_list(current_address):
                     out.append(Color.colorify("  list_head.next", "bold magenta"))
                 # prev
                 if is_double_link_list(start_address + (idx - 1) * current_arch.ptrsize):
@@ -28504,7 +28487,7 @@ class DereferenceCommand(GenericCommand):
 
             # multiple level dump
             if args.depth - 1 > 0:
-                v = _read_int_from_memory(start_address + idx * current_arch.ptrsize)
+                v = _read_int_from_memory(current_address)
                 if v % current_arch.ptrsize == 0 and is_valid_addr(v):
                     cmd = "dereference --depth {:d} --no-pager {:#x} {:#x}".format(args.depth - 1, v, args.nb_lines)
                     ret = gdb.execute(cmd, to_string=True)
@@ -51842,6 +51825,18 @@ class Kernel:
             return int(res.split()[1], 16)
         except (gdb.error, IndexError, ValueError):
             return None
+
+    @staticmethod
+    @Cache.cache_until_next
+    def get_slab_contains(addr, allow_unaligned=False):
+        if not is_valid_addr(addr):
+            return None
+        ret = gdb.execute("slab-contains --quiet {:#x}".format(addr), to_string=True).strip()
+        if not ret:
+            return None
+        if not allow_unaligned and "(unaligned?)" in ret:
+            return None
+        return ret
 
 
 @register_command
