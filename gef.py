@@ -67930,8 +67930,9 @@ class KernelDmaBufCommand(GenericCommand):
             offset = u32(read_memory(sg + current_arch.ptrsize, 4))
             length = u32(read_memory(sg + current_arch.ptrsize + 4, 4))
 
-            fmt = "  page: {:#018x}  offset: {:#010x}  length: {:#010x}  phys: {:18s}  virt: {:s}"
-            self.out.append(fmt.format(page, offset, length, phys_str, virt_str))
+            self.out.append("  page: {:#018x}  offset: {:#010x}  length: {:#010x}  phys: {:18s}  virt: {:s}".format(
+                page, offset, length, phys_str, virt_str,
+            ))
 
             # check if end
             if page_link & 2: # SG_END:
