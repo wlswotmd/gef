@@ -130,12 +130,6 @@ I also list the tools I used in my Ubuntu 24.04 environment.
         * `export CFLAGS="-Wno-error=enum-int-mismatch"`
         * `./configure --target-list=arc-linux-user && make && cp build/qemu-arc /usr/local/bin`
     * gdb: build from latest. See [docs/FAQ](https://github.com/bata24/gef/blob/dev/docs/FAQ.md#gdb-will-not-load-gef).
-
-
-# Architectures under re-reviewing
-It works at Ubuntu 23.10, so GEF supports them.
-However currently the build fails or crashes when executed at Ubuntu 24.04, so it is unable to confirm whether it works correctly.
-
 * arc32 (HS58; ARCv3)
     * toolchain: [arc_gnu_2023.09_prebuilt_arc32_uclibc_linux_install.tar.bz2](https://github.com/foss-for-synopsys-dwc-arc-processors/toolchain/releases/download/arc-2023.09-release/arc_gnu_2023.09_prebuilt_arc32_uclibc_linux_install.tar.bz2)
     * qemu: https://github.com/foss-for-synopsys-dwc-arc-processors/qemu
@@ -143,10 +137,9 @@ However currently the build fails or crashes when executed at Ubuntu 24.04, so i
         * `export CFLAGS="-Wno-error=enum-int-mismatch"`
         * `./configure --target-list=arc-linux-user && make && cp build/qemu-arc /usr/local/bin`
         * It needs `-cpu` option like `qemu-arc -cpu hs5x -g 1234 ./a.out`.
-    * gdb: [arc-2023.09-release.tar.gz](https://github.com/foss-for-synopsys-dwc-arc-processors/binutils-gdb/archive/refs/tags/arc-2023.09-release.tar.gz)
+    * gdb: https://github.com/foss-for-synopsys-dwc-arc-processors/binutils-gdb
+        * `git switch arc64`
         * `./configure --disable-{binutils,ld,gold,gas,sim,gprof,gprofng} --target=arc64-snps-linux-gnu --with-python=/usr/bin/python3 && make && cp gdb/gdb /usr/local/bin/gdb-arc`
-        * In the `2023.12` version, `arc64:32` and `arc64:64` architectures are no longer possible. So use the `2023.09` version.
-        * I don't know the cause, but it crashes on Ubuntu 24.04 when it calls `gdb.parse_and_eval()`.
 * arc64 (HS68; ARCv3)
     * toolchain: [arc_gnu_2023.09_prebuilt_arc64_glibc_linux_install.tar.bz2](https://github.com/foss-for-synopsys-dwc-arc-processors/toolchain/releases/download/arc-2023.09-release/arc_gnu_2023.09_prebuilt_arc64_glibc_linux_install.tar.bz2)
     * qemu: https://github.com/foss-for-synopsys-dwc-arc-processors/qemu
@@ -154,21 +147,19 @@ However currently the build fails or crashes when executed at Ubuntu 24.04, so i
         * `export CFLAGS="-Wno-error=enum-int-mismatch"`
         * `./configure --target-list=arc64-linux-user && make && cp build/qemu-arc64 /usr/local/bin`
         * It needs `-cpu` option like `qemu-arc64 -cpu hs6x -g 1234 ./a.out`.
-    * gdb: [arc-2023.09-release.tar.gz](https://github.com/foss-for-synopsys-dwc-arc-processors/binutils-gdb/archive/refs/tags/arc-2023.09-release.tar.gz)
+    * gdb: https://github.com/foss-for-synopsys-dwc-arc-processors/binutils-gdb
+        * `git switch arc64`
         * `./configure --disable-{binutils,ld,gold,gas,sim,gprof,gprofng} --target=arc64-snps-linux-gnu --with-python=/usr/bin/python3 && make && cp gdb/gdb /usr/local/bin/gdb-arc`
-        * In the `2023.12` version, `arc64:32` and `arc64:64` architectures are no longer possible. So use the `2023.09` version.
-        * I don't know the cause, but it crashes on Ubuntu 24.04 when it calls `gdb.parse_and_eval()`.
 * csky
     * toolchain: https://github.com/c-sky/toolchain-build
         * `apt -y install autoconf automake autotools-dev curl python3 libmpc-dev libmpfr-dev libgmp-dev gawk build-essential bison flex texinfo gperf libtool patchutils bc zlib1g-dev libexpat-dev`
         * `git submodule update --init && ./build-csky-gcc.py csky-gcc --src ./ --triple csky-unknown-linux-gnu --disable-gdb`
-        * The build will fail midway.
-    * qemu: https://github.com/T-head-Semi/qemu
+    * qemu: https://github.com/XUANTIE-RV/qemu
         * `export CXXFLAGS="-Wno-error"`
         * `export CFLAGS="-Wno-error"`
+        * `git switch xuantie-qemu-6.1.0`
         * `./configure --target-list=cskyv1-linux-user,cskyv1eb-linux-user,cskyv2-linux-user,cskyv2eb-linux-user --disable-bpf && make && cp build/qemu-cskyv{1,2}{,eb} /usr/local/bin`
         * It needs `-cpu` option like `qemu-cskyv2 -cpu ck810 -g 1234 ./a.out`.
-        * When the binary is executed, an assertion error is occurred.
     * gdb: build from latest. See [docs/FAQ](https://github.com/bata24/gef/blob/dev/docs/FAQ.md#gdb-will-not-load-gef).
 
 
@@ -188,7 +179,7 @@ If you find it, please let me know in the issue page.
 * tilegx:
     * [x] toolchain: https://ftp.riken.jp/Linux/kernel.org/tools/crosstool/files/bin/x86_64/7.3.0/
     * [x] lib: http://www.voidrouter.net/archives/211
-    * [ ] qemu: https://gist.github.com/bata24/3cad590158911de318c1baf898f49626
+    * [ ] qemu: https://github.com/qemu/qemu/releases/tag/v5.2.0
         * the breakpoint is broken.
     * [x] gdb: build from latest. See [docs/FAQ](https://github.com/bata24/gef/blob/dev/docs/FAQ.md#gdb-will-not-load-gef).
 * s390
@@ -208,8 +199,11 @@ If you find it, please let me know in the issue page.
 * e2k
     * [ ] toolchain: not found.
     * [x] qemu: https://github.com/OpenE2K/qemu-e2k
-        * `./configure --target-list=e2k-linux-user && make`
-    * [ ] gdb: not found.
+        * `./configure --target-list=e2k-linux-user --disable-werror && make && cp build/qemu-e2k /usr/local/bin`
+    * [ ] gdb: https://github.com/OpenE2K/binutils-gdb
+        * `git switch gdb-9.1-mcst`
+        * `mkdir build && cd build && ../configure --disable-{binutils,ld,gold,gas,sim,gprof,gprofng,nls,bpf} --target=e2k-linux-gnu --with-python=/usr/bin/python3 && make`
+        * Crash when it executes. It seems that binding python3 failed.
 * nds32
     * [x] toolchain: https://github.com/VincentZWC/prebuilt-nds32-v3f-toolchain
     * [ ] qemu: not found.

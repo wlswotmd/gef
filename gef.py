@@ -14329,8 +14329,8 @@ class HighlightAddCommand(GenericCommand):
     _aliases_ = ["highlight set"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("match", metavar="MATCH", help="the keyword phrase you want to highlight.")
-    parser.add_argument("color", metavar="COLOR", nargs="+", help="the color you want use to highlight.")
+    parser.add_argument("match", metavar="MATCH", help="the keyword phrase to highlight.")
+    parser.add_argument("color", metavar="COLOR", nargs="+", help="the color used to highlight.")
     _syntax_ = parser.format_help()
 
     _example_ = '{:s} "call   rcx" bold yellow'.format(_cmdline_)
@@ -14352,7 +14352,7 @@ class HighlightRemoveCommand(GenericCommand):
     _aliases_ = ["highlight del", "highlight unset", "highlight rm"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("match", metavar="MATCH", help="the keyword phrase you want to remove from highlight.")
+    parser.add_argument("match", metavar="MATCH", help="the keyword phrase to remove from highlight.")
     _syntax_ = parser.format_help()
 
     _example_ = '{:s} "call   rcx"'.format(_cmdline_)
@@ -14833,7 +14833,7 @@ class BreakRelativeVirtualAddressCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("offset", metavar="OFFSET", type=AddressUtil.parse_address,
-                        help="the offset from codebase you want to set a breakpoint.")
+                        help="the offset from codebase to set a breakpoint.")
     _syntax_ = parser.format_help()
 
     delayed_breakpoints = set()
@@ -14883,7 +14883,7 @@ class PrintFormatCommand(GenericCommand):
     parser.add_argument("-l", dest="length", type=AddressUtil.parse_address, default=256,
                         help="the length of array. (default: %(default)s)")
     parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
-                        help="the address of data you want to dump.")
+                        help="the address of data to dump.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} -f py -b 8 -l 256 $rsp".format(_cmdline_)
@@ -16561,7 +16561,7 @@ class HijackFdCommand(GenericCommand):
     _category_ = "01-g. Debugging Support - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("old_fd", metavar="OLD_FD", type=int, help="file descriptor number you want to redirect.")
+    parser.add_argument("old_fd", metavar="OLD_FD", type=int, help="file descriptor number to redirect.")
     parser.add_argument("new_output", metavar="NEW_OUTPUT", type=str, help="the location redirected data is stored.")
     parser.add_argument("--fd-adjust-connect", type=int, default=0,
                         help="use when syscall return value and the actually opened FD do not match (for qemu-user).")
@@ -17122,7 +17122,7 @@ class PtrDemangleCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("value", metavar="VALUE", nargs="?", type=lambda x: int(x, 0),
-                       help="the value you want to demangle.")
+                       help="the value to demangle.")
     group.add_argument("--source", action="store_true",
                        help="shows the source instead of displaying demangled value.")
     _syntax_ = parser.format_help()
@@ -17203,7 +17203,7 @@ class PtrMangleCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("value", metavar="VALUE", nargs="?", type=lambda x: int(x, 0),
-                       help="the value you want to mangle.")
+                       help="the value to mangle.")
     group.add_argument("--source", action="store_true",
                        help="shows the source instead of displaying mangled value.")
     _syntax_ = parser.format_help()
@@ -17473,7 +17473,7 @@ class EditFlagsCommand(GenericCommand):
     _category_ = "04-b. Register - Modify"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("flagname", metavar="[FLAGNAME(+|-|~) ...]", nargs="*", help="the flag name you want to edit.")
+    parser.add_argument("flagname", metavar="[FLAGNAME(+|-|~) ...]", nargs="*", help="the flag name to edit.")
     parser.add_argument("-v", "--verbose", action="store_true", help="show the bit information of the flag register.")
     _syntax_ = parser.format_help()
 
@@ -17760,7 +17760,7 @@ class MprotectCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
-                        help="the address you want to change the permission.")
+                        help="the address to change the permission.")
     parser.add_argument("permission", metavar="PERMISSION", nargs="?", default="rwx",
                         help="the permission you set to the LOCATION. (default: %(default)s)")
     parser.add_argument("--patch-only", action="store_true", help="do not execute after patch.")
@@ -17985,11 +17985,11 @@ class MmapMemoryCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address, default=0,
-                        help="the address you want to allocate. (default: %(default)s)")
+                        help="the address to allocate. (default: %(default)s)")
     parser.add_argument("size", metavar="SIZE", nargs="?", type=AddressUtil.parse_address, default=gef_getpagesize(),
-                        help="the size you want to allocate. (default: %(default)s)")
+                        help="the size to allocate. (default: %(default)s)")
     parser.add_argument("permission", metavar="PERMISSION", nargs="?", default="rwx",
-                        help="the permission you want to allocate. `_` is interpreted as `-`. (default: %(default)s)")
+                        help="the permission to allocate. `_` is interpreted as `-`. (default: %(default)s)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0x10000 0x1000 r-x\n".format(_cmdline_)
@@ -18069,7 +18069,7 @@ class ReadSystemRegisterCommand(GenericCommand):
     _category_ = "04-a. Register - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("reg_name", metavar="REGISTER_NAME", help="register name you want to read a value.")
+    parser.add_argument("reg_name", metavar="REGISTER_NAME", help="register name to read a value.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} TTBR0".format(_cmdline_)
@@ -19267,9 +19267,9 @@ class CapstoneDisassembleCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
-                        help="the address you want to disassemble. (default: current_arch.pc)")
+                        help="the address to disassemble. (default: current_arch.pc)")
     parser.add_argument("-l", "--length", type=AddressUtil.parse_address,
-                        help="the length you want to disassemble. (default: context.nb_lines_code)")
+                        help="the length to disassemble. (default: context.nb_lines_code)")
     parser.add_argument("args", metavar="ARGS", nargs="*", help="arguments for capstone. see following example.")
     _syntax_ = parser.format_help()
 
@@ -19368,7 +19368,7 @@ class GlibcHeapTopCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-a", "--arena-addr", type=AddressUtil.parse_address,
-                        help="the address or number you want to interpret as an arena. (default: main_arena)")
+                        help="the address or number to interpret as an arena. (default: main_arena)")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -19451,7 +19451,7 @@ class GlibcHeapArenaCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-a", "--arena-addr", type=AddressUtil.parse_address,
-                        help="the address or number you want to interpret as an arena. (default: main_arena)")
+                        help="the address or number to interpret as an arena. (default: main_arena)")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
@@ -19617,9 +19617,9 @@ class GlibcHeapChunkCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
-                        help="the address you want to interpret as a chunk.")
+                        help="the address to interpret as a chunk.")
     parser.add_argument("-a", "--arena-addr", type=AddressUtil.parse_address,
-                        help="the address or number you want to interpret as an arena. (default: main_arena)")
+                        help="the address or number to interpret as an arena. (default: main_arena)")
     parser.add_argument("-b", "--as-base", action="store_true",
                         help="use LOCATION as chunk base address (chunk_base_address = chunk_address - ptrsize * 2).")
     _syntax_ = parser.format_help()
@@ -19684,7 +19684,7 @@ class GlibcHeapChunksCommand(GenericCommand):
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
                         help="the address interpreted as the beginning of a contiguous chunk. (default: arena.heap_base)")
     parser.add_argument("-a", "--arena-addr", type=AddressUtil.parse_address,
-                        help="the address or number you want to interpret as an arena. (default: main_arena)")
+                        help="the address or number to interpret as an arena. (default: main_arena)")
     parser.add_argument("-b", "--nb-byte", type=lambda x: int(x, 0),
                         help="temporarily override `heap_chunks.peek_nb_byte`.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
@@ -19815,7 +19815,7 @@ class GlibcHeapBinsCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-a", "--arena-addr", type=AddressUtil.parse_address,
-                        help="the address or number you want to interpret as an arena. (default: main_arena)")
+                        help="the address or number to interpret as an arena. (default: main_arena)")
     parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
@@ -19958,7 +19958,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-a", "--arena-addr", type=AddressUtil.parse_address,
-                        help="the address or number you want to interpret as an arena. (default: main_arena)")
+                        help="the address or number to interpret as an arena. (default: main_arena)")
     parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
@@ -20074,7 +20074,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-a", "--arena-addr", type=AddressUtil.parse_address,
-                        help="the address or number you want to interpret as an arena. (default: main_arena)")
+                        help="the address or number to interpret as an arena. (default: main_arena)")
     parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
@@ -20187,7 +20187,7 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-a", "--arena-addr", type=AddressUtil.parse_address,
-                        help="the address or number you want to interpret as an arena. (default: main_arena)")
+                        help="the address or number to interpret as an arena. (default: main_arena)")
     parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
@@ -20238,7 +20238,7 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-a", "--arena-addr", type=AddressUtil.parse_address,
-                        help="the address or number you want to interpret as an arena. (default: main_arena)")
+                        help="the address or number to interpret as an arena. (default: main_arena)")
     parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
@@ -20295,7 +20295,7 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-a", "--arena_addr", type=AddressUtil.parse_address,
-                        help="the address or number you want to interpret as an arena. (default: main_arena)")
+                        help="the address or number to interpret as an arena. (default: main_arena)")
     parser.add_argument("-v", "--verbose", action="store_true", help="display empty bins.")
     parser.add_argument("--all", action="store_true", help="dump all arenas.")
     _syntax_ = parser.format_help()
@@ -20713,7 +20713,7 @@ class AssembleCommand(GenericCommand):
     parser.add_argument("-l", dest="overwrite_location", metavar="LOCATION",
                         type=AddressUtil.parse_address, help="write to memory address.")
     parser.add_argument("-H", "--hex", action="store_true", help="show in hex style.")
-    parser.add_argument("instruction", metavar="INSTRUCTION", nargs="+", help="the code you want to assemble")
+    parser.add_argument("instruction", metavar="INSTRUCTION", nargs="+", help="the code to assemble.")
     _syntax_ = parser.format_help()
 
     _example_ = '{:s} -a X86 -m 64 "mov rax, qword ptr [rax] ; inc rax ;"\n'.format(_cmdline_)
@@ -20820,7 +20820,7 @@ class DisassembleCommand(GenericCommand):
     parser.add_argument("-a", dest="arch", help="specify the architecture. (default: current_arch.arch)")
     parser.add_argument("-m", dest="mode", help="specify the mode. (default: current_arch.mode)")
     parser.add_argument("-e", dest="big_endian", action="store_true", help="use big-endian.")
-    parser.add_argument("hex_code", metavar="HEX_CODE", nargs="+", help="the hex code you want to disassemble")
+    parser.add_argument("hex_code", metavar="HEX_CODE", nargs="+", help="the hex code to disassemble.")
     _syntax_ = parser.format_help()
 
     _example_ = '{:s} -a X86 -m 64 "488b00 48ffc0"\n'.format(_cmdline_)
@@ -21355,9 +21355,9 @@ class ElfInfoCommand(GenericCommand):
     parser.add_argument("-e", "--use-readelf", action="store_true", help="use readelf.")
     parser.add_argument("-r", "--remote", action="store_true",
                         help="parse remote binary if download feature is available.")
-    parser.add_argument("-f", "--file", help="the file path you want to parse.")
+    parser.add_argument("-f", "--file", help="the file path to parse.")
     parser.add_argument("-a", "--address", type=AddressUtil.parse_address,
-                        help="the memory address you want to parse.")
+                        help="the memory address to parse.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="dump the content of each section.")
     _syntax_ = parser.format_help()
@@ -21952,7 +21952,7 @@ class ChecksecCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-r", "--remote", action="store_true",
                         help="parse remote binary if download feature is available.")
-    parser.add_argument("-f", "--file", help="the file path you want to parse.")
+    parser.add_argument("-f", "--file", help="the file path to parse.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} -f /bin/ls\n".format(_cmdline_)
@@ -23450,7 +23450,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
     _category_ = "02-e. Process Information - Complex Structure Information"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-f", "--file", help="the file path you want to parse.")
+    parser.add_argument("-f", "--file", help="the file path to parse.")
     parser.add_argument("-r", "--remote", action="store_true",
                         help="parse remote binary if download feature is available.")
     parser.add_argument("-x", "--hexdump", action="store_true", help="with hexdump.")
@@ -25457,9 +25457,9 @@ class NamedBreakCommand(GenericCommand):
     _category_ = "01-b. Debugging Support - Breakpoint"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("name", metavar="NAME", help="the name you want to assign.")
+    parser.add_argument("name", metavar="NAME", help="the name to assign.")
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
-                        help="the address you want to set breakpoint. (default: current_arch.pc)")
+                        help="the address to set breakpoint. (default: current_arch.pc)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} main 0x4008a9".format(_cmdline_)
@@ -25499,7 +25499,7 @@ class CommandBreakCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
-                        help="the address you want to set breakpoint. (default: current_arch.pc)")
+                        help="the address to set breakpoint. (default: current_arch.pc)")
     parser.add_argument("command", metavar="COMMAND", type=str, help="the command executed if breakpoint is hit.")
     _syntax_ = parser.format_help()
 
@@ -25550,7 +25550,7 @@ class BreakIfTakenCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
-                        help="the address you want to set breakpoint.")
+                        help="the address to set breakpoint.")
     parser.add_argument("--hw", action="store_true", help="use hardware breakpoint.")
     _syntax_ = parser.format_help()
 
@@ -25569,7 +25569,7 @@ class BreakIfNotTakenCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
-                        help="the address you want to set breakpoint.")
+                        help="the address to set breakpoint.")
     parser.add_argument("--hw", action="store_true", help="use hardware breakpoint.")
     _syntax_ = parser.format_help()
 
@@ -27017,7 +27017,7 @@ class MemoryWatchCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address,
-                        help="the memory address you want to register for display in `context memory`.")
+                        help="the memory address to register for display in `context memory`.")
     parser.add_argument("count", metavar="COUNT", nargs="?", type=lambda x: int(x, 0), default=0x10,
                         help="the count of displayed units. (default: %(default)s)")
     parser.add_argument("unit", nargs="?", default="pointers",
@@ -27052,7 +27052,7 @@ class MemoryUnwatchCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address,
-                        help="the memory address you want to deregister for display in `context memory`.")
+                        help="the memory address to deregister for display in `context memory`.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} 0x603000\n".format(_cmdline_)
@@ -27130,7 +27130,7 @@ class HexdumpCommand(GenericCommand):
     parser.add_argument("format", choices=["byte", "word", "dword", "qword", "b", "w", "d", "q"], nargs="?", default="byte",
                         help="dump mode. It also works if you specify the first character. (default: %(default)s)")
     parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
-                        help="the memory address you want to dump.")
+                        help="the memory address to dump.")
     parser.add_argument("count", metavar="COUNT", nargs="?", type=lambda x: int(x, 0), default=0x100,
                         help="the count of displayed units. (default: %(default)s)")
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
@@ -27255,7 +27255,7 @@ class HexdumpFlexibleCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("format", metavar="FORMAT", help="dump format.")
     parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
-                        help="the memory address you want to dump.")
+                        help="the memory address to dump.")
     parser.add_argument("count", metavar="COUNT", nargs="?", type=lambda x: int(x, 0), default=1,
                         help="the count of displayed units. (default: %(default)s)")
     parser.add_argument("--phys", action="store_true",
@@ -27474,8 +27474,8 @@ class PatchQwordCommand(PatchCommand):
     parser.add_argument("--phys", action="store_true",
                         help="treat the address as physical memory (only qemu-system).")
     parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
-                        help="the memory address you want to patch.")
-    parser.add_argument("values", metavar="QWORD", nargs="*", help="the value you want to patch.")
+                        help="the memory address to patch.")
+    parser.add_argument("values", metavar="QWORD", nargs="*", help="the value to patch.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}    $rip 0x4142434445464748 # write `HGFEDCBA` to [rip]\n".format(_cmdline_)
@@ -27499,8 +27499,8 @@ class PatchDwordCommand(PatchCommand):
     parser.add_argument("--phys", action="store_true",
                         help="treat the address as physical memory (only qemu-system).")
     parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
-                        help="the memory address you want to patch.")
-    parser.add_argument("values", metavar="DWORD", nargs="*", help="the value you want to patch.")
+                        help="the memory address to patch.")
+    parser.add_argument("values", metavar="DWORD", nargs="*", help="the value to patch.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}    $rip 0x41424344 # write `DCBA` to [rip]\n".format(_cmdline_)
@@ -27524,8 +27524,8 @@ class PatchWordCommand(PatchCommand):
     parser.add_argument("--phys", action="store_true",
                         help="treat the address as physical memory (only qemu-system).")
     parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
-                        help="the memory address you want to patch.")
-    parser.add_argument("values", metavar="WORD", nargs="*", help="the value you want to patch.")
+                        help="the memory address to patch.")
+    parser.add_argument("values", metavar="WORD", nargs="*", help="the value to patch.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}    $rip 0x4142 # write `BA` to [rip]\n".format(_cmdline_)
@@ -27549,8 +27549,8 @@ class PatchByteCommand(PatchCommand):
     parser.add_argument("--phys", action="store_true",
                         help="treat the address as physical memory (only qemu-system).")
     parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
-                        help="the memory address you want to patch.")
-    parser.add_argument("values", metavar="BYTE", nargs="*", help="the value you want to patch.")
+                        help="the memory address to patch.")
+    parser.add_argument("values", metavar="BYTE", nargs="*", help="the value to patch.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}    $rip 0x41 0x41 0x41 0x41 0x41\n".format(_cmdline_)
@@ -27572,9 +27572,9 @@ class PatchStringCommand(PatchCommand):
     parser.add_argument("--phys", action="store_true",
                         help="treat the address as physical memory (only qemu-system).")
     parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
-                        help="the memory address you want to patch.")
+                        help="the memory address to patch.")
     parser.add_argument("vstr", metavar='"double backslash-escaped string"', type=lambda x: codecs.escape_decode(x)[0],
-                        help="the string you want to patch.")
+                        help="the string to patch.")
     parser.add_argument("length", metavar="LENGTH", nargs="?",
                         type=lambda x: int(x, 0), help="the length of repeat. (default: %(default)s)")
     _syntax_ = parser.format_help()
@@ -27625,9 +27625,9 @@ class PatchHexCommand(PatchCommand):
     parser.add_argument("--phys", action="store_true",
                         help="treat the address as physical memory (only qemu-system).")
     parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
-                        help="the memory address you want to patch.")
+                        help="the memory address to patch.")
     parser.add_argument("hstr", metavar='"hex-string"', type=lambda x: bytes.fromhex(x),
-                        help="the string you want to patch.")
+                        help="the string to patch.")
     parser.add_argument("length", metavar="LENGTH", nargs="?",
                         type=lambda x: int(x, 0), help="the length of repeat. (default: %(default)s)")
     _syntax_ = parser.format_help()
@@ -27679,7 +27679,7 @@ class PatchPatternCommand(PatchCommand):
     parser.add_argument("-c", "--charset", help="the charset of pattern. (default: abc..z)")
     parser.add_argument("-d", "--dry-run", action="store_true", help="only generates patterns.")
     parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
-                        help="the memory address you want to patch.")
+                        help="the memory address to patch.")
     parser.add_argument("length", metavar="LENGTH", type=lambda x: int(x, 0),
                         help="the length of repeat. (default: %(default)s)")
     _syntax_ = parser.format_help()
@@ -27729,7 +27729,7 @@ class PatchNopCommand(PatchCommand):
     parser.add_argument("--phys", action="store_true",
                         help="treat the address as physical memory (only qemu-system).")
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
-                        help="the memory address you want to patch. (default: current_arch.pc)")
+                        help="the memory address to patch. (default: current_arch.pc)")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("-b", dest="byte_length", type=lambda x: int(x, 0),
                        help="the patch length of byte (mutually exclusive with `-i`). (default: %(default)s)")
@@ -27832,7 +27832,7 @@ class PatchInfloopCommand(PatchCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
-                        help="the memory address you want to patch. (default: current_arch.pc)")
+                        help="the memory address to patch. (default: current_arch.pc)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $pc".format(_cmdline_)
@@ -27905,7 +27905,7 @@ class PatchTrapCommand(PatchCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
-                        help="the memory address you want to patch. (default: current_arch.pc)")
+                        help="the memory address to patch. (default: current_arch.pc)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $pc".format(_cmdline_)
@@ -27974,7 +27974,7 @@ class PatchRetCommand(PatchCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
-                        help="the memory address you want to patch. (default: current_arch.pc)")
+                        help="the memory address to patch. (default: current_arch.pc)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $pc".format(_cmdline_)
@@ -28043,7 +28043,7 @@ class PatchSyscallCommand(PatchCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--phys", action="store_true", help="treat the address as physical memory (only qemu-system).")
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
-                        help="the memory address you want to patch. (default: current_arch.pc)")
+                        help="the memory address to patch. (default: current_arch.pc)")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $pc".format(_cmdline_)
@@ -28150,7 +28150,7 @@ class PatchRevertCommand(PatchCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("revert_target", metavar="REVERT_TARGET_HISTORY", nargs="?", type=int,
-                        help="the history index number you want to revert.")
+                        help="the history index number to revert.")
     group.add_argument("--all", action="store_true", help="revert all patches")
     _syntax_ = parser.format_help()
 
@@ -28221,7 +28221,7 @@ class DereferenceCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
-                        help="the memory address you want to dump. (default: current_arch.sp)")
+                        help="the memory address to dump. (default: current_arch.sp)")
     parser.add_argument("nb_lines", metavar="NB_LINES", nargs="?", type=lambda x: int(x, 0), default=0x40,
                         help="the count of lines. (default: %(default)s)")
     parser.add_argument("-s", "--slab-contains", action="store_true", help="display slab_cache name if available.")
@@ -29135,11 +29135,11 @@ class XorMemoryDisplayCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
-                        help="the address of data you want to xor.")
+                        help="the address of data to xor.")
     parser.add_argument("size", metavar="SIZE", type=AddressUtil.parse_address,
-                        help="the size of data you want to xor.")
+                        help="the size of data to xor.")
     parser.add_argument("key", metavar="KEY", type=lambda x: bytes.fromhex(x),
-                        help="the data you want to xor as key.")
+                        help="the data to xor as key.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $sp 16 41414141".format(_cmdline_)
@@ -29179,11 +29179,11 @@ class XorMemoryPatchCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
-                        help="the address of data you want to xor.")
+                        help="the address of data to xor.")
     parser.add_argument("size", metavar="SIZE", type=AddressUtil.parse_address,
-                        help="the size of data you want to xor.")
+                        help="the size of data to xor.")
     parser.add_argument("key", metavar="KEY", type=lambda x: bytes.fromhex(x),
-                        help="the data you want to xor as key.")
+                        help="the data to xor as key.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $sp 16 41414141".format(_cmdline_)
@@ -29308,7 +29308,7 @@ class PatternSearchCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-c", "--charset", help="the charset of pattern. (default: abc..z)")
-    parser.add_argument("pattern", metavar="PATTERN", help="the pattern you want to offset search.")
+    parser.add_argument("pattern", metavar="PATTERN", help="the pattern to offset search.")
     parser.add_argument("size", metavar="SIZE", type=AddressUtil.parse_address, nargs="?",
                         help="the size of pattern. (default: 0x10000)")
     _syntax_ = parser.format_help()
@@ -29881,9 +29881,9 @@ class LinkMapCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group()
     group.add_argument("-e", dest="elf_address", type=AddressUtil.parse_address,
-                       help="the elf address you want to parse.")
+                       help="the elf address to parse.")
     group.add_argument("-l", dest="link_map_address", type=AddressUtil.parse_address,
-                       help="the link_map address you want to parse.")
+                       help="the link_map address to parse.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
@@ -30081,11 +30081,11 @@ class DynamicCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("-f", dest="filename", help="the filename you want to parse.")
+    group.add_argument("-f", dest="filename", help="the filename to parse.")
     group.add_argument("-e", dest="elf_address", type=AddressUtil.parse_address,
-                       help="the elf address you want to parse.")
+                       help="the elf address to parse.")
     group.add_argument("-d", dest="dynamic_address", type=AddressUtil.parse_address,
-                       help="the dynamic address you want to parse.")
+                       help="the dynamic address to parse.")
     parser.add_argument("--size", dest="dynamic_size", type=AddressUtil.parse_address,
                         help="use specified size of dynamic region.")
     _syntax_ = parser.format_help()
@@ -30386,7 +30386,7 @@ class DestructorDumpCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-r", "--remote", action="store_true",
                         help="parse remote binary if download feature is available.")
-    parser.add_argument("-f", "--file", help="the file path you want to parse.")
+    parser.add_argument("-f", "--file", help="the file path to parse.")
     parser.add_argument("--tdl", type=AddressUtil.parse_address,
                         help="specify the offset of `tls_dtor_list` from TLS base.")
     _syntax_ = parser.format_help()
@@ -31073,9 +31073,9 @@ class GotCommand(GenericCommand):
     _aliases_ = ["plt"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-f", "--file", help="the filename you want to parse.")
+    parser.add_argument("-f", "--file", help="the filename to parse.")
     parser.add_argument("-e", "--elf-address", type=AddressUtil.parse_address,
-                        help="the elf address you want to parse.")
+                        help="the elf address to parse.")
     parser.add_argument("-r", "--remote", action="store_true",
                         help="parse remote binary if download feature is available.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
@@ -32048,7 +32048,7 @@ class UafWatchpoint(gdb.Breakpoint):
 
 @register_command
 class HeapAnalysisCommand(GenericCommand):
-    """Trace malloc/free to check heap integrity for NULL free, Use-after-Free, Double Free, Heap overlap."""
+    """Trace malloc/free to check heap integrity for Use-after-Free, Double Free, Heap overlap."""
     _cmdline_ = "heap-analysis-helper"
     _category_ = "06-a. Heap - Glibc"
 
@@ -32167,7 +32167,7 @@ class SyscallSearchCommand(GenericCommand):
     parser.add_argument("-a", dest="arch", help="specify the architecture. (default: current_arch.arch)")
     parser.add_argument("-m", dest="mode", help="specify the mode. (default: current_arch.mode)")
     parser.add_argument("search_pattern", metavar="SYSCALL_NAME|SYSCALL_NUM",
-                        help="syscall name or number you want to search. Regex is available.")
+                        help="syscall name or number to search. Regex is available.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="display prototype of syscall.")
     _syntax_ = parser.format_help()
@@ -45342,7 +45342,6 @@ def get_syscall_table(arch=None, mode=None):
     return Syscall.make_syscall_table(arch, mode)
 
 
-
 @register_command
 class SyscallArgsCommand(GenericCommand):
     """Get the syscall name and arguments based on the register values in the current state."""
@@ -46312,7 +46311,7 @@ class MmxSetCommand(GenericCommand):
     _category_ = "04-b. Register - Modify"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("reg_and_value", metavar="REG=VALUE", help="MMX register and value you want to set.")
+    parser.add_argument("reg_and_value", metavar="REG=VALUE", help="MMX register and value to set.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $mm0=0x1122334455667788".format(_cmdline_)
@@ -46420,7 +46419,7 @@ class XmmSetCommand(GenericCommand):
     _category_ = "04-b. Register - Modify"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("reg_and_value", metavar="REG=VALUE", help="XMM/YMM register and value you want to set.")
+    parser.add_argument("reg_and_value", metavar="REG=VALUE", help="XMM/YMM register and value to set.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} $ymm0=0x11223344556677889900aabbccddeeff9876543210".format(_cmdline_)
@@ -47143,7 +47142,7 @@ class ExtractHeapAddrCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("value", metavar="VALUE", nargs="?", type=lambda x: int(x, 0),
-                       help="the value you want to extract.")
+                       help="the value to extract.")
     group.add_argument("--source", action="store_true",
                        help="shows the source instead of displaying extractedd value.")
     _syntax_ = parser.format_help()
@@ -47292,7 +47291,7 @@ class VisualHeapCommand(GenericCommand):
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
                         help="the address interpreted as the beginning of a contiguous chunk. (default: arena.heap_base)")
     parser.add_argument("-a", dest="arena_addr", type=AddressUtil.parse_address,
-                        help="the address or number you want to interpret as an arena. (default: main_arena)")
+                        help="the address or number to interpret as an arena. (default: main_arena)")
     parser.add_argument("-c", dest="max_count", type=AddressUtil.parse_address,
                         help="Maximum count to parse. It is used when there is a very large amount of chunks.")
     parser.add_argument("-f", "--full", action="store_true",
@@ -47496,9 +47495,9 @@ class DistanceCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("address_a", metavar="ADDRESS_A", type=AddressUtil.parse_address,
-                        help="the address you want to calculate the offset as (A - base_addr_of(A)).")
+                        help="the address to calculate the offset as (A - base_addr_of(A)).")
     parser.add_argument("address_b", metavar="ADDRESS_B", type=AddressUtil.parse_address, nargs="?",
-                        help="the address you want to calculate the offset as abs(A - B).")
+                        help="the address to calculate the offset as abs(A - B).")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -47625,7 +47624,7 @@ class UnsignedCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("value", metavar="VALUE", type=AddressUtil.parse_address,
-                        help="the value you want to convert.")
+                        help="the value to convert.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} -- -0xa0".format(_cmdline_)
@@ -47667,7 +47666,7 @@ class ConvertCommand(GenericCommand):
     _aliases_ = ["transform", "trans"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("value", metavar="VALUE", help="the value or string you want to convert.")
+    parser.add_argument("value", metavar="VALUE", help="the value or string to convert.")
     parser.add_argument("--hex", action="store_true", help="interpret VALUE as hex. invalid character is ignored.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
@@ -59668,9 +59667,9 @@ class StringsCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
-                        help="the location you want to search from.")
+                        help="the location to search from.")
     parser.add_argument("end_location", metavar="END_LOCATION", type=AddressUtil.parse_address, nargs="?",
-                        help="the end location you want to search from. (default: 64)")
+                        help="the end location to search from. (default: 64)")
     parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP include filter.")
     parser.add_argument("-e", "--exclude", action="append", type=re.compile, default=[], help="REGEXP exclude filter.")
     parser.add_argument("-d", "--depth", default=3, type=int, help="recursive depth. (default: %(default)s)")
@@ -62105,7 +62104,7 @@ class DiffOutputClearCommand(DiffOutputCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("n", metavar="N", type=int, nargs="*", help="index to be deleted.")
-    parser.add_argument("--all", action="store_true", help="if you want to delete everything.")
+    parser.add_argument("--all", action="store_true", help="delete everything.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -62367,7 +62366,7 @@ class SlubDumpCommand(GenericCommand):
     _note_ += "    |                           |\n"
     _note_ += "    |                           v\n"
     _note_ += "    |                          ...\n"
-    _note_ += "    +->+-kmem_cache_node-+                            [numa node partial page freelist]\n"
+    _note_ += "    +->+-kmem_cache_node-+                             [numa node partial page freelist]\n"
     _note_ += "       | partial         |--->+-page(numa-node)+         +-chunk---+  +-chunk---+\n"
     _note_ += "       |                 |    | freelist       |----+    | ^       |  | ^       |\n"
     _note_ += "       +-----------------+    | next           |--+ |    | |offset |  | |offset |\n"
@@ -74135,7 +74134,7 @@ class BreakSecureMemAddrCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="PHYS_ADDRESS", type=AddressUtil.parse_address,
-                        help="the target physical address you want to set a breakpoint.")
+                        help="the target physical address to set a breakpoint.")
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
     _syntax_ = parser.format_help()
 
@@ -75602,7 +75601,7 @@ class MteTagsCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address,
-                        help="the start address you want to display the MTE tag.")
+                        help="the start address to display the MTE tag.")
     parser.add_argument("count", metavar="COUNT", nargs="?", type=AddressUtil.parse_address,
                         help="repeat count for MTE tag displaying (every 16 bytes).")
     _syntax_ = parser.format_help()
@@ -76245,7 +76244,7 @@ class Virt2PhysCommand(GenericCommand):
     group.add_argument("-s", dest="force_normal", action="store_true",
                        help="ARMv7/v8: use TTBRn_ELm to parse start.")
     parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address,
-                        help="the address of data you want to translate.")
+                        help="the address of data to translate.")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="verbose output (for arm64 secure memory).")
     _syntax_ = parser.format_help()
@@ -76289,7 +76288,7 @@ class Phys2VirtCommand(GenericCommand):
     group.add_argument("-s", dest="force_normal", action="store_true",
                        help="ARMv7/v8: use TTBRn_ELm to parse start.")
     parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address,
-                        help="the address of data you want to translate.")
+                        help="the address of data to translate.")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="verbose output (for arm64 secure memory).")
     _syntax_ = parser.format_help()
@@ -81275,7 +81274,7 @@ class Page2VirtCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("page", metavar="ADDRESS", type=AddressUtil.parse_address,
-                        help="the page address you want to translate.")
+                        help="the page address to translate.")
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
     _syntax_ = parser.format_help()
 
@@ -81299,7 +81298,7 @@ class Virt2PageCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("virt", metavar="ADDRESS", type=AddressUtil.parse_address,
-                        help="the virtual address you want to translate.")
+                        help="the virtual address to translate.")
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
     _syntax_ = parser.format_help()
 
@@ -81323,7 +81322,7 @@ class Page2PhysCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("page", metavar="ADDRESS", type=AddressUtil.parse_address,
-                        help="the page address you want to translate.")
+                        help="the page address to translate.")
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
     _syntax_ = parser.format_help()
 
@@ -81347,7 +81346,7 @@ class Phys2PageCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("phys", metavar="ADDRESS", type=AddressUtil.parse_address,
-                        help="the physical address you want to translate.")
+                        help="the physical address to translate.")
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
     _syntax_ = parser.format_help()
 
@@ -81453,7 +81452,7 @@ class XUntilCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("address", metavar="ADDRESS", nargs="?", type=AddressUtil.parse_address,
-                        help="the address you want to stop.")
+                        help="the address to stop.")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -84649,11 +84648,11 @@ class AddSymbolTemporaryCommand(GenericCommand):
     _category_ = "01-g. Debugging Support - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("function_name", metavar="FUNCTION_NAME", help="new symbol name you want to add.")
+    parser.add_argument("function_name", metavar="FUNCTION_NAME", help="new symbol name to add.")
     parser.add_argument("function_start", metavar="START_ADDR", type=AddressUtil.parse_address,
-                        help="start address you want to add a symbol.")
+                        help="start address to add a symbol.")
     parser.add_argument("function_end", metavar="END_ADDR", type=AddressUtil.parse_address, nargs="?",
-                        help="end address you want to add a symbol.")
+                        help="end address to add a symbol.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
@@ -84954,7 +84953,7 @@ class WalkLinkListCommand(GenericCommand):
     parser.add_argument("--adjust-output", type=AddressUtil.parse_address, default=0,
                         help="displays the result of subtracting a specific value to the output.")
     parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address,
-                        help="start address you want to walk.")
+                        help="start address to walk.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 

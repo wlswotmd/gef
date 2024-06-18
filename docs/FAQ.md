@@ -61,18 +61,22 @@ Think of it as a completely different product.
 ## GDB will not load GEF.
 This is probably because gdb does not support cooperation with python3.
 
-Consider building gdb from [latest source](https://ftp.gnu.org/gnu/gdb/) with `./configure --enable-targets=all --with-python=/usr/bin/python3 && make && make install`.
+Consider building gdb from latest tarball or git.
 
-## Does GEF work with the latest version of binutils-gdb?
-Yes, it probably works.
-
-The example of build commands are shown below.
-```
-apt install -y libdebuginfod-dev libreadline-dev
-git clone --depth 1 https://github.com/bminor/binutils-gdb && cd binutils-gdb
-./configure --disable-{binutils,ld,gold,gas,sim,gprof,gprofng} --enable-targets=all --with-python=/usr/bin/python3 --with-debuginfod --with-system-{zlib,readline}
-make && make install
-```
+* from latest tarball
+    * Download latest tarball from https://ftp.gnu.org/gnu/gdb/
+    ```
+    tar xf gdb-14.2.tar.xz && cd gdb-14.2
+    ./configure --enable-targets=all --with-python=/usr/bin/python3
+    make && make install
+    ```
+* from git
+    ```
+    apt install -y libdebuginfod-dev libreadline-dev
+    git clone --depth 1 https://github.com/bminor/binutils-gdb && cd binutils-gdb
+    ./configure --disable-{binutils,ld,gold,gas,sim,gprof,gprofng} --enable-targets=all --with-python=/usr/bin/python3 --with-debuginfod --with-system-{zlib,readline}
+    make && make install
+    ```
 
 ## If I use `install-minimal.sh`, which commands will no longer be available?
 Following are the breakdown. It may not be comprehensive.

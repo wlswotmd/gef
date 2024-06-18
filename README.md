@@ -67,7 +67,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 ## Supported mode
 * Normal debugging
 * Attach to the process
-* Attach to the process in another pid namespace (e.g. attaching from the outside of `docker`)
+* Attach to the process in another pid namespace (e.g. attaching from outside of `docker`)
 * Connect to `gdbserver`
 * Connect to the gdb stub of `qemu-system`
 * Connect to the gdb stub of `qemu-user`
@@ -278,15 +278,16 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/visual-heap.png)
     * `extract-heap-addr`: analyzes tcache-protected-fd introduced from glibc-2.32.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/extract-heap-addr.png)
-* `uclibc-ng-heap-dump`: dumps uClibc-ng heap chunks.
-    * Supported on x64/x86, based on uClibc-ng v1.0.42 malloc-standard.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uclibc-ng-heap-dump.png)
-    * How to test (x64):
-        * Download and extract `x86-64--uclibc--stable-2022.08-1.tar.bz2` from https://toolchains.bootlin.com/
-        * Add `/PATH/TO/x86_64-buildroot-linux-uclibc/bin` to `$PATH`, then build as `x86_64-linux-gcc test.c`.
-        * Fix interpreter by `patchelf --set-interpreter /PATH/TO/x86_64-buildroot-linux-uclibc/sysroot/lib/ld64-uClibc.so.0 a.out`.
-* `uclibc-ng-visual-heap`: is colorized heap viewer for uClibc-ng.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uclibc-ng-visual-heap.png)
+* uClibc heap commands are added.
+    * `uclibc-ng-heap-dump`: dumps uClibc-ng heap chunks.
+        * Supported on x64/x86, based on uClibc-ng v1.0.42 malloc-standard.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uclibc-ng-heap-dump.png)
+        * How to test (x64):
+            * Download and extract `x86-64--uclibc--stable-2022.08-1.tar.bz2` from https://toolchains.bootlin.com/
+            * Add `/PATH/TO/x86_64-buildroot-linux-uclibc/bin` to `$PATH`, then build as `x86_64-linux-gcc test.c`.
+            * Fix interpreter by `patchelf --set-interpreter /PATH/TO/x86_64-buildroot-linux-uclibc/sysroot/lib/ld64-uClibc.so.0 a.out`.
+    * `uclibc-ng-visual-heap`: is colorized heap viewer for uClibc-ng.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uclibc-ng-visual-heap.png)
 * `partition-alloc-dump`: dumps partition-alloc free-list for chromium.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/partition-alloc-dump.png)
     * This command is reserved for the implementation of latest version of chromium.
