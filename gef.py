@@ -82886,16 +82886,6 @@ class KmallocAllocatedByCommand(GenericCommand):
                 fd = ret_history[-1]
                 yield ("close(fd)", "close", [fd])
 
-            yield "rseq"
-            rseq = p32(0) # cpu_id_start
-            rseq += p32(0) # cpu_id
-            rseq += p64(0) # rseq_cs
-            rseq += p32(0) # flags
-            rseq += p32(0) # node_id
-            rseq += p32(0) # mm_cid
-            rseq += p32(0) # padding
-            yield ("rseq(&rseq, sizeof(rseq), 0, sig)", "rseq", [rseq, len(rseq), 0, 0x53053053])
-
             yield "perf_event_open (need kernel.perf_event_paranoid <= 2) -> close"
             attr = p32(1)      # type: PERF_TYPE_SOFTWARE
             attr += p32(0x80)  # size: sizeof(attr)
@@ -83832,6 +83822,7 @@ class KmallocAllocatedByCommand(GenericCommand):
             self.skipped_syscall.add("setsid")            # difficult to implement generically
             self.skipped_syscall.add("io_cancel")         # difficult to implement generically
             self.skipped_syscall.add("seccomp")           # affect subsequent system calls
+            self.skipped_syscall.add("rseq")              # affect subsequent system calls
             self.skipped_syscall.add("pkey_alloc")        # maybe unsupported by qemu HW
             self.skipped_syscall.add("pkey_mprotect")     # maybe unsupported by qemu HW
             self.skipped_syscall.add("pkey_free")         # maybe unsupported by qemu HW
