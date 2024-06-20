@@ -157,14 +157,15 @@ except ImportError:
 
 
 __gef__                     = None # keep GefCommand instance
-__gef_fpath__               = os.path.expanduser(http_get.__code__.co_filename) # the full path of GEF
-                            # note: __file__ will no longer be available from gdb 15
-__gef_commands__            = [] # keep command classes
-__gef_command_instances__   = {} # keep command instances
+__gef_commands__            = [] # gef command classes for registering
+__gef_command_instances__   = {} # gef command instances
+GCI                         = __gef_command_instances__ # short cut for debug # noqa: F841
 current_arch                = None # keep Architecture instance
 
 GEF_RC                      = os.getenv("GEF_RC") or os.path.join(os.getenv("HOME") or "~", ".gef.rc")
 GEF_TEMP_DIR                = os.path.join(tempfile.gettempdir(), "gef")
+GEF_FILEPATH                = os.path.expanduser(http_get.__code__.co_filename) # the full path of GEF
+                            # note: __file__ will no longer be available from gdb 15
 GEF_PROMPT                  = "gef> "
 GEF_PROMPT_ON               = "\001\033[1;32m\002{:s}\001\033[0m\002".format(GEF_PROMPT)
 GEF_PROMPT_OFF              = "\001\033[1;31m\002{:s}\001\033[0m\002".format(GEF_PROMPT)
@@ -181,8 +182,6 @@ RIGHT_ARROW                 = " -> "
 HORIZONTAL_LINE             = "-"
 VERTICAL_LINE               = "|"
 BP_GLYPH                    = "*"
-
-GCI                         = __gef_command_instances__ # short cut for debug # noqa: F841
 
 def perf(f): # noqa
     """Decorator wrapper to perf."""
@@ -14062,9 +14061,9 @@ class VersionCommand(GenericCommand):
             return "Not recognized"
 
     def gef_version(self):
-        gef_hash = hashlib.sha1(open(__gef_fpath__, "rb").read()).hexdigest()
+        gef_hash = hashlib.sha1(open(GEF_FILEPATH, "rb").read()).hexdigest()
         import datetime
-        dt = datetime.datetime.fromtimestamp(os.stat(__gef_fpath__).st_mtime)
+        dt = datetime.datetime.fromtimestamp(os.stat(GEF_FILEPATH).st_mtime)
         return "Last modified: {} SHA1: {}".format(dt.strftime("%Y-%m-%d %H:%M:%S"), gef_hash)
 
     def gdb_version(self):
@@ -69547,29 +69546,29 @@ class KsymaddrRemoteCommand(GenericCommand):
             # 0xffffffffb46b4b48: 0x00*  0x00   0x00   0x00   0xb0   0x0a   0x00   0x00 (*: start of kallsyms_markers)
             #
             # 0x0c: number of tokens
-            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0x44]
+            # gef> pi GCI["ksymaddr-remote"].get_token_table()[0x44]
             # 'D' (= symbol type)
-            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0xff]
+            # gef> pi GCI["ksymaddr-remote"].get_token_table()[0xff]
             # '__'
-            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0xf5]
+            # gef> pi GCI["ksymaddr-remote"].get_token_table()[0xf5]
             # 'in'
-            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0x8d]
+            # gef> pi GCI["ksymaddr-remote"].get_token_table()[0x8d]
             # 'it_'
-            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0x73]
+            # gef> pi GCI["ksymaddr-remote"].get_token_table()[0x73]
             # 's'
-            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0x63]
+            # gef> pi GCI["ksymaddr-remote"].get_token_table()[0x63]
             # 'c'
-            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0x72]
+            # gef> pi GCI["ksymaddr-remote"].get_token_table()[0x72]
             # 'r'
-            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0xe8]
+            # gef> pi GCI["ksymaddr-remote"].get_token_table()[0xe8]
             # 'at'
-            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0xbf]
+            # gef> pi GCI["ksymaddr-remote"].get_token_table()[0xbf]
             # 'ch'
-            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0x5f]
+            # gef> pi GCI["ksymaddr-remote"].get_token_table()[0x5f]
             # '_'
-            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0xee]
+            # gef> pi GCI["ksymaddr-remote"].get_token_table()[0xee]
             # 'en'
-            # gef> pi __gef_command_instances__["ksymaddr-remote"].get_token_table()[0x64]
+            # gef> pi GCI["ksymaddr-remote"].get_token_table()[0x64]
             # 'd'
             # (=`__init_scratch_end`)
             #
@@ -86223,7 +86222,7 @@ class GefReloadCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        info("Check syntax {:s}".format(__gef_fpath__))
+        info("Check syntax {:s}".format(GEF_FILEPATH))
 
         try:
             pythonbin = GefUtil.which("python3")
@@ -86232,7 +86231,7 @@ class GefReloadCommand(GenericCommand):
             return
 
         try:
-            subprocess.check_output([pythonbin, __gef_fpath__])
+            subprocess.check_output([pythonbin, GEF_FILEPATH])
         except subprocess.CalledProcessError:
             err("Reload aborted")
             return
@@ -86245,8 +86244,8 @@ class GefReloadCommand(GenericCommand):
         EventHooking.gef_on_regchanged_unhook(EventHandler.regchanged_handler)
         Cache.reset_gef_caches(all=True)
 
-        info("Reload {:s}".format(__gef_fpath__))
-        s = gdb.execute("source {:s}".format(__gef_fpath__), to_string=True)
+        info("Reload {:s}".format(GEF_FILEPATH))
+        s = gdb.execute("source {:s}".format(GEF_FILEPATH), to_string=True)
         for line in s.splitlines():
             if ".gnu_debugaltlink" in line:
                 continue
