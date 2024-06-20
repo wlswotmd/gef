@@ -14492,6 +14492,8 @@ class NiCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-user",))
+    @only_if_specific_arch(arch=("OR1K", "CRIS"))
     def do_invoke(self, args):
         if is_cris():
             self.ni_set_bp_for_branch()
@@ -14573,6 +14575,8 @@ class SiCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-user",))
+    @only_if_specific_arch(arch=("OR1K", "CRIS"))
     def do_invoke(self, args):
         if is_cris():
             self.si_set_bp_for_branch()
@@ -14657,6 +14661,7 @@ class ContCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-user", "pin"))
     def do_invoke(self, args):
         if is_qemu_user() or is_pin():
             if Pid.get_pid():
@@ -20673,6 +20678,7 @@ class RpCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("kgdb", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -21301,6 +21307,7 @@ class ArchInfoCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
 
+    @parse_args
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -22344,10 +22351,11 @@ class ChecksecCommand(GenericCommand):
         return
 
     @parse_args
+    @exclude_specific_gdb_mode(mode=("wine", "kgdb"))
     def do_invoke(self, args):
         self.dont_repeat()
 
-        if is_qemu_system():
+        if is_qemu_system() or is_vmware():
             info("Redirect to kchecksec")
             gdb.execute("kchecksec")
             return
@@ -28884,10 +28892,11 @@ class VMMapCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("kgdb",))
     def do_invoke(self, args):
         self.dont_repeat()
 
-        if is_qemu_system() or is_vmware() or is_kgdb():
+        if is_qemu_system() or is_vmware():
             info("Redirect to pagewalk (args are ignored)")
             gdb.execute("pagewalk")
             return
@@ -45993,14 +46002,14 @@ class MagicCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("wine",))
+    @exclude_specific_gdb_mode(mode=("wine", "kgdb"))
     def do_invoke(self, args):
         self.dont_repeat()
 
         self.print_file_jumps = args.fj
         self.filter = args.filter
 
-        if is_qemu_system():
+        if is_qemu_system() or is_vmware():
             info("Redirect to kmagic")
             gdb.execute("kmagic {:s}".format(" ".join(args.filter)))
             return
@@ -46337,6 +46346,7 @@ class SysregCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("kgdb",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -46383,8 +46393,8 @@ class MmxSetCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("rr", "kgdb"))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
-    @exclude_specific_gdb_mode(mode=("rr",))
     @only_if_kvm_disabled
     def do_invoke(self, args):
         self.dont_repeat()
@@ -46447,6 +46457,7 @@ class MmxCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("kgdb",))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -46468,8 +46479,8 @@ class XmmSetCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("rr", "kgdb"))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
-    @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -46565,6 +46576,7 @@ class SseCommand(GenericCommand):
         return
 
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("kgdb",))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, argv):
         self.dont_repeat()
@@ -46622,6 +46634,7 @@ class AvxCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("kgdb",))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -46962,6 +46975,7 @@ class FpuCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("kgdb",))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -47202,7 +47216,7 @@ class ExtractHeapAddrCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("wine",))
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -60379,7 +60393,7 @@ class FsbaseCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
-    @exclude_specific_gdb_mode(mode=("qiling",))
+    @exclude_specific_gdb_mode(mode=("qiling", "kgdb"))
     def do_invoke(self, args):
         self.dont_repeat()
         fsbase = current_arch.get_fs()
@@ -60400,8 +60414,8 @@ class GsbaseCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qiling", "kgdb"))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
-    @exclude_specific_gdb_mode(mode=("qiling",))
     def do_invoke(self, args):
         self.dont_repeat()
         gsbase = current_arch.get_gs()
@@ -73344,6 +73358,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -73617,6 +73632,7 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
     @parse_args
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -75423,8 +75439,8 @@ class CpuidCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("rr", "kgdb"))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
-    @exclude_specific_gdb_mode(mode=("rr",))
     @only_if_kvm_disabled
     def do_invoke(self, args):
         self.dont_repeat()
@@ -75596,6 +75612,7 @@ class MsrCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     @only_if_in_kernel
     @only_if_kvm_disabled
@@ -75650,8 +75667,8 @@ class MteTagsCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_arch(arch=("ARM64",))
     @exclude_specific_gdb_mode(mode=("rr",))
+    @only_if_specific_arch(arch=("ARM64",))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -75684,6 +75701,7 @@ class PacKeysCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system",))
     @only_if_specific_arch(arch=("ARM64",))
     def do_invoke(self, args):
         self.dont_repeat()
@@ -85417,6 +85435,7 @@ class FiletypeMemoryCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -85539,6 +85558,7 @@ class BinwalkMemoryCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
         self.dont_repeat()
 
@@ -86555,6 +86575,8 @@ class GefAvailableCommandListCommand(GenericCommand):
                     return '"rr"' in line
                 if is_wine():
                     return '"wine"' in line
+                if is_kgdb():
+                    return '"kgdb"' in line
                 return False
         return True
 
@@ -86575,6 +86597,8 @@ class GefAvailableCommandListCommand(GenericCommand):
                     return '"rr"' in line
                 if is_wine():
                     return '"wine"' in line
+                if is_kgdb():
+                    return '"kgdb"' in line
                 return False
         return False
 
