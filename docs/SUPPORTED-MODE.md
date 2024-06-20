@@ -72,20 +72,29 @@
 ## With KGDB
 * Usage
     * Host OS
-        * Configure the serial port as a named pipe in your two (debugger/debuggee) virtual machine settings, such as VMware or VirtualBox.
+        * Configure 2 `serial port`s as `named pipe` in both (debugger/debuggee) virtual machine settings.
+        * Vmware example:
+            * Debuggger
+                * Use named pipe: `\\.\pipe\pipe0` (Windows host) / `/tmp/sock0` (Linux host), `This end is the client.`, `The other end is a virtual machine.`
+                * Use named pipe: `\\.\pipe\pipe1` (Windows host) / `/tmp/sock1` (Linux host), `This end is the client.`, `The other end is a virtual machine.`
+            * Debuggee
+                * Use named pipe: `\\.\pipe\pipe0` (Windows host) / `/tmp/sock0` (Linux Host), `This end is the server.`, `The other end is an application.`
+                * Use named pipe: `\\.\pipe\pipe1` (Windows host) / `/tmp/sock1` (Linux host), `This end is the server.`, `The other end is an application.`
     * Debuggee
         * Build the kernel with configurations such as `CONFIG_KGDB=y`. Ubuntu has supported it by default.
-        * Edit `/etc/default/grub` and append `kgdboc=ttyS0,115200 kgdbwait` to the end of `GRUB_CMDLINE_LINUX_DEFAULT`.
+        * Edit `/etc/default/grub` and append `kgdbwait kgdboc=ttyS0,115200 console=ttyS1,115200` to the end of `GRUB_CMDLINE_LINUX_DEFAULT`.
         * Then `update-grub && reboot`.
         * See [official documentation](https://www.kernel.org/doc/html/latest/dev-tools/kgdb.html) for more information.
     * Debugger
         * Attach with `gdb-multiarch -ex 'target remote /dev/ttyS0'`.
+        * Connect with `screen /dev/ttyS1` for console.
 * Supported architectures
     * x64 only.
 * Note
     * It needs gdb 12.x or later.
-    * It runs very slowly and is not recommended. Ctrl+C interrupt does not work.
-    * Many commands are UNSUPPORTED in KGDB mode, because there is no way to access physical memory and control registers.
+    * It runs very slowly and is not recommended.
+    * Ctrl+C interrupt does not work. You need to do `echo g > /proc/sysrq-trigger` in console.
+    * Many commands are UNSUPPORTED in KGDB mode, because there is no way to access control registers.
 
 ## With VMware
 * Usage

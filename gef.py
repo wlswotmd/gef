@@ -11020,70 +11020,110 @@ def read_cstring_from_memory(addr, max_length=None, ascii_only=False):
     return ustr
 
 
-def read_physmem_secure(paddr, size):
-    sm_base, sm_size = QemuMonitor.get_secure_memory_base_and_size()
-    if sm_base is None or sm_size is None:
-        return None
-    if not (sm_base <= paddr < sm_base + sm_size):
-        return None
-    sm = QemuMonitor.get_secure_memory_qemu_map(sm_base, sm_size)
-    if sm is None:
-        return None
-    out = XSecureMemAddrCommand.read_secure_memory(sm, paddr - sm_base, size)
-    return out
-
-
 def read_physmem(paddr, size):
+    if not is_qemu_system() and not is_vmware() and not is_kgdb():
+        return None
+
     def fast_path(paddr, size):
         out = read_memory(paddr, size)
         return out
 
-    def slow_path(paddr, size): # < qemu 4.1.0-rc0
-        res = gdb.execute("monitor xp/{:d}xb {:#x}".format(size, paddr), to_string=True)
+    def slow_path_qemu_system(paddr, size): # for older than qemu 4.1.0-rc0
+        try:
+            res = gdb.execute("monitor xp/{:d}xb {:#x}".format(size, paddr), to_string=True)
+            """
+            gef> monitor xp/16xb 0
+            0000000000000000: 0x53 0xff 0x00 0xf0 0x53 0xff 0x00 0xf0
+            0000000000000008: 0xc3 0xe2 0x00 0xf0 0x53 0xff 0x00 0xf0
+            """
+        except gdb.error:
+            return None
         out = b""
         for line in res.splitlines():
+            if not line:
+                continue
             data = line.split()[1:]
             out += bytes([int(x, 16) for x in data])
         return out
 
-    if is_arm32() or is_arm64():
+    def slow_path_kgdb(paddr, size): # for kgdb
+        # Note: `mdp` command can only handle aligned addresses.
+        paddr_aligned = paddr & ~0xf
+        read_n_line = (size + (paddr - paddr_aligned) + 15) // 16
+        try:
+            res = gdb.execute("monitor mdp {:#x} {:d}".format(paddr_aligned, read_n_line), to_string=True)
+            """
+            gef> monitor mdp 0 2
+            phys 0x0000000000000000 f000ff53f000ff53 f000ff53f000e2c3   S...S.......S...
+            phys 0x0000000000000010 f000ff54f000ff53 f000ff53f0008488   S...T.......S...
+            """
+        except gdb.error:
+            return None
+        out = b""
+        for line in res.splitlines():
+            if not line:
+                continue
+            out += b"".join([bytes.fromhex(x)[::-1] for x in line.split()[2:4]])
+        return out[paddr & 0xf:][:size]
+
+    def read_physmem_secure(paddr, size): # for qemu-system secure world
+        sm_base, sm_size = QemuMonitor.get_secure_memory_base_and_size()
+        if sm_base is None or sm_size is None:
+            return None
+        if not (sm_base <= paddr < sm_base + sm_size):
+            return None
+        sm = QemuMonitor.get_secure_memory_qemu_map(sm_base, sm_size)
+        if sm is None:
+            return None
+        out = XSecureMemAddrCommand.read_secure_memory(sm, paddr - sm_base, size)
+        return out
+
+    if is_qemu_system() and (is_arm32() or is_arm64()):
         out = read_physmem_secure(paddr, size)
         if out:
             return out
 
     if not is_supported_physmode():
-        return slow_path(paddr, size)
+        if is_qemu_system():
+            return slow_path_qemu_system(paddr, size)
+        elif is_kgdb():
+            return slow_path_kgdb(paddr, size)
 
     try:
+        # qemu-system or vmware
         orig_mode = QemuMonitor.get_current_mmu_mode()
         if orig_mode == "virt":
             enable_phys()
         out = fast_path(paddr, size)
         if orig_mode == "virt":
             disable_phys()
+        return out
     except gdb.MemoryError:
         if orig_mode == "virt":
             disable_phys()
         # fall through to slow path
-        out = slow_path(paddr, size)
-    return out
-
-
-def write_physmem_secure(paddr, data):
-    sm_base, sm_size = QemuMonitor.get_secure_memory_base_and_size()
-    if sm_base is None or sm_size is None:
-        return None
-    if not (sm_base <= paddr < sm_base + sm_size):
-        return None
-    sm = QemuMonitor.get_secure_memory_qemu_map(sm_base, sm_size)
-    if sm is None:
-        return None
-    out = WSecureMemAddrCommand.write_secure_memory(sm, paddr - sm_base, data)
-    return out
+        if is_qemu_system():
+            return slow_path_qemu_system(paddr, size)
+    return None
 
 
 def write_physmem(paddr, data):
-    if is_arm32() or is_arm64():
+    if not is_qemu_system() and not is_vmware() and not is_kgdb():
+        return None
+
+    def write_physmem_secure(paddr, data): # for qemu-system secure world
+        sm_base, sm_size = QemuMonitor.get_secure_memory_base_and_size()
+        if sm_base is None or sm_size is None:
+            return None
+        if not (sm_base <= paddr < sm_base + sm_size):
+            return None
+        sm = QemuMonitor.get_secure_memory_qemu_map(sm_base, sm_size)
+        if sm is None:
+            return None
+        out = WSecureMemAddrCommand.write_secure_memory(sm, paddr - sm_base, data)
+        return out
+
+    if is_qemu_system() and (is_arm32() or is_arm64()):
         ret = write_physmem_secure(paddr, data)
         if ret:
             return ret
@@ -11092,16 +11132,18 @@ def write_physmem(paddr, data):
         return None
 
     try:
+        # qemu-system or vmware
         orig_mode = QemuMonitor.get_current_mmu_mode()
         if orig_mode == "virt":
             enable_phys()
         ret = write_memory(paddr, data)
         if orig_mode == "virt":
             disable_phys()
+        return ret
     except Exception:
         if orig_mode == "virt":
             disable_phys()
-    return ret
+    return None
 
 
 @Cache.cache_until_next
@@ -12781,9 +12823,9 @@ class EventHandler:
                         bp.delete()
             EventHandler.__gef_check_disabled_bp__ = False
 
-        # when kdb, assume x86-64 or ARM
+        # when kgdb, assume x86-64 or ARM
         if EventHandler.__gef_check_once__:
-            if is_kgdb():
+            if is_over_serial():
                 dev = gdb.selected_inferior().connection.details
                 if dev.startswith("/dev/ttyS"):
                     gdb.execute("set architecture i386:x86-64:intel", to_string=True)
@@ -27208,7 +27250,7 @@ class HexdumpCommand(GenericCommand):
     @only_if_gdb_running
     def do_invoke(self, args):
         if args.phys:
-            if not is_qemu_system():
+            if not is_qemu_system() and not is_vmware() and not is_kgdb():
                 err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
                 return
         self.phys_mode = args.phys
@@ -27288,7 +27330,7 @@ class HexdumpFlexibleCommand(GenericCommand):
         self.dont_repeat()
 
         if args.phys:
-            if not is_qemu_system():
+            if not is_qemu_system() and not is_vmware() and not is_kgdb():
                 err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
                 return
 
@@ -28845,7 +28887,7 @@ class VMMapCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
 
-        if is_qemu_system():
+        if is_qemu_system() or is_vmware() or is_kgdb():
             info("Redirect to pagewalk (args are ignored)")
             gdb.execute("pagewalk")
             return
