@@ -52477,14 +52477,27 @@ class KernelTaskCommand(GenericCommand):
         """
         for i in range(0x100):
             found = False
+            zcount = 0
             for task in task_addrs:
                 v = read_int_from_memory(task + current_arch.ptrsize * i)
+                if v == 0:
+                    zcount += 1
+                    continue
                 if (v & 0x1fff) != 0:
                     break
                 if not is_valid_addr(v):
                     break
             else:
                 found = True
+
+            # I don't know why, but it seems that sometimes you have a process that has no stack.
+            # 0xffffa122c17db000 U   106     chal.sh ... 0xffffa43100218000 0xd16ef01535a35500
+            # 0xffffa122c17da000 U   108     socat   ... 0xffffa43100278000 0x3d378b9e6f59bf00
+            # 0xffffa122c17dc000 U   109     chal    ... 0xffffa431002d4000 0x277c67d5e5854500
+            # 0xffffa122c17dd000 K   110     3       ... 0x0000000000000000 0x22a999743f180500
+            # So I decided to allow a few NULL pointer.
+            if zcount > len(task_addrs) // 10:
+                found = False
 
             if found is False:
                 continue
