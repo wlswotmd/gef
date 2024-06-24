@@ -356,7 +356,6 @@ There are also similar functions. Here are the list.
     * `read_int_from_memory(addr)`
     * `read_cstring_from_memory(addr, max_length=None, ascii_only=True)`
     * `read_physmem(paddr, size)`, `write_physmem(paddr, data)`
-    * `read_physmem_secure(paddr, size)`, `write_physmem_secure(paddr, data)`
 * Register access
     * `get_register(regname, use_mbed_exec=False, use_monitor=False)`
 * Other
