@@ -4469,8 +4469,8 @@ def get_libc_version():
         return None
 
     # use cache
-    libc_assume_version = Config.get_gef_setting("libc.assume_version")
-    if libc_assume_version is not None:
+    libc_assume_version = eval(Config.get_gef_setting("libc.assume_version"))
+    if libc_assume_version != ():
         return libc_assume_version
 
     # resolve
@@ -4478,15 +4478,10 @@ def get_libc_version():
     if libc_version is None:
         libc_version = get_system_libc_version()
     if libc_version is None:
-        libc_version = (2, 35) # assume Ubuntu 22.04
+        libc_version = (2, 39) # assume Ubuntu 24.04
 
     # set cache
-    Config.set_gef_setting(
-        "libc.assume_version",
-        libc_version,
-        tuple,
-        "The value returned by get_libc_version if libc is not found",
-    )
+    Config.set_gef_setting("libc.assume_version", libc_version)
     return libc_version
 
 
@@ -45443,6 +45438,11 @@ class LibcCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.add_setting("assume_version", "()", "The default libc version")
+        return
 
     @parse_args
     @only_if_gdb_running
