@@ -328,10 +328,12 @@ Also, depending on the assembly output by the compiler, it may not be possible t
 
 # About python interface
 
-## Can I access each GEF command instance from `python-interactive`?
-Yes, you can access it using `__gef_command_instances__` or `GCI`.
+## Can I access each GEF command or alias instance from `python-interactive`?
+Yes, you can access it from `GCI` or `GAI`.
 
-For example, `pi __gef_command_instances__["vmmap"]` or `GCI["vmmap"]`.
+For example, `pi GCI["vmmap"]` or `pi GAI["us"]`.
+`GCI` means Gef Command Instances.
+`GAI` means Gef Alias Instances.
 
 ## The class name `KernelAddressHeuristicFinder` is too long.
 You can access it using `KF`.
@@ -376,8 +378,11 @@ Following are some notes.
 * Inheritance
     * Make sure you inherit the `GenericCommand` class.
     * This is the condition for registering the command.
-* Help strings
-    * `_cmdline_`, `_category_`, `_aliases_`, `_syntax_`, `_example_` and `_note_` are used by `help` or `gef help`.
+* Important attributes
+    * `_cmdline_`: to use to invoke the command.
+    * `_aliases_`: to make command alias.
+    * `_category_`, `_syntax_`, `_example_` and `_note_`: used by `gef help`.
+    * `_repeat_`: to enable command repetition.
 * `__init__()`
     * This method is executed only once, when GEF starts.
     * There is usually no need to override this method.
@@ -392,8 +397,8 @@ Following are some notes.
     * Add decorators to the `do_invoke()` method as needed.
     * You can check the list of decorators that can be added with `gef pyobj-list`.
 * Other
-    * If you do not want to execute the same command again when you press ENTER on a blank line after executing the command, please write `self.dont_repeat()`.
     * Use the `gef_print()` function instead of the `print()` function whenever possible.
+    * The function named `complete()` is reserved.
 
 
 # About development schedule
