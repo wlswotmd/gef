@@ -85398,34 +85398,40 @@ class GefCommand(GenericCommand):
         self.add_setting("disable_color", False, "Disable all colors in GEF")
         self.add_setting("always_no_pager", False, "Always disable pager in gef_print()")
         self.add_setting("keep_pager_result", False, "Leaves temporary files in gef_print()")
-        self.loaded_commands = {}
         self.missing_commands = {}
         return
 
     def load_commands(self):
         """Load all the commands and functions defined by GEF into GDB."""
+        global __gef_command_instances__
         nb_missing = 0
         time_elapsed = []
         for cmd_class in __gef_commands__:
-            cmdline = cmd_class._cmdline_
             try:
                 start_time_real = time.perf_counter()
                 start_time_proc = time.process_time()
-                if cmdline == "gef":
+
+                if cmd_class._cmdline_ == "gef":
                     instance = self
                 else:
                     instance = cmd_class() # command loading is here
-                self.loaded_commands[cmdline] = (cmd_class, instance)
+                __gef_command_instances__[cmd_class._cmdline_] = instance
+
                 end_time_real = time.perf_counter()
                 end_time_proc = time.process_time()
-                time_elapsed.append((cmdline, end_time_real - start_time_real, end_time_proc - start_time_proc))
+
+                time_elapsed.append((
+                    cmd_class._cmdline_,
+                    end_time_real - start_time_real,
+                    end_time_proc - start_time_proc,
+                ))
 
                 if hasattr(cmd_class._aliases_, "__iter__"):
                     for alias in cmd_class._aliases_:
-                        GefAlias(alias, cmdline, repeat=cmd_class._repeat_)
+                        GefAlias(alias, cmd_class._cmdline_)
 
             except Exception as reason:
-                self.missing_commands[cmdline] = reason
+                self.missing_commands[cmd_class._cmdline_] = reason
                 nb_missing += 1
 
         DEBUG = False
@@ -85442,7 +85448,7 @@ class GefCommand(GenericCommand):
         ))
 
         ver = "{:d}.{:d}".format(sys.version_info.major, sys.version_info.minor)
-        nb_cmds = len(self.loaded_commands)
+        nb_cmds = len(__gef_command_instances__)
         gef_print("{:s} commands loaded for GDB {:s} using Python engine {:s}".format(
             Color.colorify(nb_cmds, "bold green"),
             Color.colorify(gdb.VERSION, "bold yellow"),
@@ -85455,11 +85461,6 @@ class GefCommand(GenericCommand):
                 "s" if nb_missing > 1 else "",
                 Color.colorify("gef missing", "underline magenta")
             ))
-
-        # save globally for debug
-        global __gef_command_instances__
-        for cmdline, (_, instance) in self.loaded_commands.items():
-            __gef_command_instances__[cmdline] = instance
         return
 
     def reload_auto_breakpoints(self):
@@ -85484,7 +85485,7 @@ class GefCommand(GenericCommand):
     def load_extra_plugins(self):
         nb_added = -1
         try:
-            nb_inital = len(self.loaded_commands)
+            nb_inital = len(__gef_command_instances__)
             directories = Config.get_gef_setting("gef.extra_plugins_dir")
             if directories:
                 for directory in directories.split(";"):
@@ -85497,7 +85498,7 @@ class GefCommand(GenericCommand):
                             fpath = "{:s}/{:s}".format(directory, fname)
                             if os.path.isfile(fpath):
                                 gdb.execute("source {:s}".format(fpath))
-            nb_added = len(self.loaded_commands) - nb_inital
+            nb_added = len(__gef_command_instances__) - nb_inital
             if nb_added > 0:
                 fmt = "{:s} extra commands added from '{:s}'"
                 ok(fmt.format(Color.colorify(nb_added, "bold green"), Color.colorify(directories, "bold blue")))
@@ -85546,16 +85547,16 @@ class GefHelpCommand(GenericCommand):
     def generate_help(self):
         """Generate builtin commands documentation."""
         docs = []
-        for cmdline, (cmd_class, _) in __gef__.loaded_commands.items():
-            doc = getattr(cmd_class, "__doc__", "").lstrip()
+        for cmdline, instance in __gef_command_instances__.items():
+            doc = getattr(instance.__class__, "__doc__", "").lstrip()
             doc_lines = [Color.greenify(x) for x in doc.split("\n")]
             doc = "\n                         ".join(doc_lines)
-            if hasattr(cmd_class._aliases_, "__iter__") and cmd_class._aliases_:
-                aliases = " (alias: {:s})".format(", ".join(cmd_class._aliases_))
+            if hasattr(instance._aliases_, "__iter__") and instance._aliases_:
+                aliases = " (alias: {:s})".format(", ".join(instance._aliases_))
             else:
                 aliases = ""
             msg = "  {:<23s} -- {:s}{:s}".format(cmdline, doc, aliases)
-            category = cmd_class._category_ if hasattr(cmd_class, "_category_") else "Uncategorized"
+            category = instance._category_ if hasattr(instance, "_category_") else "Uncategorized"
             docs.append([category, msg])
 
         newdoc = ""
@@ -85622,7 +85623,7 @@ class GefConfigCommand(GenericCommand):
             err("Invalid command format")
             return
 
-        loaded_cmdlines = [x.replace(" ", "_").replace("-", "_") for x in __gef__.loaded_commands.keys()]
+        loaded_cmdlines = [x.replace(" ", "_").replace("-", "_") for x in __gef_command_instances__.keys()]
         command_name = config_name.split(".", 1)[0]
         if command_name not in loaded_cmdlines:
             err("Unknown command '{:s}'".format(command_name))
@@ -86159,8 +86160,8 @@ class GefAvailableCommandListCommand(GenericCommand):
         arch_name = self.get_arch_name()
 
         out = []
-        for cmdline, (cmd_class, _) in __gef__.loaded_commands.items():
-            s = GefUtil.get_source(cmd_class.do_invoke)
+        for cmdline, instance in __gef_command_instances__.items():
+            s = GefUtil.get_source(instance.do_invoke)
             decorators = [line for line in s.splitlines() if line.lstrip().startswith("@")]
             if not self.check_include_mode(decorators):
                 out.append("{:<30s}: {:s} ({:s})".format(cmdline, Color.colorify("Unavailable", "red bold"), "Unsupported gdb mode"))
