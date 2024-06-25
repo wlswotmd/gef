@@ -85462,16 +85462,6 @@ class GefCommand(GenericCommand):
             __gef_command_instances__[cmdline] = instance
         return
 
-    def gef_execute_gdb_script(self, commands):
-        """Execute the parameter `source` as GDB command. This is done by writing `commands` to
-        a temporary file, which is then executed via GDB `source` command. The tempfile is then deleted."""
-        tmp_fd, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".gdb", prefix="gef_")
-        os.fdopen(tmp_fd, "w").write(commands)
-        if os.access(tmp_path, os.R_OK):
-            gdb.execute("source {:s}".format(tmp_path))
-            os.unlink(tmp_path)
-        return
-
     def reload_auto_breakpoints(self):
         bkp_fname = Config.__gef_config__.get("gef.autosave_breakpoints_file", None)
         if not bkp_fname or not bkp_fname[0]:
@@ -85488,7 +85478,7 @@ class GefCommand(GenericCommand):
             " save breakpoints {:s}".format(bkp_fname),
             "end",
         ]
-        self.gef_execute_gdb_script("\n".join(source) + "\n")
+        GefUtil.gef_execute_as_gdb_script("\n".join(source) + "\n")
         return
 
     def load_extra_plugins(self):
