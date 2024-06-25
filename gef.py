@@ -14,7 +14,7 @@
 #   * arm v5,v6,v7
 #   * aarch64 (armv8)
 #   * mips & mipsn32 & mips64
-#   * powerpc & powerpc64
+#   * powerpc & powerpc64/
 #   * sparc & sparc32plus & sparc64
 #   * riscv32 & riscv64
 #   * s390x
@@ -28304,6 +28304,7 @@ class DereferenceCommand(GenericCommand):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         self.add_setting("max_recursion", 4, "Maximum level of pointer recursion")
         self.add_setting("blacklist", "[]", 'Dereference black list address ranges (e.g.: "[ [start1, end1], [start2, end2], ]")')
+        self.add_setting("nb_lines", 64, "Number of lines to display")
         return
 
     @staticmethod
@@ -28455,8 +28456,9 @@ class DereferenceCommand(GenericCommand):
         else:
             start_address = args.location
 
-        from_idx = args.nb_lines * self.repeat_count
-        to_idx = args.nb_lines * (self.repeat_count + 1)
+        nb_lines = Config.get_gef_setting("dereference.nb_lines") or args.nb_lines
+        from_idx = nb_lines * self.repeat_count
+        to_idx = nb_lines * (self.repeat_count + 1)
 
         if from_idx <= to_idx:
             step = 1
@@ -28536,7 +28538,7 @@ class DereferenceCommand(GenericCommand):
             if args.depth - 1 > 0:
                 v = _read_int_from_memory(current_address)
                 if v % current_arch.ptrsize == 0 and is_valid_addr(v):
-                    cmd = "dereference --depth {:d} --no-pager {:#x} {:#x}".format(args.depth - 1, v, args.nb_lines)
+                    cmd = "dereference --depth {:d} --no-pager {:#x} {:#x}".format(args.depth - 1, v, nb_lines)
                     ret = gdb.execute(cmd, to_string=True)
                     for line in ret.splitlines():
                         out.append("    " + line)
