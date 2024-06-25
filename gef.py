@@ -14,7 +14,7 @@
 #   * arm v5,v6,v7
 #   * aarch64 (armv8)
 #   * mips & mipsn32 & mips64
-#   * powerpc & powerpc64/
+#   * powerpc & powerpc64
 #   * sparc & sparc32plus & sparc64
 #   * riscv32 & riscv64
 #   * s390x
