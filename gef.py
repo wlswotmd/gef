@@ -13662,7 +13662,7 @@ class GenericCommand(gdb.Command):
             self.__doc__ += tab(self._note_.strip())
             self.__doc__ += "\n"
 
-        if hasattr(self, "_aliases_") and self._aliases_:
+        if hasattr(self._aliases_, "__iter__") and self._aliases_:
             self.__doc__ += "\n"
             self.__doc__ += Color.colorify("Aliases:", "bold yellow")
             self.__doc__ += "\n"
@@ -13765,6 +13765,10 @@ class GenericCommand(gdb.Command):
 
     @abc.abstractproperty
     def _repeat_(self):
+        pass
+
+    @abc.abstractproperty
+    def _aliases_(self):
         pass
 
     @abc.abstractmethod
@@ -77931,7 +77935,7 @@ class PagewalkArm64Command(PagewalkCommand):
     """Dump pagetable for ARM64 (only Cortex-A; ARM v8.7 base) using qemu-monitor."""
     _cmdline_ = "pagewalk arm64"
     _category_ = "08-a. Qemu-system Cooperation - General"
-    _aliases_ = []
+    _aliases_ = [] # re-overwrite
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("target_el", metavar="TARGET_EL", nargs="?", type=int,
@@ -85414,7 +85418,7 @@ class GefCommand(GenericCommand):
                 end_time_proc = time.process_time()
                 time_elapsed.append((cmdline, end_time_real - start_time_real, end_time_proc - start_time_proc))
 
-                if hasattr(cmd_class, "_aliases_"):
+                if hasattr(cmd_class._aliases_, "__iter__"):
                     for alias in cmd_class._aliases_:
                         GefAlias(alias, cmdline, repeat=cmd_class._repeat_)
 
@@ -85554,7 +85558,7 @@ class GefHelpCommand(GenericCommand):
             doc = getattr(cmd_class, "__doc__", "").lstrip()
             doc_lines = [Color.greenify(x) for x in doc.split("\n")]
             doc = "\n                         ".join(doc_lines)
-            if hasattr(cmd_class, "_aliases_") and cmd_class._aliases_ != []:
+            if hasattr(cmd_class._aliases_, "__iter__") and cmd_class._aliases_:
                 aliases = " (alias: {:s})".format(", ".join(cmd_class._aliases_))
             else:
                 aliases = ""
