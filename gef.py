@@ -13720,7 +13720,10 @@ class GenericCommand(gdb.Command):
     def invoke(self, args, from_tty):
         try:
             argv = gdb.string_to_argv(args)
-            self.set_repeat_count(argv, from_tty)
+            if self._repeat_:
+                self.set_repeat_count(argv, from_tty)
+            else:
+                self.dont_repeat()
             self.do_invoke(argv)
         except Exception:
             # Since we are intercepting cleaning exceptions here, commands preferably should avoid
@@ -13758,6 +13761,10 @@ class GenericCommand(gdb.Command):
 
     @abc.abstractproperty
     def _note_(self):
+        pass
+
+    @abc.abstractproperty
+    def _repeat_(self):
         pass
 
     @abc.abstractmethod
@@ -13836,7 +13843,6 @@ class GenericCommand(gdb.Command):
 #
 #     @parse_args
 #     def do_invoke(self, args):
-#         self.dont_repeat()
 #         return
 
 
@@ -13853,7 +13859,6 @@ class ResetCacheCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
         Cache.reset_gef_caches(all=True)
 
         if args.hard:
@@ -13882,8 +13887,6 @@ class ResetBreakpointsCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         breakpoints = gdb.breakpoints()
         n = len(breakpoints)
 
@@ -14000,8 +14003,6 @@ class GefThemeCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # show all
         if args.key is None:
             self.show_all_config()
@@ -14252,8 +14253,6 @@ class VersionCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.compact:
             self.show_compact_info()
         else:
@@ -14316,7 +14315,7 @@ class HighlightCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
+        self.usage()
         return
 
 
@@ -14346,7 +14345,6 @@ class HighlightListCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
         self.print_highlight_table()
         return
 
@@ -14363,7 +14361,6 @@ class HighlightClearCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
         HighlightCommand.highlight_table.clear()
         return
 
@@ -14386,7 +14383,6 @@ class HighlightAddCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
         HighlightCommand.highlight_table[args.match] = " ".join(args.color)
         return
 
@@ -14406,7 +14402,6 @@ class HighlightRemoveCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
         HighlightCommand.highlight_table.pop(args.match, None)
         return
 
@@ -14818,8 +14813,6 @@ class DisplayTypeCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         tp = GefUtil.cached_lookup_type(args.type) or GefUtil.cached_lookup_type("struct {:s}".format(args.type))
         if tp is None:
             err("Not found {:s}".format(args.type))
@@ -14894,8 +14887,6 @@ class BreakRelativeVirtualAddressCommand(GenericCommand):
     @parse_args
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         elf = Elf.get_elf()
         if not elf.is_valid():
             err("Invalid elf")
@@ -14948,8 +14939,6 @@ class PrintFormatCommand(GenericCommand):
     @only_if_gdb_running
     def do_invoke(self, args):
         """Default value for print-format command."""
-        self.dont_repeat()
-
         bit_format = {8: "<B", 16: "<H", 32: "<I", 64: "<Q"}
         c_type = {8: "char", 16: "short", 32: "int", 64: "long long"}
         asm_type = {8: "db", 16: "dw", 32: "dd", 64: "dq"}
@@ -15081,7 +15070,6 @@ class CanaryCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
-        self.dont_repeat()
         self.dump_canary()
         return
 
@@ -15148,8 +15136,6 @@ class AuxvCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         auxval = Auxv.get_auxiliary_values(args.force_heuristic)
         if not auxval:
             return None
@@ -15262,8 +15248,6 @@ class ArgvCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         paddr1 = self.get_address_from_symbol("&_dl_argv")
         addr1 = self.get_address_from_symbol("_dl_argv")
         if paddr1 and addr1:
@@ -15352,8 +15336,6 @@ class EnvpCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         gef_print(titlify("ENVP from __environ"))
         paddr = self.get_address_from_symbol("&__environ")
         addr = self.get_address_from_symbol("__environ")
@@ -15397,8 +15379,6 @@ class DumpArgsCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         gef_print(titlify("info args (snapshot)"))
         gdb.execute("info args")
 
@@ -15435,8 +15415,6 @@ class VdsoCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # get map entry
         maps = ProcessMap.get_process_maps()
         if maps is None:
@@ -15511,8 +15489,6 @@ class VvarCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr"))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # get map entry
         maps = ProcessMap.get_process_maps()
         if maps is None:
@@ -15566,8 +15542,6 @@ class IouringDumpCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr", "wine"))
     @only_if_specific_arch(arch=("x86_64",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # get map entry
         maps = ProcessMap.get_process_maps()
         if maps is None:
@@ -15612,8 +15586,6 @@ class PidCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         pid = Pid.get_pid()
         if pid:
             if is_qemu_user() or is_qemu_system():
@@ -15646,8 +15618,6 @@ class TidCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         ptid = gdb.selected_thread().ptid
         gef_print("TID: {:d}".format(ptid[1] or ptid[2]))
         return
@@ -15666,8 +15636,6 @@ class FilenameCommand(GenericCommand):
     @parse_args
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         filepath = Path.get_filepath()
         if filepath:
             gef_print(repr(filepath))
@@ -16028,7 +15996,6 @@ class ProcInfoCommand(GenericCommand):
     @only_if_gdb_target_local
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr"))
     def do_invoke(self, args):
-        self.dont_repeat()
         self.show_info_proc()
         self.show_info_proc_extra()
         self.show_parent()
@@ -16054,8 +16021,6 @@ class FileDescriptorsCommand(GenericCommand):
     @only_if_gdb_target_local
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         pid = Pid.get_pid()
         path = "/proc/{:d}/fd".format(pid)
 
@@ -16086,7 +16051,6 @@ class ProcDumpCommand(GenericCommand):
     @only_if_gdb_target_local
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
-        self.dont_repeat()
         pid = Pid.get_pid()
 
         out = []
@@ -16507,7 +16471,6 @@ class CapabilityCommand(GenericCommand):
     @only_if_gdb_target_local
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
         self.print_capability_from_pid(args.verbose)
         self.print_capability_from_file(args.verbose)
         return
@@ -16577,8 +16540,6 @@ class SmartMemoryDumpCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.filter = args.filter
         self.exclude = args.exclude
         self.commit = args.commit
@@ -16629,8 +16590,6 @@ class HijackFdCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr", "wine"))
     @exclude_specific_arch(arch=("CRIS",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # In one version of qemu, the fd was sometimes slightly off in case of i386
         # (fd returned by syscall == real opened fd + 80). I have been hard-coding it so far,
         # but it seems to be fixed, so please specify it with a command argument.
@@ -16857,8 +16816,6 @@ class ScanSectionCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         haystack = args.haystack
         needle = args.needle
 
@@ -17077,8 +17034,6 @@ class SearchPatternCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.args = args
         self.found_count = 0
 
@@ -17223,8 +17178,6 @@ class PtrDemangleCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     @exclude_specific_arch(arch=("SPARC32", "XTENSA", "CRIS"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.source:
             s = GefUtil.get_source(current_arch.decode_cookie)
             gef_print(s)
@@ -17265,8 +17218,6 @@ class PtrMangleCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     @exclude_specific_arch(arch=("SPARC32", "XTENSA", "CRIS"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.source:
             s = GefUtil.get_source(current_arch.encode_cookie)
             gef_print(s)
@@ -17363,8 +17314,6 @@ class SearchMangledPtrCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @exclude_specific_arch(arch=("SPARC32", "XTENSA", "CRIS"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # init
         self.cookie = PtrDemangleCommand.get_cookie()
         if self.cookie is None:
@@ -17492,8 +17441,6 @@ class SearchCfiGadgetsCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # get map entry
         maps = ProcessMap.get_process_maps()
         if maps is None:
@@ -17761,8 +17708,6 @@ class EditFlagsCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if current_arch.flag_register is None:
             warn("This command cannot work under this architecture.")
             return
@@ -17885,8 +17830,6 @@ class MprotectCommand(GenericCommand):
     @exclude_specific_arch(arch=("CRIS",))
     @load_keystone
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if re.match(r"[rwx_-]{3}", args.permission):
             perm = Permission.NONE
             if args.permission[0] == "r":
@@ -17920,8 +17863,6 @@ class KillThreadsCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @exclude_specific_arch(arch=("CRIS",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # print tid list and exit
         if not args.all and not args.thread_id:
             info("Among the threads shown below, `Thread Id` that is not the current thread can be used.")
@@ -17986,8 +17927,6 @@ class CallSyscallCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr", "wine"))
     @exclude_specific_arch(arch=("CRIS",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if current_arch is None:
             err("current_arch is not set.")
             return
@@ -18056,8 +17995,6 @@ class MmapMemoryCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "rr", "wine"))
     @exclude_specific_arch(arch=("CRIS",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # syscall name (mmap or mmap2 or arch-specific)
         try:
             syscall_table = get_syscall_table()
@@ -19220,8 +19157,6 @@ class UnicornEmulateCommand(GenericCommand):
     @load_capstone
     @load_unicorn
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if current_arch.unicorn_support is False:
             warn("This command cannot work under this architecture.")
             return
@@ -19303,7 +19238,6 @@ class StubCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
         loc = "*{:#x}".format(args.location)
         StubBreakpoint(loc, args.retval)
         return
@@ -19314,8 +19248,8 @@ class CapstoneDisassembleCommand(GenericCommand):
     """Use capstone disassembly framework to disassemble code."""
     _cmdline_ = "capstone-disassemble"
     _category_ = "01-e. Debugging Support - Assemble"
-    _aliases_ = ["cs-dis", "pdisas", "nearpc"]
     _repeat_ = True
+    _aliases_ = ["cs-dis", "pdisas", "nearpc"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
@@ -19407,7 +19341,7 @@ class GlibcHeapCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
+        self.usage()
         return
 
 
@@ -19427,8 +19361,6 @@ class GlibcHeapTopCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # parse arena
         arena = GlibcHeap.get_arena(args.arena_addr)
 
@@ -19472,8 +19404,6 @@ class GlibcHeapArenasCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # main_arena
         arena = GlibcHeap.get_main_arena()
         if arena is None:
@@ -19633,7 +19563,6 @@ class GlibcHeapArenaCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
         out = []
 
         # parse arena
@@ -19684,8 +19613,6 @@ class GlibcHeapChunkCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # parse arena
         arena = GlibcHeap.get_arena(args.arena_addr)
 
@@ -19821,8 +19748,6 @@ class GlibcHeapChunksCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # parse arena
         arena = GlibcHeap.get_arena(args.arena_addr)
 
@@ -19942,8 +19867,6 @@ class GlibcHeapBinsCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # parse arena
         arena = GlibcHeap.get_arena(args.arena_addr)
 
@@ -20085,8 +20008,6 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # Determine if we are using libc with tcache built in (2.26+)
         if get_libc_version() < (2, 26):
             info("No Tcache in this version of libc")
@@ -20203,8 +20124,6 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # parse arena
         arena = GlibcHeap.get_arena(args.arena_addr)
 
@@ -20252,8 +20171,6 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # parse arena
         arena = GlibcHeap.get_arena(args.arena_addr)
 
@@ -20303,8 +20220,6 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # parse arena
         arena = GlibcHeap.get_arena(args.arena_addr)
 
@@ -20360,8 +20275,6 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # parse arena
         arena = GlibcHeap.get_arena(args.arena_addr)
 
@@ -20431,8 +20344,6 @@ class RegistersCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.check_unavailable_regs()
 
         unchanged_color = Config.get_gef_setting("theme.registers_register_name")
@@ -20579,8 +20490,6 @@ class RopperCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     @load_ropper
     def do_invoke(self, argv):
-        self.dont_repeat()
-
         if "-h" in argv or "--help" in argv:
             self.print_help()
             return
@@ -20686,8 +20595,6 @@ class RpCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("kgdb", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         try:
             rp = GefUtil.which("rp-lin")
         except FileNotFoundError as e:
@@ -20792,8 +20699,6 @@ class AssembleCommand(GenericCommand):
     @parse_args
     @load_keystone
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if (args.arch, args.mode) == (None, None):
             if is_alive():
                 arch, mode = UnicornKeystoneCapstone.get_keystone_arch(
@@ -20902,8 +20807,6 @@ class DisassembleCommand(GenericCommand):
     @parse_args
     @load_capstone
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if (args.arch, args.mode) == (None, None):
             if is_alive():
                 arch, mode = UnicornKeystoneCapstone.get_capstone_arch(
@@ -21124,8 +21027,6 @@ class AsmListCommand(GenericCommand):
     @parse_args
     @load_capstone
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if (args.arch, args.mode) == (None, None):
             if is_alive():
                 arch, mode = UnicornKeystoneCapstone.get_capstone_arch(
@@ -21236,8 +21137,6 @@ class ProcessSearchCommand(GenericCommand):
     @parse_args
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.pattern:
             pattern = re.compile(args.pattern)
         else:
@@ -21314,8 +21213,6 @@ class ArchInfoCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if current_arch is None:
             err("current_arch not set")
             return
@@ -21904,8 +21801,6 @@ class ElfInfoCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         local_filepath = None
         remote_filepath = None
         tmp_filepath = None
@@ -22358,8 +22253,6 @@ class ChecksecCommand(GenericCommand):
     @parse_args
     @exclude_specific_gdb_mode(mode=("wine", "kgdb"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if is_qemu_system() or is_vmware():
             info("Redirect to kchecksec")
             gdb.execute("kchecksec")
@@ -23493,7 +23386,6 @@ class KernelChecksecCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
         self.print_security_properties_qemu_system()
         return
 
@@ -25190,8 +25082,6 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
     @parse_args
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         local_filepath = None
         remote_filepath = None
         tmp_filepath = None
@@ -25342,8 +25232,6 @@ class MainBreakCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         try:
             main_address = AddressUtil.parse_address("main")
         except gdb.error:
@@ -25411,8 +25299,6 @@ class EntryPointBreakCommand(GenericCommand):
     # Need not @parse_args because argparse can't stop interpreting argument for start.
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, argv):
-        self.dont_repeat()
-
         if is_alive():
             if is_remote_debug():
                 err("Unsupported gdb mode")
@@ -25521,8 +25407,6 @@ class NamedBreakCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.location is not None:
             location = "*{:#x}".format(args.location)
         else:
@@ -25561,8 +25445,6 @@ class CommandBreakCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         location = args.location
         if location is None:
             location = current_arch.pc
@@ -25610,7 +25492,6 @@ class BreakIfTakenCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
         TakenOrNotBreakpoint(args.location, True, args.hw)
         return
 
@@ -25629,7 +25510,6 @@ class BreakIfNotTakenCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
         TakenOrNotBreakpoint(args.location, False, args.hw)
         return
 
@@ -26972,8 +26852,6 @@ class ContextCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if gdb.selected_thread().is_running():
             return
 
@@ -27059,7 +26937,7 @@ class MemoryCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
+        self.usage()
         return
 
 
@@ -27091,8 +26969,6 @@ class MemoryWatchCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         MemoryWatchCommand.mem_watches[args.address] = (args.count, args.unit)
         ok("Adding memwatch to {:#x}".format(args.address))
         return
@@ -27119,8 +26995,6 @@ class MemoryUnwatchCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         res = MemoryWatchCommand.mem_watches.pop(args.address, None)
         if not res:
             warn("You weren't watching {:#x}".format(args.address))
@@ -27141,8 +27015,6 @@ class MemoryWatchResetCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         MemoryWatchCommand.mem_watches.clear()
         ok("Memory watches cleared")
         return
@@ -27160,8 +27032,6 @@ class MemoryWatchListCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if not MemoryWatchCommand.mem_watches:
             info("No memory watches")
             return
@@ -27177,8 +27047,8 @@ class HexdumpCommand(GenericCommand):
     """Display the hexdump from the memory location specified."""
     _cmdline_ = "hexdump"
     _category_ = "03-b. Memory - View"
-    _aliases_ = ["xxd", "hd"]
     _repeat_ = True
+    _aliases_ = ["xxd", "hd"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("format", choices=["byte", "word", "dword", "qword", "b", "w", "d", "q"], nargs="?", default="byte",
@@ -27339,8 +27209,6 @@ class HexdumpFlexibleCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.phys:
             if not is_qemu_system() and not is_vmware() and not is_kgdb():
                 err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
@@ -27471,8 +27339,6 @@ class PatchCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         SUPPORTED_SIZES = {
             "qword": (8, "Q"),
             "dword": (4, "L"),
@@ -27644,8 +27510,6 @@ class PatchStringCommand(PatchCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.phys:
             if not is_qemu_system():
                 err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
@@ -27696,8 +27560,6 @@ class PatchHexCommand(PatchCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.phys:
             if not is_qemu_system():
                 err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
@@ -27748,8 +27610,6 @@ class PatchPatternCommand(PatchCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.phys:
             if not is_qemu_system():
                 err("Unsupported. Check qemu version (at least: 4.1.0-rc0~, recommend: 5.x~)")
@@ -27834,8 +27694,6 @@ class PatchNopCommand(PatchCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if current_arch.nop_insn is None:
             err("This command cannot work under this architecture.")
             return
@@ -27919,8 +27777,6 @@ class PatchInfloopCommand(PatchCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if current_arch.infloop_insn is None:
             err("This command cannot work under this architecture.")
             return
@@ -27988,8 +27844,6 @@ class PatchTrapCommand(PatchCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if current_arch.trap_insn is None:
             err("This command cannot work under this architecture.")
             return
@@ -28057,8 +27911,6 @@ class PatchRetCommand(PatchCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if current_arch.ret_insn is None:
             err("This command cannot work under this architecture.")
             return
@@ -28126,8 +27978,6 @@ class PatchSyscallCommand(PatchCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("rr", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if current_arch.syscall_insn is None:
             err("This command cannot work under this architecture.")
             return
@@ -28175,8 +28025,6 @@ class PatchHistoryCommand(PatchCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if PatchCommand.patch_history:
             gef_print("[NEW]")
             for i, hist in enumerate(PatchCommand.patch_history):
@@ -28219,8 +28067,6 @@ class PatchRevertCommand(PatchCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("rr",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if len(PatchCommand.patch_history) == 0:
             info("Patch history is empty.")
             return
@@ -28269,9 +28115,9 @@ class PatchRevertCommand(PatchCommand):
 class DereferenceCommand(GenericCommand):
     """Dereference recursively from an address and display information."""
     _cmdline_ = "dereference"
-    _aliases_ = ["telescope"]
     _category_ = "01-a. Debugging Support - Context"
     _repeat_ = True
+    _aliases_ = ["telescope"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
@@ -28569,8 +28415,6 @@ class ASLRCommand(GenericCommand):
     @only_if_gdb_target_local
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if is_attach() or is_remote_debug():
             warn("ASLR setting is ignored because it is remote or attached process")
 
@@ -28604,8 +28448,6 @@ class FollowCommand(GenericCommand):
     @parse_args
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.command is None:
             follow = gdb.parameter("follow-fork-mode")
             if follow == "child":
@@ -28633,8 +28475,6 @@ class SmartCppFunctionNameCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         setting = gdb.execute("gef config context.smart_cpp_function_name", to_string=True)
         if "False" in setting:
             gdb.execute("gef config context.smart_cpp_function_name true", to_string=True)
@@ -28667,7 +28507,6 @@ class ContextExtraCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
         self.usage()
         return
 
@@ -28685,7 +28524,6 @@ class ContextExtraAddCommand(ContextExtraCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
         ContextCommand.context_extra_commands.append(" ".join(args.cmd))
         return
 
@@ -28702,7 +28540,6 @@ class ContextExtraListCommand(ContextExtraCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
         if not ContextCommand.context_extra_commands:
             warn("Nothing to display")
             return
@@ -28725,7 +28562,6 @@ class ContextExtraRemoveCommand(ContextExtraCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
         if args.index < len(ContextCommand.context_extra_commands):
             ContextCommand.context_extra_commands.pop(args.index)
         else:
@@ -28745,7 +28581,6 @@ class ContextExtraClearCommand(ContextExtraCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
         ContextCommand.context_extra_commands = []
         return
 
@@ -28776,7 +28611,6 @@ class CommentCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
         self.usage()
         return
 
@@ -28796,7 +28630,6 @@ class CommentAddCommand(CommentCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
         comms = ContextCommand.context_comments.get(args.location, [])
         ContextCommand.context_comments[args.location] = comms + [args.comment]
         return
@@ -28814,7 +28647,6 @@ class CommentLsCommand(CommentCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
         if not ContextCommand.context_comments:
             warn("Nothing to display")
             return
@@ -28840,7 +28672,6 @@ class CommentRemoveCommand(CommentCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
         if args.location not in ContextCommand.context_comments:
             err("Invalid location")
             return
@@ -28868,7 +28699,6 @@ class CommentClearCommand(CommentCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
         ContextCommand.context_comments = {}
         return
 
@@ -28900,8 +28730,6 @@ class VMMapCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("kgdb",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if is_qemu_system() or is_vmware():
             info("Redirect to pagewalk (args are ignored)")
             gdb.execute("pagewalk")
@@ -29039,8 +28867,6 @@ class XFilesCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         headers = ["Start", "End", "Name", "File"]
         width = AddressUtil.get_format_address_width()
         legend = "{:{w:d}s} {:{w:d}s} {:<21s} {:s}".format(*headers, w=width)
@@ -29134,8 +28960,6 @@ class XInfoCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("kgdb",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.location == []:
             locations = [current_arch.pc]
         else:
@@ -29180,7 +29004,7 @@ class XorMemoryCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
+        self.usage()
         return
 
 
@@ -29208,8 +29032,6 @@ class XorMemoryDisplayCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         start_addr = args.location
         end_addr = args.location + args.size
         try:
@@ -29252,8 +29074,6 @@ class XorMemoryPatchCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         start_addr = args.location
         end_addr = args.location + args.size
         try:
@@ -29289,7 +29109,7 @@ class PatternCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
+        self.usage()
         return
 
 
@@ -29342,8 +29162,6 @@ class PatternCreateCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.size is None:
             size = Config.get_gef_setting("pattern.length")
         else:
@@ -29408,8 +29226,6 @@ class PatternSearchCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.size is None:
             size = Config.get_gef_setting("pattern.length") * 64
         else:
@@ -29457,8 +29273,6 @@ class SigreturnCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("wine",))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.location is None:
             base = current_arch.sp
         else:
@@ -29656,8 +29470,6 @@ class SropHintCommand(GenericCommand):
     @parse_args
     @exclude_specific_gdb_mode(mode=("wine",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.arch is None:
             if is_x86_64():
                 mode = "x64"
@@ -29830,8 +29642,6 @@ class Ret2dlHintCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         s = ""
         s += "  +-.got/.got.plt @ itself---------+\n"
         s += "  | GOT[0]: _DYNAMIC               |\n"
@@ -30083,8 +29893,6 @@ class LinkMapCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         Cache.reset_gef_caches(all=True)
 
         self.verbose = args.verbose
@@ -30388,8 +30196,6 @@ class DynamicCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.dynamic_address:
             dynamic = ProcessMap.lookup_address(args.dynamic_address)
 
@@ -31026,8 +30832,6 @@ class DestructorDumpCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @exclude_specific_arch(arch=("SPARC32", "XTENSA", "CRIS"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         Cache.reset_gef_caches(all=True)
 
         # init
@@ -31452,8 +31256,6 @@ class GotCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         try:
             GefUtil.which("objdump")
             GefUtil.which("readelf")
@@ -31605,8 +31407,6 @@ class GotAllCommand(GenericCommand):
     @only_if_gdb_target_local
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         verbose = ["", "-v"][args.verbose]
         extra_args = "{:s} {:s}".format(verbose, " ".join(args.filter))
 
@@ -31684,8 +31484,6 @@ class FormatStringSearchCommand(GenericCommand):
     @parse_args
     @exclude_specific_gdb_mode(mode=("wine",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         dangerous_functions = {
             "printf": 0,                # int printf(const char *fmt, ...);
             "fprintf": 1,               # int fprintf(FILE *stream, const char *fmt, ...);
@@ -32136,8 +31934,6 @@ class HeapAnalysisCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.show:
             self.dump_tracked_allocations()
             return
@@ -32278,8 +32074,6 @@ class SyscallSearchCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.verbose = args.verbose
 
         syscall_num = None
@@ -45499,8 +45293,6 @@ class SyscallArgsCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("wine",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.nr is not None:
             syscall_register, nr = "-", args.nr
         else:
@@ -45532,8 +45324,6 @@ class SyscallSampleCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         arch_list = []
         queue = Architecture.__subclasses__()
         while queue:
@@ -45581,8 +45371,6 @@ class CodebaseCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         codebase = ProcessMap.get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
         if codebase is None:
             codebase = ProcessMap.get_section_base_address(Path.get_filepath_from_info_proc())
@@ -45671,8 +45459,6 @@ class HeapbaseCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         heap = HeapbaseCommand.heap_base()
         if heap is None:
             gef_print("Heap is not found")
@@ -45697,7 +45483,6 @@ class LibcCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
-        self.dont_repeat()
         Cache.reset_gef_caches(all=True) # get_process_maps may be caching old information
 
         libc_targets = ("libc-2.", "libc.so.6", "libuClibc-")
@@ -45767,7 +45552,6 @@ class LdCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
-        self.dont_repeat()
         Cache.reset_gef_caches(all=True) # get_process_maps may be caching old information
 
         ld_targets = ("ld-2.", "ld-linux-", "ld-linux.", "ld64-uClibc-", "ld-uClibc-")
@@ -46010,8 +45794,6 @@ class MagicCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("wine", "kgdb"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.print_file_jumps = args.fj
         self.filter = args.filter
 
@@ -46231,7 +46013,6 @@ class KernelMagicCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
         self.filter = args.filter
         self.magic_kernel()
         return
@@ -46251,8 +46032,6 @@ class OneGadgetCommand(GenericCommand):
     @only_if_gdb_target_local
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         libc = ProcessMap.process_lookup_path(("libc-2.", "libc.so.6"))
         if libc is None:
             err("libc is not found")
@@ -46281,8 +46060,6 @@ class SeccompCommand(GenericCommand):
     @only_if_gdb_target_local
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         path = Path.get_filepath()
         try:
             seccomp = GefUtil.which("seccomp-tools")
@@ -46354,8 +46131,6 @@ class SysregCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("kgdb",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.filter = args.filter
         self.exact = args.exact
         self.print_sysreg_compact()
@@ -46403,8 +46178,6 @@ class MmxSetCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     @only_if_kvm_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # arg parse
         try:
             reg, value = args.reg_and_value.split("=")
@@ -46466,7 +46239,6 @@ class MmxCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("kgdb",))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
-        self.dont_repeat()
         self.print_mmx()
         return
 
@@ -46488,8 +46260,6 @@ class XmmSetCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("rr", "kgdb"))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # arg parse
         try:
             reg, value = args.reg_and_value.split("=")
@@ -46585,8 +46355,6 @@ class SseCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("kgdb",))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, argv):
-        self.dont_repeat()
-
         if "-h" in argv:
             self.usage()
             return
@@ -46643,7 +46411,6 @@ class AvxCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("kgdb",))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
-        self.dont_repeat()
         self.print_avx()
         return
 
@@ -46984,8 +46751,6 @@ class FpuCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("kgdb",))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if is_x86():
             self.print_fpu_x86()
         elif is_arm32() or is_arm64():
@@ -47154,8 +46919,6 @@ class ErrnoCommand(GenericCommand):
     @parse_args
     @exclude_specific_gdb_mode(mode=("wine",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.all:
             for val, es in sorted(self.ERRNO_DICT.items()):
                 gef_print('{:3d} (={:#4x}): {:<15s}: "{:s}"'.format(val, val, es[0], es[1]))
@@ -47224,8 +46987,6 @@ class ExtractHeapAddrCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.source:
             s = GefUtil.get_source(ExtractHeapAddrCommand.reveal)
             gef_print(s)
@@ -47322,8 +47083,6 @@ class FindFakeFastCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if is_64bit():
             MIN_SIZE = 0x20
         else:
@@ -47515,8 +47274,6 @@ class VisualHeapCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.full = args.full
         self.use_dark_color = args.dark_color
         self.safe_linking_decode = args.safe_linking_decode
@@ -47566,8 +47323,6 @@ class DistanceCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.address_b is not None:
             offset = abs(args.address_a - args.address_b)
             gef_print("Offset:  {:#x}".format(offset))
@@ -47663,8 +47418,6 @@ class U2dCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         try:
             if "." in args.value:
                 n = float(args.value)
@@ -47693,8 +47446,6 @@ class UnsignedCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         gef_print("input: {:#x}".format(args.value))
 
         for i in range(4):
@@ -48099,8 +47850,6 @@ class ConvertCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         value = args.value
 
         if args.hex: # "41414141" -> "\x41\x41\x41\x41"
@@ -51957,8 +51706,6 @@ class KernelbaseCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.reparse:
             Cache.reset_gef_caches(all=True)
 
@@ -52002,8 +51749,6 @@ class KernelVersionCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.reparse:
             Cache.reset_gef_caches(all=True)
 
@@ -52039,8 +51784,6 @@ class KernelCmdlineCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.reparse:
             Cache.reset_gef_caches(all=True)
 
@@ -52197,8 +51940,6 @@ class KernelCurrentCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.quiet = args.quiet
 
         if not self.quiet:
@@ -54432,8 +54173,6 @@ class KernelTaskCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.quiet = args.quiet
         self.quiet_info("Wait for memory scan")
         self.filepath_cache = {}
@@ -54469,7 +54208,6 @@ class KernelFilesCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
         info("Redirect to `ktask -quF`")
 
         no_pager = ""
@@ -54495,7 +54233,6 @@ class KernelSavedRegsCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
         info("Redirect to `ktask -qur`")
 
         no_pager = ""
@@ -54521,7 +54258,6 @@ class KernelSignalsCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
         info("Redirect to `ktask -qus`")
 
         no_pager = ""
@@ -54547,7 +54283,6 @@ class KernelNamespacesCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
         info("Redirect to `ktask -quN`")
 
         no_pager = ""
@@ -55098,8 +54833,6 @@ class KernelModuleCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.quiet = args.quiet
 
         if not self.quiet:
@@ -55514,8 +55247,6 @@ class KernelBlockDevicesCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.quiet = args.quiet
 
         if not self.quiet:
@@ -56606,8 +56337,6 @@ class KernelCharacterDevicesCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.quiet = args.quiet
 
         if not self.quiet:
@@ -57148,8 +56877,6 @@ class KernelOperationsCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # parse version
         if args.version:
             r = re.search(r"(\d)\.(\d+)(?:\.(\d+))?", args.version)
@@ -57572,8 +57299,6 @@ class KernelSysctlCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.filter = args.filter
         self.exact = args.exact
         self.exact_found = False
@@ -58088,8 +57813,6 @@ class KernelFileSystemsCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if not args.quiet:
             info("Wait for memory scan")
 
@@ -58177,8 +57900,6 @@ class KernelClockSourceCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if not args.quiet:
             info("Wait for memory scan")
 
@@ -58637,8 +58358,6 @@ class KernelTimerCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         kversion = Kernel.kernel_version()
         if kversion < "4.8":
             err("Unsupported v4.8 or before")
@@ -59129,8 +58848,6 @@ class KernelPciDeviceCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if not args.quiet:
             info("Wait for memory scan")
 
@@ -59175,8 +58892,6 @@ class KernelConfigCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.reparse:
             self.configs = None
 
@@ -59301,8 +59016,6 @@ class KernelSearchCodePtrCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.max_range and args.max_range % current_arch.ptrsize:
             err("range must be a multiple of the pointer size.")
             return
@@ -59671,8 +59384,6 @@ class KernelDmesgCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if not args.quiet:
             info("Wait for memory scan")
 
@@ -59827,7 +59538,6 @@ class StringsCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
         self.filter = args.filter
         self.exclude = args.exclude
         self.minlen = args.minlen
@@ -60015,8 +59725,6 @@ class SyscallTableViewCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.quiet = args.quiet
         self.filter = args.filter
         self.out = []
@@ -60358,8 +60066,6 @@ class TlsCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if not current_arch.tls_supported:
             warn("This command cannot work under this architecture.")
             return
@@ -60414,7 +60120,6 @@ class FsbaseCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     @exclude_specific_gdb_mode(mode=("qiling", "kgdb"))
     def do_invoke(self, args):
-        self.dont_repeat()
         fsbase = current_arch.get_fs()
         if fsbase is not None:
             gef_print("$fs_base: {:#x}".format(fsbase))
@@ -60436,7 +60141,6 @@ class GsbaseCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qiling", "kgdb"))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
-        self.dont_repeat()
         gsbase = current_arch.get_gs()
         if gsbase is not None:
             gef_print("$gs_base: {:#x}".format(gsbase))
@@ -60851,8 +60555,6 @@ class GdtInfoCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("wine",))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "x86_16"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if not args.quiet:
             self.print_seg_info()
 
@@ -61085,8 +60787,6 @@ class IdtInfoCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("wine",))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "x86_16"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if is_qemu_system() or is_vmware():
             self.print_idt_real()
         else:
@@ -61185,8 +60885,6 @@ class MemoryCompareCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.phys1 or args.phys2:
             if not is_qemu_system():
                 err("Unsupported `--phys` option in this gdb mode")
@@ -61245,8 +60943,6 @@ class MemorySetCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.phys:
             if not is_qemu_system():
                 err("Unsupported `--phys` option in this gdb mode")
@@ -61331,8 +61027,6 @@ class MemoryCopyCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.phys1 or args.phys2:
             if not is_qemu_system():
                 err("Unsupported `--phys` option in this gdb mode")
@@ -61421,8 +61115,6 @@ class MemorySwapCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.phys1 or args.phys2:
             if not is_qemu_system():
                 err("Unsupported `--phys` option in this gdb mode")
@@ -61505,8 +61197,6 @@ class MemoryInsertCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.phys1 or args.phys2:
             if not is_qemu_system():
                 err("Unsupported `--phys` option in this gdb mode")
@@ -61572,8 +61262,6 @@ class HashMemoryCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         gef_print("Address: {:#x}".format(args.location))
         gef_print("Size: {:#x}".format(args.size))
 
@@ -61684,8 +61372,6 @@ class IsMemoryZeroCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.phys:
             if not is_qemu_system():
                 err("Unsupported `--phys` option in this gdb mode")
@@ -61761,8 +61447,6 @@ class SequenceLengthCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.phys:
             if not is_qemu_system():
                 err("Unsupported `--phys` option in this gdb mode")
@@ -61835,8 +61519,6 @@ class MultiLineCommand(GenericCommand):
 
     # Need not @parse_args because argparse can't stop interpreting options for user specified command.
     def do_invoke(self, argv):
-        self.dont_repeat()
-
         if len(argv) == 1 and argv[0] == "-h":
             self.usage()
             return
@@ -61881,8 +61563,6 @@ class TimeCommand(GenericCommand):
 
     # Need not @parse_args because argparse can't stop interpreting options for user specified command.
     def do_invoke(self, argv):
-        self.dont_repeat()
-
         if len(argv) == 1 and argv[0] == "-h":
             self.usage()
             return
@@ -61933,8 +61613,6 @@ class SaveOutputCommand(GenericCommand):
 
     # Need not @parse_args because argparse can't stop interpreting options for user specified command.
     def do_invoke(self, argv):
-        self.dont_repeat()
-
         if len(argv) == 1 and argv[0] == "-h":
             self.usage()
             return
@@ -62014,7 +61692,7 @@ class DiffOutputCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
+        self.usage()
         return
 
 
@@ -62046,8 +61724,6 @@ class DiffOutputColordiffCommand(DiffOutputCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         try:
             self.colordiff = GefUtil.which("colordiff")
         except FileNotFoundError as e:
@@ -62105,8 +61781,6 @@ class DiffOutputGitDiffCommand(DiffOutputCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         try:
             self.git = GefUtil.which("git")
         except FileNotFoundError as e:
@@ -62153,8 +61827,6 @@ class DiffOutputListCommand(DiffOutputCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         fmt = "{:<3s}  {:26s}  {:39s}  {:<7s}  {:s}"
         legend = ["#", "mtime", "path", "size", "command"]
         gef_print(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
@@ -62188,8 +61860,6 @@ class DiffOutputClearCommand(DiffOutputCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.all:
             for path in self.get_saved_files():
                 os.unlink(path)
@@ -62289,8 +61959,6 @@ class IiCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.location is None:
             location = current_arch.pc
         else:
@@ -62330,8 +61998,6 @@ class ConstGrepCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         srcdir = "/usr/include"
         pattern = re.compile(r"^#define\s+\S*" + args.pattern)
         for cur, _dirs, files in os.walk(srcdir):
@@ -63395,8 +63061,6 @@ class SlubDumpCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if not args.quiet:
             info("Wait for memory scan")
 
@@ -64100,8 +63764,6 @@ class SlubTinyDumpCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if not args.quiet:
             info("Wait for memory scan")
 
@@ -64960,8 +64622,6 @@ class SlabDumpCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if not args.quiet:
             info("Wait for memory scan")
 
@@ -65381,8 +65041,6 @@ class SlobDumpCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if not args.quiet:
             info("Wait for memory scan")
 
@@ -65498,8 +65156,6 @@ class SlabContainsCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.verbose = args.verbose
         if args.reparse:
             self.initialized = False
@@ -66134,8 +65790,6 @@ class BuddyDumpCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # parse args
         if args.reparse:
             self.initialized = False
@@ -66614,8 +66268,6 @@ class KernelPipeCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.quiet = args.quiet
         if not args.quiet:
             info("Wait for memory scan")
@@ -67091,8 +66743,6 @@ class KernelBpfCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.quiet = args.quiet
         if not self.quiet:
             info("Wait for memory scan")
@@ -67562,8 +67212,6 @@ class KernelIpcsCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.quiet = args.quiet
         if not self.quiet:
             info("Wait for memory scan")
@@ -67751,8 +67399,6 @@ class KernelDeviceIOCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.quiet = args.quiet
         if not self.quiet:
             info("Wait for memory scan")
@@ -68115,8 +67761,6 @@ class KernelDmaBufCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.quiet = args.quiet
         if not self.quiet:
             info("Wait for memory scan")
@@ -68549,8 +68193,6 @@ class KernelIrqCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.quiet = args.quiet
         if not self.quiet:
             info("Wait for memory scan")
@@ -68709,8 +68351,6 @@ class KernelNetDeviceCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.quiet = args.quiet
         if not self.quiet:
             info("Wait for memory scan")
@@ -68956,8 +68596,6 @@ class VmallocDumpCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.quiet = args.quiet
         if not args.quiet:
             info("Wait for memory scan")
@@ -70135,8 +69773,6 @@ class KsymaddrRemoteCommand(GenericCommand):
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.verbose = args.verbose
         self.reparse = args.reparse
         self.quiet = args.quiet
@@ -70279,8 +69915,6 @@ class VmlinuxToElfApplyCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
-        self.dont_repeat()
-
         info("Wait for memory scan")
 
         kinfo = Kernel.get_kernel_base()
@@ -70714,8 +70348,6 @@ class TcmallocDumpCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @only_if_specific_arch(arch=("x86_64",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.out = []
         if args.name == "central":
             self.dump_central_cache()
@@ -70935,8 +70567,6 @@ class GoHeapDumpCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @only_if_specific_arch(arch=("x86_64",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.out = []
 
         if args.mspan is not None:
@@ -71132,8 +70762,6 @@ class TlsfHeapDumpCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @only_if_specific_arch(arch=("x86_64",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.pool:
             pool_addr = args.pool
         else:
@@ -71289,8 +70917,6 @@ class HoardHeapDumpCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @only_if_specific_arch(arch=("x86_64",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.superblock:
             super_blocks = args.superblock
         else:
@@ -71485,8 +71111,6 @@ class MimallocHeapDumpCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @only_if_specific_arch(arch=("x86_64",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.v21x = args.v21x
         self.initialize()
 
@@ -71527,8 +71151,6 @@ class V8Command(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.load_v8_gdbinit:
             gdbinit_filename = os.path.join(GEF_TEMP_DIR, "gdbinit-v8")
             if not os.path.exists(gdbinit_filename):
@@ -72334,8 +71956,6 @@ class PartitionAllocDumpCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if is_32bit():
             self.align_pad = None
         self.verbose = args.verbose
@@ -72832,8 +72452,6 @@ class MuslHeapDumpCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.verbose = args.verbose
         self.active_idx = args.idx
         self.out = []
@@ -73380,8 +72998,6 @@ class UclibcNgHeapDumpCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.verbose = args.verbose
         self.out = []
 
@@ -73653,8 +73269,6 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.full = args.full
         self.use_dark_color = args.dark_color
         self.safe_linking_decode = args.safe_linking_decode
@@ -73750,8 +73364,6 @@ class XStringCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.count is None:
             count = 1
         else:
@@ -73804,8 +73416,6 @@ class XColoredCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.color_num < 1 or len(self.color) < args.color_num:
             err("Invalid --color-num")
             return
@@ -73983,8 +73593,6 @@ class XSecureMemAddrCommand(GenericCommand):
     @only_if_specific_gdb_mode(mode=("qemu-system",))
     @only_if_specific_arch(arch=("ARM32", "ARM64"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.dump_type = "x"
         self.dump_unit = current_arch.ptrsize
         self.dump_count = 1
@@ -74137,8 +73745,6 @@ class WSecureMemAddrCommand(GenericCommand):
     @only_if_specific_gdb_mode(mode=("qemu-system",))
     @only_if_specific_arch(arch=("ARM32", "ARM64"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         try:
             if args.mode == "byte":
                 data = p8(int(args.value, 0))
@@ -74222,7 +73828,6 @@ class BreakSecureMemAddrCommand(GenericCommand):
     @only_if_specific_gdb_mode(mode=("qemu-system",))
     @only_if_specific_arch(arch=("ARM32", "ARM64"))
     def do_invoke(self, args):
-        self.dont_repeat()
         if args.verbose:
             info("phys address: {:#x}".format(args.location))
         virt_addrs = XSecureMemAddrCommand.phys2virt(args.location, args.verbose)
@@ -74306,8 +73911,6 @@ class OpteeBreakTaAddrCommand(GenericCommand):
     @only_if_specific_gdb_mode(mode=("qemu-system",))
     @only_if_specific_arch(arch=("ARM32", "ARM64"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.verbose:
             info("thread_enter_user_mode @ OPTEE-OS: {:#x}".format(args.thread_enter_user_mode))
             info("breakpoint target offset of TA: {:#x}".format(args.ta_offset))
@@ -74638,8 +74241,6 @@ class OpteeBgetDumpCommand(GenericCommand):
     @only_if_specific_gdb_mode(mode=("qemu-system",))
     @only_if_specific_arch(arch=("ARM32", "ARM64"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.out = []
 
         ta_address_map = OpteeThreadEnterUserModeBreakpoint.get_ta_loaded_address()
@@ -75462,8 +75063,6 @@ class CpuidCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     @only_if_kvm_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.out = []
 
         # Basic Information
@@ -75636,8 +75235,6 @@ class MsrCommand(GenericCommand):
     @only_if_in_kernel
     @only_if_kvm_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # list up
         if args.msr_target is None and args.msr_value is None:
             self.print_const_table()
@@ -75689,8 +75286,6 @@ class MteTagsCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("rr",))
     @only_if_specific_arch(arch=("ARM64",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         auxv = Auxv.get_auxiliary_values()
         HWCAP2_MTE = 1 << 18
         if auxv and "AT_HWCAP2" in auxv and (auxv["AT_HWCAP2"] & HWCAP2_MTE) == 0:
@@ -75723,8 +75318,6 @@ class PacKeysCommand(GenericCommand):
     @only_if_specific_gdb_mode(mode=("qemu-system",))
     @only_if_specific_arch(arch=("ARM64",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         for keyname in ["APIA", "APIB", "APDA", "APDB", "APGA"]:
             try:
                 lo = get_register("{:s}KEYLO_EL1".format(keyname))
@@ -76155,7 +75748,6 @@ class QemuRegistersCommand(GenericCommand):
     @only_if_specific_gdb_mode(mode=("qemu-system",))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "x86_16"))
     def do_invoke(self, args):
-        self.dont_repeat()
         self.add_info = args.verbose
         self.out = []
         self.qregisters()
@@ -76334,8 +75926,6 @@ class Virt2PhysCommand(GenericCommand):
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         FORCE_PREFIX_S = None
         if is_arm32() or is_arm64():
             if args.force_normal:
@@ -76378,8 +75968,6 @@ class Phys2VirtCommand(GenericCommand):
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         FORCE_PREFIX_S = None
         if is_arm32() or is_arm64():
             if args.force_normal:
@@ -76739,7 +76327,6 @@ class PagewalkCommand(GenericCommand):
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "x86_16", "ARM32", "ARM64"))
     def do_invoke(self, argv):
-        self.dont_repeat()
         if is_x86_32() or is_x86_16():
             gdb.execute("pagewalk x86 {}".format(" ".join(argv)))
         elif is_x86_64():
@@ -77295,8 +76882,6 @@ class PagewalkX64Command(PagewalkCommand):
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "x86_16"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.quiet = args.quiet
         self.print_each_level = args.print_each_level
         self.no_merge = args.no_merge
@@ -78310,8 +77895,6 @@ class PagewalkArmCommand(PagewalkCommand):
     @only_if_specific_gdb_mode(mode=("qemu-system",))
     @only_if_specific_arch(arch=("ARM32",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.FORCE_PREFIX_S = None
         if args.force_secure:
             self.FORCE_PREFIX_S = True
@@ -80063,8 +79646,6 @@ class PagewalkArm64Command(PagewalkCommand):
     @only_if_specific_gdb_mode(mode=("qemu-system",))
     @only_if_specific_arch(arch=("ARM64",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.optee:
             Cache.reset_gef_caches(function=PageMap.get_page_maps_arm64_optee_secure_memory)
             PageMap.get_page_maps_arm64_optee_secure_memory(True)
@@ -80154,7 +79735,6 @@ class SwitchELCommand(GenericCommand):
     @only_if_specific_gdb_mode(mode=("qemu-system",))
     @only_if_specific_arch(arch=("ARM64",))
     def do_invoke(self, args):
-        self.dont_repeat()
         self.target_el = args.target_el
         self.switch_el()
         return
@@ -80813,8 +80393,6 @@ class PagewalkWithHintsCommand(GenericCommand):
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
     @only_if_specific_arch(arch=("x86_64", "x86_32", "ARM64", "ARM32"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if not args.reparse and self.prev_out:
             gef_print("\n".join(self.prev_out), less=not args.no_pager)
             return
@@ -81263,8 +80841,6 @@ class PageCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_64", "x86_32", "ARM64", "ARM32"))
     @only_if_in_kernel
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if args.reparse:
             self.initialized = False
 
@@ -81362,7 +80938,6 @@ class Page2VirtCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_64", "x86_32", "ARM64", "ARM32"))
     @only_if_in_kernel
     def do_invoke(self, args):
-        self.dont_repeat()
         rstr = "-r" if args.reparse else ""
         gdb.execute("page to-virt {:s} {:#x}".format(rstr, args.page))
         return
@@ -81386,7 +80961,6 @@ class Virt2PageCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_64", "x86_32", "ARM64", "ARM32"))
     @only_if_in_kernel
     def do_invoke(self, args):
-        self.dont_repeat()
         rstr = "-r" if args.reparse else ""
         gdb.execute("page from-virt {:s} {:#x}".format(rstr, args.virt))
         return
@@ -81410,7 +80984,6 @@ class Page2PhysCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_64", "x86_32", "ARM64", "ARM32"))
     @only_if_in_kernel
     def do_invoke(self, args):
-        self.dont_repeat()
         rstr = "-r" if args.reparse else ""
         gdb.execute("page to-phys {:s} {:#x}".format(rstr, args.page))
         return
@@ -81434,7 +81007,6 @@ class Phys2PageCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_64", "x86_32", "ARM64", "ARM32"))
     @only_if_in_kernel
     def do_invoke(self, args):
-        self.dont_repeat()
         rstr = "-r" if args.reparse else ""
         gdb.execute("page from-phys {:s} {:#x}".format(rstr, args.phys))
         return
@@ -81454,8 +81026,6 @@ class QemuDeviceInfoCommand(GenericCommand):
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system",))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # get device name
         if args.device:
             device_name = args.device
@@ -81525,8 +81095,8 @@ class XUntilCommand(GenericCommand):
     """Execute until specified address. It is slightly easier to use than the original until command."""
     _cmdline_ = "xuntil"
     _category_ = "01-d. Debugging Support - Execution"
-    _aliases_ = ["exec-next", "stepover", "until-next"]
     _repeat_ = True
+    _aliases_ = ["exec-next", "stepover", "until-next"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("address", metavar="ADDRESS", nargs="?", type=AddressUtil.parse_address,
@@ -81822,8 +81392,8 @@ class ExecUntilCallCommand(ExecUntilCommand):
     """Execute until next call instruction."""
     _cmdline_ = "exec-until call"
     _category_ = "01-d. Debugging Support - Execution"
-    _aliases_ = ["next-call"]
     _repeat_ = True
+    _aliases_ = ["next-call"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
@@ -81846,8 +81416,8 @@ class ExecUntilJumpCommand(ExecUntilCommand):
     """Execute until next jmp instruction."""
     _cmdline_ = "exec-until jmp"
     _category_ = "01-d. Debugging Support - Execution"
-    _aliases_ = ["next-jmp"]
     _repeat_ = True
+    _aliases_ = ["next-jmp"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
@@ -81885,8 +81455,8 @@ class ExecUntilIndirectBranchCommand(ExecUntilCommand):
     """Execute until next indirect call/jmp instruction (only x64/x86)."""
     _cmdline_ = "exec-until indirect-branch"
     _category_ = "01-d. Debugging Support - Execution"
-    _aliases_ = ["next-indirect-branch"]
     _repeat_ = True
+    _aliases_ = ["next-indirect-branch"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
@@ -81925,8 +81495,8 @@ class ExecUntilAllBranchCommand(ExecUntilCommand):
     """Execute until next call/jump/ret instruction."""
     _cmdline_ = "exec-until all-branch"
     _category_ = "01-d. Debugging Support - Execution"
-    _aliases_ = ["next-all-branch"]
     _repeat_ = True
+    _aliases_ = ["next-all-branch"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
@@ -81964,8 +81534,8 @@ class ExecUntilSyscallCommand(ExecUntilCommand):
     """Execute until next syscall instruction."""
     _cmdline_ = "exec-until syscall"
     _category_ = "01-d. Debugging Support - Execution"
-    _aliases_ = ["next-syscall"]
     _repeat_ = True
+    _aliases_ = ["next-syscall"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
@@ -82003,8 +81573,8 @@ class ExecUntilRetCommand(ExecUntilCommand):
     """Execute until next ret instruction."""
     _cmdline_ = "exec-until ret"
     _category_ = "01-d. Debugging Support - Execution"
-    _aliases_ = ["next-ret"]
     _repeat_ = True
+    _aliases_ = ["next-ret"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
@@ -82027,8 +81597,8 @@ class ExecUntilMemaccessCommand(ExecUntilCommand):
     """Execute until next mem-access instruction."""
     _cmdline_ = "exec-until memaccess"
     _category_ = "01-d. Debugging Support - Execution"
-    _aliases_ = ["next-mem"]
     _repeat_ = True
+    _aliases_ = ["next-mem"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
@@ -82051,8 +81621,8 @@ class ExecUntilKeywordReCommand(ExecUntilCommand):
     """Execute until specified keyword instruction."""
     _cmdline_ = "exec-until keyword"
     _category_ = "01-d. Debugging Support - Execution"
-    _aliases_ = ["next-keyword"]
     _repeat_ = True
+    _aliases_ = ["next-keyword"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
@@ -82091,8 +81661,8 @@ class ExecUntilCondCommand(ExecUntilCommand):
     """Execute until specified condition is filled."""
     _cmdline_ = "exec-until cond"
     _category_ = "01-d. Debugging Support - Execution"
-    _aliases_ = ["next-cond"]
     _repeat_ = True
+    _aliases_ = ["next-cond"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
@@ -82153,8 +81723,8 @@ class ExecUntilUserCodeCommand(ExecUntilCommand):
     """Execute until next user-code instruction."""
     _cmdline_ = "exec-until user-code"
     _category_ = "01-d. Debugging Support - Execution"
-    _aliases_ = ["next-user-code"]
     _repeat_ = True
+    _aliases_ = ["next-user-code"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
@@ -82203,8 +81773,8 @@ class ExecUntilLibcCodeCommand(ExecUntilCommand):
     """Execute until next libc instruction."""
     _cmdline_ = "exec-until libc-code"
     _category_ = "01-d. Debugging Support - Execution"
-    _aliases_ = ["next-libc-code"]
     _repeat_ = True
+    _aliases_ = ["next-libc-code"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
@@ -82249,8 +81819,8 @@ class ExecUntilSecureWorldCommand(ExecUntilCommand):
     """Execute until next secure-world instruction (only ARM/ARM64)."""
     _cmdline_ = "exec-until secure-world"
     _category_ = "01-d. Debugging Support - Execution"
-    _aliases_ = ["next-secure-world"]
     _repeat_ = True
+    _aliases_ = ["next-secure-world"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--print-insn", action="store_true", help="print each instruction during execution.")
@@ -82325,8 +81895,6 @@ class UsermodehelperTracerCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
-        self.dont_repeat()
-
         info("Resolving the function addresses")
         addr = Symbol.get_ksymaddr("call_usermodehelper_setup")
         if addr is None:
@@ -82420,8 +81988,6 @@ class ThunkTracerCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     @only_if_in_kernel
     def do_invoke(self, args):
-        self.dont_repeat()
-
         info("Wait for memory scan")
         maps = Kernel.get_maps() # [vaddr, size, perm]
         info("Resolving thunk function addresses")
@@ -82820,8 +82386,6 @@ class KmallocTracerCommand(GenericCommand):
     @only_if_in_kernel
     @only_if_kvm_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # create option_info
         option_info = KmallocTracerCommand.create_option_info(args)
 
@@ -84136,8 +83700,6 @@ class KmallocAllocatedByCommand(GenericCommand):
     @only_if_in_kernel
     @only_if_kvm_disabled
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # create option_info
         option_info = KmallocTracerCommand.create_option_info(args)
 
@@ -84700,7 +84262,6 @@ class UefiOvmfInfoCommand(GenericCommand):
     @only_if_specific_gdb_mode(mode=("qemu-system",))
     @only_if_specific_arch(arch=("x86_32", "x86_64"))
     def do_invoke(self, args):
-        self.dont_repeat()
         gef_print(titlify("SEC (Security) phase variables"))
         gef_print("Unimplemented")
         gef_print(titlify("PEI (Pre EFI Initialization) phase variables"))
@@ -84853,8 +84414,6 @@ class AddSymbolTemporaryCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         try:
             objcopy = GefUtil.which("objcopy")
         except FileNotFoundError as e:
@@ -84979,8 +84538,6 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel
     def do_invoke(self, args):
-        self.dont_repeat()
-
         try:
             GefUtil.which("objcopy")
         except FileNotFoundError as e:
@@ -85094,8 +84651,6 @@ class WalkLinkListCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.dump_bytes_before = args.dump_bytes_before
         self.dump_bytes_after = args.dump_bytes_after
         self.adjust_output = args.adjust_output
@@ -85132,8 +84687,6 @@ class PeekPointersCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # get start address section
         start_addr = args.address or current_arch.sp
         start_addr = ProcessMap.lookup_address(AddressUtil.align_address_to_size(start_addr, current_arch.ptrsize))
@@ -85217,8 +84770,6 @@ class StackFrameCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         ptrsize = current_arch.ptrsize
         try:
             frame = gdb.selected_frame()
@@ -85271,7 +84822,8 @@ class XRefTelescopeCommand(SearchPatternCommand):
     """Recursively search for cross-references to a pattern in memory."""
     _cmdline_ = "xref-telescope"
     _category_ = "03-a. Memory - Search"
-    _aliases_ = []
+    _repeat_ = False # re-overwrite
+    _aliases_ = [] # re-overwrite
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("pattern", metavar="PATTERN", help="search pattern.")
@@ -85328,8 +84880,6 @@ class XRefTelescopeCommand(SearchPatternCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.verbose = args.verbose
         self.aligned = None
         self.interval = None
@@ -85385,8 +84935,6 @@ class BytearrayCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         excluded = set()
         for b in args.badchars:
             b = b.lower().replace("-", "..")
@@ -85455,8 +85003,6 @@ class FiletypeMemoryCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if not is_valid_addr(args.address):
             err("Memory read error")
             return
@@ -85578,8 +85124,6 @@ class BinwalkMemoryCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.filter = args.filter
         self.exclude = args.exclude
         self.maxsize = args.maxsize
@@ -85672,8 +85216,6 @@ class BincompareCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # file_data
         if not os.path.isfile(args.filename):
             err("specified file '{:s}' not exists".format(args.filename))
@@ -85722,8 +85264,6 @@ class SymbolsCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         ret = gdb.execute("maintenance print msymbols", to_string=True).strip()
         out = []
         PATTERN = re.compile(r"^(\[ ?\d+\]) (.) (0x[0-9a-f]+) (.*)")
@@ -85772,8 +85312,6 @@ class TypesCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        self.dont_repeat()
-
         basic_types = [
             "char", "unsigned char", "signed char",
             "int", "unsigned int", "signed int",
@@ -85876,13 +85414,9 @@ class GefCommand(GenericCommand):
                 end_time_proc = time.process_time()
                 time_elapsed.append((cmdline, end_time_real - start_time_real, end_time_proc - start_time_proc))
 
-                repeat = False
-                if hasattr(cmd_class, "_repeat_"):
-                    repeat = cmd_class._repeat_
-
                 if hasattr(cmd_class, "_aliases_"):
                     for alias in cmd_class._aliases_:
-                        GefAlias(alias, cmdline, repeat=repeat)
+                        GefAlias(alias, cmdline, repeat=cmd_class._repeat_)
 
             except Exception as reason:
                 self.missing_commands[cmdline] = reason
@@ -85994,7 +85528,6 @@ class GefCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
         gdb.execute("gef help") # for frequent use
         return
 
@@ -86043,7 +85576,6 @@ class GefHelpCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
         if self.help_string is None:
             self.generate_help()
         msg = titlify("GEF - GDB Enhanced Features") + "\n" + self.help_string
@@ -86137,8 +85669,6 @@ class GefConfigCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         # list up all configs
         if (args.setting_name, args.setting_value) == (None, None):
             gef_print(titlify("GEF configuration settings"))
@@ -86177,8 +85707,6 @@ class GefSaveCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         cfg = configparser.RawConfigParser()
         old_sect = None
 
@@ -86219,8 +85747,6 @@ class GefRestoreCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         if not os.access(GEF_RC, os.R_OK):
             if not args.quiet:
                 info("Not found {:s}, GEF uses default settings".format(GEF_RC))
@@ -86275,8 +85801,6 @@ class GefMissingCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         missing_commands = __gef__.missing_commands.keys()
         if not missing_commands:
             ok("No missing command")
@@ -86298,8 +85822,6 @@ class GefReloadCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         info("Check syntax {:s}".format(GEF_FILEPATH))
 
         try:
@@ -86409,8 +85931,6 @@ class GefArchListCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         self.out = []
         queue = Architecture.__subclasses__()
         while queue:
@@ -86434,7 +85954,6 @@ class GefRaiseExceptionCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
         raise
 
 
@@ -86450,8 +85969,6 @@ class GefPyObjListCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         skip_name_list = [
             "__name__",
             "__loader__",
@@ -86643,8 +86160,6 @@ class GefAvailableCommandListCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         arch_name = self.get_arch_name()
 
         out = []
@@ -86693,7 +86208,7 @@ class GefAlias(gdb.Command):
         # initialize
         self._command = command
         self._alias = alias
-        self._repeat = repeat
+        self._repeat_ = repeat
         r = __gef__.loaded_commands.get(command, None)
         self.__doc__ = "Alias for '{}'".format(Color.greenify(command))
         if r is not None:
@@ -86708,7 +86223,7 @@ class GefAlias(gdb.Command):
         return
 
     def invoke(self, args, from_tty):
-        if not self._repeat:
+        if not self._repeat_:
             self.dont_repeat()
         gdb.execute("{} {}".format(self._command, args), from_tty=from_tty)
         return
@@ -86737,7 +86252,6 @@ class AliasesCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
         self.usage()
         return
 
@@ -86761,7 +86275,6 @@ class AliasesAddCommand(AliasesCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
         command = " ".join(args.command)
         GefAlias(args.alias, command)
         gef_print("{:s} = {:s}".format(args.alias, command))
@@ -86784,8 +86297,6 @@ class AliasesRmCommand(AliasesCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         try:
             alias_to_remove = next(filter(lambda x: x._alias == args.alias, GefAlias.gef_aliases))
             GefAlias.gef_aliases.remove(alias_to_remove)
@@ -86809,8 +86320,6 @@ class AliasesListCommand(AliasesCommand):
 
     @parse_args
     def do_invoke(self, args):
-        self.dont_repeat()
-
         ok("Aliases defined:")
         for a in sorted(GefAlias.gef_aliases, key=lambda a: a._alias):
             gef_print("{:30s} {} {}".format(a._alias, RIGHT_ARROW, a._command))
