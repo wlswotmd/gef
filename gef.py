@@ -13783,35 +13783,20 @@ class GenericCommand(gdb.Command):
     def post_load(self):
         pass
 
-    def __get_setting_name(self, name):
-        def __sanitize_class_name(clsname):
-            clsname = clsname.replace(" ", "_")
-            # gdb's user complete feature does not work well if "-" is included.
-            clsname = clsname.replace("-", "_")
-            return clsname
-
-        class_name = __sanitize_class_name(self.__class__._cmdline_)
-        return "{:s}.{:s}".format(class_name, name)
-
-    @property
-    def settings(self):
-        """Return the list of settings for this command."""
-        return [x.split(".", 1)[1] for x in Config.__gef_config__ if x.startswith("{:s}.".format(self._cmdline_))]
-
-    def get_setting(self, name):
-        key = self.__get_setting_name(name)
-        setting = Config.__gef_config__[key]
-        return setting[1](setting[0])
-
-    def has_setting(self, name):
-        key = self.__get_setting_name(name)
-        return key in Config.__gef_config__
-
     def add_setting(self, name, value, description=""):
-        # make sure settings are always associated to the root command (which derives from GenericCommand)
+        # make sure settings are always associated to the root command
+        # which derives from GenericCommand directly.
         if "GenericCommand" not in [x.__name__ for x in self.__class__.__bases__]:
             return
-        key = self.__get_setting_name(name)
+
+        # sanitize
+        class_name = self.__class__._cmdline_
+        class_name = class_name.replace(" ", "_")
+        # gdb's user complete feature does not work well if "-" is included.
+        class_name = class_name.replace("-", "_")
+
+        # add
+        key = "{:s}.{:s}".format(class_name, name)
         Config.__gef_config__[key] = [value, type(value), description]
         Cache.reset_gef_caches(function=Config.get_gef_setting)
         return
@@ -13980,8 +13965,14 @@ class GefThemeCommand(GenericCommand):
 
     def show_all_config(self):
         gef_print(titlify("settings"))
-        for setting in sorted(self.settings):
-            value = self.get_setting(setting)
+
+        settings = []
+        for x in Config.__gef_config__:
+            if x.startswith("theme."):
+                settings.append(x.split(".", 1)[1])
+
+        for setting in sorted(settings):
+            value = Config.get_gef_setting("theme.{:s}".format(setting))
             if value:
                 value = Color.colorify(value, value)
                 gef_print("{:40s}: {:s}".format(setting, value))
@@ -14019,11 +14010,12 @@ class GefThemeCommand(GenericCommand):
             return
 
         # show one
-        if not self.has_setting(args.key):
+        key = "theme.{:s}".format(args.key)
+        if key not in Config.__gef_config__:
             err("Invalid key")
             return
         if args.value == []:
-            value = self.get_setting(args.key)
+            value = Config.get_gef_setting(key)
             value = Color.colorify(value, value)
             gef_print("{:40s}: {:s}".format(args.key, value))
             return
@@ -19300,7 +19292,7 @@ class CapstoneDisassembleCommand(GenericCommand):
                 err("ARGS must be KEY=VALUE style")
                 return
 
-        length = args.length or int(self.get_setting("nb_lines_code_default"))
+        length = args.length or Config.get_gef_setting("capstone_disassemble.nb_lines_code_default")
         location = args.location or current_arch.pc
 
         try:
@@ -19777,7 +19769,7 @@ class GlibcHeapChunksCommand(GenericCommand):
         if args.nb_byte is not None:
             nb = args.nb_byte
         else:
-            nb = self.get_setting("peek_nb_byte")
+            nb = Config.get_gef_setting("heap_chunks.peek_nb_byte")
 
         self.out = []
         self.print_heap_chunks(arena, dump_start, nb)
@@ -21125,7 +21117,8 @@ class ProcessSearchCommand(GenericCommand):
         return
 
     def get_processes(self):
-        output = GefUtil.gef_execute_external(self.get_setting("ps_command").split(), True)
+        ps_command = Config.get_gef_setting("ps.ps_command").split()
+        output = GefUtil.gef_execute_external(ps_command, True)
         names = [x.lower().replace("%", "") for x in output[0].split()]
 
         for line in output[1:]:
@@ -25321,7 +25314,7 @@ class EntryPointBreakCommand(GenericCommand):
             return
 
         # use symbol if loaded
-        entrypoints = self.get_setting("entrypoint_symbols").split()
+        entrypoints = Config.get_gef_setting("entry_break.entrypoint_symbols").split()
         for sym in entrypoints:
             try:
                 value = AddressUtil.parse_address(sym)
@@ -25660,13 +25653,13 @@ class ContextCommand(GenericCommand):
 
     def context_regs(self):
         self.context_title("registers")
-        ignored_registers = set(self.get_setting("ignore_registers").split())
+        ignored_registers = set(Config.get_gef_setting("context.ignore_registers").split())
 
         if current_arch is None and is_remote_debug():
             err("Missing info about architecture. Please set: `file /path/to/target_binary`")
             return
 
-        if self.get_setting("show_registers_raw") is False:
+        if Config.get_gef_setting("context.show_registers_raw") is False:
             regs = set(current_arch.all_registers)
             printable_registers = " ".join(list(regs - ignored_registers))
             gdb.execute("registers {}".format(printable_registers))
@@ -25808,8 +25801,8 @@ class ContextCommand(GenericCommand):
     def context_stack(self):
         self.context_title("stack")
 
-        show_raw = self.get_setting("show_stack_raw")
-        nb_lines = self.get_setting("nb_lines_stack")
+        show_raw = Config.get_gef_setting("context.show_stack_raw")
+        nb_lines = Config.get_gef_setting("context.nb_lines_stack")
 
         if current_arch is None and is_remote_debug():
             err("Missing info about architecture. Please set: `file /path/to/target_binary`")
@@ -25855,10 +25848,10 @@ class ContextCommand(GenericCommand):
         return bp_locations
 
     def context_code(self):
-        use_native_x_command = self.get_setting("use_native_x_command")
-        nb_insn = self.get_setting("nb_lines_code")
-        nb_insn_prev = self.get_setting("nb_lines_code_prev")
-        show_opcodes_size = self.get_setting("show_opcodes_size")
+        use_native_x_command = Config.get_gef_setting("context.use_native_x_command")
+        nb_insn = Config.get_gef_setting("context.nb_lines_code")
+        nb_insn_prev = Config.get_gef_setting("context.nb_lines_code_prev")
+        show_opcodes_size = Config.get_gef_setting("context.show_opcodes_size")
         padding = " " * len(RIGHT_ARROW[1:])
 
         if current_arch is None and is_remote_debug():
@@ -25928,10 +25921,10 @@ class ContextCommand(GenericCommand):
                 elif current_arch.is_jump(insn):
                     target = self.get_branch_addr(insn)
                     delay_slot = current_arch.has_delay_slot
-                elif current_arch.is_call(insn) and self.get_setting("peek_calls") is True:
+                elif current_arch.is_call(insn) and Config.get_gef_setting("context.peek_calls") is True:
                     target = self.get_branch_addr(insn)
                     delay_slot = current_arch.has_delay_slot
-                elif current_arch.is_ret(insn) and self.get_setting("peek_ret") is True:
+                elif current_arch.is_ret(insn) and Config.get_gef_setting("context.peek_ret") is True:
                     target = current_arch.get_ra(insn, frame)
                     delay_slot = current_arch.has_ret_delay_slot
 
@@ -26474,7 +26467,7 @@ class ContextCommand(GenericCommand):
     def print_guessed_arguments(self, function_name):
         """When no symbol, print six arguments."""
         arg_key_color = Config.get_gef_setting("theme.registers_register_name")
-        nb_argument = self.get_setting("nb_guessed_arguments")
+        nb_argument = Config.get_gef_setting("context.nb_guessed_arguments")
         _arch_mode = "{}_{}".format(current_arch.arch.lower(), current_arch.mode)
         _function_name = None
         if function_name.endswith("@plt"):
@@ -26542,10 +26535,10 @@ class ContextCommand(GenericCommand):
         bp_locations = self.get_source_breakpoints(file_base_name)
         past_lines_color = Config.get_gef_setting("theme.old_context")
 
-        nb_line = self.get_setting("nb_lines_code")
+        nb_line = Config.get_gef_setting("context.nb_lines_code")
         cur_line_color = Config.get_gef_setting("theme.source_current_line")
         self.context_title("source:{}+{}".format(symtab.filename, line_num + 1))
-        show_extra_info = self.get_setting("show_source_code_variable_values")
+        show_extra_info = Config.get_gef_setting("context.show_source_code_variable_values")
 
         for i in range(line_num - nb_line + 1, line_num + nb_line):
             if i < 0:
@@ -26617,7 +26610,7 @@ class ContextCommand(GenericCommand):
     def context_trace(self):
         self.context_title("trace")
 
-        nb_backtrace = self.get_setting("nb_lines_backtrace")
+        nb_backtrace = Config.get_gef_setting("context.nb_lines_backtrace")
         if nb_backtrace <= 0:
             return
 
@@ -26634,7 +26627,7 @@ class ContextCommand(GenericCommand):
             current_frame = current_frame.older()
             frames.append(current_frame)
 
-        nb_backtrace_before = self.get_setting("nb_lines_backtrace_before")
+        nb_backtrace_before = Config.get_gef_setting("context.nb_lines_backtrace_before")
         level = max(len(frames) - nb_backtrace_before - 1, 0)
         current_frame = frames[level]
 
@@ -26743,7 +26736,7 @@ class ContextCommand(GenericCommand):
         self.context_title("threads")
 
         threads = gdb.selected_inferior().threads()[::-1]
-        idx = self.get_setting("nb_lines_threads")
+        idx = Config.get_gef_setting("context.nb_lines_threads")
         if idx > 0:
             threads = threads[0:idx]
 
@@ -26862,7 +26855,7 @@ class ContextCommand(GenericCommand):
             return
 
         if is_qemu_system() and get_arch() == "i8086":
-            if self.get_setting("enable_auto_switch_for_i8086"):
+            if Config.get_gef_setting("context.enable_auto_switch_for_i8086"):
                 # check whether protected mode or not.
                 # even if `CR0.PE=1`, it will not switch until `ljmp`.
                 # so it is better to judge whether `$cs=0x8` or not.
@@ -26880,20 +26873,20 @@ class ContextCommand(GenericCommand):
             gdb.execute("gef config context.enable False")
             return
 
-        if not self.get_setting("enable") or ContextCommand.context_hidden:
+        if not Config.get_gef_setting("context.enable") or ContextCommand.context_hidden:
             return
 
         if len(args.commands) > 0:
             current_layout = args.commands
         else:
-            current_layout = self.get_setting("layout").strip().split()
+            current_layout = Config.get_gef_setting("context.layout").strip().split()
 
         if not current_layout:
             return
 
         self.tty_rows, self.tty_columns = GefUtil.get_terminal_size()
 
-        if self.get_setting("clear_screen") and len(args.commands) == 0:
+        if Config.get_gef_setting("context.clear_screen") and len(args.commands) == 0:
             # this is more faster than executing "shell clear -x"
             print("\x1b[H\x1b[2J", end="")
 
@@ -31186,13 +31179,13 @@ class GotCommand(GenericCommand):
 
             # different colors if the function has been resolved or not
             if got_value == 0:
-                color = self.get_setting("function_resolved") # .rela.dyn && uninitialized, etc.
+                color = Config.get_gef_setting("got.function_resolved") # .rela.dyn && uninitialized, etc.
             elif plt_begin <= got_value < plt_end: # Non-PIE
-                color = self.get_setting("function_not_resolved")
+                color = Config.get_gef_setting("got.function_not_resolved")
             elif plt_begin - self.base_address <= got_value < plt_end - self.base_address: # PIE
-                color = self.get_setting("function_not_resolved")
+                color = Config.get_gef_setting("got.function_not_resolved")
             else:
-                color = self.get_setting("function_resolved")
+                color = Config.get_gef_setting("got.function_resolved")
 
             # reloc_arg
             if reloc_arg is None:
