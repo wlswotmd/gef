@@ -28272,8 +28272,8 @@ class DereferenceCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
                         help="the memory address to dump. (default: current_arch.sp)")
-    parser.add_argument("nb_lines", metavar="NB_LINES", nargs="?", type=lambda x: int(x, 0), default=0x40,
-                        help="the count of lines. (default: %(default)s)")
+    parser.add_argument("nb_lines", metavar="NB_LINES", nargs="?", type=lambda x: int(x, 0), 
+                        help="the count of lines.")
     parser.add_argument("-s", "--slab-contains", action="store_true", help="display slab_cache name if available.")
     parser.add_argument("-S", "--slab-contains-unaligned", action="store_true",
                         help="display slab_cache name (allow unaligned) if available.")
@@ -28456,7 +28456,7 @@ class DereferenceCommand(GenericCommand):
         else:
             start_address = args.location
 
-        nb_lines = Config.get_gef_setting("dereference.nb_lines") or args.nb_lines
+        nb_lines = args.nb_lines or Config.get_gef_setting("dereference.nb_lines")
         from_idx = nb_lines * self.repeat_count
         to_idx = nb_lines * (self.repeat_count + 1)
 
