@@ -85350,7 +85350,7 @@ class GefCommand(GenericCommand):
 
     def __init__(self):
         super().__init__(prefix=True)
-        self.add_setting("follow_child", True, "Automatically set GDB to follow child when forking")
+        self.add_setting("follow_child", False, "Automatically set GDB to follow child when forking")
         self.add_setting("readline_compat", False, "Workaround for readline SOH/ETX issue (SEGV)")
         self.add_setting("disable_color", False, "Disable all colors in GEF")
         self.add_setting("always_no_pager", False, "Always disable pager in gef_print()")
@@ -86480,6 +86480,10 @@ class Gef:
         global __gef__
         __gef__ = GefCommand()
         __gef__.setup()
+
+        # follow mode
+        if Config.get_gef_setting("gef.follow_child"):
+            gdb.execute("set follow-fork-mode child")
 
         # index file
         gdb.execute("save gdb-index {}".format(GEF_TEMP_DIR))
