@@ -85421,7 +85421,7 @@ class GefCommand(GenericCommand):
 
                 if hasattr(cmd_class._aliases_, "__iter__"):
                     for alias in cmd_class._aliases_:
-                        GefAlias(alias, cmd_class._cmdline_)
+                        GefAlias(alias, cmd_class._cmdline_, pre_defined=True)
 
             except Exception as reason:
                 self.missing_commands[cmd_class._cmdline_] = reason
@@ -85713,9 +85713,17 @@ class GefSaveCommand(GenericCommand):
             cfg.set(sect, optname, value)
 
         # save the aliases
-        cfg.add_section("aliases")
+        cfg.add_section("user-defined-aliases")
+        cfg.add_section("user-defined-aliases.repeat")
         for alias in __gef_alias_instances__.values():
-            cfg.set("aliases", alias._alias_, alias._command_)
+            # check pre-defined alias or not
+            if alias._command_ in __gef_command_instances__:
+                instance = __gef_command_instances__[alias._command_]
+                if alias._alias_ in instance._aliases_:
+                    continue
+
+            cfg.set("user-defined-aliases", alias._alias_, alias._command_)
+            cfg.set("user-defined-aliases.repeat", alias._alias_, str(alias._repeat_))
 
         with open(GEF_RC, "w") as fd:
             cfg.write(fd)
@@ -85746,13 +85754,14 @@ class GefRestoreCommand(GenericCommand):
         cfg.read(GEF_RC)
 
         for section in cfg.sections():
-            if section == "aliases":
+            if section == "user-defined-aliases.repeat":
+                continue
+
+            if section == "user-defined-aliases":
                 # load the aliases
                 for key in cfg.options(section):
-                    try:
-                        GefAlias(key, cfg.get(section, key))
-                    except Exception:
-                        pass
+                    repeat = cfg.get("user-defined-aliases.repeat", key)
+                    GefAlias(key, cfg.get("user-defined-aliases", key), force_repeat=repeat)
                 continue
 
             # load the other options
@@ -86181,7 +86190,7 @@ class GefAlias(gdb.Command):
     """Simple aliasing wrapper because GDB doesn't do what it should."""
     _category_ = "99. GEF Maintenance Command"
 
-    def __init__(self, alias, command):
+    def __init__(self, alias, command, force_repeat=None, pre_defined=False):
         p = command.split()
         if not p:
             return
@@ -86189,14 +86198,19 @@ class GefAlias(gdb.Command):
         # initialize
         self._alias_ = alias
         self._command_ = command
-        self._repeat_ = False
+        if force_repeat is None:
+            self._repeat_ = False
+        else:
+            self._repeat_ = force_repeat
+        self._pre_defined_ = pre_defined
         self.__doc__ = "Alias for '{}'".format(Color.greenify(command))
 
         # Inherit settings from the aliased command
         if command in __gef_command_instances__:
             instance = __gef_command_instances__[command]
             # repeat settings
-            self._repeat_ = instance._repeat_
+            if force_repeat is None:
+                self._repeat_ = instance._repeat_
             # doc
             self.__doc__ += ": {}".format(instance.__doc__)
 
@@ -86251,6 +86265,7 @@ class AliasesAddCommand(AliasesCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("alias", metavar="ALIAS", help="the name of new alias.")
     parser.add_argument("command", metavar="COMMAND", nargs="+", help="the command of new alias.")
+    parser.add_argument("-r", "--repeat", action="store_true", help="enforce repeat feature.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} scope telescope".format(_cmdline_)
@@ -86262,7 +86277,7 @@ class AliasesAddCommand(AliasesCommand):
     @parse_args
     def do_invoke(self, args):
         command = " ".join(args.command)
-        GefAlias(args.alias, command)
+        GefAlias(args.alias, command, force_repeat=args.repeat)
         gef_print("{:s} = {:s}".format(args.alias, command))
         return
 
@@ -86299,6 +86314,7 @@ class AliasesListCommand(AliasesCommand):
     _category_ = "99. GEF Maintenance Command"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -86307,9 +86323,21 @@ class AliasesListCommand(AliasesCommand):
 
     @parse_args
     def do_invoke(self, args):
-        ok("Aliases defined:")
+        width = max(len(x) for x in __gef_alias_instances__.keys())
+
+        out = []
+        out.append(titlify("Pre-defined aliases"))
         for _, a in sorted(__gef_alias_instances__.items(), key=lambda x:x[0]):
-            gef_print("{:30s} {} {}".format(a._alias_, RIGHT_ARROW, a._command_))
+            if a._pre_defined_:
+                out.append("{:{:d}s} {} {}".format(a._alias_, width, RIGHT_ARROW, a._command_))
+
+        out.append(titlify("User defined aliases"))
+        for _, a in sorted(__gef_alias_instances__.items(), key=lambda x:x[0]):
+            if not a._pre_defined_:
+                out.append("{:{:d}s} {} {}".format(a._alias_, width, RIGHT_ARROW, a._command_))
+
+        if out:
+            gef_print("\n".join(out).rstrip(), less=not args.no_pager)
         return
 
 
