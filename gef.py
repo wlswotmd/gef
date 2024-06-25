@@ -13635,6 +13635,40 @@ class GenericCommand(gdb.Command):
     """This is an abstract class for invoking commands, should not be instantiated."""
     __metaclass__ = abc.ABCMeta
 
+    @abc.abstractproperty
+    def _cmdline_(self):
+        pass
+
+    @abc.abstractproperty
+    def _syntax_(self):
+        pass
+
+    @abc.abstractproperty
+    def _example_(self):
+        pass
+
+    @abc.abstractproperty
+    def _note_(self):
+        pass
+
+    @abc.abstractproperty
+    def _repeat_(self):
+        pass
+
+    @abc.abstractproperty
+    def _aliases_(self):
+        pass
+
+    @abc.abstractmethod
+    def do_invoke(self, argv):
+        pass
+
+    def pre_load(self):
+        pass
+
+    def post_load(self):
+        pass
+
     def __init__(self, *args, **kwargs):
         self.pre_load()
 
@@ -13686,40 +13720,7 @@ class GenericCommand(gdb.Command):
         self.post_load()
         return
 
-    def show_last_exception(self):
-        """Display the last Python exception."""
-        def _show_code_line(fname, idx):
-            fname = os.path.expanduser(os.path.expandvars(fname))
-            __data = open(fname, "r").read().splitlines()
-            return __data[idx - 1] if idx < len(__data) else ""
-
-        gef_print("")
-        exc_type, exc_value, exc_traceback = sys.exc_info()
-
-        gef_print(" Exception raised ".center(80, HORIZONTAL_LINE))
-        gef_print("{}: {}".format(Color.colorify(exc_type.__name__, "bold red underline"), exc_value))
-        gef_print(" Detailed stacktrace ".center(80, HORIZONTAL_LINE))
-
-        for fs in traceback.extract_tb(exc_traceback)[::-1]:
-            filename, lineno, method, code = fs
-
-            if not code or not code.strip():
-                code = _show_code_line(filename, lineno)
-
-            filename_c = Color.yellowify(filename)
-            method_c = Color.greenify(method)
-            gef_print('File "{}", line {:d}, in {}()'.format(filename_c, lineno, method_c))
-            gef_print("   {}    {}".format(RIGHT_ARROW, code))
-
-        gef_print(" Last 10 GDB commands ".center(80, HORIZONTAL_LINE))
-        gdb.execute("show commands")
-        gef_print(" Runtime environment ".center(80, HORIZONTAL_LINE))
-        gdb.execute("version --compact")
-        gef_print(HORIZONTAL_LINE * 80)
-        gef_print("")
-        return
-
-    def invoke(self, args, from_tty):
+    def invoke(self, args, from_tty): # noqa
         try:
             argv = gdb.string_to_argv(args)
             if self._repeat_:
@@ -13730,8 +13731,7 @@ class GenericCommand(gdb.Command):
         except Exception:
             # Since we are intercepting cleaning exceptions here, commands preferably should avoid
             # catching generic Exception, but rather specific ones. This is allows a much cleaner use.
-            self.show_last_exception()
-            self.invoke # avoid to be detected as unused # noqa: B018
+            GefUtil.show_last_exception()
         return
 
     def usage(self):
@@ -13748,40 +13748,6 @@ class GenericCommand(gdb.Command):
             gef_print(Color.colorify("Note:", "bold yellow"))
             gef_print(self._note_.strip())
         return
-
-    @abc.abstractproperty
-    def _cmdline_(self):
-        pass
-
-    @abc.abstractproperty
-    def _syntax_(self):
-        pass
-
-    @abc.abstractproperty
-    def _example_(self):
-        pass
-
-    @abc.abstractproperty
-    def _note_(self):
-        pass
-
-    @abc.abstractproperty
-    def _repeat_(self):
-        pass
-
-    @abc.abstractproperty
-    def _aliases_(self):
-        pass
-
-    @abc.abstractmethod
-    def do_invoke(self, argv):
-        pass
-
-    def pre_load(self):
-        pass
-
-    def post_load(self):
-        pass
 
     def add_setting(self, name, value, description=""):
         # make sure settings are always associated to the root command
@@ -86222,7 +86188,7 @@ class GefAlias(gdb.Command):
         __gef_alias_instances__[alias] = self
         return
 
-    def invoke(self, args, from_tty):
+    def invoke(self, args, from_tty): # noqa
         if not self._repeat_:
             self.dont_repeat()
         gdb.execute("{} {}".format(self._command_, args), from_tty=from_tty)
@@ -86420,6 +86386,40 @@ class GefUtil:
                 if is_exe(exe_file):
                     return exe_file
         raise FileNotFoundError("Missing file `{:s}`".format(program))
+
+    @staticmethod
+    def show_last_exception():
+        """Display the last Python exception."""
+        def _show_code_line(fname, idx):
+            fname = os.path.expanduser(os.path.expandvars(fname))
+            __data = open(fname, "r").read().splitlines()
+            return __data[idx - 1] if idx < len(__data) else ""
+
+        gef_print("")
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+
+        gef_print(" Exception raised ".center(80, HORIZONTAL_LINE))
+        gef_print("{}: {}".format(Color.colorify(exc_type.__name__, "bold red underline"), exc_value))
+        gef_print(" Detailed stacktrace ".center(80, HORIZONTAL_LINE))
+
+        for fs in traceback.extract_tb(exc_traceback)[::-1]:
+            filename, lineno, method, code = fs
+
+            if not code or not code.strip():
+                code = _show_code_line(filename, lineno)
+
+            filename_c = Color.yellowify(filename)
+            method_c = Color.greenify(method)
+            gef_print('File "{}", line {:d}, in {}()'.format(filename_c, lineno, method_c))
+            gef_print("   {}    {}".format(RIGHT_ARROW, code))
+
+        gef_print(" Last 10 GDB commands ".center(80, HORIZONTAL_LINE))
+        gdb.execute("show commands")
+        gef_print(" Runtime environment ".center(80, HORIZONTAL_LINE))
+        gdb.execute("version --compact")
+        gef_print(HORIZONTAL_LINE * 80)
+        gef_print("")
+        return
 
     @staticmethod
     def gef_execute_external(command, as_list=False, *args, **kwargs):
