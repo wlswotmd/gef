@@ -160,6 +160,8 @@ __gef__                     = None # keep GefCommand instance
 __gef_commands__            = [] # gef command classes for registering
 __gef_command_instances__   = {} # gef command instances
 GCI                         = __gef_command_instances__ # short cut for debug # noqa: F841
+__gef_alias_instances__     = {} # gef alias instances
+GAI                         = __gef_alias_instances__ # short cut for debug # noqa: F841
 current_arch                = None # keep Architecture instance
 
 GEF_RC                      = os.getenv("GEF_RC") or os.path.join(os.getenv("HOME") or "~", ".gef.rc")
@@ -85657,7 +85659,7 @@ class GefConfigCommand(GenericCommand):
         Cache.reset_gef_caches(all=True)
         return
 
-    def complete(self, text, word):
+    def complete(self, text, word): # noqa
         settings = sorted(Config.__gef_config__)
 
         if text == "":
@@ -85728,8 +85730,8 @@ class GefSaveCommand(GenericCommand):
 
         # save the aliases
         cfg.add_section("aliases")
-        for alias in GefAlias.gef_aliases:
-            cfg.set("aliases", alias._alias, alias._command)
+        for alias in __gef_alias_instances__.values():
+            cfg.set("aliases", alias._alias_, alias._command_)
 
         with open(GEF_RC, "w") as fd:
             cfg.write(fd)
@@ -86195,41 +86197,37 @@ class GefAlias(gdb.Command):
     """Simple aliasing wrapper because GDB doesn't do what it should."""
     _category_ = "99. GEF Maintenance Command"
 
-    gef_aliases = []
-
-    def __init__(self, alias, command, repeat=False, completer_class=gdb.COMPLETE_NONE, command_class=gdb.COMMAND_NONE):
+    def __init__(self, alias, command):
         p = command.split()
         if not p:
             return
 
-        # already defined, so remove old entry
-        try:
-            alias_to_remove = next(filter(lambda x: x._alias == alias, GefAlias.gef_aliases))
-            GefAlias.gef_aliases.remove(alias_to_remove)
-        except (ValueError, StopIteration):
-            pass
-
         # initialize
-        self._command = command
-        self._alias = alias
-        self._repeat_ = repeat
-        r = __gef__.loaded_commands.get(command, None)
+        self._alias_ = alias
+        self._command_ = command
+        self._repeat_ = False
         self.__doc__ = "Alias for '{}'".format(Color.greenify(command))
-        if r is not None:
-            _instance = r[1]
-            self.__doc__ += ": {}".format(_instance.__doc__)
 
-            if hasattr(_instance, "complete"):
-                self.complete = _instance.complete
+        # Inherit settings from the aliased command
+        if command in __gef_command_instances__:
+            instance = __gef_command_instances__[command]
+            # repeat settings
+            self._repeat_ = instance._repeat_
+            # doc
+            self.__doc__ += ": {}".format(instance.__doc__)
 
-        super().__init__(alias, command_class, completer_class=completer_class)
-        GefAlias.gef_aliases.append(self)
+        # Aliased commands do not support completion.
+        super().__init__(alias, gdb.COMMAND_NONE, completer_class=gdb.COMPLETE_NONE)
+
+        # add or overwrite
+        global __gef_alias_instances__
+        __gef_alias_instances__[alias] = self
         return
 
     def invoke(self, args, from_tty):
         if not self._repeat_:
             self.dont_repeat()
-        gdb.execute("{} {}".format(self._command, args), from_tty=from_tty)
+        gdb.execute("{} {}".format(self._command_, args), from_tty=from_tty)
         return
 
 
@@ -86301,10 +86299,11 @@ class AliasesRmCommand(AliasesCommand):
 
     @parse_args
     def do_invoke(self, args):
-        try:
-            alias_to_remove = next(filter(lambda x: x._alias == args.alias, GefAlias.gef_aliases))
-            GefAlias.gef_aliases.remove(alias_to_remove)
-        except (ValueError, StopIteration):
+        global __gef_alias_instances__
+
+        if args.alias in __gef_alias_instances__:
+            del __gef_alias_instances__[args.alias]
+        else:
             err("{:s} is not found in aliases.".format(args.alias))
         return
 
@@ -86325,8 +86324,8 @@ class AliasesListCommand(AliasesCommand):
     @parse_args
     def do_invoke(self, args):
         ok("Aliases defined:")
-        for a in sorted(GefAlias.gef_aliases, key=lambda a: a._alias):
-            gef_print("{:30s} {} {}".format(a._alias, RIGHT_ARROW, a._command))
+        for _, a in sorted(__gef_alias_instances__.items(), key=lambda x:x[0]):
+            gef_print("{:30s} {} {}".format(a._alias_, RIGHT_ARROW, a._command_))
         return
 
 
