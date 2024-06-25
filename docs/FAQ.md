@@ -55,7 +55,7 @@ However, I have not confirmed that all commands work correctly.
 ## Will this GEF work as a plugin for `hugsy/gef`?
 No, it doesn't work. It replaces `hugsy/gef`.
 
-The compatibility with `hugsy/gef` has already been lost.
+The compatibility with `hugsy/gef` has already been lost. Of course, `hugsy/gef-extras` too.
 Think of it as a completely different product.
 
 ## GDB will not load GEF.
@@ -420,6 +420,9 @@ This is because three things are required:
 
 
 # About reporting, etc.
+
+## After I upgraded GEF, it stopped working.
+The format of the configuration file may have changed. Try renaming `/root/.gef.rc`.
 
 ## I found a bug.
 Please feel free to report it on the issue page. I will respond as soon as possible.

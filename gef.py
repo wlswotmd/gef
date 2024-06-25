@@ -85352,8 +85352,6 @@ class GefCommand(GenericCommand):
         super().__init__(prefix=True)
         self.add_setting("follow_child", True, "Automatically set GDB to follow child when forking")
         self.add_setting("readline_compat", False, "Workaround for readline SOH/ETX issue (SEGV)")
-        self.add_setting("autosave_breakpoints_file", "", "Automatically save and restore breakpoints")
-        self.add_setting("extra_plugins_dir", "", "Autoload additional GEF commands from external directory")
         self.add_setting("disable_color", False, "Disable all colors in GEF")
         self.add_setting("always_no_pager", False, "Always disable pager in gef_print()")
         self.add_setting("keep_pager_result", False, "Leaves temporary files in gef_print()")
@@ -85422,64 +85420,12 @@ class GefCommand(GenericCommand):
             ))
         return
 
-    def reload_auto_breakpoints(self):
-        bkp_fname = Config.__gef_config__.get("gef.autosave_breakpoints_file", None)
-        if not bkp_fname or not bkp_fname[0]:
-            return
-        bkp_fname = bkp_fname[0] # get filename
-
-        # restore if existing
-        if os.access(bkp_fname, os.R_OK):
-            gdb.execute("source {:s}".format(bkp_fname))
-
-        # add hook for autosave breakpoints on quit command
-        source = [
-            "define hook-quit",
-            " save breakpoints {:s}".format(bkp_fname),
-            "end",
-        ]
-        GefUtil.gef_execute_as_gdb_script("\n".join(source) + "\n")
-        return
-
-    def load_extra_plugins(self):
-        nb_added = -1
-        try:
-            nb_inital = len(__gef_command_instances__)
-            directories = Config.get_gef_setting("gef.extra_plugins_dir")
-            if directories:
-                for directory in directories.split(";"):
-                    directory = os.path.realpath(os.path.expanduser(directory))
-                    if os.path.isdir(directory):
-                        sys.path.append(directory)
-                        for fname in os.listdir(directory):
-                            if not fname.endswith(".py"):
-                                continue
-                            fpath = "{:s}/{:s}".format(directory, fname)
-                            if os.path.isfile(fpath):
-                                gdb.execute("source {:s}".format(fpath))
-            nb_added = len(__gef_command_instances__) - nb_inital
-            if nb_added > 0:
-                fmt = "{:s} extra commands added from '{:s}'"
-                ok(fmt.format(Color.colorify(nb_added, "bold green"), Color.colorify(directories, "bold blue")))
-        except gdb.error as e:
-            err("failed: {!s}".format(e))
-        return nb_added
-
     def setup(self):
         # load all commands that has @register_command decolator.
         self.load_commands()
 
         # load the saved settings
         gdb.execute("gef restore")
-
-        # restore the autosave/autoreload breakpoints policy (if any)
-        self.reload_auto_breakpoints()
-
-        # load plugins from `extra_plugins_dir`
-        if self.load_extra_plugins() > 0:
-            # if here, at least one extra plugin was loaded, so we need to restore
-            # the settings once more
-            gdb.execute("gef restore -q")
         return
 
     @parse_args
