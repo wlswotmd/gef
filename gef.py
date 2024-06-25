@@ -4479,7 +4479,12 @@ def get_libc_version():
         libc_version = (2, 35) # assume Ubuntu 22.04
 
     # set cache
-    Config.set_gef_setting("libc.assume_version", libc_version, tuple, "The value returned by get_libc_version if libc is not found")
+    Config.set_gef_setting(
+        "libc.assume_version",
+        libc_version,
+        tuple,
+        "The value returned by get_libc_version if libc is not found",
+    )
     return libc_version
 
 
@@ -4487,9 +4492,9 @@ def titlify(text, color=None, msg_color=None):
     """Print a centered title."""
     cols = GefUtil.get_terminal_size()[1]
     if color is None:
-        color = Config.__gef_config__.get("theme.default_title_line")[0]
+        color = Config.get_gef_setting("theme.default_title_line")
     if msg_color is None:
-        msg_color = Config.__gef_config__.get("theme.default_title_message")[0]
+        msg_color = Config.get_gef_setting("theme.default_title_message")
 
     msg = []
     if text:
@@ -13715,7 +13720,7 @@ class GenericCommand(gdb.Command):
     def invoke(self, args, from_tty):
         try:
             argv = gdb.string_to_argv(args)
-            self.__set_repeat_count(argv, from_tty)
+            self.set_repeat_count(argv, from_tty)
             self.do_invoke(argv)
         except Exception:
             # Since we are intercepting cleaning exceptions here, commands preferably should avoid
@@ -13798,7 +13803,7 @@ class GenericCommand(gdb.Command):
         Cache.reset_gef_caches(function=Config.get_gef_setting)
         return
 
-    def __set_repeat_count(self, argv, from_tty):
+    def set_repeat_count(self, argv, from_tty):
         if not from_tty:
             self.repeat = False
             self.repeat_count = 0
@@ -25543,7 +25548,6 @@ class CommandBreakpoint(gdb.Breakpoint):
 @register_command
 class CommandBreakCommand(GenericCommand):
     """Set a breakpoint which executes user defined command silently and continue, if hit."""
-
     _cmdline_ = "command-break"
     _category_ = "01-b. Debugging Support - Breakpoint"
 
@@ -28272,7 +28276,7 @@ class DereferenceCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
                         help="the memory address to dump. (default: current_arch.sp)")
-    parser.add_argument("nb_lines", metavar="NB_LINES", nargs="?", type=lambda x: int(x, 0), 
+    parser.add_argument("nb_lines", metavar="NB_LINES", nargs="?", type=lambda x: int(x, 0),
                         help="the count of lines.")
     parser.add_argument("-s", "--slab-contains", action="store_true", help="display slab_cache name if available.")
     parser.add_argument("-S", "--slab-contains-unaligned", action="store_true",
@@ -28593,8 +28597,8 @@ class FollowCommand(GenericCommand):
     _category_ = "01-g. Debugging Support - Other"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("command", nargs="?", default=None, choices=[None, "child", "parent"], metavar="{child,parent}",
-                        help="set gdb follow settings.")
+    parser.add_argument("command", nargs="?", default=None, choices=[None, "child", "parent"],
+                        metavar="{child,parent}", help="set gdb follow settings.")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -76153,7 +76157,6 @@ class QemuRegistersCommand(GenericCommand):
     def do_invoke(self, args):
         self.dont_repeat()
         self.add_info = args.verbose
-
         self.out = []
         self.qregisters()
 
@@ -85581,7 +85584,6 @@ class BinwalkMemoryCommand(GenericCommand):
         self.exclude = args.exclude
         self.maxsize = args.maxsize
         self.commit = args.commit
-
         self.memory_binwalk()
         return
 
