@@ -83697,7 +83697,9 @@ class KmallocAllocatedByCommand(GenericCommand):
         r = re.findall(r"(?:^|\n)(0x\S+)", res)
         if not r:
             err("`sleep` process is not found. Unable to continue.")
-            info("Do `/bin/sleep 5` in the guest environment (need full path if busybox sh), then `{:s}` again.".format(self._cmdline_))
+            info("Do `/bin/sleep 5` in the guest (use full path), then `{:s}` again.".format(
+                self._cmdline_,
+            ))
             return
         if len(r) != 1:
             err("Multiple sleep processes are found. Unable to continue.")
@@ -84283,11 +84285,11 @@ class AddSymbolTemporaryCommand(GenericCommand):
             # When adding symbols, it is not necessary to match the architecture of the ELF to be created
             # and the architecture of the debugged kernel. Regardless of the architecture of the kernel
             # you are debugging, create an ELF using gcc in the host environment.
-            os.system(f"{gcc} '{fname}' -no-pie -o '{blank_elf}'")
-            os.unlink(f"{fname}")
+            os.system("{:s} '{:s}' -no-pie -o '{:s}'".format(gcc, fname, blank_elf))
+            os.unlink(fname)
             # delete unneeded section for faster (`ksymaddr-remote-apply` will embed many symbols)
-            os.system(f"{objcopy} --only-keep-debug '{blank_elf}'")
-            os.system(f"{objcopy} --strip-all '{blank_elf}'")
+            os.system("{:s} --only-keep-debug '{:s}'".format(objcopy, blank_elf))
+            os.system("{:s} --strip-all '{:s}'".format(objcopy, blank_elf))
             elf = Elf.get_elf(blank_elf)
             for s in elf.shdrs:
                 if s.sh_name == "": # null, skip
@@ -84304,7 +84306,9 @@ class AddSymbolTemporaryCommand(GenericCommand):
                     continue
                 if s.sh_name == ".bss": # broken if remove
                     continue
-                os.system(f"{objcopy} --remove-section='{s.sh_name}' '{blank_elf}' 2>/dev/null")
+                os.system("{:s} --remove-section='{:s}' '{:s}' 2>/dev/null".format(
+                    objcopy, s.sh_name, blank_elf,
+                ))
         else:
             # not found gcc. we use pre-built elf for x64
             blank_elf_skelton = [
@@ -84356,7 +84360,9 @@ class AddSymbolTemporaryCommand(GenericCommand):
             elf = Elf.get_elf(blank_elf)
 
         # fix .text base address
-        os.system(f"{objcopy} --change-section-address .text={text_base:#x} '{blank_elf}' 2>/dev/null")
+        os.system("{:s} --change-section-address .text={:#x} '{:s}' 2>/dev/null".format(
+            objcopy, text_base, blank_elf,
+        ))
 
         # fix .text section size (objcopy doesn't support it, so fix it manually)
         data = open(blank_elf, "rb").read()
@@ -84415,13 +84421,15 @@ class AddSymbolTemporaryCommand(GenericCommand):
 
         # embedding symbols
         relative_addr = args.function_start - text_base
-        os.system(f"{objcopy} --add-symbol '{args.function_name}'=.text:{relative_addr:#x},global,function '{sym_elf}' 2>/dev/null")
+        os.system("{:s} --add-symbol '{:s}'=.text:{:#x},global,function '{}' 2>/dev/null".format(
+            objcopy, args.function_name, relative_addr, sym_elf,
+        ))
 
         if not args.quiet:
             info("1 entries were processed")
 
         # add symbol to gdb
-        gdb.execute(f"add-symbol-file {sym_elf} {text_base:#x}", to_string=True)
+        gdb.execute("add-symbol-file {:s} {:#x}".format(sym_elf, text_base), to_string=True)
         os.unlink(sym_elf)
         return
 
@@ -84794,7 +84802,8 @@ class XRefTelescopeCommand(SearchPatternCommand):
     parser.add_argument("pattern", metavar="PATTERN", help="search pattern.")
     parser.add_argument("depth", metavar="DEPTH", nargs="?", type=int, default=3,
                         help="max recursive depth. (default: %(default)s)")
-    parser.add_argument("-v", "--verbose", action="store_true", help="shows the section you are currently searching.")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="shows the section you are currently searching.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
@@ -84852,7 +84861,9 @@ class XRefTelescopeCommand(SearchPatternCommand):
         self.found_count = 0
 
         self.out = []
-        self.out.append("Recursively searching '{:s}' in memory (depth: {:d})".format(Color.yellowify(args.pattern), args.depth))
+        self.out.append("Recursively searching '{:s}' in memory (depth: {:d})".format(
+            Color.yellowify(args.pattern), args.depth,
+        ))
         self.xref_telescope(args.pattern, args.depth, [args.pattern])
 
         gef_print("\n".join(self.out), less=not args.no_pager)
@@ -84959,7 +84970,8 @@ class FiletypeMemoryCommand(GenericCommand):
     _category_ = "03-f. Memory - Investigation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address, help="target address.")
+    parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address,
+                        help="target address.")
     parser.add_argument("end_address", metavar="END_ADDRESS", nargs="?", type=AddressUtil.parse_address,
                         help="target end address. (default: the end of section of ADDRESS)")
     _syntax_ = parser.format_help()
@@ -85019,8 +85031,10 @@ class BinwalkMemoryCommand(GenericCommand):
     _category_ = "03-f. Memory - Investigation"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP include filter.")
-    parser.add_argument("-e", "--exclude", action="append", type=re.compile, default=[], help="REGEXP exclude filter.")
+    parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[],
+                        help="REGEXP include filter.")
+    parser.add_argument("-e", "--exclude", action="append", type=re.compile, default=[],
+                        help="REGEXP exclude filter.")
     parser.add_argument("-m", "--maxsize", default=0x10000000, type=AddressUtil.parse_address,
                         help="maximum size of a section to be dumped. (default: 256 MB)")
     parser.add_argument("-c", "--commit", action="store_true", help="actually perform binwalk.")
@@ -85070,7 +85084,9 @@ class BinwalkMemoryCommand(GenericCommand):
             filepath = os.path.join(GEF_TEMP_DIR, dumpfile_name)
 
             if self.commit:
-                gef_print(titlify("{:#x}-{:#x} [{}] {:s}".format(entry.page_start, entry.page_end, entry.permission, entry.path)))
+                gef_print(titlify("{:#x}-{:#x} [{}] {:s}".format(
+                    entry.page_start, entry.page_end, entry.permission, entry.path,
+                )))
                 try:
                     data = read_memory(start, end - start)
                 except gdb.MemoryError:
@@ -86078,16 +86094,24 @@ class GefAvailableCommandListCommand(GenericCommand):
             s = GefUtil.get_source(instance.do_invoke)
             decorators = [line for line in s.splitlines() if line.lstrip().startswith("@")]
             if not self.check_include_mode(decorators):
-                out.append("{:<30s}: {:s} ({:s})".format(cmdline, Color.colorify("Unavailable", "red bold"), "Unsupported gdb mode"))
+                out.append("{:<30s}: {:s} ({:s})".format(
+                    cmdline, Color.colorify("Unavailable", "red bold"), "Unsupported gdb mode"),
+                )
                 continue
             if self.check_exclude_mode(decorators):
-                out.append("{:<30s}: {:s} ({:s})".format(cmdline, Color.colorify("Unavailable", "red bold"), "Unsupported gdb mode"))
+                out.append("{:<30s}: {:s} ({:s})".format(
+                    cmdline, Color.colorify("Unavailable", "red bold"), "Unsupported gdb mode"),
+                )
                 continue
             if not self.check_include_arch(decorators, arch_name):
-                out.append("{:<30s}: {:s} ({:s})".format(cmdline, Color.colorify("Unavailable", "red bold"), "Unsupported arch"))
+                out.append("{:<30s}: {:s} ({:s})".format(
+                    cmdline, Color.colorify("Unavailable", "red bold"), "Unsupported arch"),
+                )
                 continue
             if self.check_exclude_arch(decorators, arch_name):
-                out.append("{:<30s}: {:s} ({:s})".format(cmdline, Color.colorify("Unavailable", "red bold"), "Unsupported arch"))
+                out.append("{:<30s}: {:s} ({:s})".format(
+                    cmdline, Color.colorify("Unavailable", "red bold"), "Unsupported arch"),
+                )
                 continue
             out.append("{:<30s}: {:s}".format(cmdline, Color.colorify("Available", "green bold")))
 
