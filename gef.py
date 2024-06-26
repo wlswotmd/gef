@@ -85694,17 +85694,31 @@ class GefRestoreCommand(GenericCommand):
 
             # load the other options
             for optname in cfg.options(section):
+                # warn unused setting
+                key = "{:s}.{:s}".format(section, optname)
+                if key not in Config.__gef_config__:
+                    err("Config '{:s}' is no longer in use, skipping...".format(Color.boldify(key)))
+                    continue
+
+                # restore type
+                _type = Config.__gef_config__.get(key)[1]
+                new_value = cfg.get(section, optname)
                 try:
-                    key = "{:s}.{:s}".format(section, optname)
-                    _type = Config.__gef_config__.get(key)[1]
-                    new_value = cfg.get(section, optname)
                     if _type == bool:
-                        new_value = True if new_value == "True" else False
+                        if new_value == "True":
+                            new_value = True
+                        elif new_value == "False":
+                            new_value = False
+                        else:
+                            raise ValueError
                     else:
                         new_value = _type(new_value)
-                    Config.__gef_config__[key][0] = new_value
-                except Exception:
-                    pass
+                except ValueError:
+                    err("Config '{:s}' has bad value, skipping...".format(Color.boldify(key)))
+                    continue
+
+                # set
+                Config.__gef_config__[key][0] = new_value
 
         # ensure that the temporary directory always exists
         abspath = os.path.expanduser(GEF_TEMP_DIR)
