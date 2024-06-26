@@ -16800,38 +16800,41 @@ class SearchPatternCommand(GenericCommand):
     """Search a pattern in memory."""
     _cmdline_ = "search-pattern"
     _category_ = "03-a. Memory - Search"
-    _aliases_ = ["find"]
+    _aliases_ = ["find", "grep"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--hex", action="store_true",
                         help="interpret PATTERN as hex. invalid character is ignored.")
     parser.add_argument("--big", action="store_true",
                         help="interpret PATTERN as big endian if PATTERN is 0xXXXXXXXX style.")
+    parser.add_argument("--phys", action="store_true",
+                        help="treat the address as physical memory (only qemu-system).")
     parser.add_argument("-a", "--aligned", type=int, default=1,
                         help="alignment unit. (default: %(default)s)")
+    parser.add_argument("-p", "--perm", default="r??",
+                        help="the filter by permission. (default: %(default)s)")
     parser.add_argument("-i", "--interval", type=lambda x: int(x, 0),
                         help="the interval to skip searching from the last found position within the same section.")
     parser.add_argument("-l", "--limit", type=lambda x: int(x, 0),
                         help="the limit of the search result.")
     parser.add_argument("-s", "--max-region-size", type=lambda x: int(x, 0), default=0x10000000,
-                        help="maximum size of search region. (default: %(default)s)")
+                        help="maximum size of search region when qemu-system and no range is specified. (default: %(default)s)")
     parser.add_argument("-d", "--disable-utf16", action="store_true",
                         help="disable utf16 search if PATTERN is ascii string.")
-    parser.add_argument("-p", "--perm", default="r??",
-                        help="the filter by permission. (default: %(default)s)")
     parser.add_argument("-v", "--verbose", action="store_true",
-                        help="shows the section you are currently searching.")
+                        help="shows the section currently searching.")
     parser.add_argument("pattern", metavar="PATTERN",
-                        help='search target value. "double-espaced string" or 0xXXXXXXXX style.')
-    parser.add_argument("section", metavar="SECTION_OR_START_ADDR", nargs="?",
+                        help='search target value. "double-escaped string" or 0xXXXXXXXX style.')
+    parser.add_argument("section", metavar="SECTION_OR_START_ADDR", nargs="?", default="",
                         help="section name or starting address of search range.")
     parser.add_argument("size", metavar="SIZE", nargs="?",
                         help="search range size. valid only when a start address is specified.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} AAAA                      # search 'AAAA' from whole memory\n".format(_cmdline_)
-    _example_ += "{:s} 0x41414141                # search 0x41414141 from whole memory\n".format(_cmdline_)
-    _example_ += '{:s} --hex "41 41 41 41"       # another valid format\n'.format(_cmdline_)
+    _example_ = "{:s} ABCD                      # search 'ABCD' from whole memory\n".format(_cmdline_)
+    _example_ += '{:s} "\\\\x41\\\\x42\\\\x43\\\\x44"    # double-escaped string is also valid\n'.format(_cmdline_)
+    _example_ += '{:s} --hex "41 42 43 44"       # another valid format\n'.format(_cmdline_)
+    _example_ += "{:s} 0x41424344                # search 0x41424344 (='DCBA') from whole memory\n".format(_cmdline_)
     _example_ += "{:s} 0x555555554000 stack      # search 0x555555554000 (6byte) from stack\n".format(_cmdline_)
     _example_ += "{:s} 0x0000555555554000 stack  # search 0x0000555555554000 (8byte) from stack\n".format(_cmdline_)
     _example_ += "{:s} AAAA binary               # 'binary' means the area executable itself (only usermode)\n".format(_cmdline_)
@@ -16881,8 +16884,11 @@ class SearchPatternCommand(GenericCommand):
                 chunk_size = step
 
             try:
-                mem = read_memory(chunk_addr, chunk_size)
-            except gdb.MemoryError:
+                if self.args.phys:
+                    mem = read_physmem(chunk_addr, chunk_size)
+                else:
+                    mem = read_memory(chunk_addr, chunk_size)
+            except (gdb.MemoryError, ValueError, OverflowError):
                 # cannot access memory this range. It doesn't make sense to try any more
                 break
 
@@ -16936,7 +16942,7 @@ class SearchPatternCommand(GenericCommand):
                 perm = Permission.from_process_maps(perm.lower())
             yield Section(page_start=addr_start, page_end=addr_end, permission=perm)
 
-    def search_pattern(self, pattern, section_name=""):
+    def search_pattern_by_section(self, pattern, section_name=""):
         """Search a pattern within the whole userland memory."""
         if is_qemu_system():
             maps_generator = self.get_process_maps_qemu_system()
@@ -16986,9 +16992,68 @@ class SearchPatternCommand(GenericCommand):
                 break
         return
 
-    def isascii(self, string):
-        val = codecs.escape_decode(string)[0]
-        return all(0x20 <= c < 0x7f for c in val)
+    def create_patterns(self, args):
+        # create normal pattern
+        if args.hex: # "41414141" -> "\x41\x41\x41\x41"
+            pattern = re.sub(r"[^0-9a-fA-F]", "", args.pattern)
+            if len(pattern) % 2 != 0:
+                err("hex pattern length is odd")
+                return None
+            pattern = "".join(["\\x" + x for x in slicer(pattern, 2)])
+        elif String.is_hex(args.pattern): # "0x41414141" -> "\x41\x41\x41\x41"
+            if args.big or Endian.is_big_endian():
+                pattern = "".join(["\\x" + x for x in slicer(args.pattern[2:], 2)])
+            else:
+                pattern = "".join(["\\x" + x for x in slicer(args.pattern[2:], 2)[::-1]])
+        else:
+            pattern = args.pattern
+
+        def isascii(string):
+            val = codecs.escape_decode(string)[0]
+            return all(0x20 <= c < 0x7f for c in val)
+
+        # create utf16 pattern
+        pattern_utf16 = None
+        if not args.disable_utf16:
+            if isascii(pattern) and "\\" not in pattern:
+                pattern_utf16 = "".join([x + "\\x00" for x in pattern])
+        return pattern, pattern_utf16
+
+    def process_by_address(self, patterns, start, end):
+        extra = " (phys)" if self.args.phys else ""
+
+        # normal search and print
+        info("Searching '{:s}' in {:#x}-{:#x}{:s}".format(Color.yellowify(patterns[0]), start, end, extra))
+        ret = self.search_pattern_by_address(patterns[0], start, end)
+        for found_loc in ret:
+            self.print_loc(found_loc)
+
+        # utf16 search and print
+        if patterns[1] is not None:
+            info("Searching '{:s}' in {:#x}-{:#x}{:s}".format(Color.yellowify(patterns[1]), start, end, extra))
+            ret = self.search_pattern_by_address(patterns[1], start, end)
+            for found_loc in ret:
+                self.print_loc(found_loc)
+        return
+
+    def process_by_section(self, patterns, section_name):
+        extra = " (phys)" if self.args.phys else ""
+
+        # normal search and print
+        if section_name == "":
+            info("Searching '{:s}' in {:s}{:s}".format(Color.yellowify(patterns[0]), "whole memory", extra))
+        else:
+            info("Searching '{:s}' in {:s}{:s}".format(Color.yellowify(patterns[0]), section_name, extra))
+        self.search_pattern_by_section(patterns[0], section_name)
+
+        # utf16 search and print
+        if patterns[1] is not None:
+            if section_name == "":
+                info("Searching '{:s}' in {:s}{:s}".format(Color.yellowify(patterns[1]), "whole memory", extra))
+            else:
+                info("Searching '{:s}' in {:s}{:s}".format(Color.yellowify(patterns[1]), section_name, extra))
+            self.search_pattern_by_section(patterns[1], section_name)
+        return
 
     @parse_args
     @only_if_gdb_running
@@ -17006,76 +17071,51 @@ class SearchPatternCommand(GenericCommand):
         if args.perm[1] not in "wW-_?" or args.perm[2] not in "xX-_?":
             err("Invalid permission")
             return
+        if args.phys:
+            info("Permission is ignored")
+            # fall through
 
-        # pattern replace
-        if args.hex: # "41414141" -> "\x41\x41\x41\x41"
-            pattern = re.sub(r"[^0-9a-f]", "", args.pattern)
-            if len(pattern) % 2 != 0:
-                err("hex pattern length is odd")
+        patterns = self.create_patterns(args) # (pattern, pattern_utf16)
+        if patterns is None:
+            return
+
+        # the case `find AAAA 0x400000 0x4000`
+        if args.section and args.size:
+            try:
+                start = int(args.section, 16)
+                end = start + int(args.size, 16)
+            except ValueError:
+                self.usage()
                 return
-            pattern = "".join(["\\x" + x for x in slicer(pattern, 2)])
+            self.process_by_address(patterns, start, end)
 
-        elif String.is_hex(args.pattern): # "0x41414141" -> "\x41\x41\x41\x41"
-            if args.big or Endian.is_big_endian():
-                pattern = "".join(["\\x" + x for x in slicer(args.pattern[2:], 2)])
-            else:
-                pattern = "".join(["\\x" + x for x in slicer(args.pattern[2:], 2)[::-1]])
-        else:
-            pattern = args.pattern
-
-        # create utf16 pattern
-        pattern_utf16 = None
-        if not args.disable_utf16:
-            if self.isascii(pattern) and "\\" not in pattern:
-                pattern_utf16 = "".join([x + "\\x00" for x in pattern])
-
-        # search from specific range
-        if args.size or (args.section and re.match(r"(0x)?[0-9a-fA-F]+-(0x)?[0-9a-fA-F]+", args.section)):
-            if args.size:
-                # the case `find AAAA 0x400000 0x4000`
-                try:
-                    start = int(args.section, 16)
-                    end = start + int(args.size, 16)
-                except ValueError:
-                    self.usage()
-                    return
-            else:
-                # the case `find AAAA 0x400000-0x404000`
-                try:
-                    start, end = AddressUtil.parse_string_range(args.section)
-                except ValueError:
-                    self.usage()
-                    return
-
-            info("Searching '{:s}' in {:#x}-{:#x}".format(Color.yellowify(pattern), start, end))
-            ret = self.search_pattern_by_address(pattern, start, end)
-            for found_loc in ret:
-                self.print_loc(found_loc)
-
-            if pattern_utf16 is not None:
-                info("Searching '{:s}' in {:#x}-{:#x}".format(Color.yellowify(pattern_utf16), start, end))
-                ret = self.search_pattern_by_address(pattern_utf16, start, end)
-                for found_loc in ret:
-                    self.print_loc(found_loc)
+        # the case `find AAAA 0x400000-0x404000`
+        elif args.section and re.match(r"(0x)?[0-9a-fA-F]+-(0x)?[0-9a-fA-F]+", args.section):
+            try:
+                start, end = AddressUtil.parse_string_range(args.section)
+            except ValueError:
+                self.usage()
+                return
+            self.process_by_address(patterns, start, end)
 
         # search from specific section or whole memory
         else:
-            if args.section is None:
-                section_name = ""
-                section_name_info = "whole memory"
-            elif args.section in ["binary", "bin"] and not is_qemu_system():
-                section_name = Path.get_filepath(append_proc_root_prefix=False)
-                section_name_info = section_name
+            if args.phys:
+                err("--phys mode needs address information")
+                return
+
+            if args.section:
+                if is_qemu_system() or is_kgdb() or is_vmware():
+                    err("Unsupported")
+                    return
+                if args.section in ["binary", "bin"]:
+                    section_name = Path.get_filepath(append_proc_root_prefix=False)
+                else:
+                    section_name = args.section
             else:
                 section_name = args.section
-                section_name_info = section_name
+            self.process_by_section(patterns, section_name)
 
-            info("Searching '{:s}' in {:s}".format(Color.yellowify(pattern), section_name_info))
-            self.search_pattern(pattern, section_name)
-
-            if pattern_utf16 is not None:
-                info("Searching '{:s}' in {:s}".format(Color.yellowify(pattern_utf16), section_name_info))
-                self.search_pattern(pattern_utf16, section_name)
         return
 
 
