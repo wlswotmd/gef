@@ -11009,7 +11009,8 @@ def read_cstring_from_memory(addr, max_length=None, ascii_only=False):
     try:
         ustr = res.decode("utf-8")
     except UnicodeDecodeError:
-        return None
+        ustr = String.bytes2str(res)
+
     if len(ustr) > max_length:
         ustr = "{}[...]".format(ustr[:max_length])
 
@@ -15152,7 +15153,20 @@ class ArgvCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="print all elements. (default: outputs up to 100)")
+    parser.add_argument("-i", "--increase-limit", action="store_true",
+                        help="increase rounding limit from 128 bytes to 4096 bytes.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
+
+    def info(self, msg):
+        msg = "{} {}".format(Color.colorify("[+]", "bold blue"), msg)
+        self.out.append(msg)
+        return
+
+    def err(self, msg):
+        msg = "{} {}".format(Color.colorify("[+]", "bold red"), msg)
+        self.out.append(msg)
+        return
 
     def get_address_from_symbol(self, symbol):
         try:
@@ -15160,7 +15174,7 @@ class ArgvCommand(GenericCommand):
         except Exception:
             return None
 
-    def print_from_mem(self, array, verbose):
+    def print_from_mem(self, array, verbose, increase_limit):
         fmt = "{:3s} {:{:d}s}  {:{:d}s}{:s}{:s}"
         legend = [
             "#",
@@ -15168,7 +15182,9 @@ class ArgvCommand(GenericCommand):
             "StrAddr", AddressUtil.get_format_address_width(),
             RIGHT_ARROW, "String",
         ]
-        gef_print(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
+        self.out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
+
+        max_size = gef_getpagesize() if increase_limit else 128
 
         i = 0
         while True:
@@ -15176,57 +15192,77 @@ class ArgvCommand(GenericCommand):
             addr = read_int_from_memory(pos)
             if addr == 0:
                 break
-            if not verbose and i > 99:
-                gef_print("...")
+            if not verbose and i >= 100:
+                self.out.append("...")
                 break
 
             s = read_cstring_from_memory(addr, gef_getpagesize())
             s = Color.yellowify(repr(s))
-            gef_print("{:03d} {!s}: {!s}{:s}{:s}".format(
-                i, ProcessMap.lookup_address(pos), ProcessMap.lookup_address(addr), RIGHT_ARROW, s,
+            if len(s) > max_size:
+                s = s[:max_size] + "[...]"
+
+            self.out.append("{:03d} {!s}: {!s}{:s}{:s}".format(
+                i,
+                ProcessMap.lookup_address(pos),
+                ProcessMap.lookup_address(addr),
+                RIGHT_ARROW, s,
             ))
             i += 1
         return
 
-    def print_from_proc(self, filename, verbose):
+    def print_from_proc(self, filename, verbose, increase_limit):
         fmt = "{:3s} {:s}"
         legend = ["#", "String"]
-        gef_print(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
+        self.out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
 
-        lines = open(filename).read()
+        max_size = gef_getpagesize() if increase_limit else 128
+
+        lines = open(filename, "rb").read()
+        lines = String.bytes2str(lines)
         for i, elem in enumerate(lines.split("\0")):
             if not elem:
                 break
-            if not verbose and i > 99:
-                gef_print("...")
+            if not verbose and i >= 100:
+                self.out.append("...")
                 break
-            gef_print("{:03d} {!s}".format(i, elem))
+
+            if len(elem) > max_size:
+                elem = elem[:max_size] + "[...]"
+            self.out.append("{:03d} {!s}".format(i, elem))
         return
 
     @parse_args
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
+        self.out = []
+
         paddr1 = self.get_address_from_symbol("&_dl_argv")
         addr1 = self.get_address_from_symbol("_dl_argv")
         if paddr1 and addr1:
-            gef_print(titlify("ARGV from _dl_argv"))
-            info("_dl_argv @ {}".format(ProcessMap.lookup_address(paddr1)))
-            self.print_from_mem(addr1, args.verbose)
+            self.out.append(titlify("ARGV from _dl_argv"))
+            self.info("_dl_argv @ {}".format(ProcessMap.lookup_address(paddr1)))
+            self.print_from_mem(addr1, args.verbose, args.increase_limit)
 
         paddr2 = self.get_address_from_symbol("&__libc_argv")
         addr2 = self.get_address_from_symbol("__libc_argv")
         if paddr2 and addr2:
-            gef_print(titlify("ARGV from __libc_argv"))
-            info("__libc_argv @ {}".format(ProcessMap.lookup_address(paddr2)))
-            self.print_from_mem(addr2, args.verbose)
+            self.out.append(titlify("ARGV from __libc_argv"))
+            self.info("__libc_argv @ {}".format(ProcessMap.lookup_address(paddr2)))
+            self.print_from_mem(addr2, args.verbose, args.increase_limit)
 
         if not is_remote_debug():
-            gef_print(titlify("ARGV from /proc/{:d}/cmdline".format(Pid.get_pid())))
-            self.print_from_proc("/proc/{:d}/cmdline".format(Pid.get_pid()), args.verbose)
+            self.out.append(titlify("ARGV from /proc/{:d}/cmdline".format(Pid.get_pid())))
+            self.print_from_proc("/proc/{:d}/cmdline".format(Pid.get_pid()), args.verbose, args.increase_limit)
         else:
             if not (paddr1 or paddr2):
-                err("Not found argv")
+                self.err("Not found argv")
+
+        out = "\n".join(self.out)
+        if len(out.splitlines()) > GefUtil.get_terminal_size()[0]:
+            gef_print(out, less=not args.no_pager)
+        else:
+            gef_print(out, less=False)
         return
 
 
@@ -15239,7 +15275,20 @@ class EnvpCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="print all elements. (default: outputs up to 100)")
+    parser.add_argument("-i", "--increase-limit", action="store_true",
+                        help="increase rounding limit from 128 bytes to 4096 bytes.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
+
+    def info(self, msg):
+        msg = "{} {}".format(Color.colorify("[+]", "bold blue"), msg)
+        self.out.append(msg)
+        return
+
+    def err(self, msg):
+        msg = "{} {}".format(Color.colorify("[+]", "bold red"), msg)
+        self.out.append(msg)
+        return
 
     def get_address_from_symbol(self, symbol):
         try:
@@ -15247,7 +15296,7 @@ class EnvpCommand(GenericCommand):
         except Exception:
             return None
 
-    def print_from_mem(self, array, verbose):
+    def print_from_mem(self, array, verbose, increase_limit):
         fmt = "{:3s} {:{:d}s}  {:{:d}s}{:s}{:s}"
         legend = [
             "#",
@@ -15255,7 +15304,9 @@ class EnvpCommand(GenericCommand):
             "StrAddr", AddressUtil.get_format_address_width(),
             RIGHT_ARROW, "String",
         ]
-        gef_print(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
+        self.out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
+
+        max_size = gef_getpagesize() if increase_limit else 128
 
         i = 0
         while True:
@@ -15263,63 +15314,82 @@ class EnvpCommand(GenericCommand):
             addr = read_int_from_memory(pos)
             if addr == 0:
                 break
-            if not verbose and i > 99:
-                gef_print("...")
+            if not verbose and i >= 100:
+                self.out.append("...")
                 break
 
             s = read_cstring_from_memory(addr, gef_getpagesize())
             s = Color.yellowify(repr(s))
-            gef_print("{:03d} {!s}: {!s}{:s}{:s}".format(
-                i, ProcessMap.lookup_address(pos), ProcessMap.lookup_address(addr), RIGHT_ARROW, s,
+            if len(s) > max_size:
+                s = s[:max_size] + "[...]"
+
+            self.out.append("{:03d} {!s}: {!s}{:s}{:s}".format(
+                i,
+                ProcessMap.lookup_address(pos),
+                ProcessMap.lookup_address(addr),
+                RIGHT_ARROW, s,
             ))
             i += 1
         return
 
-    def print_from_proc(self, filename, verbose):
+    def print_from_proc(self, filename, verbose, increase_limit):
         fmt = "{:3s} {:s}"
         legend = ["#", "Name=Value"]
-        gef_print(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
+        self.out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
 
-        lines = open(filename).read()
+        max_size = gef_getpagesize() if increase_limit else 128
+
+        lines = open(filename, "rb").read()
+        lines = String.bytes2str(lines)
         for i, elem in enumerate(lines.split("\0")):
             if not elem:
                 break
-            if not verbose and i > 99:
-                gef_print("...")
+            if not verbose and i >= 100:
+                self.out.append("...")
                 break
             elem = re.sub(r"^(.*?=)", Color.boldify("\\1"), elem)
-            gef_print("{:03d} {:s}".format(i, elem))
+            if len(elem) > max_size:
+                elem = elem[:max_size] + "[...]"
+            self.out.append("{:03d} {:s}".format(i, elem))
         return
 
     @parse_args
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        gef_print(titlify("ENVP from __environ"))
+        self.out = []
+
+        self.out.append(titlify("ENVP from __environ"))
         paddr = self.get_address_from_symbol("&__environ")
         addr = self.get_address_from_symbol("__environ")
         if paddr and addr:
-            info("__environ @ {}".format(ProcessMap.lookup_address(paddr)))
-            self.print_from_mem(addr, args.verbose)
+            self.info("__environ @ {}".format(ProcessMap.lookup_address(paddr)))
+            self.print_from_mem(addr, args.verbose, args.increase_limit)
         elif addr == 0:
-            err("___environ is 0x0")
+            self.err("___environ is 0x0")
         else:
-            err("Not found __environ")
+            self.err("Not found __environ")
 
-        gef_print(titlify("ENVP from last_environ (for putenv, etc.)"))
+        self.out.append(titlify("ENVP from last_environ (for putenv, etc.)"))
         paddr = self.get_address_from_symbol("&last_environ")
         addr = self.get_address_from_symbol("last_environ")
         if paddr and addr:
-            info("last_environ @ {}".format(ProcessMap.lookup_address(paddr)))
-            self.print_from_mem(addr, args.verbose)
+            self.info("last_environ @ {}".format(ProcessMap.lookup_address(paddr)))
+            self.print_from_mem(addr, args.verbose, args.increase_limit)
         elif addr == 0:
-            err("last_environ is 0x0")
+            self.err("last_environ is 0x0")
         else:
-            err("Not found last_environ")
+            self.err("Not found last_environ")
 
         if not is_remote_debug():
-            gef_print(titlify("ENVP from /proc/{:d}/environ".format(Pid.get_pid())))
-            self.print_from_proc("/proc/{:d}/environ".format(Pid.get_pid()), args.verbose)
+            self.out.append(titlify("ENVP from /proc/{:d}/environ".format(Pid.get_pid())))
+            self.print_from_proc("/proc/{:d}/environ".format(Pid.get_pid()), args.verbose, args.increase_limit)
+
+        out = "\n".join(self.out)
+        if len(out.splitlines()) > GefUtil.get_terminal_size()[0]:
+            gef_print(out, less=not args.no_pager)
+        else:
+            gef_print(out, less=False)
         return
 
 
