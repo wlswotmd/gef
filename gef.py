@@ -47215,7 +47215,7 @@ class VisualHeapCommand(GenericCommand):
         return
 
     def generate_visual_heap(self, arena, dump_start, max_count):
-        sect = ProcessMap.process_ProcessMap.lookup_address(dump_start)
+        sect = ProcessMap.process_lookup_address(dump_start)
         if sect:
             end = sect.page_end
         else:
