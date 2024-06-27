@@ -467,7 +467,7 @@ def gef_print(x="", less=False, *args, **kwargs):
             return
         tmp_fd, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".txt", prefix="gef_print_")
         os.fdopen(tmp_fd, "w").write(x)
-        os.system("{:s} -R {:s}".format(less, tmp_path))
+        os.system("{:s} -rf {:s}".format(less, tmp_path))
 
         keep_pager_result = Config.get_gef_setting("gef.keep_pager_result")
         if keep_pager_result:
