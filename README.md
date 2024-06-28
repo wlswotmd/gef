@@ -617,9 +617,9 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
            This command keeps result compact by displaying only top-level members.
         3. When `p ((TYPE*) ADDRESS)[0]` for large struct, the setting of `max-value-size` is too small to display.
            This command adjusts it automatically.
-        4. When displaying binary written in the golang, the offset information of the type is not displayed.
+        4. When debugging a binary written in the golang, the offset information of the type is not displayed.
            This command also displays the offset.
-        5. When displaying a binary written in the golang, the `p ((TYPE*) ADDRESS)[0]` command will be broken.
+        5. When debugging a binary written in the golang, the `p ((TYPE*) ADDRESS)[0]` command will be broken.
            Because the golang helper script is automatically loaded and overwrites the behavior of `p` command.
            This command creates the display results on the python side, so we can display it without any problems.
 * `v8`: displays v8 tagged object.

@@ -69,10 +69,8 @@
 #
 #######################################################################################
 # Use this command when check by ruff
-# ruff check gef.py --select B,C4,E,F --ignore B905,C409,E402,E501,E731
+# ruff check gef.py --select B,C4,E,F --ignore C409,E402,E501,E731
 #
-# B905: `zip()` without an explicit `strict=` parameter
-#   -> The strict argument of zip() is from python3.10. Too new to apply.
 # C409: Unnecessary `list` literal passed to `tuple()`
 #   -> If the argument type is str or int, it must be list before.
 # E402: module level import not at top of file
@@ -14796,9 +14794,9 @@ class DisplayTypeCommand(GenericCommand, BufferingOutput):
     _note_ += "   This command keeps result compact by displaying only top-level members.\n"
     _note_ += "3. When `p ((TYPE*) ADDRESS)[0]` for large struct, the setting of `max-value-size` is too small to display.\n"
     _note_ += "   This command adjusts it automatically.\n"
-    _note_ += "4. When displaying binary written in the golang, the offset information of the type is not displayed.\n"
+    _note_ += "4. When debugging a binary written in the golang, the offset information of the type is not displayed.\n"
     _note_ += "   This command also displays the offset.\n"
-    _note_ += "5. When displaying a binary written in the golang, the `p ((TYPE*) ADDRESS)[0]` command will be broken.\n"
+    _note_ += "5. When debugging a binary written in the golang, the `p ((TYPE*) ADDRESS)[0]` command will be broken.\n"
     _note_ += "   Because the golang helper script is automatically loaded and overwrites the behavior of `p` command.\n"
     _note_ += "   This command creates the display results on the python side, so we can display it without any problems."
 
@@ -28298,16 +28296,18 @@ class DereferenceCommand(GenericCommand):
             res = CanaryCommand.gef_read_canary()
             if res:
                 canary, location = res
-                if current_address_value == canary:
-                    extra.append("canary")
+                if canary != 0: # when golang binary, canary is 0
+                    if current_address_value == canary:
+                        extra.append("canary")
 
         # mangle cookie
         if not is_qemu_system() and not is_vmware() and not is_kgdb():
             res = PtrDemangleCommand.get_cookie()
             if res:
                 cookie = res
-                if current_address_value == cookie:
-                    extra.append("PTR_MANGLE cookie")
+                if cookie != 0:
+                    if current_address_value == cookie:
+                        extra.append("PTR_MANGLE cookie")
 
         # register info
         if not phys: # for the physical address, 0x0 may be valid, which tends to clutter the result, so skip
@@ -70576,7 +70576,13 @@ class GoHeapDumpCommand(GenericCommand):
                 b2 = mspan.alloc_bits[idx2]
                 color2 = color_dic[b2, idx2 % 2]
 
-            lines[i] = line[:19] + Color.colorify(line[19:37], color1) + line[37:38] + Color.colorify(line[38:56], color2) + line[56:]
+            lines[i] = "{:s}{:s}{:s}{:s}{:s}".format(
+                line[:19],
+                Color.colorify(line[19:37], color1),
+                line[37:38],
+                Color.colorify(line[38:56], color2),
+                line[56:],
+            )
 
         self.out.extend(lines)
         return
@@ -72105,14 +72111,14 @@ class MuslHeapDumpCommand(GenericCommand, BufferingOutput):
 
             # search __malloc_context
             """
-            [patttern 1]
+            [pattern 1]
                0x7ffff7d8e45a <__malloc_alloc_meta>:        push   r12
                0x7ffff7d8e45c <__malloc_alloc_meta+2>:      push   rbp
                0x7ffff7d8e45d <__malloc_alloc_meta+3>:      push   rbx
                0x7ffff7d8e45e <__malloc_alloc_meta+4>:      sub    rsp,0x10
                0x7ffff7d8e462 <__malloc_alloc_meta+8>:      cmp    DWORD PTR [rip+0x26d67f],0x0  # 0x7ffff7ffbae8 <__malloc_context+8>
 
-            [patttern 2]
+            [pattern 2]
                0x7ffff7f72290:      endbr64
                0x7ffff7f72294:      push   r12
                0x7ffff7f72296:      push   rbp
