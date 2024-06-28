@@ -71348,16 +71348,16 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
             partition_alloc::PartitionRoot* Partitions::array_buffer_root_ = nullptr;
             partition_alloc::PartitionRoot* Partitions::buffer_root_ = nullptr;
 
-            0x646ce5801660 <WTF::Partitions::fast_malloc_root_>:    0x0000000000000000
-            0x646ce5801668 <WTF::Partitions::array_buffer_root_>:   0x0000646ce5804b00
-            0x646ce5801670 <WTF::Partitions::buffer_root_>: 0x0000646ce5801680
-            0x646ce5801678 <guard variable for WTF::Partitions::Initialize()::initialized>: 0x0000000100000101
+            0x61d34e37f360 <WTF::Partitions::fast_malloc_root_>:    0x0000000000000000
+            0x61d34e37f368 <WTF::Partitions::array_buffer_root_>:   0x000061d34e383000
+            0x61d34e37f370 <WTF::Partitions::buffer_root_>: 0x000061d34e37f380
+            0x61d34e37f378 <guard variable for WTF::Partitions::Initialize()::initialized>: 0x0000000100000101
             ...
-            0x646ce58030c0 <WTF::Partitions::InitializeOnce()::fast_malloc_allocator>:      0x0000000000000000
+            0x61d34e3811c0 <WTF::Partitions::InitializeOnce()::fast_malloc_allocator>:      0x0000000000000000
             ...
-            0x646ce5801680 <WTF::Partitions::InitializeOnce()::buffer_allocator>:   0x0000000000000001
+            0x61d34e383000 <WTF::Partitions::InitializeOnce()::buffer_allocator>:   0x0000000000000001
             ...
-            0x646ce5804b00 <WTF::Partitions::InitializeArrayBufferPartition()::array_buffer_allocator>:     0x0000000000000001
+            0x61d34e37f380 <WTF::Partitions::InitializeArrayBufferPartition()::array_buffer_allocator>:     0x0000000000000001
             """
             # check consecutive quadruples
             for addr, data in zip(n_gram(addr_list, 4), n_gram(data_list, 4)):
@@ -71391,14 +71391,22 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
                 """
                 The first 64 bytes of root are mostly 0 due to padding considering the cache line.
                 This is same both at 64-bit and 32bit arch.
-                0x646ce5801680: 0x0000000100000001      0x0000000000000000     <--- here may be used
-                0x646ce5801690: 0x0000000000000000      0x0000000000000000     <--- here may be used
-                0x646ce58016a0: 0x0000000000000000      0x0000000000000000     <--- hare may be not used
-                0x646ce58016b0: 0x0000000000000000      0x0000000000000000     <--- here may be not used
+
+                [WTF::Partitions::InitializeOnce()::buffer_allocator]
+                0x61d34e383000: 0x0000000000000001      0x0000000000000000     <--- here may be used
+                0x61d34e383010: 0xffffffff00000001      0x0000000000000000     <--- here may be used
+                0x61d34e383020: 0x0000000000000000      0x0000000000000000     <--- hare may be not used
+                0x61d34e383030: 0x0000000000000000      0x0000000000000000     <--- here may be not used
+
+                [WTF::Partitions::InitializeArrayBufferPartition()::array_buffer_allocator]
+                0x61d34e37f380: 0x0000000100000001      0x0000000000000004     <--- here may be used
+                0x61d34e37f390: 0xffffffff00000000      0x0000000100000000     <--- here may be used
+                0x61d34e37f3a0: 0x0000000000000004      0x0000000000000000     <--- here may be used
+                0x61d34e37f3b0: 0x0000000000000000      0x0000000000000000     <--- here may be not used
                 """
-                if read_memory(data[1], 64)[32:] != b"\0" * 32:
+                if read_memory(data[1], 64)[33:] != b"\0" * 31:
                     continue
-                if read_memory(data[2], 64)[32:] != b"\0" * 32:
+                if read_memory(data[2], 64)[33:] != b"\0" * 31:
                     continue
                 # add candidate
                 Root = collections.namedtuple("Root", ["name", "address"])
@@ -71521,7 +71529,7 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
             uintptr_t inverted_self = 0;
             std::atomic<int> thread_caches_being_constructed_{0};
             bool quarantine_always_for_testing = false;
-            size_t scheduler_loop_quarantine_capacity_in_bytes = 0;
+            size_t scheduler_loop_quarantine_branch_capacity_in_bytes = 0;
             internal::LightweightQuarantineRoot scheduler_loop_quarantine_root;
             std::optional<internal::base::NoDestructor<internal::LightweightQuarantineBranch>> scheduler_loop_quarantine;
         };
@@ -71612,7 +71620,7 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
         current += 4
         _root["quarantine_always_for_testing"] = u32(read_memory(current, 4)) & 0xff
         current += 4
-        _root["scheduler_loop_quarantine_capacity_in_bytes"] = u32(read_memory(current, 4))
+        _root["scheduler_loop_quarantine_branch_capacity_in_bytes"] = u32(read_memory(current, 4))
         current += ptrsize # with pad
         _root["scheduler_loop_quarantine_root"] = read_int_from_memory(current)
         current += ptrsize
@@ -71637,6 +71645,7 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
             uint32_t num_system_pages_per_slot_span : 8;
             uint32_t num_full_slot_spans : 24;
             uint64_t slot_size_reciprocal;
+            bool can_store_raw_size;
         };
         """
         _bucket["active_slot_spans_head"] = read_int_from_memory(current)
@@ -71657,6 +71666,10 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
             current += 4
         _bucket["slot_size_reciprocal"] = u64(read_memory(current, 8))
         current += 8
+
+        x = u32(read_memory(current, 4))
+        _bucket["can_store_raw_size"] = x & 0xff
+        current += ptrsize # with pad
 
         Bucket = collections.namedtuple("Bucket", _bucket.keys())
         bucket = Bucket(*_bucket.values())
@@ -71834,7 +71847,7 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
         self.out.append("uintptr_t inverted_self:                               {:#x} (=~{:s})".format(root.inverted_self, inv_inv))
         self.out.append("std::atomic<int> thread_caches_being_constructed_:     {:#x}".format(root.thread_caches_being_constructed_))
         self.out.append("bool quarantine_always_for_testing:                    {:#x}".format(root.quarantine_always_for_testing))
-        self.out.append("size_t scheduler_loop_quarantine_capacity_in_bytes:    {:#x}".format(root.scheduler_loop_quarantine_capacity_in_bytes))
+        self.out.append("size_t scheduler_loop_quarantine_branch_capacity_in_bytes: {:#x}".format(root.scheduler_loop_quarantine_branch_capacity_in_bytes))
         self.out.append("internal::LightweightQuarantineRoot scheduler_loop_quarantine_root: {:#x}".format(root.scheduler_loop_quarantine_root))
         self.out.append("NoDestructor<...> scheduler_loop_quarantine:           {:#x}".format(root.scheduler_loop_quarantine))
         return
@@ -71895,6 +71908,7 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
         self.out.append("        num_system_pages_per_slot_span:{:#x} ".format(bucket.num_system_pages_per_slot_span))
         self.out.append("        num_full_slot_spans:{:#x} ".format(bucket.num_full_slot_spans))
         self.out.append("        slot_size_reciprocal:{:#x}".format(bucket.slot_size_reciprocal))
+        self.out.append("        can_store_raw_size:{:#x}".format(bucket.can_store_raw_size))
 
         if self.verbose:
             target_list = ["active_slot_spans_head", "empty_slot_spans_head", "decommitted_slot_spans_head"]
@@ -71966,6 +71980,8 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
 
             try:
                 next_chunk = byteswap(read_int_from_memory(chunk))
+                if is_64bit() and next_chunk:
+                    next_chunk |= chunk & 0xffffffff00000000
             except gdb.MemoryError:
                 text += Color.colorify("-> {:#x} (corrupted) ".format(chunk), corrupted_msg_color)
                 break

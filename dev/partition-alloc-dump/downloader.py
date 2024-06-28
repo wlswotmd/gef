@@ -97,16 +97,18 @@ def print_git_url(channel):
 def memo():
     print("#"*50)
     print("[*] memo")
+    print("  [preparation]")
+    print("    disable apparmor. I added `apparmor=0` to `GRUB_CMDLINE_LINUX` in `/etc/default/grub`, then `update-grub && reboot`")
     print("  [term1]")
     print("    cd www && python3 -m http.server 8080")
     print("  [term2]")
     print("    cd chrome_stable/chrome-linux/")
-    print("    rm -rf /tmp/u && sudo -u nobody ./chrome --headless --disable-gpu "
+    print("    rm -rf /tmp/u && sudo -u NON_ROOT_USER_NAME ./chrome --headless=new --disable-gpu "
           "--remote-debugging-port=1338 --user-data-dir=/tmp/u --enable-logging=stderr http://0:8080/inf-loop.html")
     print("  [term3 (for renderer process)]")
     print("""    gdb -q -p $(ps -ef | grep -- "--[t]ype=renderer" | awk '{print $2}')""")
     print("  [term3 (for browser process)]")
-    print("""    gdb -q -p $(ps -ef | grep ./chrome | grep -v type | grep -v sudo | awk '{print $2}')""")
+    print("""    gdb -q -p $(ps -ef | grep "\./[c]hrome" | grep -v type | grep -v sudo | awk '{print $2}')""")
     return
 
 
