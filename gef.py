@@ -14774,7 +14774,7 @@ class DownCommand(GenericCommand):
 
 
 @register_command
-class DisplayTypeCommand(GenericCommand):
+class DisplayTypeCommand(GenericCommand, BufferingOutput):
     """Makes it easier to use `ptype /ox TYPE` and `p ((TYPE*) ADDRESS)[0]`."""
     _cmdline_ = "dt"
     _category_ = "02-h. Process Information - Type"
@@ -14822,7 +14822,7 @@ class DisplayTypeCommand(GenericCommand):
                 type_prefix = "struct"
             else:
                 type_prefix = "union"
-            out = [
+            self.out = [
                 "{:s} {:s} {{".format(type_prefix, tp.name or args.type),
                 "    /* offset | size   */",
             ]
@@ -14840,13 +14840,10 @@ class DisplayTypeCommand(GenericCommand):
                     msg = "    {:s}    {} {:s};".format(offsz_str, field.type, name_str)
                 else:
                     msg = "    {:s}    {} {:s} : {:d};".format(offsz_str, field.type, name_str, field.bitsize)
-                out.append(msg)
+                self.out.append(msg)
 
-            out.append("}} // total: {:#x} bytes".format(tp.sizeof))
-            if len(out) > GefUtil.get_terminal_size()[0]:
-                gef_print("\n".join(out), less=not args.no_pager)
-            else:
-                gef_print("\n".join(out), less=False)
+            self.out.append("}} // total: {:#x} bytes".format(tp.sizeof))
+            self.print_output(args)
 
         else:
             if not is_valid_addr(args.address):
@@ -19498,7 +19495,7 @@ class GlibcHeapArenasCommand(GenericCommand):
 
 
 @register_command
-class GlibcHeapArenaCommand(GenericCommand):
+class GlibcHeapArenaCommand(GenericCommand, BufferingOutput):
     """Display information on a heap arena."""
     _cmdline_ = "heap arena"
     _category_ = "06-a. Heap - Glibc"
@@ -19512,45 +19509,43 @@ class GlibcHeapArenaCommand(GenericCommand):
 
     def parse_arena(self, arena):
         if arena is None:
-            return []
+            return
 
         try:
-            out = []
             cmd = "p ((struct malloc_state*) {:#x})[0]".format(arena.addr)
             title = titlify("[arena] ----- {:s}".format(cmd))
-            out.append(title)
             result = gdb.execute(cmd, to_string=True)
-            out.append(result)
+            self.out.append(title)
+            self.out.extend(result.splitlines())
         except gdb.error:
-            out = []
             title = titlify("[arena] ----- {:#x}".format(arena.addr))
-            out.append(title)
-            out.append("$1 = {")
-            out.append("  mutex = {:#x},".format(int(arena.mutex)))
-            out.append("  flags = {:#x},".format(int(arena.flags)))
+            self.out.append(title)
+            self.out.append("$1 = {")
+            self.out.append("  mutex = {:#x},".format(int(arena.mutex)))
+            self.out.append("  flags = {:#x},".format(int(arena.flags)))
             if get_libc_version() >= (2, 27):
-                out.append("  have_fastchunks = {:#x},".format(int(arena.have_fastchunks)))
-            out.append("  fastbinsY = {")
+                self.out.append("  have_fastchunks = {:#x},".format(int(arena.have_fastchunks)))
+            self.out.append("  fastbinsY = {")
             for i in range(int(arena.num_fastbins)):
-                out.append("    [{:#x}] = {:#x},".format(i, int(arena.fastbinsY[i])))
-            out.append("  },")
-            out.append("  top = {:#x},".format(int(arena.top)))
-            out.append("  last_remainder = {:#x},".format(int(arena.last_remainder)))
-            out.append("  bins = {")
+                self.out.append("    [{:#x}] = {:#x},".format(i, int(arena.fastbinsY[i])))
+            self.out.append("  },")
+            self.out.append("  top = {:#x},".format(int(arena.top)))
+            self.out.append("  last_remainder = {:#x},".format(int(arena.last_remainder)))
+            self.out.append("  bins = {")
             for i in range(int(arena.num_bins)):
-                out.append("    [{:#x}] = {:#x},".format(i, int(arena.bins[i])))
-            out.append("  },")
-            out.append("  binmap = {")
+                self.out.append("    [{:#x}] = {:#x},".format(i, int(arena.bins[i])))
+            self.out.append("  },")
+            self.out.append("  binmap = {")
             for i in range(int(arena.num_binmap)):
-                out.append("    [{:#x}] = {:#x},".format(i, int(arena.binmap[i])))
-            out.append("  },")
-            out.append("  next = {:#x},".format(int(arena.next)))
-            out.append("  next_free = {:#x},".format(int(arena.next_free)))
-            out.append("  attached_threads = {:#x},".format(int(arena.attached_threads)))
-            out.append("  system_mem = {:#x},".format(int(arena.system_mem)))
-            out.append("  max_system_mem = {:#x},".format(int(arena.max_system_mem)))
-            out.append("}")
-        return out
+                self.out.append("    [{:#x}] = {:#x},".format(i, int(arena.binmap[i])))
+            self.out.append("  },")
+            self.out.append("  next = {:#x},".format(int(arena.next)))
+            self.out.append("  next_free = {:#x},".format(int(arena.next_free)))
+            self.out.append("  attached_threads = {:#x},".format(int(arena.attached_threads)))
+            self.out.append("  system_mem = {:#x},".format(int(arena.system_mem)))
+            self.out.append("  max_system_mem = {:#x},".format(int(arena.max_system_mem)))
+            self.out.append("}")
+        return
 
     def parse_mp(self):
         try:
@@ -19558,108 +19553,96 @@ class GlibcHeapArenaCommand(GenericCommand):
         except gdb.error:
             mp = GlibcHeap.search_for_mp_()
             if mp is None:
-                return [titlify("[mp_]"), "Not found &mp_"]
+                self.out.append(titlify("[mp_]"))
+                self.out.append("Not found &mp_")
+                return
 
         try:
-            out = []
             cmd = "p ((struct malloc_par*) {:#x})[0]".format(mp)
             title = titlify("[mp_] ----- {:s}".format(cmd))
-            out.append(title)
             result = gdb.execute(cmd, to_string=True)
-            out.append(result)
+            self.out.append(title)
+            self.out.extend(result.splitlines())
         except gdb.error:
-            out = []
-            mp = GlibcHeap.MallocParMallocPar(mp)
-            title = titlify("[mp_] ----- {:#x}".format(mp.addr))
-            out.append(title)
-            out.append("$1 = {")
-            out.append("  trim_threshold = {:#x},".format(int(mp.trim_threshold)))
-            out.append("  top_pad = {:#x},".format(int(mp.top_pad)))
-            out.append("  mmap_threshold = {:#x},".format(int(mp.mmap_threshold)))
-            out.append("  arena_test = {:#x},".format(int(mp.arena_test)))
-            out.append("  arena_max = {:#x},".format(int(mp.arena_max)))
+            mp = GlibcHeap.MallocPar(mp)
+            self.out.append(titlify("[mp_] ----- {:#x}".format(mp.addr)))
+            self.out.append("$1 = {")
+            self.out.append("  trim_threshold = {:#x},".format(int(mp.trim_threshold)))
+            self.out.append("  top_pad = {:#x},".format(int(mp.top_pad)))
+            self.out.append("  mmap_threshold = {:#x},".format(int(mp.mmap_threshold)))
+            self.out.append("  arena_test = {:#x},".format(int(mp.arena_test)))
+            self.out.append("  arena_max = {:#x},".format(int(mp.arena_max)))
             if get_libc_version() >= (2, 35):
-                out.append("  thp_pagesize = {:#x},".format(int(mp.thp_pagesize)))
-                out.append("  hp_pagesize = {:#x},".format(int(mp.hp_pagesize)))
-                out.append("  hp_flags = {:#x},".format(int(mp.hp_flags)))
-            out.append("  n_mmaps = {:#x},".format(int(mp.n_mmaps)))
-            out.append("  n_mmaps_max = {:#x},".format(int(mp.n_mmaps_max)))
-            out.append("  max_n_mmaps = {:#x},".format(int(mp.max_n_mmaps)))
-            out.append("  no_dyn_threshold = {:#x},".format(int(mp.no_dyn_threshold)))
+                self.out.append("  thp_pagesize = {:#x},".format(int(mp.thp_pagesize)))
+                self.out.append("  hp_pagesize = {:#x},".format(int(mp.hp_pagesize)))
+                self.out.append("  hp_flags = {:#x},".format(int(mp.hp_flags)))
+            self.out.append("  n_mmaps = {:#x},".format(int(mp.n_mmaps)))
+            self.out.append("  n_mmaps_max = {:#x},".format(int(mp.n_mmaps_max)))
+            self.out.append("  max_n_mmaps = {:#x},".format(int(mp.max_n_mmaps)))
+            self.out.append("  no_dyn_threshold = {:#x},".format(int(mp.no_dyn_threshold)))
             if get_libc_version() < (2, 15):
-                out.append("  pagesize = {:#x},".format(int(mp.pagesize)))
-            out.append("  mmapped_mem = {:#x},".format(int(mp.mmapped_mem)))
-            out.append("  max_mmapped_mem = {:#x},".format(int(mp.max_mmapped_mem)))
+                self.out.append("  pagesize = {:#x},".format(int(mp.pagesize)))
+            self.out.append("  mmapped_mem = {:#x},".format(int(mp.mmapped_mem)))
+            self.out.append("  max_mmapped_mem = {:#x},".format(int(mp.max_mmapped_mem)))
             if get_libc_version() < (2, 24):
-                out.append("  max_total_mem = {:#x},".format(int(mp.max_total_mem)))
-            out.append("  sbrk_base = {:#x},".format(int(mp.sbrk_base)))
+                self.out.append("  max_total_mem = {:#x},".format(int(mp.max_total_mem)))
+            self.out.append("  sbrk_base = {:#x},".format(int(mp.sbrk_base)))
             if get_libc_version() >= (2, 26):
-                out.append("  tcache_bins = {:#x},".format(int(mp.tcache_bins)))
-                out.append("  tcache_max_bytes = {:#x},".format(int(mp.tcache_max_bytes)))
-                out.append("  tcache_unsorted_limit = {:#x},".format(int(mp.tcache_unsorted_limit)))
-            out.append("}")
-        return out
+                self.out.append("  tcache_bins = {:#x},".format(int(mp.tcache_bins)))
+                self.out.append("  tcache_max_bytes = {:#x},".format(int(mp.tcache_max_bytes)))
+                self.out.append("  tcache_unsorted_limit = {:#x},".format(int(mp.tcache_unsorted_limit)))
+            self.out.append("}")
+        return
 
     def parse_heap_info(self, arena):
         if arena is None:
             return []
 
         if arena.is_main_arena:
-            return [titlify("[heap_info]"), "Not thread arena"]
+            self.out.append(titlify("[heap_info]"))
+            self.out.append("Not thread arena")
+            return
 
         heap_info = arena.addr & gef_getpagesize_mask_high()
 
         try:
-            out = []
             cmd = "p ((struct _heap_info*) {:#x})[0]".format(heap_info)
             title = titlify("[heap_info] ----- {:s}".format(cmd))
-            out.append(title)
             result = gdb.execute(cmd, to_string=True)
-            out.append(result)
+            self.out.append(title)
+            self.out.extend(result.splitlines())
         except gdb.error:
-            out = []
             heap_info = GlibcHeap.HeapInfo(heap_info)
-            title = titlify("[heap_info] ----- {:#x}".format(heap_info.addr))
-            out.append(title)
-            out.append("$1 = {")
-            out.append("  ar_ptr = {:#x},".format(int(heap_info.ar_ptr)))
-            out.append("  prev = {:#x},".format(int(heap_info.prev)))
-            out.append("  size = {:#x},".format(int(heap_info.size)))
-            out.append("  mprotect_size = {:#x},".format(int(heap_info.mprotect_size)))
+            self.out.append(titlify("[heap_info] ----- {:#x}".format(heap_info.addr)))
+            self.out.append("$1 = {")
+            self.out.append("  ar_ptr = {:#x},".format(int(heap_info.ar_ptr)))
+            self.out.append("  prev = {:#x},".format(int(heap_info.prev)))
+            self.out.append("  size = {:#x},".format(int(heap_info.size)))
+            self.out.append("  mprotect_size = {:#x},".format(int(heap_info.mprotect_size)))
             if get_libc_version() >= (2, 35):
-                out.append("  pagesize = {:#x},".format(int(heap_info.pagesize)))
-            out.append("  pad = {},".format(heap_info.pad))
-            out.append("}")
-        return out
+                self.out.append("  pagesize = {:#x},".format(int(heap_info.pagesize)))
+            self.out.append("  pad = {},".format(heap_info.pad))
+            self.out.append("}")
+        return
 
     @parse_args
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
-        out = []
-
         # parse arena
         arena = GlibcHeap.get_arena(args.arena_addr)
 
-        ret = self.parse_arena(arena)
-        out.extend(ret)
-
-        ret = self.parse_mp()
-        out.extend(ret)
-
-        ret = self.parse_heap_info(arena)
-        out.extend(ret)
+        self.out = []
+        self.parse_arena(arena)
+        self.parse_mp()
+        self.parse_heap_info(arena)
 
         # colorize
-        for i in range(len(out)):
-            out[i] = re.sub("  ([a-zA-Z_]+) =", "  \033[36m\\1\033[0m =", out[i])
-            out[i] = re.sub(" = (0x[0-9a-f]+)", " = \033[34m\\1\033[0m", out[i])
+        for i in range(len(self.out)):
+            self.out[i] = re.sub("  ([a-zA-Z_]+) =", "  \033[36m\\1\033[0m =", self.out[i])
+            self.out[i] = re.sub(" = (0x[0-9a-f]+)", " = \033[34m\\1\033[0m", self.out[i])
 
-        out = "\n".join(out)
-        if len(out.splitlines()) > GefUtil.get_terminal_size()[0]:
-            gef_print(out, less=not args.no_pager)
-        else:
-            gef_print(out, less=False)
+        self.print_output(args)
         return
 
 
@@ -21155,7 +21138,7 @@ class AsmListCommand(GenericCommand):
 
 
 @register_command
-class ProcessSearchCommand(GenericCommand):
+class ProcessSearchCommand(GenericCommand, BufferingOutput):
     """Display a smart list of processes."""
     _cmdline_ = "ps"
     _category_ = "07-a. External Command - General"
@@ -21163,7 +21146,7 @@ class ProcessSearchCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("pattern", metavar="REGEX_PATTERN", nargs="?", help="filter by regex.")
-    parser.add_argument("-a", "--attach", action="store_true", help="attach it.")
+    parser.add_argument("-a", "--attach", type=int, help="attach it.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="include kernel thread, socat, grep, gdb, sshd, bash, systemd, etc.")
@@ -21202,7 +21185,7 @@ class ProcessSearchCommand(GenericCommand):
         else:
             pattern = re.compile("^.*$")
 
-        out = []
+        self.out = []
         for process in self.get_processes():
             pid = int(process["pid"])
             command = process["command"]
@@ -21248,17 +21231,15 @@ class ProcessSearchCommand(GenericCommand):
                     continue
 
             if args.attach:
-                ok("Attaching to process='{:s}' pid={:d}".format(process["command"], pid))
-                gdb.execute("attach {:d}".format(pid))
-                return
+                if args.attach == pid:
+                    ok("Attaching to process='{:s}' pid={:d}".format(process["command"], pid))
+                    gdb.execute("attach {:d}".format(pid))
+                    return
 
             line = [process[i] for i in ("pid", "user", "cpu", "mem", "tty", "command")]
-            out.append("\t".join(line))
+            self.out.append("\t".join(line))
 
-        if len(out) > GefUtil.get_terminal_size()[0]:
-            gef_print("\n".join(out), less=not args.no_pager)
-        else:
-            gef_print("\n".join(out), less=False)
+        self.print_output(args)
         return
 
 
