@@ -84872,10 +84872,13 @@ class XRefTelescopeCommand(SearchPatternCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
-        self.verbose = args.verbose
-        self.aligned = None
-        self.interval = None
-        self.limit = None
+        # Since it inherits SearchPatternCommand, set the values to be used there.
+        args.aligned = False
+        args.interval = False
+        args.limit = False
+        args.phys = False
+
+        self.args = args
         self.found_count = 0
 
         self.out = []
