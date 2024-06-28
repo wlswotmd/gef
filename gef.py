@@ -78034,43 +78034,41 @@ class PagewalkArm64Command(PagewalkCommand):
 
         flags = []
 
-        XN1 = "XN1" in flag_info
-        XN0 = "XN0" in flag_info
         if "S2AP=00" in flag_info:
-            if XN1 is False and XN0 is False:
+            if "XN=00" in flag_info:
                 flags += ["EL0/---", "EL1/---"]
-            elif XN1 is False and XN0 is True:
+            elif "XN=01" in flag_info:
                 flags += ["EL0/---", "EL1/---"]
-            elif XN1 is True and XN0 is False:
+            elif "XN=10" in flag_info:
                 flags += ["EL0/---", "EL1/---"]
-            elif XN1 is True and XN0 is True:
+            elif "XN=11" in flag_info:
                 flags += ["EL0/---", "EL1/---"]
         elif "S2AP=01" in flag_info:
-            if XN1 is False and XN0 is False:
+            if "XN=00" in flag_info:
                 flags += ["EL0/R-X", "EL1/R-X"]
-            elif XN1 is False and XN0 is True:
+            elif "XN=01" in flag_info:
                 flags += ["EL0/R-X", "EL1/R--"]
-            elif XN1 is True and XN0 is False:
+            elif "XN=10" in flag_info:
                 flags += ["EL0/R--", "EL1/R--"]
-            elif XN1 is True and XN0 is True:
+            elif "XN=11" in flag_info:
                 flags += ["EL0/R--", "EL1/R-X"]
         elif "S2AP=10" in flag_info:
-            if XN1 is False and XN0 is False:
+            if "XN=00" in flag_info:
                 flags += ["EL0/-W-", "EL1/-W-"]
-            elif XN1 is False and XN0 is True:
+            elif "XN=01" in flag_info:
                 flags += ["EL0/-W-", "EL1/-W-"]
-            elif XN1 is True and XN0 is False:
+            elif "XN=10" in flag_info:
                 flags += ["EL0/-W-", "EL1/-W-"]
-            elif XN1 is True and XN0 is True:
+            elif "XN=11" in flag_info:
                 flags += ["EL0/-W-", "EL1/-W-"]
         elif "S2AP=11" in flag_info:
-            if XN1 is False and XN0 is False:
+            if "XN=00" in flag_info:
                 flags += ["EL0/RWX", "EL1/RWX"]
-            elif XN1 is False and XN0 is True:
+            elif "XN=01" in flag_info:
                 flags += ["EL0/RWX", "EL1/RW-"]
-            elif XN1 is True and XN0 is False:
+            elif "XN=10" in flag_info:
                 flags += ["EL0/RW-", "EL1/RW-"]
-            elif XN1 is True and XN0 is True:
+            elif "XN=11" in flag_info:
                 flags += ["EL0/RW-", "EL1/RWX"]
 
         if not self.simple:
