@@ -13776,6 +13776,38 @@ class GenericCommand(gdb.Command):
         return
 
 
+class BufferingOutput:
+    def ok(self, msg):
+        msg = "{} {}".format(Color.colorify("[+]", "bold green"), msg)
+        self.out.append(msg)
+        return
+
+    def info(self, msg):
+        msg = "{} {}".format(Color.colorify("[+]", "bold blue"), msg)
+        self.out.append(msg)
+        return
+
+    def warn(self, msg):
+        msg = "{} {}".format(Color.colorify("[+]", "bold yellow"), msg)
+        self.out.append(msg)
+        return
+
+    def err(self, msg):
+        msg = "{} {}".format(Color.colorify("[+]", "bold red"), msg)
+        self.out.append(msg)
+        return
+
+    def print_output(self, args, term=False):
+        if term:
+            if len(self.out) > GefUtil.get_terminal_size()[0]:
+                gef_print("\n".join(self.out), less=not args.no_pager)
+            else:
+                gef_print("\n".join(self.out), less=False)
+        else:
+            gef_print("\n".join(self.out), less=not args.no_pager)
+        return
+
+
 # Copy/paste this template for new command
 # @register_command
 # class TemplateCommand(GenericCommand):
@@ -15145,7 +15177,7 @@ class AuxvCommand(GenericCommand):
 
 
 @register_command
-class ArgvCommand(GenericCommand):
+class ArgvCommand(GenericCommand, BufferingOutput):
     """Display argv."""
     _cmdline_ = "argv"
     _category_ = "02-d. Process Information - Trivial Information"
@@ -15157,16 +15189,6 @@ class ArgvCommand(GenericCommand):
                         help="increase rounding limit from 128 bytes to 4096 bytes.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
-
-    def info(self, msg):
-        msg = "{} {}".format(Color.colorify("[+]", "bold blue"), msg)
-        self.out.append(msg)
-        return
-
-    def err(self, msg):
-        msg = "{} {}".format(Color.colorify("[+]", "bold red"), msg)
-        self.out.append(msg)
-        return
 
     def get_address_from_symbol(self, symbol):
         try:
@@ -15258,16 +15280,12 @@ class ArgvCommand(GenericCommand):
             if not (paddr1 or paddr2):
                 self.err("Not found argv")
 
-        out = "\n".join(self.out)
-        if len(out.splitlines()) > GefUtil.get_terminal_size()[0]:
-            gef_print(out, less=not args.no_pager)
-        else:
-            gef_print(out, less=False)
+        self.print_output(args, term=True)
         return
 
 
 @register_command
-class EnvpCommand(GenericCommand):
+class EnvpCommand(GenericCommand, BufferingOutput):
     """Display initial envp from __environ@ld, or modified envp from last_environ@libc."""
     _cmdline_ = "envp"
     _category_ = "02-d. Process Information - Trivial Information"
@@ -15279,16 +15297,6 @@ class EnvpCommand(GenericCommand):
                         help="increase rounding limit from 128 bytes to 4096 bytes.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
-
-    def info(self, msg):
-        msg = "{} {}".format(Color.colorify("[+]", "bold blue"), msg)
-        self.out.append(msg)
-        return
-
-    def err(self, msg):
-        msg = "{} {}".format(Color.colorify("[+]", "bold red"), msg)
-        self.out.append(msg)
-        return
 
     def get_address_from_symbol(self, symbol):
         try:
@@ -15385,11 +15393,7 @@ class EnvpCommand(GenericCommand):
             self.out.append(titlify("ENVP from /proc/{:d}/environ".format(Pid.get_pid())))
             self.print_from_proc("/proc/{:d}/environ".format(Pid.get_pid()), args.verbose, args.increase_limit)
 
-        out = "\n".join(self.out)
-        if len(out.splitlines()) > GefUtil.get_terminal_size()[0]:
-            gef_print(out, less=not args.no_pager)
-        else:
-            gef_print(out, less=False)
+        self.print_output(args, term=True)
         return
 
 
@@ -19722,7 +19726,7 @@ class GlibcHeapChunkCommand(GenericCommand):
 
 
 @register_command
-class GlibcHeapChunksCommand(GenericCommand):
+class GlibcHeapChunksCommand(GenericCommand, BufferingOutput):
     """Display information all heap chunks."""
     _cmdline_ = "heap chunks"
     _category_ = "06-a. Heap - Glibc"
@@ -19744,16 +19748,6 @@ class GlibcHeapChunksCommand(GenericCommand):
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         self.add_setting("peek_nb_byte", 0, "Hexdump N first byte(s) inside the chunk data (0 to disable)")
-        return
-
-    def warn(self, msg):
-        msg = "{} {}".format(Color.colorify("[+]", "bold yellow"), msg)
-        self.out.append(msg)
-        return
-
-    def err(self, msg):
-        msg = "{} {}".format(Color.colorify("[+]", "bold red"), msg)
-        self.out.append(msg)
         return
 
     def print_heap_chunks(self, arena, dump_start, nb):
@@ -19844,11 +19838,7 @@ class GlibcHeapChunksCommand(GenericCommand):
 
         self.out = []
         self.print_heap_chunks(arena, dump_start, nb)
-
-        if len(self.out) > GefUtil.get_terminal_size()[0]:
-            gef_print("\n".join(self.out), less=not args.no_pager)
-        else:
-            gef_print("\n".join(self.out), less=False)
+        self.print_output(args, term=True)
         return
 
 
@@ -28774,7 +28764,7 @@ class CommentClearCommand(CommentCommand):
 
 
 @register_command
-class VMMapCommand(GenericCommand):
+class VMMapCommand(GenericCommand, BufferingOutput):
     """Display a comprehensive layout of the virtual memory mapping."""
     _cmdline_ = "vmmap"
     _category_ = "02-c. Process Information - Memory/Section"
@@ -28790,11 +28780,6 @@ class VMMapCommand(GenericCommand):
     _example_ += "{:s} binary           # 'binary' means the area executable itself\n".format(_cmdline_)
     _example_ += "{:s} 0x555555577ab0   # show only lines included specified address\n".format(_cmdline_)
     _example_ += "{:s} --outer          # show qemu-user memory map; only valid in qemu-user mode".format(_cmdline_)
-
-    def info(self, msg):
-        msg = "{} {}".format(Color.colorify("[+]", "bold blue"), msg)
-        self.out.append(msg)
-        return
 
     @parse_args
     @only_if_gdb_running
@@ -28850,10 +28835,7 @@ class VMMapCommand(GenericCommand):
                 self.info("Searched from auxv, registers and stack values. There may be areas that cannot be detected.")
                 self.info("Permission is based on ELF header or default value `rw-`. Dynamic permission changes cannot be detected.")
 
-        if len(self.out) > GefUtil.get_terminal_size()[0]:
-            gef_print("\n".join(self.out), less=not args.no_pager)
-        else:
-            gef_print("\n".join(self.out), less=False)
+        self.print_output(args, term=True)
         return
 
     def dump_entry(self, entry, outer):
@@ -47076,7 +47058,7 @@ class ExtractHeapAddrCommand(GenericCommand):
 
 
 @register_command
-class FindFakeFastCommand(GenericCommand):
+class FindFakeFastCommand(GenericCommand, BufferingOutput):
     """Find candidate fake fast chunks from RW memory."""
     _cmdline_ = "find-fake-fast"
     _category_ = "06-a. Heap - Glibc"
@@ -47087,11 +47069,6 @@ class FindFakeFastCommand(GenericCommand):
     parser.add_argument("size", metavar="SIZE", type=AddressUtil.parse_address, help="search target size.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
-
-    def info(self, msg):
-        msg = "{} {}".format(Color.colorify("[+]", "bold blue"), msg)
-        self.out.append(msg)
-        return
 
     def print_result(self, m, pos, size_candidate):
         path = "unknown" if m.path == "" else m.path
@@ -47172,8 +47149,7 @@ class FindFakeFastCommand(GenericCommand):
 
         self.out = []
         self.find_fake_fast(args.size)
-
-        gef_print("\n".join(self.out), less=not args.no_pager)
+        self.print_output(args, term=True)
         return
 
 
@@ -71257,7 +71233,7 @@ class V8Command(GenericCommand):
 
 
 @register_command
-class PartitionAllocDumpCommand(GenericCommand):
+class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
     """PartitionAlloc free-list viewer for chromium stable."""
     _cmdline_ = "partition-alloc-dump"
     _category_ = "06-b. Heap - Other"
@@ -71344,16 +71320,6 @@ class PartitionAllocDumpCommand(GenericCommand):
     _note_ += "      +---------------------+\n"
     _note_ += "  4KB | Guard Page          |\n"
     _note_ += "      +---------------------+"
-
-    def warn(self, msg):
-        msg = "{} {}".format(Color.colorify("[+]", "bold yellow"), msg)
-        self.out.append(msg)
-        return
-
-    def err(self, msg):
-        msg = "{} {}".format(Color.colorify("[+]", "bold red"), msg)
-        self.out.append(msg)
-        return
 
     @staticmethod
     @Cache.cache_this_session
@@ -72054,12 +72020,13 @@ class PartitionAllocDumpCommand(GenericCommand):
                     continue
                 self.root = root # for coloring
                 self.dump_root(root)
-        gef_print("\n".join(self.out), less=not args.no_pager)
+
+        self.print_output(args)
         return
 
 
 @register_command
-class MuslHeapDumpCommand(GenericCommand):
+class MuslHeapDumpCommand(GenericCommand, BufferingOutput):
     """musl v1.2.5 (src/malloc/mallocng) heap reusable chunks viewer (only x64/x86)."""
     # See https://h-noson.hatenablog.jp/entry/2021/05/03/161933#-177pts-mooosl
     _cmdline_ = "musl-heap-dump"
@@ -72072,11 +72039,6 @@ class MuslHeapDumpCommand(GenericCommand):
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="also dump an empty active index.")
     _syntax_ = parser.format_help()
-
-    def info(self, msg):
-        msg = "{} {}".format(Color.colorify("[+]", "bold blue"), msg)
-        self.out.append(msg)
-        return
 
     def get_malloc_context_heuristic(self):
         try:
@@ -72539,7 +72501,7 @@ class MuslHeapDumpCommand(GenericCommand):
         elif args.command == "unused":
             self.dump_meta(ctx)
 
-        gef_print("\n".join(self.out), less=not args.no_pager)
+        self.print_output(args)
         return
 
 
@@ -75542,7 +75504,7 @@ class BitInfo:
 
 
 @register_command
-class QemuRegistersCommand(GenericCommand):
+class QemuRegistersCommand(GenericCommand, BufferingOutput):
     """Get registers via qemu-monitor and shows the detail of x64/x86 system registers."""
     _cmdline_ = "qreg"
     _category_ = "08-a. Qemu-system Cooperation - General"
@@ -75551,11 +75513,6 @@ class QemuRegistersCommand(GenericCommand):
     parser.add_argument("-v", "--verbose", action="store_true", help="also display detailed bit information.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
-
-    def info(self, msg):
-        msg = "{} {}".format(Color.colorify("[+]", "bold blue"), msg)
-        self.out.append(msg)
-        return
 
     def qregisters_x86_x64(self):
         red = lambda x: Color.colorify(x, "bold red")
@@ -75826,9 +75783,7 @@ class QemuRegistersCommand(GenericCommand):
         self.add_info = args.verbose
         self.out = []
         self.qregisters()
-
-        if self.out:
-            gef_print("\n".join(self.out), less=not args.no_pager)
+        self.print_output(args)
         return
 
 
@@ -76072,7 +76027,7 @@ class Phys2VirtCommand(GenericCommand):
 
 
 @register_command
-class PagewalkCommand(GenericCommand):
+class PagewalkCommand(GenericCommand, BufferingOutput):
     """The base command to get physical memory info via qemu-monitor."""
     _cmdline_ = "pagewalk"
     _category_ = "08-a. Qemu-system Cooperation - General"
@@ -76107,16 +76062,6 @@ class PagewalkCommand(GenericCommand):
         if not self.quiet:
             msg = "{} {}".format(Color.colorify("[+]", "bold blue"), msg)
             self.add_out(msg)
-        return
-
-    def warn(self, msg):
-        msg = "{} {}".format(Color.colorify("[+]", "bold yellow"), msg)
-        self.add_out(msg)
-        return
-
-    def err(self, msg):
-        msg = "{} {}".format(Color.colorify("[+]", "bold red"), msg)
-        self.add_out(msg)
         return
 
     def quiet_add_out(self, msg):
@@ -76985,9 +76930,7 @@ class PagewalkX64Command(PagewalkCommand):
         self.cache = {}
         self.pagewalk()
         self.cache = {}
-
-        if self.out:
-            gef_print("\n".join(self.out), less=not args.no_pager)
+        self.print_output(args)
         return
 
 
@@ -77995,9 +77938,7 @@ class PagewalkArmCommand(PagewalkCommand):
         self.cache = {}
         self.pagewalk()
         self.cache = {}
-
-        if self.out:
-            gef_print("\n".join(self.out), less=not args.no_pager)
+        self.print_output(args)
         return
 
 
@@ -79755,9 +79696,7 @@ class PagewalkArm64Command(PagewalkCommand):
         self.cache = {}
         self.pagewalk()
         self.cache = {}
-
-        if self.out:
-            gef_print("\n".join(self.out), less=not args.no_pager)
+        self.print_output(args)
         return
 
 
@@ -84655,7 +84594,7 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
 
 
 @register_command
-class WalkLinkListCommand(GenericCommand):
+class WalkLinkListCommand(GenericCommand, BufferingOutput):
     """Walk the link list."""
     _cmdline_ = "walk-link-list"
     _category_ = "03-b. Memory - View"
@@ -84680,16 +84619,6 @@ class WalkLinkListCommand(GenericCommand):
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
-        return
-
-    def info(self, msg):
-        msg = "{} {}".format(Color.colorify("[+]", "bold blue"), msg)
-        self.out.append(msg)
-        return
-
-    def err(self, msg):
-        msg = "{} {}".format(Color.colorify("[+]", "bold red"), msg)
-        self.out.append(msg)
         return
 
     def walk_link_list(self, head, offset):
@@ -84742,8 +84671,7 @@ class WalkLinkListCommand(GenericCommand):
         self.info("head address: {:#x}".format(args.address))
         self.info("next pointer offset: {:#x}".format(args.next_offset))
         self.walk_link_list(args.address, args.next_offset)
-
-        gef_print("\n".join(self.out), less=not args.no_pager)
+        self.print_output(args)
         return
 
 
