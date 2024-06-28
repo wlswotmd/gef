@@ -15432,7 +15432,7 @@ class DumpArgsCommand(GenericCommand):
 
 
 @register_command
-class VdsoCommand(GenericCommand):
+class VdsoCommand(GenericCommand, BufferingOutput):
     """Disassemble the text area of vdso smartly."""
     _cmdline_ = "vdso"
     _category_ = "02-d. Process Information - Trivial Information"
@@ -15478,15 +15478,14 @@ class VdsoCommand(GenericCommand):
             gen = Disasm.gdb_disassemble(text_start, end_pc=text_end - 1)
             result_lines = [str(x) for x in gen]
 
-        text_lines = []
+        self.out = []
         for line in result_lines:
             if int(Color.remove_color(line.split()[0]), 16) < text_end:
-                text_lines.append(line)
+                self.out.append(line)
             else:
                 break
 
-        if text_lines:
-            gef_print("\n".join(text_lines), less=not args.no_pager)
+        gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -16083,7 +16082,7 @@ class ProcDumpCommand(GenericCommand):
     def do_invoke(self, args):
         pid = Pid.get_pid()
 
-        out = []
+        self.out = []
         for root, dirs, files in os.walk("/proc/{:d}/".format(pid)):
             dirs = sorted(dirs)
             files = sorted(files)
@@ -16093,14 +16092,14 @@ class ProcDumpCommand(GenericCommand):
 
             for f in files:
                 path = os.path.join(root, f)
-                out.append(titlify(path))
+                self.out.append(titlify(path))
 
                 if os.path.islink(path):
-                    out.append(Color.colorify("{:s}{:s}{:s}".format(path, RIGHT_ARROW, os.readlink(path)), "blue"))
+                    self.out.append(Color.colorify("{:s}{:s}{:s}".format(path, RIGHT_ARROW, os.readlink(path)), "blue"))
                     continue
 
                 if f in ["pagemap", "mem"]:
-                    out.append("{} skipped".format(Color.colorify("[*]", "bold yellow"))) # too large
+                    self.out.append("{} skipped".format(Color.colorify("[*]", "bold yellow"))) # too large
                     continue
 
                 if f == "environ":
@@ -16109,14 +16108,14 @@ class ProcDumpCommand(GenericCommand):
                         if line:
                             line = String.bytes2str(line)
                             key, val = line.split("=", 1)
-                            out.append("{:s}={:s}".format(Color.boldify(key), val))
+                            self.out.append("{:s}={:s}".format(Color.boldify(key), val))
                     continue
 
                 if f in ["cmdline", "context"]:
                     data = open(path, "rb").read()
                     for line in data.split(b"\0"):
                         if line:
-                            out.append(String.bytes2str(line))
+                            self.out.append(String.bytes2str(line))
                     continue
 
                 if f == "auxv":
@@ -16125,13 +16124,13 @@ class ProcDumpCommand(GenericCommand):
                     for i in range(0, len(data), 2):
                         typ = data[i]
                         val = data[i+1]
-                        out.append("{:#8x}: {:#x}".format(typ, val))
+                        self.out.append("{:#8x}: {:#x}".format(typ, val))
                     continue
 
                 if f == "syscall":
                     try:
                         data = String.bytes2str(open(path, "rb").read())
-                        out.append(data.strip())
+                        self.out.append(data.strip())
                     except OSError:
                         continue
                     if int(data.split()[0]) < 0:
@@ -16149,20 +16148,20 @@ class ProcDumpCommand(GenericCommand):
                             table = get_syscall_table()
                             if nr >= 0 and table and nr in table.table:
                                 syscall_name = table.table[nr].name
-                                out.append("{:2d} {:s}: {:s} ({:s})".format(i + 1, elem_name, elem, syscall_name))
+                                self.out.append("{:2d} {:s}: {:s} ({:s})".format(i + 1, elem_name, elem, syscall_name))
                             else:
-                                out.append("{:2d} {:s}: {:s}".format(i + 1, elem_name, elem))
+                                self.out.append("{:2d} {:s}: {:s}".format(i + 1, elem_name, elem))
                         else: # argN, sp, pc
                             address = int(elem, 0)
                             sym = Symbol.get_symbol_string(address)
                             elem = "{!s}{:s}".format(ProcessMap.lookup_address(address), sym)
-                            out.append("{:2d} {:s}: {:s}".format(i + 1, elem_name, elem))
+                            self.out.append("{:2d} {:s}: {:s}".format(i + 1, elem_name, elem))
                     continue
 
                 if f == "stat":
                     try:
                         data = String.bytes2str(open(path, "rb").read())
-                        out.append(data.strip())
+                        self.out.append(data.strip())
                     except OSError:
                         continue
                     tag = [
@@ -16191,13 +16190,13 @@ class ProcDumpCommand(GenericCommand):
                             elem = "{!s}{:s}".format(ProcessMap.lookup_address(address), sym)
                         elif i + 1 in [23, 33, 34]:
                             elem = hex(int(elem))
-                        out.append("{:2d} {:s}: {:s}".format(i + 1, elem_name, elem))
+                        self.out.append("{:2d} {:s}: {:s}".format(i + 1, elem_name, elem))
                     continue
 
                 if f == "statm":
                     try:
                         data = String.bytes2str(open(path, "rb").read())
-                        out.append(data.strip())
+                        self.out.append(data.strip())
                     except OSError:
                         continue
                     tag = ["size", "resident", "shared", "text", "lib", "data", "dt"]
@@ -16208,48 +16207,48 @@ class ProcDumpCommand(GenericCommand):
                         else:
                             elem_name = "???"
                         elem_name = Color.boldify("{:{:d}s}".format(elem_name, max_width))
-                        out.append("{:2d} {:s}: {:s}".format(i + 1, elem_name, elem))
+                        self.out.append("{:2d} {:s}: {:s}".format(i + 1, elem_name, elem))
                     continue
 
                 if f == "rt_acct":
                     try:
                         hexdump_command = GefUtil.which("hexdump")
                     except FileNotFoundError as e:
-                        out.append("{}".format(e))
+                        self.out.append("{}".format(e))
                         continue
                     ret = GefUtil.gef_execute_external([hexdump_command, "-C", path], as_list=True)
-                    out.extend(ret)
+                    self.out.extend(ret)
                     continue
 
                 if f == "status":
                     try:
                         column_command = GefUtil.which("column")
                     except FileNotFoundError as e:
-                        out.append("{}".format(e))
+                        self.out.append("{}".format(e))
                         continue
                     ret = GefUtil.gef_execute_external([column_command, "-s:", "-t", path], as_list=True)
                     for line in ret:
                         k, v = line.split(maxsplit=1)
                         k = k.strip() + ":"
                         v = v.replace("\\t", "").strip()
-                        out.append("{:30s} {:s}".format(k, v))
+                        self.out.append("{:30s} {:s}".format(k, v))
                     continue
 
                 if f in ["mounts", "mountinfo", "mountstats", "unix", "protocols"]:
                     try:
                         column_command = GefUtil.which("column")
                     except FileNotFoundError as e:
-                        out.append("{}".format(e))
+                        self.out.append("{}".format(e))
                         continue
                     ret = GefUtil.gef_execute_external([column_command, "-t", path], as_list=True)
-                    out.extend(ret)
+                    self.out.extend(ret)
                     continue
 
                 if f in ["raw", "tcp", "udp", "icmp", "raw6", "tcp6", "udp6", "icmp6", "udplite", "udplite6"]:
                     try:
                         column_command = GefUtil.which("column")
                     except FileNotFoundError as e:
-                        out.append("{}".format(e))
+                        self.out.append("{}".format(e))
                         continue
                     data = open(path, "rb").read()
                     data = data.replace(b"tx_queue ", b"tx_queue:")
@@ -16258,14 +16257,14 @@ class ProcDumpCommand(GenericCommand):
                     os.fdopen(tmp_fd, "wb").write(data)
                     ret = GefUtil.gef_execute_external([column_command, "-t", tmp_filename], as_list=True)
                     os.unlink(tmp_filename)
-                    out.extend(ret)
+                    self.out.extend(ret)
                     continue
 
                 if f == "dev":
                     try:
                         column_command = GefUtil.which("column")
                     except FileNotFoundError as e:
-                        out.append("{}".format(e))
+                        self.out.append("{}".format(e))
                         continue
                     data = open(path, "rb").read()
                     data = data.replace(b"|", b" |")
@@ -16284,13 +16283,13 @@ class ProcDumpCommand(GenericCommand):
                     for i in range(2, len(ret)):
                         ret[i] = ret[i][:lright] + "  " + ret[i][lright:]
                         ret[i] = ret[i][:rright] + "  " + ret[i][rright:]
-                    out.extend(ret)
+                    self.out.extend(ret)
                     continue
 
                 if f in ["igmp", "fib_trie", "wireless"]:
                     fd = open(path, "rb")
                     for line in fd.readlines():
-                        out.append(String.bytes2str(line.rstrip())) # no-lstrip
+                        self.out.append(String.bytes2str(line.rstrip())) # no-lstrip
                     continue
 
                 if f in ["netstat", "snmp"]:
@@ -16301,9 +16300,9 @@ class ProcDumpCommand(GenericCommand):
                         for idx in range(0, len(table), 2):
                             for i, (k, v) in enumerate(zip(*table[idx:idx + 2])):
                                 if i == 0:
-                                    out.append("{:s}".format(k))
+                                    self.out.append("{:s}".format(k))
                                 else:
-                                    out.append("  {:30s} {:s}".format(k + ":", v))
+                                    self.out.append("  {:30s} {:s}".format(k + ":", v))
                     except Exception:
                         pass
                     continue
@@ -16311,12 +16310,11 @@ class ProcDumpCommand(GenericCommand):
                 try:
                     fd = open(path, "rb")
                     for line in fd.readlines():
-                        out.append(String.bytes2str(line).strip())
+                        self.out.append(String.bytes2str(line).strip())
                 except OSError:
                     continue
 
-        if out:
-            gef_print("\n".join(out).rstrip(), less=not args.no_pager)
+        gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -21115,9 +21113,11 @@ class AsmListCommand(GenericCommand):
             return
 
         # filter and print
+        self.out = []
         fmt = "{:22s} {:60s} {:22s} {}\n"
         legend = ["Hex code", "Assembly code", "Opcode", "Attributes"]
         text = Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading"))
+        self.out.append(text)
         for hex_code, opstr, opcodes, attr in patterns:
             # byte length filter
             if args.nbyte is not None and args.nbyte * 2 != len(hex_code):
@@ -21131,9 +21131,9 @@ class AsmListCommand(GenericCommand):
                 continue
 
             # not filtered
-            text += line + "\n"
+            self.out.append(line)
 
-        gef_print(text.rstrip(), less=not args.no_pager)
+        gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -75135,8 +75135,7 @@ class CpuidCommand(GenericCommand):
             eax, ebx, ecx, edx = self.execute_cpuid(id)
             self.show_result(id, None, eax, ebx, ecx, edx)
 
-        if self.out:
-            gef_print("\n".join(self.out), less=not args.no_pager)
+        gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
@@ -85898,8 +85897,7 @@ class GefArchListCommand(GenericCommand):
             self.print_arch_info(cls())
             queue = cls.__subclasses__() + queue
 
-        if self.out:
-            gef_print("\n".join(self.out).rstrip(), less=not args.no_pager)
+        gef_print("\n".join(self.out), less=not args.no_pager)
         return
 
 
