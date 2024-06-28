@@ -19720,6 +19720,8 @@ class GlibcHeapChunksCommand(GenericCommand, BufferingOutput):
                         help="the address or number to interpret as an arena. (default: main_arena)")
     parser.add_argument("-b", "--nb-byte", type=lambda x: int(x, 0),
                         help="temporarily override `heap_chunks.peek_nb_byte`.")
+    parser.add_argument("-o", "--peek-offset", type=lambda x: int(x, 0), default=0,
+                        help="temporarily override `heap_chunks.peek_offset`.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
@@ -19729,9 +19731,10 @@ class GlibcHeapChunksCommand(GenericCommand, BufferingOutput):
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
         self.add_setting("peek_nb_byte", 0, "Hexdump N first byte(s) inside the chunk data (0 to disable)")
+        self.add_setting("peek_offset", 0, "the offset to start dumping from when using peek_nb_byte")
         return
 
-    def print_heap_chunks(self, arena, dump_start, nb):
+    def print_heap_chunks(self, arena, dump_start, peek_nb, peek_offset):
         # Do not show if top is broken, as it affects exit conditions.
         if is_32bit() and arena.top % 0x08:
             self.err("arena.top is corrupted")
@@ -19773,9 +19776,10 @@ class GlibcHeapChunksCommand(GenericCommand, BufferingOutput):
             self.out.append(line)
 
             # peek nbyte
-            if nb:
-                peeked_data = read_memory(current_chunk.chunk_base_address, nb)
-                h = hexdump(peeked_data, 0x10, base=current_chunk.chunk_base_address)
+            if peek_nb:
+                peek_addr = current_chunk.chunk_base_address + peek_offset
+                peeked_data = read_memory(peek_addr, peek_nb)
+                h = hexdump(peeked_data, 0x10, base=peek_addr)
                 self.out.append(h)
 
             # goto next
@@ -19813,12 +19817,17 @@ class GlibcHeapChunksCommand(GenericCommand, BufferingOutput):
             dump_start = args.location
 
         if args.nb_byte is not None:
-            nb = args.nb_byte
+            peek_nb = args.nb_byte
         else:
-            nb = Config.get_gef_setting("heap_chunks.peek_nb_byte")
+            peek_nb = Config.get_gef_setting("heap_chunks.peek_nb_byte")
+
+        if args.peek_offset is not None:
+            peek_offset = args.peek_offset
+        else:
+            peek_offset = Config.get_gef_setting("heap_chunks.peek_offset")
 
         self.out = []
-        self.print_heap_chunks(arena, dump_start, nb)
+        self.print_heap_chunks(arena, dump_start, peek_nb, peek_offset)
         self.print_output(args, term=True)
         return
 
