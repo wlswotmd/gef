@@ -10860,75 +10860,77 @@ class CSKY(Architecture):
 #    #    return b"".join(insns)
 
 
-def write_memory_qemu_user(pid, addr, data, length):
-    """Write `data` at address `addr` for qemu-user or Intel Pin."""
+def write_memory(addr, data):
+    """Write `data` at address `addr`."""
 
-    def read_memory_via_proc_mem(pid, addr, length):
-        with open("/proc/{:d}/mem".format(pid), "rb") as fd:
-            try:
-                fd.seek(addr)
-                return fd.read(length)
-            except OSError:
+    def write_memory_qemu_user(pid, addr, data, length):
+        """Write `data` at address `addr` for qemu-user or Intel Pin."""
+
+        def read_memory_via_proc_mem(pid, addr, length):
+            with open("/proc/{:d}/mem".format(pid), "rb") as fd:
+                try:
+                    fd.seek(addr)
+                    return fd.read(length)
+                except OSError:
+                    return None
+
+        def write_memory_via_proc_mem(pid, addr, data, length):
+            with open("/proc/{:d}/mem".format(pid), "wb") as fd:
+                try:
+                    fd.seek(addr)
+                    ret = fd.write(data[:length])
+                    fd.flush()
+                    gdb.execute("maintenance flush dcache", to_string=True)
+                    return ret
+                except (OSError, gdb.error):
+                    return None
+
+        def write_with_check(pid, addr, data, length, offset=0):
+            before = read_memory_via_proc_mem(pid, addr + offset, length)
+            if before is None:
                 return None
 
-    def write_memory_via_proc_mem(pid, addr, data, length):
-        with open("/proc/{:d}/mem".format(pid), "wb") as fd:
-            try:
-                fd.seek(addr)
-                ret = fd.write(data[:length])
-                fd.flush()
-                gdb.execute("maintenance flush dcache", to_string=True)
-                return ret
-            except (OSError, gdb.error):
-                return None
+            ret = write_memory_via_proc_mem(pid, addr + offset, data, length)
+            after = read_memory(addr, length)
 
-    def write_with_check(pid, addr, data, length, offset=0):
-        before = read_memory_via_proc_mem(pid, addr + offset, length)
-        if before is None:
+            if ret:
+                if after == data[:length]:
+                    return ret
+                else:
+                    # fail, revert
+                    write_memory_via_proc_mem(pid, addr + offset, before, length)
+                    return None
             return None
 
-        ret = write_memory_via_proc_mem(pid, addr + offset, data, length)
-        after = read_memory(addr, length)
-
-        if ret:
-            if after == data[:length]:
-                return ret
-            else:
-                # fail, revert
-                write_memory_via_proc_mem(pid, addr + offset, before, length)
-                return None
-        return None
-
-    # qemu-user (32bit) maps the memory at +0x10000 (fast path)
-    if is_qemu_user() and is_32bit():
-        ret = write_with_check(pid, addr, data, length, offset=0x10000)
-        if ret:
-            return ret
-
-    # we assume addr is same
-    ret = write_with_check(pid, addr, data, length)
-    if ret:
-        return ret
-
-    # heuristic addr search and try use it
-    if is_qemu_user():
-        inner_section = ProcessMap.lookup_address(addr).section
-        target_path = inner_section.path
-
-        outer_maps = ProcessMap.get_process_maps(outer=True)
-        for m in outer_maps:
-            if m.path != target_path:
-                continue
-            offset = m.page_start - inner_section.page_start
-            ret = write_with_check(pid, addr, data, length, offset=offset)
+        # qemu-user (32bit) maps the memory at +0x10000 (fast path)
+        if is_qemu_user() and is_32bit():
+            ret = write_with_check(pid, addr, data, length, offset=0x10000)
             if ret:
                 return ret
 
-    raise Exception("Write memory error for qemu-user or Intel Pin")
+        # we assume addr is same
+        ret = write_with_check(pid, addr, data, length)
+        if ret:
+            return ret
 
+        # heuristic addr search and try use it
+        if is_qemu_user():
+            inner_section = ProcessMap.lookup_address(addr).section
+            target_path = inner_section.path
 
-def write_memory(addr, data):
-    """Write `data` at address `addr`."""
+            outer_maps = ProcessMap.get_process_maps(outer=True)
+            for m in outer_maps:
+                if m.path != target_path:
+                    continue
+                offset = m.page_start - inner_section.page_start
+                ret = write_with_check(pid, addr, data, length, offset=offset)
+                if ret:
+                    return ret
+
+        raise Exception("Write memory error for qemu-user or Intel Pin")
+
+    # ----
+
     length = len(data)
     try:
         gdb.selected_inferior().write_memory(addr, data, length)
@@ -10936,10 +10938,12 @@ def write_memory(addr, data):
     except gdb.MemoryError:
         pass
 
-    # Under qemu-user/pin, you may not be able to patch code areas, so we patch via /proc/pid/mem
-    pid = Pid.get_pid()
-    if pid and (is_qemu_user() or is_pin()):
-        return write_memory_qemu_user(pid, addr, data, length)
+    # Under qemu-user/pin, you can not patch to `code` areas,
+    # so you have to patch via /proc/pid/mem
+    if is_qemu_user() or is_pin():
+        pid = Pid.get_pid()
+        if pid:
+            return write_memory_qemu_user(pid, addr, data, length)
 
     raise Exception("Write memory error")
 
@@ -11022,14 +11026,42 @@ def read_cstring_from_memory(addr, max_length=None, ascii_only=False):
 
 
 def read_physmem(paddr, size):
-    if not is_qemu_system() and not is_vmware() and not is_kgdb():
+    """Return a `size` long byte array with the copy of the physical memory at `paddr`."""
+
+    def transparent_read(paddr, size):
+        # switch virt/phys mode
+        orig_mode = QemuMonitor.get_current_mmu_mode()
+        try:
+            if orig_mode == "virt":
+                enable_phys()
+            out = read_memory(paddr, size)
+            if orig_mode == "virt":
+                disable_phys()
+            return out
+        except gdb.MemoryError:
+            if orig_mode == "virt":
+                disable_phys()
         return None
 
-    def fast_path(paddr, size):
-        out = read_memory(paddr, size)
-        return out
+    def qemu_system_strict_way(paddr, size):
+        qemu_system_pid = Pid.get_pid()
+        if qemu_system_pid is None:
+            return None
+        res = gdb.execute("monitor gpa2hva {:#x}".format(paddr), to_string=True)
+        r = re.search("is (0x[0-9a-f]+)", res)
+        if not r:
+            return None
+        virt_addr = int(r.group(1), 16)
+        with open("/proc/{:d}/mem".format(qemu_system_pid), "rb") as fd:
+            fd.seek(virt_addr)
+            try:
+                return fd.read(size)
+            except Exception:
+                pass
+        return None
 
-    def slow_path_qemu_system(paddr, size): # for older than qemu 4.1.0-rc0
+    def qemu_system_use_xp(paddr, size):
+        # for older than qemu 4.1.0-rc0
         try:
             res = gdb.execute("monitor xp/{:d}xb {:#x}".format(size, paddr), to_string=True)
             """
@@ -11047,7 +11079,7 @@ def read_physmem(paddr, size):
             out += bytes([int(x, 16) for x in data])
         return out
 
-    def slow_path_kgdb(paddr, size): # for kgdb
+    def kgdb_use_mdp(paddr, size): # for kgdb
         # Note: `mdp` command can only handle aligned addresses.
         paddr_aligned = paddr & ~0xf
         read_n_line = (size + (paddr - paddr_aligned) + 15) // 16
@@ -11067,84 +11099,59 @@ def read_physmem(paddr, size):
             out += b"".join([bytes.fromhex(x)[::-1] for x in line.split()[2:4]])
         return out[paddr & 0xf:][:size]
 
-    def read_physmem_secure(paddr, size): # for qemu-system secure world
-        sm_base, sm_size = QemuMonitor.get_secure_memory_base_and_size()
-        if sm_base is None or sm_size is None:
-            return None
-        if not (sm_base <= paddr < sm_base + sm_size):
-            return None
-        sm = QemuMonitor.get_secure_memory_qemu_map(sm_base, sm_size)
-        if sm is None:
-            return None
-        out = XSecureMemAddrCommand.read_secure_memory(sm, paddr - sm_base, size)
-        return out
+    # ----
 
-    if is_qemu_system() and (is_arm32() or is_arm64()):
-        out = read_physmem_secure(paddr, size)
+    if not is_qemu_system() and not is_vmware() and not is_kgdb():
+        return None
+
+    if is_qemu_system():
+        out = qemu_system_strict_way(paddr, size)
         if out:
             return out
+        if is_supported_physmode():
+            out = transparent_read(paddr, size)
+            if out:
+                return out
+        out = qemu_system_use_xp(paddr, size)
+        if out:
+            return out
+        return None
 
-    if not is_supported_physmode():
-        if is_qemu_system():
-            return slow_path_qemu_system(paddr, size)
-        elif is_kgdb():
-            return slow_path_kgdb(paddr, size)
+    if is_vmware():
+        return transparent_read(paddr, size)
 
-    try:
-        # qemu-system or vmware
-        orig_mode = QemuMonitor.get_current_mmu_mode()
-        if orig_mode == "virt":
-            enable_phys()
-        out = fast_path(paddr, size)
-        if orig_mode == "virt":
-            disable_phys()
-        return out
-    except gdb.MemoryError:
-        if orig_mode == "virt":
-            disable_phys()
-        # fall through to slow path
-        if is_qemu_system():
-            return slow_path_qemu_system(paddr, size)
+    if is_kgdb():
+        return kgdb_use_mdp(paddr, size)
     return None
 
 
 def write_physmem(paddr, data):
-    if not is_qemu_system() and not is_vmware() and not is_kgdb():
+    """Write `data` at physical memory address `paddr`."""
+
+    def transparent_write(paddr, data):
+        # switch virt/phys mode
+        orig_mode = QemuMonitor.get_current_mmu_mode()
+        try:
+            if orig_mode == "virt":
+                enable_phys()
+            out = write_memory(paddr, data)
+            if orig_mode == "virt":
+                disable_phys()
+            return out
+        except Exception:
+            if orig_mode == "virt":
+                disable_phys()
         return None
 
-    def write_physmem_secure(paddr, data): # for qemu-system secure world
-        sm_base, sm_size = QemuMonitor.get_secure_memory_base_and_size()
-        if sm_base is None or sm_size is None:
-            return None
-        if not (sm_base <= paddr < sm_base + sm_size):
-            return None
-        sm = QemuMonitor.get_secure_memory_qemu_map(sm_base, sm_size)
-        if sm is None:
-            return None
-        out = WSecureMemAddrCommand.write_secure_memory(sm, paddr - sm_base, data)
-        return out
+    # ----
 
-    if is_qemu_system() and (is_arm32() or is_arm64()):
-        ret = write_physmem_secure(paddr, data)
-        if ret:
-            return ret
+    if not is_qemu_system() and not is_vmware(): # kgdb is unsupported
+        return None
 
     if not is_supported_physmode():
         return None
 
-    try:
-        # qemu-system or vmware
-        orig_mode = QemuMonitor.get_current_mmu_mode()
-        if orig_mode == "virt":
-            enable_phys()
-        ret = write_memory(paddr, data)
-        if orig_mode == "virt":
-            disable_phys()
-        return ret
-    except Exception:
-        if orig_mode == "virt":
-            disable_phys()
-    return None
+    return transparent_write(paddr, data)
 
 
 @Cache.cache_until_next
