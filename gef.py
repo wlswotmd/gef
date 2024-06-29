@@ -70401,7 +70401,7 @@ class TcmallocDumpCommand(GenericCommand):
 
 @register_command
 class GoHeapDumpCommand(GenericCommand):
-    """go language v1.21.1 mheap dumper (only x64)."""
+    """go language v1.22.2 mheap dumper (only x64)."""
     _cmdline_ = "go-heap-dump"
     _category_ = "06-b. Heap - Other"
 
@@ -70437,50 +70437,74 @@ class GoHeapDumpCommand(GenericCommand):
 
     def __init__(self):
         super().__init__()
-
-        """
-        00000000 runtime_mheap   struc ; (sizeof=0x16A78, align=0x8)
-        ...
-        00010148 allspans        []*mspan
-        ...
-        00010198 arenas          [1]*[4194304]*heapArena
-        ...
-        00010248 central         [136]struct{
-            mcentral mcentral
-        }
-        ...
-        00016A78 runtime_mheap   ends
-        """
-
         self.PageShift = 13
         self.PageSize = 1 << self.PageShift
+        self.initialized = False
+        return
 
-        self.offset_allspans = 0x10148
-        self.sizeof_mheap = 0x16a78
+    def get_struct_offset(self, type_name, member_name):
+        tp = GefUtil.cached_lookup_type(type_name)
+        if tp is None:
+            return None
+        if member_name not in tp:
+            return None
+        field = tp[member_name]
+        if not hasattr(field, "bitpos"):
+            return None
+        return field.bitpos // 8
+
+    def get_struct_size(self, type_name):
+        tp = GefUtil.cached_lookup_type(type_name)
+        if tp is None:
+            return None
+        return tp.sizeof
+
+    def initialize(self):
+        if self.initialized:
+            return
+
+        # assume 1.22.2 (Ubuntu 24.04)
+        """
+        struct runtime.mheap {
+            /* offset | size   */
+            ...
+            /* 0x10148 | 0x0018 */    []*runtime.mspan allspans;
+            ...
+            /* 0x101d8 | 0x0008 */    [1]*[4194304]*runtime.heapArena arenas;
+            ...
+            /* 0x10288 | 0x6600 */    [136]struct { runtime.mcentral runtime.mcentral; runtime.pad [24]uint8 } central;
+            ...
+        } // total: 0x16ab8 bytes
+        """
+
+        self.offset_allspans = self.get_struct_offset("runtime.mheap", "allspans") or 0x10148
+        self.sizeof_mheap = self.get_struct_size("runtime.mheap") or 0x16ab8
 
         """
-        00000000 runtime_mspan   struc ; (sizeof=0xA8, align=0x8)
-        00000000 next            dq ?
-        00000008 prev            dq ?
-        00000010 list            dq ?
-        00000018 startAddr       dq ?
-        00000020 npages          dq ?
-        ...
-        00000038 nelems          dq ?
-        ...
-        00000048 allocBits       dq ?
-        ...
-        0000006A spanclass       db ?
-        ...
-        000000A8 runtime_mspan   ends
+        struct runtime.mspan {
+            /* offset | size   */
+            ...
+            /* 0x0000 | 0x0008 */    runtime.mspan * next;
+            /* 0x0008 | 0x0008 */    runtime.mspan * prev;
+            ...
+            /* 0x0018 | 0x0008 */    uintptr startAddr;
+            /* 0x0020 | 0x0008 */    uintptr npages;
+            ...
+            /* 0x0032 | 0x0002 */    uint16 nelems;
+            ...
+            /* 0x0040 | 0x0008 */    runtime.gcBits * allocBits;
+            ...
+            /* 0x0062 | 0x0001 */    runtime.spanClass spanclass;
+            ...
+        } // total: 0xa0 bytes
         """
-        self.offset_next = 0x0
-        self.offset_prev = 0x8
-        self.offset_startAddr = 0x18
-        self.offset_npages = 0x20
-        self.offset_nelems = 0x38
-        self.offset_allocBits = 0x48
-        self.offset_spanclass = 0x6a
+        self.offset_next = self.get_struct_offset("runtime.mspan", "next") or 0x0
+        self.offset_prev = self.get_struct_offset("runtime.mspan", "next") or 0x8
+        self.offset_startAddr = self.get_struct_offset("runtime.mspan", "startAddr") or 0x18
+        self.offset_npages = self.get_struct_offset("runtime.mspan", "npages") or 0x20
+        self.offset_nelems = self.get_struct_offset("runtime.mspan", "nelems") or 0x32
+        self.offset_allocBits = self.get_struct_offset("runtime.mspan", "allocBits") or 0x40
+        self.offset_spanclass = self.get_struct_offset("runtime.mspan", "spanClass") or 0x62
         return
 
     def get_mheap_(self):
@@ -70504,7 +70528,11 @@ class GoHeapDumpCommand(GenericCommand):
         current = read_int_from_memory(mheap + self.offset_allspans)
         mspans = []
         while True:
-            mspan_addr = read_int_from_memory(current)
+            try:
+                mspan_addr = read_int_from_memory(current)
+            except gdb.MemoryError:
+                self.out.append("read memory error")
+                return []
             if not mspan_addr:
                 break
             mspan = self.parse_mspan(mspan_addr, verbose)
@@ -70517,7 +70545,11 @@ class GoHeapDumpCommand(GenericCommand):
 
     def parse_mspan(self, mspan, verbose):
         # read member
-        start_addr = read_int_from_memory(mspan + self.offset_startAddr)
+        try:
+            start_addr = read_int_from_memory(mspan + self.offset_startAddr)
+        except gdb.MemoryError:
+            self.out.append("read memory error")
+            return None
         if not verbose and start_addr == 0:
             return None
         # spanclass = (sizeclass << 1) | (noscan bit)
@@ -70530,7 +70562,7 @@ class GoHeapDumpCommand(GenericCommand):
         npages = read_int_from_memory(mspan + self.offset_npages)
         end_addr = start_addr + npages * self.PageSize
 
-        aligned_nelems = nelems = read_int_from_memory(mspan + self.offset_nelems)
+        aligned_nelems = nelems = read_int_from_memory(mspan + self.offset_nelems) & 0xffff
         while aligned_nelems % 8:
             aligned_nelems += 1
         allocBits_addr = read_int_from_memory(mspan + self.offset_allocBits)
@@ -70614,6 +70646,8 @@ class GoHeapDumpCommand(GenericCommand):
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     @only_if_specific_arch(arch=("x86_64",))
     def do_invoke(self, args):
+        self.initialize()
+
         self.out = []
 
         if args.mspan is not None:
@@ -70627,6 +70661,7 @@ class GoHeapDumpCommand(GenericCommand):
                 return
             mspans = self.parse_mheap(mheap, args.verbose)
 
+        mspans = [x for x in mspans if x is not None]
         self.dump_mspans(mspans, args.dump)
         gef_print("\n".join(self.out), less=not args.no_pager)
         return

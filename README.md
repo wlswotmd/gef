@@ -309,7 +309,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
         * Get and extract latest source from https://musl.libc.org/
         * Build with `./configure && make install`.
         * Build as `/usr/local/musl/bin/musl-gcc test.c`.
-* `go-heap-dump`: dumps go language v1.21.1 mheap (only x64).
+* `go-heap-dump`: dumps go language v1.22.2 mheap (only x64).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/go-heap-dump.png)
 * `tlsf-heap-dump`: dumps TLSF (Two-Level Segregated Fit) v2.4.6 free-list (only x64).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/tlsf-heap-dump.png)
