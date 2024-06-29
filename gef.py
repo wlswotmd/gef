@@ -11292,47 +11292,46 @@ class QemuMonitor:
         return None
 
     @staticmethod
-    def get_secure_memory_base_and_size(verbose=False):
-        result = gdb.execute("monitor info mtree -f", to_string=True)
-        for line in result.splitlines():
-            m = re.search(r"([0-9a-f]{16})-([0-9a-f]{16}).*virt.secure-ram", line)
+    def get_secure_memory_map(verbose=False):
+        # find secure-ram base
+        ret = gdb.execute("monitor info mtree -f", to_string=True)
+        for line in ret.splitlines():
+            m = re.search(r"([0-9a-f]{16})-([0-9a-f]{16}).*: \S+.secure-ram", line)
             if m:
                 secure_memory_base = int(m.group(1), 16)
                 secure_memory_size = int(m.group(2), 16) + 1 - secure_memory_base
+                if verbose:
+                    info("secure memory base: {:#x}-{:#x} ({:#x} bytes)".format(
+                        secure_memory_base,
+                        secure_memory_base + secure_memory_size,
+                        secure_memory_size,
+                    ))
                 break
         else:
-            return None, None
-        if verbose:
-            start = secure_memory_base
-            end = secure_memory_base + secure_memory_size
-            info("secure memory base: {:#x}-{:#x} ({:#x} bytes)".format(start, end, secure_memory_size))
-        return secure_memory_base, secure_memory_size
-
-    @staticmethod
-    def get_secure_memory_qemu_map(secure_memory_base, secure_memory_size, verbose=False):
-        qemu_system_pid = Pid.get_pid()
-        if qemu_system_pid is None:
-            err("Not found qemu-system pid")
             return None
-        # fast path
+
+        # find virtual address
         ret = gdb.execute("monitor gpa2hva {:#x}".format(secure_memory_base), to_string=True)
         r = re.search("is (0x[0-9a-f]+)", ret)
-        if r:
-            secure_memory_page_addr = int(r.group(1), 16)
-            sm = ProcessMap.process_lookup_address(secure_memory_page_addr)
-            if sm:
-                if verbose:
-                    info("secure memory page of pid {:d}: {:#x}".format(qemu_system_pid, secure_memory_page_addr))
-                return sm
+        if not r:
+            return None
+        secure_memory_page_addr = int(r.group(1), 16)
 
-        # slow path
-        maps = ProcessMap.get_process_maps_linux(qemu_system_pid)
-        secure_memory_maps = [m for m in maps if m.size == secure_memory_size]
-        if len(secure_memory_maps) == 1:
+        # find target map of qemu-system's pid
+        qemu_system_pid = Pid.get_pid()
+        if qemu_system_pid is None:
             if verbose:
-                secure_memory_page_addr = secure_memory_maps[0].page_start
-                info("secure memory page of pid {:d}: {:#x}".format(qemu_system_pid, secure_memory_page_addr))
-            return secure_memory_maps[0]
+                err("Not found qemu-system pid")
+            return None
+        maps = ProcessMap.get_process_maps_linux(qemu_system_pid)
+        for m in maps:
+            if m.page_start != secure_memory_page_addr:
+                continue
+            if m.size != secure_memory_size:
+                continue
+            if verbose:
+                info("secure memory page of pid {:d}: {:#x}".format(qemu_system_pid, m.page_start))
+            return m
         return None
 
 
@@ -12057,6 +12056,16 @@ class Pid:
         return process
 
     @staticmethod
+    def get_pid_from_name(filepath):
+        candidate = []
+        for process in Pid.get_all_process():
+            if filepath in process["filepath"]:
+                candidate.append(process)
+        if len(candidate) == 1:
+            return candidate[0]["pid"]
+        return None
+
+    @staticmethod
     def get_pid_from_tcp_session(filepath=None):
         gdb_tcp_sess = [x["raddr"] for x in Pid.get_tcp_sess(os.getpid())]
         if not gdb_tcp_sess:
@@ -12102,9 +12111,6 @@ class Pid:
                 return candidate_pid
         return None
 
-    # Under pin and qemu, it is necessary to parse the TCP information for obtaining the pid.
-    # This operation is expensive, but once known, it never changes.
-    # I decided to keep the cache until it is explicitly cleared.
     @staticmethod
     @Cache.cache_this_session
     def get_pid(remote=False):
@@ -12112,7 +12118,10 @@ class Pid:
         if is_pin():
             return Pid.get_pid_from_tcp_session()
         elif is_qemu_user() or is_qemu_system():
-            return Pid.get_pid_from_tcp_session("qemu")
+            pid = Pid.get_pid_from_tcp_session("qemu") # strict way
+            if pid is None:
+                pid = Pid.get_pid_from_name("qemu") # ambiguous way
+            return pid
         elif is_wine():
             return Pid.get_pid_wine()
         elif remote is False and is_remote_debug():
@@ -22649,7 +22658,7 @@ class KernelChecksecCommand(GenericCommand):
             return
 
         mtree_ret = gdb.execute("monitor info mtree -f", to_string=True)
-        if "virt.secure-ram" in mtree_ret:
+        if ".secure-ram" in mtree_ret:
             gef_print("{:<40s}: {:s}".format("Secure world", "Found"))
         else:
             gef_print("{:<40s}: {:s}".format("Secure world", "Not found"))
@@ -73655,7 +73664,7 @@ class XSecureMemAddrCommand(GenericCommand):
     _example_ += "{:s} /16xw --virt 0x783ae3d0 # secure memory ASLR is supported".format(_cmdline_)
 
     @staticmethod
-    def virt2phys(vaddr, verbose=False): # vaddr -> addr1 or None
+    def v2p_secure(vaddr, verbose=False): # vaddr -> addr1 or None
         maps = PageMap.get_page_maps(FORCE_PREFIX_S=True, verbose=verbose)
         if maps is None:
             return None
@@ -73664,12 +73673,12 @@ class XSecureMemAddrCommand(GenericCommand):
                 offset = vaddr - vstart
                 paddr = pstart + offset
                 if verbose:
-                    info("virt2phys: {:#x} -> {:#x}".format(vaddr, paddr))
+                    info("v2p: {:#x} -> {:#x}".format(vaddr, paddr))
                 return paddr
         return None
 
     @staticmethod
-    def phys2virt(paddr, verbose=False): # paddr -> [addr1, addr2, ...] or []
+    def p2v_secure(paddr, verbose=False): # paddr -> [addr1, addr2, ...] or []
         maps = PageMap.get_page_maps(FORCE_PREFIX_S=True, verbose=verbose)
         if maps is None:
             return []
@@ -73679,7 +73688,7 @@ class XSecureMemAddrCommand(GenericCommand):
                 offset = paddr - pstart
                 vaddr = vstart + offset
                 if verbose:
-                    info("phys2virt: {:#x} -> {:#x}".format(paddr, vaddr))
+                    info("p2v: {:#x} -> {:#x}".format(paddr, vaddr))
                 result.append(vaddr)
         return result
 
@@ -73707,120 +73716,85 @@ class XSecureMemAddrCommand(GenericCommand):
             info("read size result: {:#x}".format(len(data)))
         return data
 
-    def print_secure_memory_x(self, target, data):
-        for i, data16 in enumerate(slicer(data, 16)):
-            addr = int(target) + i * 0x10
-            data_units = slicer(data16, self.dump_unit)
-            if self.dump_unit == 1:
-                data_units_hex = ["{:#04x}".format(ord(x)) for x in data_units]
-            elif self.dump_unit == 2:
-                data_units_hex = ["{:#06x}".format(u16(x)) for x in data_units]
-            elif self.dump_unit == 4:
-                data_units_hex = ["{:#010x}".format(u32(x)) for x in data_units]
-            elif self.dump_unit == 8:
-                data_units_hex = ["{:#018x}".format(u64(x)) for x in data_units]
-            gef_print("{:#018x}: {:s}".format(addr, " ".join(data_units_hex)))
-        return
-
-    def print_secure_memory_i(self, target, data):
-        kwargs = {}
-        kwargs["code"] = data.hex()
-        if is_arm32():
-            kwargs["arch"] = "ARM"
-            if target & 1:
-                kwargs["mode"] = "THUMB"
-            else:
-                kwargs["mode"] = "ARM"
-        elif is_arm64():
-            kwargs["arch"] = "ARM64"
-            kwargs["mode"] = "ARM"
-
-        try:
-            for insn in Disasm.capstone_disassemble(target, self.dump_count, **kwargs):
-                insn_fmt = "{:12o}"
-                text_insn = insn_fmt.format(insn)
-                msg = "{} {}".format(" " * 5, text_insn)
-                gef_print(msg)
-        except gdb.error:
-            pass
-        return
-
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system",))
     @only_if_specific_arch(arch=("ARM32", "ARM64"))
     def do_invoke(self, args):
-        self.dump_type = "x"
-        self.dump_unit = current_arch.ptrsize
-        self.dump_count = 1
-        if args.format:
-            if args.format.startswith("/"):
-                m = re.search(r"/(\d*)(\S*)", args.format)
-                if m:
-                    if m.group(1):
-                        self.dump_count = int(m.group(1))
-                    for c in m.group(2):
-                        if c in ["x", "i"]:
-                            self.dump_type = c
-                        elif c in ["b", "h", "w", "g"]:
-                            self.dump_unit = {"b": 1, "h": 2, "w": 4, "g": 8}[c]
-                        else:
-                            err("Unsupported format: {}".format(c))
-                            return
-        else:
+        # arg parse
+        m = re.search(r"/(\d*)([xibhwg]*)", args.format)
+        if not m:
             self.usage()
             return
 
+        dump_type = "x"
+        dump_unit = current_arch.ptrsize
+        dump_count = 1
+        if m.group(1):
+            dump_count = int(m.group(1))
+        for c in m.group(2):
+            if c in ["x", "i"]:
+                dump_type = c
+            elif c in ["b", "h", "w", "g"]:
+                dump_unit = {"b": 1, "h": 2, "w": 4, "g": 8}[c]
+            else:
+                err("Unsupported format: {}".format(c))
+                return
+
         # initialize
-        sm_base, sm_size = QemuMonitor.get_secure_memory_base_and_size(args.verbose)
-        if sm_base is None or sm_size is None:
-            err("Not found memory tree of secure memory (see monitor info mtree -f)")
-            return
-        sm = QemuMonitor.get_secure_memory_qemu_map(sm_base, sm_size, args.verbose)
+        sm = QemuMonitor.get_secure_memory_map(args.verbose)
         if sm is None:
             err("Not found secure memory maps")
             return
 
-        # dump
         if args.phys:
-            if sm_base <= args.location < sm_base + sm_size:
-                target_offset = args.location - sm_base
+            if sm.page_start <= args.location < sm.page_end:
+                target_offset = args.location - sm.page_start
             else:
                 err("Phys {:#x} is not default secure memory (unsupported)".format(args.location))
                 return
         elif args.off:
-            if 0 <= args.location < sm_size:
+            if 0 <= args.location < sm.size:
                 target_offset = args.location
             else:
                 err("Offset {:#x} is not default secure memory (unsupported)".format(args.location))
                 return
         elif args.virt:
-            target_phys = self.virt2phys(args.location, args.verbose)
+            target_phys = XSecureMemAddrCommand.v2p_secure(args.location, args.verbose)
             if target_phys is None:
                 err("Not found physical address")
                 return
-            if sm_base <= target_phys < sm_base + sm_size:
-                target_offset = target_phys - sm_base
+            if sm.page_start <= target_phys < sm.page_end:
+                target_offset = target_phys - sm.page_start
             else:
                 err("Virt {:#x} is not default secure memory (unsupported)".format(args.location))
                 return
 
-        if self.dump_type == "x":
-            dump_size = self.dump_count * self.dump_unit
-        elif self.dump_type == "i":
-            dump_size = self.dump_count * 4 # ARM opcode is at most 4byte
-            if target_offset & 1:
-                target_offset -= 1
+        # fix for size, offset (when thumb2)
+        if dump_type == "x":
+            dump_size = dump_count * dump_unit
+        elif dump_type == "i":
+            if target_offset & 1: # fix thumb2
+                if is_arm32():
+                    target_offset -= 1
+                else:
+                    err("Unsupported odd address: {}".format(target_offset))
+                    return
+            # ARM opcode is at most 4byte
+            dump_size = dump_count * 4
+
+        # read
         data = self.read_secure_memory(sm, target_offset, dump_size, args.verbose)
         if data is None:
-            err("Read error")
+            err("read memory error")
             return
 
         # print
-        if self.dump_type == "x":
-            self.print_secure_memory_x(args.location, data)
-        elif self.dump_type == "i":
-            self.print_secure_memory_i(args.location, data)
+        if dump_type == "x":
+            out = hexdump(data, show_symbol=False, base=args.location, unit=dump_unit)
+        elif dump_type == "i":
+            out = XphysAddrCommand.print_fmt_i(args.location, data, dump_count)
+        gef_print(out)
         return
 
 
@@ -73890,7 +73864,7 @@ class WSecureMemAddrCommand(GenericCommand):
         # avoid qemu-system caches
         TemporaryDummyBreakpoint()
 
-        # By default, "context code" uses Diasm.gdb_disassemble.
+        # By default, "context code" uses Disasm.gdb_disassemble.
         # However, due to gdb's internal cache, changes to secure memory may not be reflected in the disassembled results.
         # Therefore, if capstone is available, change it to disassemble by capstone.
         if Config.get_gef_setting("context.use_capstone") is False:
@@ -73915,54 +73889,51 @@ class WSecureMemAddrCommand(GenericCommand):
                 try:
                     data = codecs.escape_decode(args.value)[0]
                 except binascii.Error:
-                    gef_print("Could not decode '\\xXX' encoded string")
+                    err("Could not decode '\\xXX' encoded string")
                     return
             elif args.mode == "hex":
-                _data = ""
+                data = ""
                 for c in args.value.lower():
                     if c in "0123456789abcdef":
-                        _data += c
-                data = bytes.fromhex(_data)
+                        data += c
+                data = bytes.fromhex(data)
         except Exception:
             self.usage()
             return
 
         # initialize
-        sm_base, sm_size = QemuMonitor.get_secure_memory_base_and_size(args.verbose)
-        if sm_base is None or sm_size is None:
-            err("Not found memory tree of secure memory (see monitor info mtree -f)")
-            return
-        sm = QemuMonitor.get_secure_memory_qemu_map(sm_base, sm_size, args.verbose)
+        sm = QemuMonitor.get_secure_memory_map(args.verbose)
         if sm is None:
             err("Not found secure memory maps")
             return
 
-        # write
         if args.phys:
-            if sm_base <= args.location < sm_base + sm_size:
-                target_offset = args.location - sm_base
+            if sm.page_start <= args.location < sm.page_end:
+                target_offset = args.location - sm.page_start
             else:
                 err("Phys {:#x} is not default secure memory (unsupported)".format(args.location))
                 return
         elif args.off:
-            if 0 <= args.location < sm_size:
+            if 0 <= args.location < sm.size:
                 target_offset = args.location
             else:
                 err("Offset {:#x} is not default secure memory (unsupported)".format(args.location))
                 return
         elif args.virt:
-            target_phys = XSecureMemAddrCommand.virt2phys(args.location, args.verbose)
+            target_phys = XSecureMemAddrCommand.v2p_secure(args.location, args.verbose)
             if target_phys is None:
                 err("Not found physical address")
                 return
-            if sm_base <= target_phys < sm_base + sm_size:
-                target_offset = target_phys - sm_base
+            if sm.page_start <= target_phys < sm.page_end:
+                target_offset = target_phys - sm.page_start
             else:
                 err("Virt {:#x} is not default secure memory (unsupported)".format(args.location))
                 return
+
+        # write
         ret = self.write_secure_memory(sm, target_offset, data, args.verbose)
         if ret is None:
-            err("Write memory error")
+            err("memory write error")
         return
 
 
@@ -73987,7 +73958,7 @@ class BreakSecureMemAddrCommand(GenericCommand):
     def do_invoke(self, args):
         if args.verbose:
             info("phys address: {:#x}".format(args.location))
-        virt_addrs = XSecureMemAddrCommand.phys2virt(args.location, args.verbose)
+        virt_addrs = XSecureMemAddrCommand.p2v_secure(args.location, args.verbose)
         for virt_addr in virt_addrs:
             gdb.execute("break *{:#x}".format(virt_addr))
         return
@@ -74072,7 +74043,7 @@ class OpteeBreakTaAddrCommand(GenericCommand):
             info("thread_enter_user_mode @ OPTEE-OS: {:#x}".format(args.thread_enter_user_mode))
             info("breakpoint target offset of TA: {:#x}".format(args.ta_offset))
 
-        thread_enter_user_mode_virt = XSecureMemAddrCommand.phys2virt(args.thread_enter_user_mode, args.verbose)
+        thread_enter_user_mode_virt = XSecureMemAddrCommand.p2v_secure(args.thread_enter_user_mode, args.verbose)
 
         for vaddr in thread_enter_user_mode_virt:
             OpteeThreadEnterUserModeBreakpoint(vaddr, args.ta_offset)
@@ -75916,11 +75887,7 @@ class PageMap:
     @Cache.cache_until_next
     def get_page_maps_arm64_optee_secure_memory(verbose=False):
         # heuristic search of qemu-system memory
-        sm_base, sm_size = QemuMonitor.get_secure_memory_base_and_size(verbose)
-        if sm_base is None or sm_size is None:
-            err("Not found memory tree of secure memory (see monitor info mtree -f)")
-            return None
-        sm = QemuMonitor.get_secure_memory_qemu_map(sm_base, sm_size, verbose)
+        sm = QemuMonitor.get_secure_memory_map(verbose)
         if sm is None:
             err("Not found secure memory maps")
             return None
@@ -75991,8 +75958,9 @@ class PageMap:
             legend = ["Virtual address start-end", "Physical address start-end", "Total size"]
             gef_print(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
             for va_start, va_end, pa_start, pa_end in maps:
-                fmt = "{:#018x}-{:#018x}  {:#018x}-{:#018x}  {:<#12x}"
-                gef_print(fmt.format(va_start, va_end, pa_start, pa_end, va_end - va_start))
+                gef_print("{:#018x}-{:#018x}  {:#018x}-{:#018x}  {:<#12x}".format(
+                    va_start, va_end, pa_start, pa_end, va_end - va_start,
+                ))
         return maps
 
     @staticmethod
@@ -77956,7 +77924,7 @@ class PagewalkArmCommand(PagewalkCommand):
 
             elif SCR is not None and SCR_S is not None:
                 r = gdb.execute("monitor info mtree -f", to_string=True)
-                if "virt.secure-ram" in r:
+                if ".secure-ram" in r:
                     # do not use "_S"
                     self.SECURE = (SCR & 0x1) == 0 # NS bit
                     self.suffix = ""
