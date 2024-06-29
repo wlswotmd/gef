@@ -73535,36 +73535,102 @@ class XColoredCommand(GenericCommand):
 
 @register_command
 class XphysAddrCommand(GenericCommand):
-    """Dump physical memory via qemu-monitor."""
+    """Dump physical memory taking into account ROM mapping."""
     _cmdline_ = "xp"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("option", metavar="OPTION", nargs="*", help="the argument of xp.")
-    parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address, help="dump target address.")
+    parser.add_argument("format", metavar="/FMT", help="specified output format.")
+    parser.add_argument("location", metavar="ADDRESS", type=AddressUtil.parse_address, help="dump target address.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} /16xg 0x11223344".format(_cmdline_)
 
+    @staticmethod
+    def print_fmt_i(target, data, count):
+        kwargs = {}
+        kwargs["code"] = data.hex()
+        if is_x86_32():
+            kwargs["arch"] = "X86"
+            kwargs["mode"] = "32"
+        elif is_x86_64():
+            kwargs["arch"] = "X86"
+            kwargs["mode"] = "64"
+        elif is_arm32():
+            kwargs["arch"] = "ARM"
+            if target & 1:
+                kwargs["mode"] = "THUMB"
+            else:
+                kwargs["mode"] = "ARM"
+        elif is_arm64():
+            kwargs["arch"] = "ARM64"
+            kwargs["mode"] = "ARM"
+
+        out = []
+        try:
+            for insn in Disasm.capstone_disassemble(target, count, **kwargs):
+                text_insn = "{:12o}".format(insn)
+                msg = "{} {}".format(" " * 5, text_insn)
+                out.append(msg)
+        except gdb.error:
+            pass
+        out = "\n".join(out)
+        return out
+
     @parse_args
     @only_if_gdb_running
-    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware", "kgdb"))
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     def do_invoke(self, args):
-        if is_qemu_system():
-            result = gdb.execute("monitor xp {:s} {:#x}".format(" ".join(args.option), args.address), to_string=True)
-            gef_print(result.strip())
-        elif is_vmware():
-            orig_mode = QemuMonitor.get_current_mmu_mode()
-            if orig_mode == "virt":
-                enable_phys()
-            try:
-                result = gdb.execute("x {:s} {:#x}".format(" ".join(args.option), args.address), to_string=True)
-                gef_print(result.strip())
-            except gdb.MemoryError:
-                pass
-            if orig_mode == "virt":
-                disable_phys()
+        # arg parse
+        m = re.search(r"/(\d*)([xibhwg]*)", args.format)
+        if not m:
+            self.usage()
+            return
+
+        dump_type = "x"
+        dump_unit = current_arch.ptrsize
+        dump_count = 1
+        if m.group(1):
+            dump_count = int(m.group(1))
+        for c in m.group(2):
+            if c in ["x", "i"]:
+                dump_type = c
+            elif c in ["b", "h", "w", "g"]:
+                dump_unit = {"b": 1, "h": 2, "w": 4, "g": 8}[c]
+            else:
+                err("Unsupported format: {}".format(c))
+                return
+
+        target = args.location
+        if dump_type == "x":
+            dump_size = dump_count * dump_unit
+        elif dump_type == "i":
+            if is_x86():
+                # I don't know the length, but I'll read it 10 bytes at a time.
+                dump_size = dump_count * 10
+            else:
+                if target & 1: # fix thumb2
+                    if is_arm32():
+                        target -= 1
+                    else:
+                        err("Unsupported odd address: {}".format(target))
+                        return
+                # ARM opcode is at most 4byte
+                dump_size = dump_count * 4
+
+        # read
+        data = read_physmem(target, dump_size)
+        if data is None:
+            err("read memory error")
+            return
+
+        # print
+        if dump_type == "x":
+            out = hexdump(data, show_symbol=False, base=args.location, unit=dump_unit)
+        elif dump_type == "i":
+            out = XphysAddrCommand.print_fmt_i(args.location, data, dump_count)
+        gef_print(out)
         return
 
 
