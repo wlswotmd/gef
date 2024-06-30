@@ -193,8 +193,12 @@ If you find it, please let me know in the issue page.
     * [ ] qemu: not found.
     * [ ] gdb: not found.
 * loongarch32
-    * [ ] toolchain: not found.
-    * [ ] qemu: not found.
+    * [x] toolchain: [loongson-gnu-toolchain-8.3-x86_64-loongarch32r-linux-gnusf-v2.0.tar.xz](https://gitee.com/loongson-edu/la32r-toolchains/releases/download/v0.0.3/loongson-gnu-toolchain-8.3-x86_64-loongarch32r-linux-gnusf-v2.0.tar.xz)
+    * [ ] qemu: https://gitee.com/loongson-edu/la32r-QEMU
+        * `export CXXFLAGS="-Wno-error"`
+        * `export CFLAGS="-Wno-error"`
+        * `./configure --target-list=loongarch32-linux-user && make && cp build/qemu-loongarch32 /usr/local/bin`
+        * It says `Architecture rejected` when connecting from gdb.
     * [x] gdb: build from latest. See [docs/FAQ](https://github.com/bata24/gef/blob/dev/docs/FAQ.md#gdb-will-not-load-gef).
 * e2k
     * [ ] toolchain: not found.
