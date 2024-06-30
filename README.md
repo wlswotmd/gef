@@ -566,6 +566,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/cpuid.png)
 * `read-system-register`: reads system register for old `qemu-system-arm`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/read-system-register.png)
+* `read-control-register`: reads control register for kgdb.
 * `capability`: shows the capabilities of the debugging process.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/capability.png)
 * `dasm`: disassembles the code by capstone.

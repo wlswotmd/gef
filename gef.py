@@ -10932,6 +10932,9 @@ def write_memory(addr, data):
     # ----
 
     length = len(data)
+    if length == 0:
+        return 0
+
     try:
         gdb.selected_inferior().write_memory(addr, data, length)
         return length
@@ -10950,6 +10953,9 @@ def write_memory(addr, data):
 
 def read_memory(addr, length):
     """Return a `length` long byte array with the copy of the process memory at `addr`."""
+    if length == 0:
+        return b""
+
     if is_pin():
         # Memory read of Intel Pin is very slow, so speed it up
         try:
@@ -11096,10 +11102,17 @@ def read_physmem(paddr, size):
         for line in res.splitlines():
             if not line:
                 continue
+            if line.endswith("zero suppressed"):
+                start, end = AddressUtil.parse_string_range(line.split(" ")[0])
+                zlen = (end + 1) - start
+                out += b"\x00" * zlen
+                continue
             out += b"".join([bytes.fromhex(x)[::-1] for x in line.split()[2:4]])
         return out[paddr & 0xf:][:size]
 
     # ----
+    if size == 0:
+        return b""
 
     if not is_qemu_system() and not is_vmware() and not is_kgdb():
         return None
@@ -11144,6 +11157,9 @@ def write_physmem(paddr, data):
         return None
 
     # ----
+
+    if len(data) == 0:
+        return 0
 
     if not is_qemu_system() and not is_vmware(): # kgdb is unsupported
         return None
@@ -11823,6 +11839,16 @@ def get_register(regname, use_mbed_exec=False, use_monitor=False):
         if r:
             return int(r.group(1), 16)
 
+    if use_mbed_exec and is_kgdb() and is_x86_64():
+        regname = regname.lstrip("$")
+        if regname in ["cr0", "cr2", "cr3", "cr4"]:
+            try:
+                r = gdb.execute("read-control-register {:s}".format(regname), to_string=True)
+                if r:
+                    return int(r.split("=")[1], 16)
+            except gdb.error:
+                pass
+
     return None
 
 
@@ -11942,6 +11968,10 @@ def is_kgdb():
 def is_vmware():
     """GDB mode determination function for VMware gdb stub."""
     if not is_remote_debug():
+        return False
+    # The `monitor help` command takes a very long time in kgdb mode.
+    # We can speed it up by making sure we're not in kgdb mode beforehand.
+    if is_over_serial():
         return False
     # https://xuanxuanblingbling.github.io/ctf/tools/2021/10/22/vmware/
     try:
@@ -18130,6 +18160,74 @@ class MmapMemoryCommand(GenericCommand):
         cmd = "call-syscall {:s} {:#x} {:#x} {:#x} {:#x} -1 0".format(mmap_syscall_name, args.location, args.size, perm, flags)
         gdb.execute(cmd)
         Cache.reset_gef_caches()
+        return
+
+
+@register_command
+class ReadControlRegisterCommand(GenericCommand):
+    """Read control register for kgdb."""
+    _cmdline_ = "read-control-register"
+    _category_ = "04-a. Register - View"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("reg_name", metavar="REGISTER_NAME", choices=["cr0", "cr2", "cr3", "cr4"],
+                        help="register name to read a value.")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} cr0".format(_cmdline_)
+
+    def get_getter_address(self, reg_name):
+        symbol = {
+            "cr0": "native_read_cr0",
+            "cr2": "pv_native_read_cr2",
+            "cr3": "__native_read_cr3",
+            "cr4": "cr4_init",
+        }[reg_name]
+
+        byte_code = {
+            "cr0": b"\x0f\x20\xc0",
+            "cr2": b"\x0f\x20\xd0",
+            "cr3": b"\x0f\x20\xd8",
+            "cr4": b"\x0f\x20\xe0",
+        }[reg_name]
+
+        # resolve symbol
+        ret = gdb.execute("monitor {:s}".format(symbol), to_string=True)
+        r = re.search(r"(0x\S+)", ret)
+        if not r:
+            return None
+        address = int(r.group(1), 16)
+
+        # adjust offset
+        data = read_memory(address, 20)
+        index = data.find(byte_code)
+        if index >= 0:
+            return address + index
+        return None
+
+    def execute_getter(self, getter_address):
+        codes = []
+        regs = {"$rip": getter_address}
+        ret = ExecAsm(codes, regs=regs, step=1).exec_code()
+        return ret["reg"][current_arch.return_register]
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("kgdb",))
+    @only_if_specific_arch(arch=("x86_64",))
+    def do_invoke(self, args):
+        if current_arch is None:
+            err("current_arch is not set.")
+            return
+
+        getter_address = self.get_getter_address(args.reg_name)
+        if getter_address is None:
+            err("Failed to get")
+            return
+
+        ret = self.execute_getter(getter_address)
+        if ret is not None:
+            gef_print("{:s} = {:#x}".format(args.reg_name, ret))
         return
 
 
@@ -59845,20 +59943,19 @@ class SyscallTableViewCommand(GenericCommand):
 class ExecAsm:
     """Execute embedded asm. e.g.: ExecAsm(asm_op_list).exec_code().
     WARNING: Disable `-enable-kvm` option for qemu-system; If set, this code will crash the guest OS."""
-    def __init__(self, _codes, regs=None, step=None, debug=False):
+    def __init__(self, target_codes, regs=None, step=None, debug=False):
         self.stdout = 1
         self.debug = debug
         self.regs = regs
         self.step = step or 1
 
         codes = []
-
-        # to stop another thread
-        codes += [current_arch.infloop_insn]
-        if current_arch.has_delay_slot:
-            codes += [current_arch.nop_insn]
-
-        codes += _codes
+        if target_codes:
+            # to stop another thread
+            codes += [current_arch.infloop_insn]
+            if current_arch.has_delay_slot:
+                codes += [current_arch.nop_insn]
+            codes += target_codes
 
         # list to bytes
         if Endian.is_big_endian():
@@ -59953,21 +60050,22 @@ class ExecAsm:
             gdb.execute("context")
 
         # skip infloop
-        dst = d["pc"] + len(current_arch.infloop_insn)
-        if current_arch.has_delay_slot:
-            dst += len(current_arch.nop_insn)
-        if is_hppa32() or is_hppa64():
-            gdb.execute("set $pcoqh = {:#x}".format(dst), to_string=True)
-            dst2 = dst + len(current_arch.syscall_insn)
-            gdb.execute("set $pcoqt = {:#x}".format(dst2), to_string=True)
-        elif is_sparc32() or is_sparc32plus() or is_sparc64():
-            gdb.execute("set $pc = {:#x}".format(dst), to_string=True)
-            dst2 = dst + len(current_arch.syscall_insn)
-            gdb.execute("set $npc = {:#x}".format(dst2), to_string=True)
-        else:
-            gdb.execute("set $pc = {:#x}".format(dst), to_string=True)
-        if self.debug:
-            gdb.execute("context")
+        if self.code:
+            dst = d["pc"] + len(current_arch.infloop_insn)
+            if current_arch.has_delay_slot:
+                dst += len(current_arch.nop_insn)
+            if is_hppa32() or is_hppa64():
+                gdb.execute("set $pcoqh = {:#x}".format(dst), to_string=True)
+                dst2 = dst + len(current_arch.syscall_insn)
+                gdb.execute("set $pcoqt = {:#x}".format(dst2), to_string=True)
+            elif is_sparc32() or is_sparc32plus() or is_sparc64():
+                gdb.execute("set $pc = {:#x}".format(dst), to_string=True)
+                dst2 = dst + len(current_arch.syscall_insn)
+                gdb.execute("set $npc = {:#x}".format(dst2), to_string=True)
+            else:
+                gdb.execute("set $pc = {:#x}".format(dst), to_string=True)
+            if self.debug:
+                gdb.execute("context")
 
         # exec
         self.close_stdout()

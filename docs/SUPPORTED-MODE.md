@@ -94,7 +94,7 @@
     * It needs gdb 12.x or later.
     * It runs very slowly and is not recommended.
     * Ctrl+C interrupt does not work. You need to do `echo g > /proc/sysrq-trigger` in console.
-    * Many commands are UNSUPPORTED in KGDB mode, because there is no way to access control registers.
+    * Many commands are UNSUPPORTED in KGDB mode, because just creating the memory map would take several hours.
 
 ## With VMware
 * Usage
