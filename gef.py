@@ -25806,11 +25806,11 @@ class ContextCommand(GenericCommand):
             return
 
         trail_len = len(m) + 6
-        title = ""
         width = max(self.tty_columns - trail_len, 0)
-        title += Color.colorify("{:{padd}<{width}} ".format("", width=width, padd=HORIZONTAL_LINE), line_color)
+        title = ""
+        title += Color.colorify(HORIZONTAL_LINE * width + " ", line_color)
         title += Color.colorify(m, msg_color)
-        title += Color.colorify(" {:{padd}<4}".format("", padd=HORIZONTAL_LINE), line_color)
+        title += Color.colorify(" " + HORIZONTAL_LINE * 4, line_color)
         gef_print(title)
         return
 
