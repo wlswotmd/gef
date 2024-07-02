@@ -45517,37 +45517,57 @@ class SyscallSampleCommand(GenericCommand):
 
 @register_command
 class CodebaseCommand(GenericCommand):
-    """Display code base address."""
+    """Display various base addresses."""
     _cmdline_ = "codebase"
     _category_ = "02-b. Process Information - Base Address"
+    _aliases_ = ["base"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
+
+    def define_section_variable(self, elf, bin_base, section_name):
+        sec = elf.get_shdr(section_name)
+        if not sec:
+            return
+
+        if elf.is_pie():
+            addr = sec.sh_addr + bin_base
+        else:
+            addr = sec.sh_addr
+
+        gef_print(titlify(section_name))
+        var_name = section_name.lstrip(".")
+        gef_print("${:s} = {:#x}".format(var_name, addr))
+        gdb.execute("set ${:s} = {:#x}".format(var_name, addr))
+        return
 
     @parse_args
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
-        codebase = ProcessMap.get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
-        if codebase is None:
-            codebase = ProcessMap.get_section_base_address(Path.get_filepath_from_info_proc())
-        if codebase is None:
-            gef_print("Codebase is not found")
+        # The codebase may be heuristically determined from the memory map.
+        bin_base = ProcessMap.get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
+        if bin_base is None:
+            bin_base = ProcessMap.get_section_base_address(Path.get_filepath_from_info_proc())
+        if bin_base is None:
+            gef_print("Binary base is not found")
+            return
+        gef_print(titlify("code base"))
+        gdb.execute(f"set $codebase = {bin_base:#x}")
+        gef_print(f"$codebase = {bin_base:#x}")
+        gdb.execute(f"set $binbase = {bin_base:#x}")
+        gef_print(f"$binbase = {bin_base:#x}")
+
+        # Any other area should use a section header.
+        elf = Elf.get_elf()
+        if not elf.is_valid():
+            err("Failed to load an elf")
             return
 
-        gef_print(titlify("Code base"))
-        gdb.execute(f"set $codebase = {codebase}")
-        gef_print(f"$codebase = {codebase:#x}")
-
-        filepath = Path.get_filepath()
-        if not filepath:
-            err("Not found filepath")
-            return
-
-        elf = Elf.get_elf(filepath)
-        if elf.is_pie():
-            gdb.execute(f"set $piebase = {codebase}")
-            gef_print(f"$piebase = {codebase:#x}")
+        self.define_section_variable(elf, bin_base, ".text")
+        self.define_section_variable(elf, bin_base, ".rodata")
+        self.define_section_variable(elf, bin_base, ".data")
+        self.define_section_variable(elf, bin_base, ".bss")
         return
 
 
