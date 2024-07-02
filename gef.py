@@ -453,9 +453,6 @@ def gef_print(x="", less=False, *args, **kwargs):
     """Wrapper around print(), using string buffering feature."""
     x = HighlightCommand.highlight_text(x)
 
-    if not x:
-        return
-
     if less:
         try:
             less = GefUtil.which("less")
@@ -465,6 +462,8 @@ def gef_print(x="", less=False, *args, **kwargs):
     always_no_pager = Config.get_gef_setting("gef.always_no_pager")
     pager_min_lines = Config.get_gef_setting("gef.pager_min_lines")
     if less and not always_no_pager and len(x.splitlines()) > pager_min_lines:
+        if not x:
+            return
         tmp_fd, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".txt", prefix="gef_print_")
         os.fdopen(tmp_fd, "w").write(x)
         os.system("{:s} -rf {:s}".format(less, tmp_path))
