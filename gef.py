@@ -453,6 +453,9 @@ def gef_print(x="", less=False, *args, **kwargs):
     """Wrapper around print(), using string buffering feature."""
     x = HighlightCommand.highlight_text(x)
 
+    if not x:
+        return
+
     if less:
         try:
             less = GefUtil.which("less")
@@ -460,9 +463,8 @@ def gef_print(x="", less=False, *args, **kwargs):
             less = False
 
     always_no_pager = Config.get_gef_setting("gef.always_no_pager")
-    if less and not always_no_pager:
-        if not x:
-            return
+    pager_min_lines = Config.get_gef_setting("gef.pager_min_lines")
+    if less and not always_no_pager and len(x.splitlines()) > pager_min_lines:
         tmp_fd, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".txt", prefix="gef_print_")
         os.fdopen(tmp_fd, "w").write(x)
         os.system("{:s} -rf {:s}".format(less, tmp_path))
@@ -85594,6 +85596,7 @@ class GefCommand(GenericCommand):
         self.add_setting("readline_compat", False, "Workaround for readline SOH/ETX issue (SEGV)")
         self.add_setting("disable_color", False, "Disable all colors in GEF")
         self.add_setting("always_no_pager", False, "Always disable pager in gef_print()")
+        self.add_setting("pager_min_lines", 10, "Show pager only if output is longer than this value")
         self.add_setting("keep_pager_result", False, "Leaves temporary files in gef_print()")
         self.missing_commands = {}
         return
