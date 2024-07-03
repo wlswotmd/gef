@@ -45523,7 +45523,14 @@ class CodebaseCommand(GenericCommand):
     _aliases_ = ["base"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-q", "--quiet", action="store_true", help="quiet execution.")
     _syntax_ = parser.format_help()
+
+    def quiet_print(self, msg):
+        if self.quiet:
+            return
+        gef_print(msg)
+        return
 
     def define_section_variable(self, elf, bin_base, section_name):
         sec = elf.get_shdr(section_name)
@@ -45535,9 +45542,9 @@ class CodebaseCommand(GenericCommand):
         else:
             addr = sec.sh_addr
 
-        gef_print(titlify(section_name))
+        self.quiet_print(titlify(section_name))
         var_name = section_name.lstrip(".")
-        gef_print("${:s} = {:#x}".format(var_name, addr))
+        self.quiet_print("${:s} = {:#x}".format(var_name, addr))
         gdb.execute("set ${:s} = {:#x}".format(var_name, addr))
         return
 
@@ -45545,23 +45552,27 @@ class CodebaseCommand(GenericCommand):
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
+        self.quiet = args.quiet
+
         # The codebase may be heuristically determined from the memory map.
         bin_base = ProcessMap.get_section_base_address(Path.get_filepath(append_proc_root_prefix=False))
         if bin_base is None:
             bin_base = ProcessMap.get_section_base_address(Path.get_filepath_from_info_proc())
         if bin_base is None:
-            gef_print("Binary base is not found")
+            if not self.quiet:
+                err("Binary base is not found")
             return
-        gef_print(titlify("code base"))
+        self.quiet_print(titlify("code base"))
         gdb.execute(f"set $codebase = {bin_base:#x}")
-        gef_print(f"$codebase = {bin_base:#x}")
+        self.quiet_print(f"$codebase = {bin_base:#x}")
         gdb.execute(f"set $binbase = {bin_base:#x}")
-        gef_print(f"$binbase = {bin_base:#x}")
+        self.quiet_print(f"$binbase = {bin_base:#x}")
 
         # Any other area should use a section header.
         elf = Elf.get_elf()
         if not elf.is_valid():
-            err("Failed to load an elf")
+            if not self.quiet:
+                err("Failed to load an elf")
             return
 
         self.define_section_variable(elf, bin_base, ".text")
