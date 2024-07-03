@@ -641,6 +641,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-pyobj-list.png)
 * `gef avail-comm-list`: displays a list of commands which are available or not for the current architecture and gdb execution mode.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-avail-comm-list.png)
+* `gef set-arch`: sets a specific architecture to gef.
 * `binwalk-memory`: scans memory by `binwalk`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/binwalk-memory.png)
 * `filetype-memory`: scans memory by `file` and `magika`.

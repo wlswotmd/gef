@@ -85618,6 +85618,7 @@ class GefCommand(GenericCommand):
     subparsers.add_parser("raise-exception")
     subparsers.add_parser("pyobj-list")
     subparsers.add_parser("avail-comm-list")
+    subparsers.add_parser("set-arch")
     _syntax_ = parser.format_help()
 
     def __init__(self):
@@ -86389,6 +86390,47 @@ class GefAvailableCommandListCommand(GenericCommand):
             out = sorted(out)
 
         gef_print("\n".join(out), less=not args.no_pager)
+        return
+
+
+@register_command
+class GefSetArchCommand(GenericCommand):
+    """Set a specific architecture to gef."""
+    _cmdline_ = "gef set-arch"
+    _category_ = "99. GEF Maintenance Command"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("arch", metavar="ARCH", nargs="?", help="target architecture.")
+    group.add_argument("-l", "--list", action="store_true", help="show supported architecure words.")
+    _syntax_ = parser.format_help()
+
+    def arch_listup(self):
+        fmt = "{:12s} {:s}"
+        legend = ["Arch", "Available names (Case insensitive)"]
+        gef_print(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
+
+        queue = Architecture.__subclasses__()
+        while queue:
+            cls = queue.pop(0)
+            queue = cls.__subclasses__() + queue
+
+            arch = Color.boldify("{:12s}".format(cls.__name__))
+            words = ", ".join(filter(lambda x: isinstance(x, str), cls.load_condition))
+            gef_print("{:s} {:s}".format(arch, words))
+        return
+
+    @parse_args
+    def do_invoke(self, args):
+        if args.list:
+            self.arch_listup()
+            return
+
+        try:
+            set_arch(args.arch)
+            info("set_arch({:s}) is successfully".format(args.arch))
+        except OSError:
+            err("set_arch({:s}) is failed".format(args.arch))
         return
 
 
