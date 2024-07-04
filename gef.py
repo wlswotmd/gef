@@ -5903,7 +5903,12 @@ class ARM(Architecture):
 
     def is_thumb(self):
         """Determine if the machine is currently in THUMB mode."""
-        return is_alive() and get_register(self.flag_register) & (1 << self.thumb_bit)
+        if not is_alive():
+            return False
+        cpsr = get_register(self.flag_register)
+        if cpsr is None:
+            return False
+        return cpsr & (1 << self.thumb_bit)
 
     @property
     def mode(self):
@@ -12015,18 +12020,25 @@ def is_in_kernel():
         return False
     if is_qiling():
         return False
+    # If it fails to obtain the flag register required for the judgment,
+    # it will be considered as userland.
     if is_x86():
-        return (get_register("$cs") & 0b11) != 3
+        cs = get_register("$cs")
+        if cs is None:
+            return False
+        return (cs & 0b11) != 3
     elif is_arm32():
-        return (get_register(current_arch.flag_register) & 0b11111) not in [0b10000, 0b11010]
+        cpsr = get_register(current_arch.flag_register)
+        if cpsr is None:
+            return False
+        return (cpsr & 0b11111) not in [0b10000, 0b11010]
     elif is_arm64():
         cpsr = get_register(current_arch.flag_register)
-        if cpsr is None: # for qiling framework
+        if cpsr is None:
             return False
         return ((cpsr >> 2) & 0b11) == 1
-    else:
-        # assume it is userland
-        return False
+    # All other architectures are considered userland.
+    return False
 
 
 @Cache.cache_this_session
@@ -86429,6 +86441,7 @@ class GefSetArchCommand(GenericCommand):
         try:
             set_arch(args.arch)
             info("set_arch({:s}) is successfully".format(args.arch))
+            Cache.reset_gef_caches(all=True)
         except OSError:
             err("set_arch({:s}) is failed".format(args.arch))
         return
