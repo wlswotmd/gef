@@ -13951,8 +13951,8 @@ class GefThemeCommand(GenericCommand):
     _category_ = "99. GEF Maintenance Command"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("key", metavar="KEY", nargs="?", help="color theme key. (default: %(default)s)")
-    parser.add_argument("value", metavar="VALUE", nargs="*", help="color theme value. (default: %(default)s)")
+    parser.add_argument("key", metavar="KEY", nargs="?", help="color theme key.")
+    parser.add_argument("value", metavar="VALUE", nargs="*", help="color theme value.")
     parser.add_argument("--color-sample", action="store_true", help="print available name of colors.")
     _syntax_ = parser.format_help()
 
@@ -48920,8 +48920,9 @@ class KernelAddressHeuristicFinder:
         kversion = Kernel.kernel_version()
 
         if kversion and kversion >= "6.6.26":
-            # sys_call_table (on x64) still remains, however, it is no longer in use.
-            # each entry is embedded in `x64_sys_call` as call instruction.
+            # On x64, each entry is embedded in `x64_sys_call` as call instruction.
+            # So sys_call_table is no longer in use, but it still remains.
+            # We won't return yet because we may be able to detect this in plan 5.
             pass
 
         # plan 2 (available v4.6 ~ v6.6.26)
@@ -48978,11 +48979,14 @@ class KernelAddressHeuristicFinder:
                 return x
 
         kversion = Kernel.kernel_version()
+
         if kversion and kversion < "5.4":
+            # Not introduced
             return None
+
         if kversion and kversion >= "6.6.26":
-            # x32_sys_call_table (on x64) is removed from 6.6.26.
-            # each entry is embedded in `x32_sys_call` as call instruction.
+            # On x64, each entry is embedded in `x32_sys_call` as call instruction.
+            # So x32_sys_call_table is no longer in use, and removed from 6.6.26.
             return None
 
         # plan 2 (available v5.4 or later)
@@ -49014,11 +49018,12 @@ class KernelAddressHeuristicFinder:
 
         if kversion and kversion >= "6.6.26":
             if is_x86_64():
-                # ia32_sys_call_table (on x64) is removed from 6.6.26.
+                # On x64, ia32_sys_call_table is removed from 6.6.26.
                 return None
             else:
-                # sys_call_table (on i386) still remains, however, it is no longer in use.
-                # each entry is embedded in `ia32_sys_call` as call instruction.
+                # On i386, each entry is embedded in `ia32_sys_call` as call instruction.
+                # So sys_call_table is no longer in use, but it still remains.
+                # We won't return yet because we may be able to detect this in plan 3.
                 pass
 
         # plan 2 (available v2.6.24 ~ v6.6.26)
