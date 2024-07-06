@@ -12932,7 +12932,6 @@ class EventHandler:
         Cache.reset_gef_caches(all=True)
         if current_arch is None:
             set_arch(get_arch())
-        ContextCommand.load_libc_args()
 
         # delayed breakpoint for brva
         if BreakRelativeVirtualAddressCommand.delayed_bp_set is False and is_alive():
@@ -25710,7 +25709,6 @@ class ContextCommand(GenericCommand):
     context_comments = {}
     context_messages = []
     context_extra_commands = []
-    libc_args_definitions = {}
 
     @staticmethod
     def hide_context():
@@ -25752,8 +25750,6 @@ class ContextCommand(GenericCommand):
         self.add_setting("clear_screen", True, "Clear the screen before printing the context")
         default_legend = "legend regs stack code args source memory threads trace extra"
         self.add_setting("layout", default_legend, "Change the order/presence of the context sections")
-        self.add_setting("libc_args", False, "Show libc function call args description")
-        self.add_setting("libc_args_path", "", "Path to libc function call args json files, provided via gef-extras")
         self.add_setting("smart_cpp_function_name", False, "Print cpp function name without args if demangled")
         self.add_setting("use_native_x_command", False, "Use x/16i instead of Disasm.gef_disassemble")
         self.add_setting("use_capstone", False, "Use capstone as disassembler in the code pane (instead of GDB)")
@@ -26566,43 +26562,6 @@ class ContextCommand(GenericCommand):
         self.print_guessed_arguments(function_name)
         return
 
-    @staticmethod
-    def load_libc_args():
-        # load libc function arguments' definitions
-        if not Config.get_gef_setting("context.libc_args"):
-            return
-
-        path = Config.get_gef_setting("context.libc_args_path")
-        if path is None:
-            warn("Config `context.libc_args_path` is not set but `context.libc_args` is True. Make sure you have `gef-extras` installed")
-            return
-
-        path = os.path.realpath(os.path.expanduser(path))
-
-        if not os.path.isdir(path):
-            warn("Config `context.libc_args_path` set but it's not a directory")
-            return
-
-        arch_mode = "{}_{}".format(current_arch.arch.lower(), current_arch.mode)
-        libc_args_file = "{}/{}.json".format(path, arch_mode)
-
-        # current arch and mode already loaded
-        if arch_mode in ContextCommand.libc_args_definitions:
-            return
-
-        ContextCommand.libc_args_definitions[arch_mode] = {}
-        import json
-        try:
-            with open(libc_args_file) as libc_args:
-                ContextCommand.libc_args_definitions[arch_mode] = json.load(libc_args)
-        except FileNotFoundError:
-            del ContextCommand.libc_args_definitions[arch_mode]
-            warn("Config context.libc_args is set but definition cannot be loaded: file {} not found".format(libc_args_file))
-        except json.decoder.JSONDecodeError as e:
-            del ContextCommand.libc_args_definitions[arch_mode]
-            warn("Config context.libc_args is set but definition cannot be loaded from file {}: {}".format(libc_args_file, e))
-        return
-
     def print_arguments_from_symbol(self, sym_obj, function_name):
         """If symbols were found, parse them and print the argument adequately."""
         args = []
@@ -26648,10 +26607,6 @@ class ContextCommand(GenericCommand):
         _function_name = None
         if function_name.endswith("@plt"):
             _function_name = function_name.split("@")[0]
-            try:
-                nb_argument = len(ContextCommand.libc_args_definitions[_arch_mode][_function_name])
-            except KeyError:
-                pass
 
         args = []
         for i in range(nb_argument):
@@ -26660,11 +26615,7 @@ class ContextCommand(GenericCommand):
                 _value = AddressUtil.recursive_dereference_to_string(_value)
             except Exception:
                 break
-            try:
-                libc_args_def = ContextCommand.libc_args_definitions[_arch_mode][_function_name][_key]
-                args.append("{} = {} (def: {})".format(Color.colorify(_key, arg_key_color), _value, libc_args_def))
-            except KeyError:
-                args.append("{} = {}".format(Color.colorify(_key, arg_key_color), _value))
+            args.append("{} = {}".format(Color.colorify(_key, arg_key_color), _value))
 
         self.context_title("arguments (guessed)")
         gef_print("{:s}{:s} (".format(function_name, Symbol.get_symbol_string(function_name, nosymbol_string=" <NO_SYMBOL>")))
