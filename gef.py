@@ -465,8 +465,8 @@ def gef_print(x="", less=False, *args, **kwargs):
         if not x:
             return
         tmp_fd, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".txt", prefix="gef_print_")
-        os.fdopen(tmp_fd, "w").write(x)
-        os.system("{:s} -rf {:s}".format(less, tmp_path))
+        os.fdopen(tmp_fd, "wb").write(String.str2bytes(x))
+        os.system("{:s} -Rf {:s}".format(less, tmp_path))
 
         keep_pager_result = Config.get_gef_setting("gef.keep_pager_result")
         if keep_pager_result:
@@ -1390,13 +1390,10 @@ class AddressUtil:
             else: # len(s) == current_arch.ptrsize
                 if len(addrs) >= 2 and is_valid_addr(addrs[-2]):
                     # read more string
-                    s = read_cstring_from_memory(addrs[-2])
+                    s = read_cstring_from_memory(addrs[-2], nb_max_string_length)
                     if s:
                         fa = AddressUtil.format_address(addrs[-1], long_fmt=True)
-                        if len(s) > nb_max_string_length:
-                            last_elem = "{:s} {:s}...".format(fa, Color.colorify(repr(s[:nb_max_string_length]), string_color))
-                        else:
-                            last_elem = "{:s} {:s}".format(fa, Color.colorify(repr(s), string_color))
+                        last_elem = "{:s} {:s}".format(fa, Color.colorify(repr(s), string_color))
                         addrs = addrs[:-1]
                     else:
                         # Ignore when the string that do not end with a null character
