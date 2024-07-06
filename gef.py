@@ -14839,6 +14839,8 @@ class DisplayTypeCommand(GenericCommand, BufferingOutput):
     parser.add_argument("type", metavar="TYPE", help="the type name.")
     parser.add_argument("address", metavar="ADDRESS", nargs="?", type=AddressUtil.parse_address,
                         help="the address to apply the type.")
+    parser.add_argument("-s", "--smart", action="store_true",
+                        help="temporarily override by `context.smart_cpp_function_name = True`.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
@@ -14861,41 +14863,70 @@ class DisplayTypeCommand(GenericCommand, BufferingOutput):
     @parse_args
     @only_if_gdb_running
     def do_invoke(self, args):
-        tp = GefUtil.cached_lookup_type(args.type) or GefUtil.cached_lookup_type("struct {:s}".format(args.type))
+        # lookup type
+        tp = GefUtil.cached_lookup_type(args.type)
+        if not args.type.startswith(("struct", "union",  "enum")):
+            if tp is None:
+                tp = GefUtil.cached_lookup_type("struct {:s}".format(args.type))
+            if tp is None:
+                tp = GefUtil.cached_lookup_type("union {:s}".format(args.type))
+            if tp is None:
+                tp = GefUtil.cached_lookup_type("enum {:s}".format(args.type))
+
         if tp is None:
             err("Not found {:s}".format(args.type))
             return
 
+        # remove pointer
         while str(tp).endswith("*"):
             tp = tp.target()
 
-        if tp.code not in [gdb.TYPE_CODE_STRUCT, gdb.TYPE_CODE_UNION]:
-            err("{:s} is not struct or union".format(tp.name or args.type))
+        if tp.code not in [gdb.TYPE_CODE_STRUCT, gdb.TYPE_CODE_UNION, gdb.TYPE_CODE_ENUM]:
+            err("{:s} is not struct or union or enum".format(tp.name or args.type))
             return
+
+        if args.smart:
+            old_smart_setting = Config.get_gef_setting("context.smart_cpp_function_name")
+            Config.set_gef_setting("context.smart_cpp_function_name", True)
 
         if args.address is None:
             if tp.code == gdb.TYPE_CODE_STRUCT:
                 type_prefix = "struct"
-            else:
+            elif tp.code == gdb.TYPE_CODE_UNION:
                 type_prefix = "union"
+            elif tp.code == gdb.TYPE_CODE_ENUM:
+                type_prefix = "enum"
+            else:
+                err("{:s} is not struct or union".format(tp.name or args.type))
+                return
+
             self.out = [
-                "{:s} {:s} {{".format(type_prefix, tp.name or args.type),
+                "{:s} {:s} {{".format(type_prefix, Instruction.smartify_text(tp.name or args.type)),
                 "    /* offset | size   */",
             ]
             for name, field in tp.items():
-                if hasattr(field, "bitpos") and hasattr(field.type, "sizeof"):
-                    offsz_str = "/* {:#06x} | {:#06x} */".format(field.bitpos // 8, field.type.sizeof)
-                elif hasattr(field.type, "sizeof"):
-                    offsz_str = "/*        | {:#06x} */".format(field.type.sizeof)
-                elif hasattr(field, "bitpos"):
-                    offsz_str = "/* {:#06x} |        */".format(field.bitpos // 8)
-                else:
-                    offsz_str = "/*        |        */"
-                name_str = Color.cyanify(name)
-                if field.bitsize == 0:
-                    msg = "    {:s}    {} {:s};".format(offsz_str, field.type, name_str)
-                else:
-                    msg = "    {:s}    {} {:s} : {:d};".format(offsz_str, field.type, name_str, field.bitsize)
+                if tp.code in [gdb.TYPE_CODE_STRUCT, gdb.TYPE_CODE_UNION]:
+                    if hasattr(field, "bitpos") and hasattr(field.type, "sizeof"):
+                        offsz_str = "/* {:#06x} | {:#06x} */".format(field.bitpos // 8, field.type.sizeof)
+                    elif hasattr(field.type, "sizeof"):
+                        offsz_str = "/*        | {:#06x} */".format(field.type.sizeof)
+                    elif hasattr(field, "bitpos"):
+                        offsz_str = "/* {:#06x} |        */".format(field.bitpos // 8)
+                    else:
+                        offsz_str = "/*        |        */"
+                    type_str = Instruction.smartify_text(str(field.type))
+                    name_str = Color.cyanify(Instruction.smartify_text(name))
+                    if field.bitsize == 0:
+                        msg = "    {:s}    {} {:s};".format(offsz_str, type_str, name_str)
+                    else:
+                        msg = "    {:s}    {} {:s} : {:d};".format(offsz_str, type_str, name_str, field.bitsize)
+
+                else: # gdb.TYPE_CODE_ENUM
+                    offsz_str = "/* {:#06x} | {:#06x} */".format(0, 4)
+                    type_str = "int"
+                    name_str = Color.cyanify(Instruction.smartify_text(name))
+                    msg = "    {:s}    {} {:s} = {:#x};".format(offsz_str, type_str, name_str, field.enumval)
+
                 self.out.append(msg)
 
             self.out.append("}} // total: {:#x} bytes".format(tp.sizeof))
@@ -14911,6 +14942,9 @@ class DisplayTypeCommand(GenericCommand, BufferingOutput):
             s = v.cast(tp.pointer()).dereference()
             out = s.format_string(styling=True)
             gef_print(out, less=not args.no_pager)
+
+        if args.smart:
+            Config.set_gef_setting("context.smart_cpp_function_name", old_smart_setting)
         return
 
 
