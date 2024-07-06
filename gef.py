@@ -31456,12 +31456,21 @@ class GotCommand(GenericCommand):
                 err("{:s} does not exist".format(local_filepath))
             return
 
-        if remote_filepath:
-            print_filename = "{:s} (remote: {:s})".format(local_filepath, remote_filepath)
-        else:
-            print_filename = local_filepath
         if not args.quiet:
-            self.out.append(titlify("PLT / GOT - {:s}".format(print_filename)))
+            if remote_filepath:
+                print_filename = "{:s} (remote: {:s})".format(local_filepath, remote_filepath)
+            else:
+                print_filename = local_filepath
+
+            elf = Elf.get_elf(local_filepath)
+            if elf.is_relro():
+                if elf.is_full_relro():
+                    relro_status = "Full RELRO"
+                else:
+                    relro_status = "Partial RELRO"
+            else:
+                relro_status = "No RELRO"
+            self.out.append(titlify("PLT / GOT - {:s} - {:s}".format(print_filename, relro_status)))
 
         # get base address
         if args.elf_address:
