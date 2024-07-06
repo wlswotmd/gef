@@ -45560,6 +45560,7 @@ class HeapbaseCommand(GenericCommand):
     _category_ = "02-b. Process Information - Base Address"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-q", "--quiet", action="store_true", help="quiet execution.")
     _syntax_ = parser.format_help()
 
     @staticmethod
@@ -45620,11 +45621,14 @@ class HeapbaseCommand(GenericCommand):
     def do_invoke(self, args):
         heap = HeapbaseCommand.heap_base()
         if heap is None:
-            gef_print("Heap is not found")
+            err("Heap is not found")
             return
 
-        gef_print(titlify("Heap base"))
+        if not args.quiet:
+            gef_print(titlify("Heap base"))
         gdb.execute(f"set $heapbase = {heap}")
+        if args.quiet:
+            return
         gef_print(f"$heapbase = {heap:#x}")
         return
 
@@ -45636,6 +45640,7 @@ class LibcCommand(GenericCommand):
     _category_ = "02-b. Process Information - Base Address"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-q", "--quiet", action="store_true", help="quiet execution.")
     _syntax_ = parser.format_help()
 
     def __init__(self, *args, **kwargs):
@@ -45656,8 +45661,11 @@ class LibcCommand(GenericCommand):
             err("libc is not found")
             return
 
-        gef_print(titlify("libc info"))
+        if not args.quiet:
+            gef_print(titlify("libc info"))
         gdb.execute(f"set $libc = {libc}")
+        if args.quiet:
+            return
         gef_print(f"$libc = {libc:#x}")
 
         libc = ProcessMap.process_lookup_path(libc_targets)
@@ -45710,6 +45718,7 @@ class LdCommand(GenericCommand):
     _category_ = "02-b. Process Information - Base Address"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-q", "--quiet", action="store_true", help="quiet execution.")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -45724,8 +45733,12 @@ class LdCommand(GenericCommand):
         if ld is None:
             err("ld is not found")
             return
-        gef_print(titlify("ld info"))
+
+        if not args.quiet:
+            gef_print(titlify("ld info"))
         gdb.execute(f"set $ld = {ld}")
+        if args.quiet:
+            return
         gef_print(f"$ld = {ld:#x}")
 
         ld = ProcessMap.process_lookup_path(ld_targets)
