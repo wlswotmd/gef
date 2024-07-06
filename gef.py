@@ -85570,6 +85570,12 @@ class TypesCommand(GenericCommand):
     _category_ = "02-h. Process Information - Type"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-s", "--smart", action="store_true",
+                        help="temporarily override by `context.smart_cpp_function_name = True`.")
+    parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[],
+                        help="REGEXP include filter.")
+    parser.add_argument("-e", "--exclude", action="append", type=re.compile, default=[],
+                        help="REGEXP exclude filter.")
     parser.add_argument("-E", "--no-enum", action="store_true", help="without enum.")
     parser.add_argument("-S", "--no-struct", action="store_true", help="without struct.")
     parser.add_argument("-T", "--no-typedef", action="store_true", help="without typedef.")
@@ -85606,6 +85612,10 @@ class TypesCommand(GenericCommand):
             line = re.sub(r"^\d+:|;$", "", line).strip()
             if line in basic_types:
                 continue
+            if args.filter and not any(filt.search(line) for filt in args.filter):
+                continue
+            if args.exclude and any(filt.search(line) for filt in args.exclude):
+                continue
             if args.no_enum and line.startswith("enum "):
                 continue
             if args.no_struct and line.startswith("struct "):
@@ -85618,16 +85628,26 @@ class TypesCommand(GenericCommand):
 
         out = sorted(set(out))
 
-        if args.verbose:
-            new_out = []
-            tqdm = GefUtil.get_tqdm()
-            for type_name in tqdm(out, leave=False):
+        if args.smart:
+            old_smart_setting = Config.get_gef_setting("context.smart_cpp_function_name")
+            Config.set_gef_setting("context.smart_cpp_function_name", True)
+
+        new_out = []
+        tqdm = GefUtil.get_tqdm()
+        for type_name in tqdm(out, leave=False):
+            if args.verbose:
                 ret = gdb.execute('dt -n "{:s}"'.format(type_name), to_string=True)
                 if not ret or (" is not struct or union" in ret) or ("Not found " in ret):
-                    new_out.append(type_name)
+                    new_out.append(Instruction.smartify_text(type_name))
+                    new_out.append("")
                     continue
                 new_out.append(ret)
-            out = new_out
+            else:
+                new_out.append(Instruction.smartify_text(type_name))
+        out = new_out
+
+        if args.smart:
+            Config.set_gef_setting("context.smart_cpp_function_name", old_smart_setting)
 
         gef_print("\n".join(out), less=not args.no_pager)
         return
