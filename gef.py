@@ -16974,7 +16974,7 @@ class SearchPatternCommand(GenericCommand):
     parser.add_argument("-l", "--limit", type=lambda x: int(x, 0),
                         help="the limit of the search result.")
     parser.add_argument("-s", "--max-region-size", type=lambda x: int(x, 0), default=0x10000000,
-                        help="maximum size of search region when qemu-system and no range is specified. (default: %(default)s)")
+                        help="maximum size of search region when no range is specified. (default: %(default)#x)")
     parser.add_argument("-d", "--disable-utf16", action="store_true",
                         help="disable utf16 search if PATTERN is ascii string.")
     parser.add_argument("-v", "--verbose", action="store_true",
@@ -17084,9 +17084,6 @@ class SearchPatternCommand(GenericCommand):
             # non valid addr
             if not is_valid_addr(addr_start):
                 continue
-            # too big
-            if addr_end - addr_start >= self.args.max_region_size:
-                continue
             # parse
             if is_x86():
                 perm = Permission.from_process_maps(lines[5][1:].lower())
@@ -17106,6 +17103,15 @@ class SearchPatternCommand(GenericCommand):
             maps_generator = ProcessMap.get_process_maps()
 
         for section in maps_generator:
+            # too big
+            if section_name == "":
+                if section.size >= self.args.max_region_size:
+                    info("{:#x}-{:#x} is skipped due to size ({:#x}) >= MAX_REGION_SIZE ({:#x})".format(
+                        section.page_start, section.page_end,
+                        section.size, self.args.max_region_size,
+                    ))
+                    continue
+
             # permission filter
             if not section.permission & Permission.READ:
                 continue
