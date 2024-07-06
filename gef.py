@@ -26042,6 +26042,11 @@ class ContextCommand(GenericCommand):
             frame = None
             arch_name = "{}:{}".format(current_arch.arch.lower(), "???")
 
+        if Config.get_gef_setting("context.use_capstone"):
+            arch_name += " (capstone)"
+        else:
+            arch_name += " (gdb-native)"
+
         self.context_title("code:{}".format(arch_name))
         if use_native_x_command:
             gdb.execute("x/16i {:#x}".format(current_arch.pc))
@@ -26230,7 +26235,10 @@ class ContextCommand(GenericCommand):
                 addr = AddressUtil.parse_address(code)
             except gdb.error:
                 # some binary fails to resolve "(long)"
-                addr = AddressUtil.parse_address(code_orig)
+                try:
+                    addr = AddressUtil.parse_address(code_orig)
+                except gdb.error:
+                    return
             self.context_title("memory access: {:s} = {:#x}".format(code_orig, addr))
             gdb.execute("dereference {:#x} 4 --no-pager".format(addr))
         return
