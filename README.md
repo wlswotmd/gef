@@ -4,14 +4,13 @@
 ## Table of Contents
 * [What is this?](#what-is-this)
 * [Setup](#setup)
-    * [Install (Ubuntu 23.04 or after)](#install-ubuntu-2304-or-after)
-    * [Install (Ubuntu 22.04 or before)](#install-ubuntu-2204-or-before)
+    * [Supported environment](#supported-environment)
+    * [Install](#install)
     * [Upgrade](#upgrade)
     * [Uninstall](#uninstall)
     * [Dependency](#dependency)
-* [Supported environment](#supported-environment)
-* [Supported mode](#supported-mode)
 * [Added / improved features](#added--improved-features)
+    * [Supported mode](#supported-mode)
     * [Qemu-system cooperation](#qemu-system-cooperation)
     * [Qemu-user cooperation](#qemu-user-cooperation)
     * [Heap dump features](#heap-dump-features)
@@ -32,18 +31,22 @@ Many other commands have been added and improved. Enjoy!
 
 ## Setup
 
+### Supported environment
+- Tested on ubuntu 24.04.
+- It may work under ubuntu 20.04 - 23.10, debian 10.x or after.
+
 ### Install
 ```bash
 # Ubuntu 23.04 or later restrict global installation of python packages with pip3.
 # So you need --break-system-packages option.
 wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sed -e 's/pip3 install/pip3 install --break-system-packages/g' | sh
-
 ```
 
 * Note
     * To simplify the installation script, GEF (`gef.py`) is installed to a fixed path (`/root/.gdbinit-gef.py`).
     * Also, it registers the GEF path to `/root/.gdbinit`.
-    * If you want to change the location, please modify both of them yourself.
+    * If you want to change the location or user, please modify both yourself.
+    * See [docs/FAQ.md](https://github.com/bata24/gef/blob/dev/docs/FAQ.md) for more information.
 
 ### Upgrade
 ```bash
@@ -60,11 +63,9 @@ sed -i -e '/source \/root\/.gdbinit-gef.py/d' /root/.gdbinit
 See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 [install-minimal.sh](https://github.com/bata24/gef/blob/dev/install-minimal.sh).
 
-## Supported environment
-- Tested on ubuntu 24.04.
-- It may work under ubuntu 20.04 - 23.10, debian 10.x or after.
+## Added / improved features
 
-## Supported mode
+### Supported mode
 * Normal debugging
 * Attach to the process
 * Attach to the process in another pid namespace (e.g. attaching from outside of `docker`)
@@ -80,8 +81,6 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 * Record and replay debugging (`rr replay`)
 
 See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORTED-MODE.md) for detail.
-
-## Added / improved features
 
 ### Qemu-system cooperation
 * `pagewalk`: scans physical memory, parses page tables, and displays memory maps.

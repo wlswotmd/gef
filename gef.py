@@ -4545,11 +4545,10 @@ class String:
             return x
         if isinstance(x, str):
             try:
-                # If you convert data from bytes to str and convert it back to bytes again, an error may occur.
-                # This is because str, which is a decoded UTF-8 string, is multi-byte.
-                # Here is a sample: patch hex $rsp "4141414141414141c58200"
                 return bytes(ord(xx) for xx in x)
             except ValueError:
+                # If str is UTF-8 multi-byte string, raise an error.
+                # e.g.: `pi String.str2bytes(b"\xc5\x82".decode("utf-8"))`
                 # In that case, you should simply encode it as UTF-8.
                 return x.encode("utf-8")
         raise
