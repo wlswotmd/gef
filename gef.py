@@ -26711,7 +26711,7 @@ class ContextCommand(GenericCommand):
 
         nb_line = Config.get_gef_setting("context.nb_lines_code")
         cur_line_color = Config.get_gef_setting("theme.source_current_line")
-        self.context_title("source:{}+{}".format(symtab.filename, line_num + 1))
+        self.context_title("source:{}+{}".format(os.path.realpath(symtab.filename), line_num + 1))
         show_extra_info = Config.get_gef_setting("context.show_source_code_variable_values")
 
         for i in range(line_num - nb_line + 1, line_num + nb_line):
