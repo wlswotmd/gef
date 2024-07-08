@@ -77230,8 +77230,8 @@ class PagewalkArmCommand(PagewalkCommand):
     def format_flags_short(self, flag_info):
         return self.__format_flags_short(flag_info, self.PXN)
 
-    def __format_flags_short(self, flag_info, PXN):
-        flag_info_key = tuple([tuple(flag_info), PXN])
+    def __format_flags_short(self, flag_info, gPXN):
+        flag_info_key = (tuple(flag_info), gPXN)
         x = self.flags_strings_cache.get(flag_info_key, None)
         if x is not None:
             return x
@@ -77239,7 +77239,7 @@ class PagewalkArmCommand(PagewalkCommand):
         flags = []
 
         XN = "XN" in flag_info
-        PXN = ("PXN" in flag_info) & PXN
+        PXN = ("PXN" in flag_info) & gPXN
 
         # AP[2:0] access permissions model
         if "AP=000" in flag_info:
@@ -77361,8 +77361,8 @@ class PagewalkArmCommand(PagewalkCommand):
     def format_flags_long(self, flag_info):
         return self.__format_flags_long(flag_info, self.PXN)
 
-    def __format_flags_long(self, flag_info, _PXN):
-        flag_info_key = tuple([tuple(flag_info), _PXN])
+    def __format_flags_long(self, flag_info, gPXN):
+        flag_info_key = (tuple(flag_info), gPXN)
         x = self.flags_strings_cache.get(flag_info_key, None)
         if x is not None:
             return x
@@ -77409,7 +77409,7 @@ class PagewalkArmCommand(PagewalkCommand):
         PXN = "PXN" in flag_info
         PXN |= "PXNTable2" in flag_info
         PXN |= "PXNTable1" in flag_info
-        PXN &= _PXN
+        PXN &= gPXN
         NS = "NS" in flag_info
         NS |= "NSTable2" in flag_info
         NS |= "NSTable1" in flag_info
@@ -78340,7 +78340,7 @@ class PagewalkArm64Command(PagewalkCommand):
         return self.__format_flags(flag_info, self.TargetEL, self.EL1_WXN, self.EL2_WXN, self.EL2_M20, self.EL3_WXN)
 
     def __format_flags(self, flag_info, TargetEL, EL1_WXN, EL2_WXN, EL2_M20, EL3_WXN):
-        flag_info_key = tuple([tuple(flag_info), TargetEL, EL1_WXN, EL2_WXN, EL2_M20, EL3_WXN])
+        flag_info_key = (tuple(flag_info), TargetEL, EL1_WXN, EL2_WXN, EL2_M20, EL3_WXN)
         x = self.flags_strings_cache.get(flag_info_key, None)
         if x is not None:
             return x
@@ -78862,7 +78862,10 @@ class PagewalkArm64Command(PagewalkCommand):
                     else:
                         virt_addr = new_va
                         page_count = 1
-                        flag_string = self.format_flags_stage2(flags) if is_stage2 else self.format_flags(flags)
+                        if is_stage2:
+                            flag_string = self.format_flags_stage2(flags)
+                        else:
+                            flag_string = self.format_flags(flags)
                         if is_4k_granule:
                             page_size = 512 * 1024 * 1024 * 1024
                             GB512.append([virt_addr, phys_addr, page_size, page_count, flag_string])
@@ -79018,7 +79021,10 @@ class PagewalkArm64Command(PagewalkCommand):
                     else:
                         virt_addr = new_va
                         page_count = 1
-                        flag_string = self.format_flags_stage2(flags) if is_stage2 else self.format_flags(flags)
+                        if is_stage2:
+                            flag_string = self.format_flags_stage2(flags)
+                        else:
+                            flag_string = self.format_flags(flags)
                         if is_4k_granule:
                             page_size = 1 * 1024 * 1024 * 1024
                             GB1.append([virt_addr, phys_addr, page_size, page_count, flag_string])
@@ -79182,7 +79188,10 @@ class PagewalkArm64Command(PagewalkCommand):
                     else:
                         virt_addr = new_va
                         page_count = 1
-                        flag_string = self.format_flags_stage2(flags) if is_stage2 else self.format_flags(flags)
+                        if is_stage2:
+                            flag_string = self.format_flags_stage2(flags)
+                        else:
+                            flag_string = self.format_flags(flags)
                         if is_4k_granule:
                             page_size = 2 * 1024 * 1024
                             MB2.append([virt_addr, phys_addr, page_size, page_count, flag_string])
@@ -79336,7 +79345,10 @@ class PagewalkArm64Command(PagewalkCommand):
 
                     # make entry
                     page_count = 1
-                    flag_string = self.format_flags_stage2(flags) if is_stage2 else self.format_flags(flags)
+                    if is_stage2:
+                        flag_string = self.format_flags_stage2(flags)
+                    else:
+                        flag_string = self.format_flags(flags)
                     if is_4k_granule:
                         page_size = 4 * 1024
                         KB4.append([virt_addr, phys_addr, page_size, page_count, flag_string])
