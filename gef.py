@@ -2563,10 +2563,9 @@ class Instruction:
     def __format__(self, format_spec):
         if len(format_spec) == 0:
             return str(self)
-        if format_spec[-1] not in ["o", "O", "p"]:
+        if format_spec[-1] not in ["o", "O"]:
             return str(self)
 
-        old_context = format_spec[-1] == "p"
         to_highlight = format_spec[-1] == "O"
 
         # format address
@@ -2724,10 +2723,6 @@ class Instruction:
         out = "{:s} {:s}   {:s}   {:s} {:s} {:s}".format(
             address, opcodes_text, location, mnemonic, operands, additional_1,
         )
-
-        if old_context:
-            out = Color.remove_color(out)
-            out = Color.colorify(out, Config.get_gef_setting("theme.old_context"))
         return out
 
     def __repr__(self):
@@ -13964,7 +13959,8 @@ class GefThemeCommand(GenericCommand):
         self.add_setting("default_title_line", "cyan", "Default color of borders")
         self.add_setting("default_title_message", "cyan", "Default color of title")
         self.add_setting("table_heading", "bold blue", "Color of the column headings to tables (e.g. vmmap)")
-        self.add_setting("old_context", "bright_black", "Color to use to show things such as code that is not immediately relevant")
+        self.add_setting("context_code_past", "bright_black", "Color to display past code")
+        self.add_setting("context_code_future", "", "Color to display future code")
         self.add_setting("disassemble_address", "", "Color of address when disassembling")
         self.add_setting("disassemble_address_highlight", "bold green", "Color of address when disassembling (=$pc)")
         self.add_setting("disassemble_opcode", "white", "Color of location when disassembling")
@@ -26061,6 +26057,8 @@ class ContextCommand(GenericCommand):
         nb_insn = Config.get_gef_setting("context.nb_lines_code")
         nb_insn_prev = Config.get_gef_setting("context.nb_lines_code_prev")
         show_opcodes_size = Config.get_gef_setting("context.show_opcodes_size")
+        past_lines_color = Config.get_gef_setting("theme.context_code_past")
+        future_lines_color = Config.get_gef_setting("theme.context_code_future")
         padding = " " * len(RIGHT_ARROW[1:])
 
         if current_arch is None and is_remote_debug():
@@ -26107,12 +26105,17 @@ class ContextCommand(GenericCommand):
             else:
                 # coloring by address against pc
                 if insn.address < pc:
-                    insn_fmt = "{{:{}p}}".format(show_opcodes_size)
+                    text = "{:{}o}".format(insn, show_opcodes_size)
+                    if past_lines_color:
+                        text = Color.remove_color(text)
+                        text = Color.colorify(text, past_lines_color)
                 elif insn.address == pc:
-                    insn_fmt = "{{:{}O}}".format(show_opcodes_size)
+                    text = "{:{}O}".format(insn, show_opcodes_size)
                 else:
-                    insn_fmt = "{{:{}o}}".format(show_opcodes_size)
-                text = insn_fmt.format(insn)
+                    text = "{:{}o}".format(insn, show_opcodes_size)
+                    if future_lines_color:
+                        text = Color.remove_color(text)
+                        text = Color.colorify(text, future_lines_color)
 
             # bp prefix and branch info
             if insn.address != pc:
@@ -26695,17 +26698,16 @@ class ContextCommand(GenericCommand):
             line_num = symtabline.line - 1 # we subtract one because line number returned by gdb start at 1
             if not symtab.is_valid():
                 return
-
             fpath = symtab.fullname()
             with open(fpath, "r") as f:
                 lines = [x.rstrip() for x in f.readlines()]
-
         except Exception:
             return
 
         file_base_name = os.path.basename(symtab.filename)
         bp_locations = self.get_source_breakpoints(file_base_name)
-        past_lines_color = Config.get_gef_setting("theme.old_context")
+        past_lines_color = Config.get_gef_setting("theme.context_code_past")
+        future_lines_color = Config.get_gef_setting("theme.context_code_future")
 
         nb_line = Config.get_gef_setting("context.nb_lines_code")
         cur_line_color = Config.get_gef_setting("theme.source_current_line")
@@ -26716,10 +26718,14 @@ class ContextCommand(GenericCommand):
             if i < 0:
                 continue
 
-            bp_prefix = Color.redify(BP_GLYPH) if self.line_has_breakpoint(file_base_name, i + 1, bp_locations) else " "
+            if self.line_has_breakpoint(file_base_name, i + 1, bp_locations):
+                bp_prefix = Color.redify(BP_GLYPH)
+            else:
+                bp_prefix = " "
 
             if i < line_num:
-                past_line = Color.colorify("{:4d}   {:s}".format(i + 1, lines[i]), past_lines_color)
+                past_line = "{:4d}   {:s}".format(i + 1, lines[i])
+                past_line = Color.colorify(past_line, past_lines_color)
                 gef_print("{:1s}{:2s}{:s}".format(bp_prefix, "", past_line))
 
             elif i == line_num:
@@ -26734,6 +26740,7 @@ class ContextCommand(GenericCommand):
             elif i > line_num:
                 try:
                     future_line = "{:4d}   {:s}".format(i + 1, lines[i])
+                    future_line = Color.colorify(future_line, future_lines_color)
                     gef_print("{:1s}{:2s}{:s}".format(bp_prefix, "", future_line))
                 except IndexError:
                     break
