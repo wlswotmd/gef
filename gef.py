@@ -17677,16 +17677,18 @@ class EditFlagsCommand(GenericCommand):
                 continue
 
             for off in current_arch.flags_table:
-                if current_arch.flags_table[off] == name:
-                    old_flag = get_register(current_arch.flag_register)
-                    if action == "+":
-                        new_flags = old_flag | (1 << off)
-                    elif action == "-":
-                        new_flags = old_flag & ~(1 << off)
-                    else:
-                        new_flags = old_flag ^ (1 << off)
+                if current_arch.flags_table[off] != name:
+                    continue
 
-                    gdb.execute("set ({:s}) = {:#x}".format(current_arch.flag_register, new_flags))
+                old_flag = get_register(current_arch.flag_register)
+                if action == "+":
+                    new_flags = old_flag | (1 << off)
+                elif action == "-":
+                    new_flags = old_flag & ~(1 << off)
+                else:
+                    new_flags = old_flag ^ (1 << off)
+
+                gdb.execute("set ({:s}) = {:#x}".format(current_arch.flag_register, new_flags))
         return
 
     def bits_split(self, x, bits=32):
