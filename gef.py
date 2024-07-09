@@ -3964,8 +3964,7 @@ class GlibcHeap:
         return arenas
 
     class GlibcChunk:
-        """Glibc chunk class.
-        Ref: https://sploitfun.wordpress.com/2015/02/10/understanding-glibc-malloc/."""
+        """Glibc chunk class."""
         def __init__(self, addr, from_base=False):
             self.ptrsize = current_arch.ptrsize
             if from_base:
@@ -3987,7 +3986,6 @@ class GlibcHeap:
             return self.get_chunk_size()
 
         def get_usable_size(self):
-            # https://github.com/sploitfun/lsploits/blob/master/glibc/malloc/malloc.c#L4537
             cursz = self.get_chunk_size()
             if cursz == 0:
                 return cursz
