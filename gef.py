@@ -3954,6 +3954,15 @@ class GlibcHeap:
     def get_main_arena():
         return GlibcHeap.get_arena(None)
 
+    @staticmethod
+    def get_all_arenas():
+        arenas = []
+        arena = GlibcHeap.get_main_arena()
+        while arena:
+            arenas.append(arena)
+            arena = arena.get_next()
+        return arenas
+
     class GlibcChunk:
         """Glibc chunk class.
         Ref: https://sploitfun.wordpress.com/2015/02/10/understanding-glibc-malloc/."""
@@ -20085,12 +20094,10 @@ class GlibcHeapBinsCommand(GenericCommand):
             err("Heap is not initialized")
             return
 
-        arenas = [arena]
         if args.all:
-            while arena:
-                arena = arena.get_next()
-                if arena:
-                    arenas.append(arena)
+            arenas = GlibcHeap.get_all_arenas()
+        else:
+            arenas = [arena]
 
         # doit
         for arena in arenas:
@@ -20231,12 +20238,10 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
             err("Heap is not initialized")
             return
 
-        arenas = [arena]
         if args.all:
-            while arena:
-                arena = arena.get_next()
-                if arena:
-                    arenas.append(arena)
+            arenas = GlibcHeap.get_all_arenas()
+        else:
+            arenas = [arena]
 
         # doit
         for arena in arenas:
@@ -20342,12 +20347,10 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
             err("Heap is not initialized")
             return
 
-        arenas = [arena]
         if args.all:
-            while arena:
-                arena = arena.get_next()
-                if arena:
-                    arenas.append(arena)
+            arenas = GlibcHeap.get_all_arenas()
+        else:
+            arenas = [arena]
 
         # doit
         for arena in arenas:
@@ -20389,12 +20392,10 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
             err("Heap is not initialized")
             return
 
-        arenas = [arena]
         if args.all:
-            while arena:
-                arena = arena.get_next()
-                if arena:
-                    arenas.append(arena)
+            arenas = GlibcHeap.get_all_arenas()
+        else:
+            arenas = [arena]
 
         # doit
         for arena in arenas:
@@ -20438,12 +20439,10 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
             err("Heap is not initialized")
             return
 
-        arenas = [arena]
         if args.all:
-            while arena:
-                arena = arena.get_next()
-                if arena:
-                    arenas.append(arena)
+            arenas = GlibcHeap.get_all_arenas()
+        else:
+            arenas = [arena]
 
         # doit
         for arena in arenas:
@@ -20493,12 +20492,10 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
             err("Heap is not initialized")
             return
 
-        arenas = [arena]
         if args.all:
-            while arena:
-                arena = arena.get_next()
-                if arena:
-                    arenas.append(arena)
+            arenas = GlibcHeap.get_all_arenas()
+        else:
+            arenas = [arena]
 
         # doit
         for arena in arenas:
