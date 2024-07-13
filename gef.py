@@ -71428,7 +71428,7 @@ class V8Command(GenericCommand):
                 open(gdbinit_filename, "wb").write(gdbinit_data)
                 info("download gdbinit from internet.")
             else:
-                info("reuse gdbinit cached previouslly.")
+                info("reuse gdbinit cached previously.")
 
             try:
                 gdb.execute("source {:s}".format(gdbinit_filename))
