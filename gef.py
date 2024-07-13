@@ -60458,8 +60458,7 @@ class GdtInfoCommand(GenericCommand):
         gef_print("   * x86 code (native): 0x73")
         return
 
-    @staticmethod
-    def gdt_unpack(vals):
+    def gdt_unpack(self, vals):
         if isinstance(vals, list):
             val = vals[0] # for TSS/LDT
         else:
@@ -60522,11 +60521,10 @@ class GdtInfoCommand(GenericCommand):
         Gdt = collections.namedtuple("Gdt", _gdt.keys())
         return Gdt(*_gdt.values())
 
-    @staticmethod
-    def gdtval2str(value, value_only=False):
+    def gdtval2str(self, value, value_only=False):
         if value_only:
             return "{:#018x}".format(value)
-        gdt = GdtInfoCommand.gdt_unpack(value)
+        gdt = self.gdt_unpack(value)
         if gdt.value == 0:
             return "{:#018x}".format(gdt.value)
         else:
@@ -60546,8 +60544,7 @@ class GdtInfoCommand(GenericCommand):
             out += "{:d}".format(gdt.ac)
             return out
 
-    @staticmethod
-    def gdtval2str_legend():
+    def gdtval2str_legend(self):
         fmt = "{:2s} {:20s} {:18s} {:18s} "
         fmt += "{:s} {:s} {:s}      "
         fmt += "{:s} {:s} {:s} {:s}      "
@@ -60560,8 +60557,7 @@ class GdtInfoCommand(GenericCommand):
         ]
         return fmt.format(*legs)
 
-    @staticmethod
-    def get_segreg_list():
+    def get_segreg_list(self):
         regs = {}
         if is_alive():
             for k in ["cs", "ds", "es", "fs", "gs", "ss"]:
@@ -60712,6 +60708,11 @@ class GdtInfoCommand(GenericCommand):
                 reglist.append("TR")
             elif is_x86_64() and i == tr_idx + 1: # for TSS x64
                 valstr = self.gdtval2str([prev, b])
+            elif is_x86_64() and i == tr_idx + 2: # for LDT x64
+                valstr = self.gdtval2str(b, value_only=True)
+                prev = b
+            elif is_x86_64() and i == tr_idx + 3: # for LDT x64
+                valstr = self.gdtval2str([prev, b])
             elif is_x86_32() and i == tr_idx: # for TSS x86
                 valstr = self.gdtval2str(b)
                 reglist.append("TR")
@@ -60732,11 +60733,11 @@ class GdtInfoCommand(GenericCommand):
         gef_print(titlify("legend (Normal GDT entry)"))
         gef_print("              <flag_bytes->        <----access_bytes ---->")
         gef_print("                                             <type_bytes->")
-        gef_print("31            23          19       15                    7             0bit")
+        gef_print(" 31            23          19       15                    7            0bit")
         gef_print("------------------------------------------------------------------------")
-        gef_print("|             |G |D |  |A |        |  |   |  |E |D |W |A |             |")
+        gef_print("|             |G |D |  |A |        |  |   |  |E |D |R |A |             |")
         gef_print("| BASE2 31:24 |  |/ |L |V | LIMIT1 |P |DPL|S |  |  |  |  | BASE1 23:16 | 4byte")
-        gef_print("|             |R |B |  |L | 19:16  |  |   |  |X |C |R |C |             |")
+        gef_print("|             |R |B |  |L | 19:16  |  |   |  |X |C |W |C |             |")
         gef_print("------------------------------------------------------------------------")
         gef_print("|            BASE0 15:0            |           LIMIT0 15:0             | 0byte")
         gef_print("------------------------------------------------------------------------")
@@ -60760,19 +60761,19 @@ class GdtInfoCommand(GenericCommand):
         gef_print("     * rw (Data seg)  : Read/Write bit (0:ReadOnly, 1:Read/Write)")
         gef_print("     * ac             : Access bit (0:NotAccessed, 1:Accessed)")
         gef_print(titlify("legend (GDT entry for TSS/LDT)"))
-        gef_print("31            23          19       15                    7             0bit")
+        gef_print(" 31            23          19       15                    7            0bit")
         gef_print("------------------------------------------------------------------------")
         gef_print("|                           ZERO1 (only x64)                           | 12byte")
         gef_print("------------------------------------------------------------------------")
         gef_print("|                        BASE3 47:32 (only x64)                        | 8byte")
         gef_print("------------------------------------------------------------------------")
-        gef_print("|             |G |        |        |  |   |  |E |D |W |A |             |")
+        gef_print("|             |G |        |        |  |   |  |E |D |R |A |             |")
         gef_print("| BASE2 31:24 |  | ZERO0  | LIMIT1 |P |DPL|S |  |  |  |  | BASE1 23:16 | 4byte")
-        gef_print("|             |R |        | 19:16  |  |   |  |X |C |R |C |             |")
+        gef_print("|             |R |        | 19:16  |  |   |  |X |C |W |C |             |")
         gef_print("------------------------------------------------------------------------")
         gef_print("|            BASE0 15:0            |           LIMIT0 15:0             | 0byte")
         gef_print("------------------------------------------------------------------------")
-        gef_print(" * limit (tss)        : __KERNEL_TSS_LIMIT(=0x206f(x64) / 0x206b(x86))")
+        gef_print(" * limit (tss)        : __KERNEL_TSS_LIMIT")
         gef_print(" * limit (ldt)        : (LDT entries * 8) - 1")
         return
 
@@ -60986,7 +60987,7 @@ class IdtInfoCommand(GenericCommand):
 
     def print_idt_entry_legend(self):
         gef_print(titlify("legend (Normal IDT entry)"))
-        gef_print("31                                 15  14    13  12     8       3      0bit")
+        gef_print(" 31                                 15  14    13  12     8       3     0bit")
         gef_print("------------------------------------------------------------------------")
         gef_print("|                              RESERVED                                | 12byte")
         gef_print("------------------------------------------------------------------------")
