@@ -62267,6 +62267,8 @@ class SlubDumpCommand(GenericCommand):
                         help="specified offsetof(kmem_cache, random) when `kmem_cache.random` is falsely detected.")
     parser.add_argument("--no-byte-swap", action="store_true", default=None,
                         help="skip byteswap to chunk->next. when `kmem_cache.random` is falsely detected.")
+    parser.add_argument("--offset-node", type=lambda x: int(x, 16),
+                        help="specified offsetof(kmem_cache, node) when `kmem_cache.node` is falsely detected.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", "--partial", action="store_true",
                         help="dump partial pages.")
@@ -62636,43 +62638,47 @@ class SlubDumpCommand(GenericCommand):
                 self.kmem_cache_offset_random = None # maybe CONFIG_SLAB_FREELIST_HARDENED=n
 
         # offsetof(kmem_cache, node)
-        start_offset = self.kmem_cache_offset_list + current_arch.ptrsize * 2 # sizeof(kmem_cache.list)
-        for candidate_offset in range(start_offset, start_offset + 0x100, current_arch.ptrsize): # walk from list for heuristic search
-            found = True
-            for kmem_cache in kmem_caches:
-                # fast path
-                if is_64bit():
-                    x = read_int_from_memory(kmem_cache - self.kmem_cache_offset_list + candidate_offset + 4 * 2)
-                    if is_valid_addr(x):
-                        y = read_int_from_memory(x)
-                        if y == 0xdead4ead00000000: # SPINLOCK_MAGIC
-                            break
-
-                # slow path
-                user_offset = u32(read_memory(kmem_cache - self.kmem_cache_offset_list + candidate_offset, 4))
-                user_size = u32(read_memory(kmem_cache - self.kmem_cache_offset_list + candidate_offset + 4, 4))
-                object_size = u32(read_memory(kmem_cache - self.kmem_cache_offset_list + self.kmem_cache_offset_object_size, 4))
-                if user_offset == user_size == 0:
-                    continue
-                if user_offset != 0 and user_size == 0:
-                    found = False
-                    break
-                if object_size < user_size:
-                    found = False
-                    break
-                node_offset = kmem_cache - self.kmem_cache_offset_list + candidate_offset + 4 + 4
-                node_addr = read_int_from_memory(node_offset)
-                if not is_valid_addr(node_addr):
-                    found = False
-                    break
-
-            if found:
-                self.kmem_cache_offset_node = candidate_offset + 4 * 2
-                self.quiet_info("offsetof(kmem_cache, node): {:#x}".format(self.kmem_cache_offset_node))
-                break
+        if self.args.offset_node is not None:
+            self.kmem_cache_offset_node = self.args.offset_node
+            self.quiet_info("offsetof(kmem_cache, node): {:#x}".format(self.kmem_cache_offset_node))
         else:
-            self.quiet_info("offsetof(kmem_cache, node): Not found")
-            self.kmem_cache_offset_node = None
+            start_offset = self.kmem_cache_offset_list + current_arch.ptrsize * 2 # sizeof(kmem_cache.list)
+            for candidate_offset in range(start_offset, start_offset + 0x100, current_arch.ptrsize): # walk from list for heuristic search
+                found = True
+                for kmem_cache in kmem_caches:
+                    # fast path
+                    if is_64bit():
+                        x = read_int_from_memory(kmem_cache - self.kmem_cache_offset_list + candidate_offset + 4 * 2)
+                        if is_valid_addr(x):
+                            y = read_int_from_memory(x)
+                            if y == 0xdead4ead00000000: # SPINLOCK_MAGIC
+                                break
+
+                    # slow path
+                    user_offset = u32(read_memory(kmem_cache - self.kmem_cache_offset_list + candidate_offset, 4))
+                    user_size = u32(read_memory(kmem_cache - self.kmem_cache_offset_list + candidate_offset + 4, 4))
+                    object_size = u32(read_memory(kmem_cache - self.kmem_cache_offset_list + self.kmem_cache_offset_object_size, 4))
+                    if user_offset == user_size == 0:
+                        continue
+                    if user_offset != 0 and user_size == 0:
+                        found = False
+                        break
+                    if object_size < user_size:
+                        found = False
+                        break
+                    node_offset = kmem_cache - self.kmem_cache_offset_list + candidate_offset + 4 + 4
+                    node_addr = read_int_from_memory(node_offset)
+                    if not is_valid_addr(node_addr):
+                        found = False
+                        break
+
+                if found:
+                    self.kmem_cache_offset_node = candidate_offset + 4 * 2
+                    self.quiet_info("offsetof(kmem_cache, node): {:#x}".format(self.kmem_cache_offset_node))
+                    break
+            else:
+                self.quiet_info("offsetof(kmem_cache, node): Not found")
+                self.kmem_cache_offset_node = None
 
         # offsetof(kmem_cache_cpu, freelist)
         self.kmem_cache_cpu_offset_freelist = 0
@@ -62728,17 +62734,21 @@ class SlubDumpCommand(GenericCommand):
         self.page_offset_inuse_objects_frozen = self.page_offset_freelist + current_arch.ptrsize
         self.quiet_info("offsetof(page, inuse_objects_frozen): {:#x}".format(self.page_offset_inuse_objects_frozen))
 
-        # offsetof(kmem_cache_node, partial)
-        node = read_int_from_memory(kmem_caches[0] - self.kmem_cache_offset_list + self.kmem_cache_offset_node)
-        for i in range(2, 16):
-            offset_partial = current_arch.ptrsize * i
-            if is_double_link_list(node + offset_partial):
-                self.kmem_cache_node_offset_partial = offset_partial
-                self.quiet_info("offsetof(kmem_cache_node, partial): {:#x}".format(self.kmem_cache_node_offset_partial))
-                break
-        else:
+        if self.kmem_cache_offset_node is None:
             self.quiet_info("offsetof(kmem_cache_node, partial): Not found")
             self.kmem_cache_node_offset_partial = None
+        else:
+            # offsetof(kmem_cache_node, partial)
+            node = read_int_from_memory(kmem_caches[0] - self.kmem_cache_offset_list + self.kmem_cache_offset_node)
+            for i in range(2, 16):
+                offset_partial = current_arch.ptrsize * i
+                if is_double_link_list(node + offset_partial):
+                    self.kmem_cache_node_offset_partial = offset_partial
+                    self.quiet_info("offsetof(kmem_cache_node, partial): {:#x}".format(self.kmem_cache_node_offset_partial))
+                    break
+            else:
+                self.quiet_info("offsetof(kmem_cache_node, partial): Not found")
+                self.kmem_cache_node_offset_partial = None
 
         self.initialized = True
         return True
