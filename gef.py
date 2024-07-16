@@ -60374,11 +60374,13 @@ class GsbaseCommand(GenericCommand):
 
 @register_command
 class GdtInfoCommand(GenericCommand):
-    """Print GDT entries. If user-land, show sample entries."""
+    """Print GDT/LDT entries. If user-land, show sample entries."""
     _cmdline_ = "gdtinfo"
     _category_ = "04-a. Register - View"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("--only-gdt", action="store_true", help="show only GDT entries (qemu-system only).")
+    parser.add_argument("--only-ldt", action="store_true", help="show only LDT entries (qemu-system only).")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     parser.add_argument("-v", "--verbose", action="store_true", help="also display bit information of gdt entries.")
     _syntax_ = parser.format_help()
@@ -60458,104 +60460,153 @@ class GdtInfoCommand(GenericCommand):
         gef_print("   * x86 code (native): 0x73")
         return
 
-    def gdt_unpack(self, vals):
+    def entry_unpack(self, vals):
         if isinstance(vals, list):
-            val = vals[0] # for TSS/LDT
+            val = vals[0] # for 64bit SYSTEM segment
         else:
-            val = vals # for normal
+            val = vals
 
         # parse
-        _gdt = {}
-        _gdt["value"] = val
+        _entry = {}
+        _entry["value"] = val
 
-        _gdt["limit0"] = val & 0xffff
-        _gdt["base0"] = (val >> 16) & 0xffff
-        _gdt["base1"] = (val >> 32) & 0xff
-        _gdt["access_bytes"] = (val >> 40) & 0xff
-        _gdt["limit1"] = (val >> 48) & 0x0f
-        _gdt["flag_bytes"] = (val >> 52) & 0x0f
-        _gdt["base2"] = (val >> 56) & 0xff
+        _entry["type_bytes"] = (val >> 40) & 0b1111
+        _entry["p"] = (val >> 47) & 0b1
+        _entry["dpl"] = (val >> 45) & 0b11
 
-        _gdt["p"] = (_gdt["access_bytes"] >> 7) & 0x01
-        _gdt["dpl"] = (_gdt["access_bytes"] >> 5) & 0x03
-        _gdt["s"] = (_gdt["access_bytes"] >> 4) & 0x01
-        _gdt["type_bytes"] = _gdt["access_bytes"] & 0x0f
-        _gdt["ex"] = (_gdt["access_bytes"] >> 3) & 0x01
-        _gdt["dc"] = (_gdt["access_bytes"] >> 2) & 0x01
-        _gdt["rw"] = (_gdt["access_bytes"] >> 1) & 0x01
-        _gdt["ac"] = (_gdt["access_bytes"] >> 0) & 0x01
+        _entry["s"] = (val >> 44) & 0b1
+        _entry["s_s"] = ["SYSTEM", "CODE/DATA"][_entry["s"]]
 
-        _gdt["gr"] = (_gdt["flag_bytes"] >> 3) & 0x01
-        _gdt["db"] = (_gdt["flag_bytes"] >> 2) & 0x01
-        _gdt["l"] = (_gdt["flag_bytes"] >> 1) & 0x01
-        _gdt["avl"] = (_gdt["flag_bytes"] >> 0) & 0x01
-        _gdt["FLAGS"] = (_gdt["flag_bytes"] << 12) | _gdt["access_bytes"] # for easy use
+        if _entry["s"] == 0:
+            # SYSTEM segment
+            _entry["type_bytes_s"] = Color.boldify({
+                0b0000: ["Reserved", "Reserved"],
+                0b0001: ["Available 16bit TSS", "Reserved"],
+                0b0010: ["LDT", "LDT"],
+                0b0011: ["Busy 16bit TSS", "Reserved"],
+                0b0100: ["16bit call gate", "Reserved"],
+                0b0101: ["16/32bit task gate", "Reserved"],
+                0b0110: ["16bit interrupt gate", "Reserved"],
+                0b0111: ["16bit trap gate", "Reserved"],
+                0b1000: ["Reserved", "Reserved"],
+                0b1001: ["Available 32bit TSS", "64bit TSS"],
+                0b1010: ["Reserved", "Reserved"],
+                0b1011: ["Busy 32bit TSS", "Busy 64bit TSS"],
+                0b1100: ["32bit call gate", "64bit call gate"],
+                0b1101: ["Reserved", "Reserved"],
+                0b1110: ["32bit interrupt gate", "64bit interrupt gate"],
+                0b1111: ["32bit trap gate", "64bit trap gate"],
+            }[_entry["type_bytes"]][is_x86_64()])
 
-        grsize = {0: 1, 1: 4096}[_gdt["gr"]]
-        _gdt["limit"] = ((_gdt["limit1"] << 16) | _gdt["limit0"]) * grsize
-        _gdt["base"] = (_gdt["base2"] << 24) | (_gdt["base1"] << 16) | _gdt["base0"]
+        if _entry["s"] == 0 and _entry["type_bytes"] == 0b1100:
+            # SYSTEM segment (call gate)
+            _entry["offseg0"] = val & 0xffff
+            _entry["segsel"] = (val >> 16) & 0xffff
+            _entry["offseg1"] = (val >> 48) & 0xffff
+            _entry["offseg"] = (_entry["offseg1"] << 16) | _entry["offseg0"]
 
-        # create memo
-        if _gdt["ex"] == 0: # data
-            _gdt["ex_s"] = "DATA"
-            _gdt["rw_s"] = ["RO", "RW"][_gdt["rw"]]
-            _gdt["dc_s"] = ["UP", "DN"][_gdt["dc"]]
-        else: # code
-            _gdt["ex_s"] = "CODE"
-            _gdt["rw_s"] = ["RO", "RX"][_gdt["rw"]]
-            _gdt["dc_s"] = ["NC", "CO"][_gdt["dc"]]
+            if isinstance(vals, list):
+                # for 64bit SYSTEM segment (call gate)
+                _entry["value"] = vals[1] # overwrite
+                _entry["offseg2"] = vals[1] & 0xffffffff
+                _entry["offseg"] |= _entry["offseg2"] << 32
 
-        _gdt["s_s"] = ["SYS", "C/D"][_gdt["s"]]
-        dbl = (_gdt["db"] << 1) | _gdt["l"]
-        _gdt["dbl"] = "{:d}".format(dbl)
-        _gdt["dbl_s"] = ["16bit", "64bit", "32bit", "(N/A)"][dbl]
+        else:
+            # CODE/DATA segment or SYSTEM segment (not call gate)
+            _entry["g"] = (val >> 54) & 0x01
+            grsize = {0: 1, 1: 4096}[_entry["g"]]
 
-        # for TSS/LDT
-        if isinstance(vals, list):
-            val = vals[1]
-            _gdt["value2"] = _gdt["value"]
-            _gdt["value"] = val
-            _gdt["base3"] = val & 0xffffffff
-            _gdt["base"] = (_gdt["base3"] << 32) | _gdt["base"]
+            _entry["limit0"] = val & 0xffff
+            _entry["base0"] = (val >> 16) & 0xffff
+            _entry["base1"] = (val >> 32) & 0xff
+            _entry["limit1"] = (val >> 48) & 0x0f
+            _entry["base2"] = (val >> 56) & 0xff
 
-        Gdt = collections.namedtuple("Gdt", _gdt.keys())
-        return Gdt(*_gdt.values())
+            _entry["limit"] = ((_entry["limit1"] << 16) | _entry["limit0"]) * grsize
+            _entry["base"] = (_entry["base2"] << 24) | (_entry["base1"] << 16) | _entry["base0"]
 
-    def gdtval2str(self, value, value_only=False):
+            if isinstance(vals, list):
+                # for 64bit SYSTEM segment (not call gate)
+                _entry["value"] = vals[1] # overwrite
+                _entry["base3"] = vals[1] & 0xffffffff
+                _entry["base"] |= _entry["base3"] << 32
+
+            if _entry["s"] == 1:
+                # CODE/DATA segment
+                _entry["db"] = (val >> 53) & 0x01
+                _entry["l"] = (val >> 52) & 0x01
+                dbl = (_entry["db"] << 1) | _entry["l"]
+                _entry["dbl"] = "{:d}".format(dbl)
+                _entry["dbl_s"] = ["16bit", "64bit", "32bit", "(N/A)"][dbl]
+
+                _entry["avl"] = (val >> 51) & 0x01
+
+                _entry["e"] = (val >> 43) & 0x01
+                _entry["dc"] = (val >> 42) & 0x01
+                _entry["rw"] = (val >> 41) & 0x01
+                _entry["ac"] = (val >> 40) & 0x01
+                if _entry["e"] == 0:
+                    # DATA segment
+                    _entry["e_s"] = Color.boldify("DATA")
+                    _entry["rw_s"] = ["RO", "RW"][_entry["rw"]]
+                    _entry["dc_s"] = ["EXPAND-UP", "EXPAND-DOWN"][_entry["dc"]]
+                else:
+                    # CODE segment
+                    _entry["e_s"] = Color.boldify("CODE")
+                    _entry["rw_s"] = ["RO", "RX"][_entry["rw"]]
+                    _entry["dc_s"] = ["NON-CONFORMING", "CONFORMING"][_entry["dc"]]
+                _entry["ac_s"] = ["NotAccessed", "Accessed"][_entry["ac"]]
+
+        Entry = collections.namedtuple("Entry", _entry.keys())
+        return Entry(*_entry.values())
+
+    def entry2str(self, value, value_only=False):
         if value_only:
             return "{:#018x}".format(value)
-        gdt = self.gdt_unpack(value)
-        if gdt.value == 0:
-            return "{:#018x}".format(gdt.value)
-        else:
-            out = ""
-            out += "{:#018x} ".format(gdt.value)
-            out += "{:#018x} ".format(gdt.base)
-            out += "{:<#10x} ".format(gdt.limit)
-            out += "{:<2d} ".format(gdt.gr)
-            out += "{:s}({:s}) ".format(gdt.dbl, gdt.dbl_s)
-            out += "{:<3d} ".format(gdt.avl)
-            out += "{:d} ".format(gdt.p)
-            out += "{:<3d} ".format(gdt.dpl)
-            out += "{:d}({:s}) ".format(gdt.s, gdt.s_s)
-            out += "{:d}({:s}) ".format(gdt.ex, gdt.ex_s)
-            out += "{:d}({:s}) ".format(gdt.dc, gdt.dc_s)
-            out += "{:d}({:s}) ".format(gdt.rw, gdt.rw_s)
-            out += "{:d}".format(gdt.ac)
-            return out
 
-    def gdtval2str_legend(self):
-        fmt = "{:2s} {:20s} {:18s} {:18s} "
-        fmt += "{:s} {:s} {:s}      "
-        fmt += "{:s} {:s} {:s} {:s}      "
-        fmt += "{:s}      {:s}    {:s}    {:s}"
-        legs = [
-            "#", "segment name", "value", "base",
-            "limit/size", "gr", "dbl",
-            "avl", "p", "dpl", "s",
-            "ex", "dc", "rw", "ac",
-        ]
-        return fmt.format(*legs)
+        if value == 0: # and not list
+            return "{:#018x}".format(value)
+
+        entry = self.entry_unpack(value)
+        out = ""
+        out += "{:#018x} ".format(entry.value)
+        if entry.s == 0 and entry.type_bytes == 0b1100: # SYSTEM - call gate
+            out += "{:#018x} ".format(entry.segsel)
+            out += "{:#010x} ".format(entry.offseg)
+            out += "{:15s}".format("")
+
+            out += "{:<1d} ".format(entry.p)
+            out += "{:<3d} ".format(entry.dpl)
+            out += "{:<1d}{:11s} ".format(entry.s, "({:s})".format(entry.s_s))
+
+            out += "{:#06b}({:s})".format(entry.type_bytes, entry.type_bytes_s)
+
+        else:
+            out += "{:#018x} ".format(entry.base)
+            out += "{:#010x} ".format(entry.limit)
+            out += "{:<1d} ".format(entry.g)
+
+            if entry.s == 0: # SYSTEM - Other
+                out += "{:13s}".format("")
+            else: # CODE/DATA
+                out += "{:<1s}({:5s}) ".format(entry.dbl, entry.dbl_s)
+                out += "{:<3d} ".format(entry.avl)
+
+            out += "{:<1d} ".format(entry.p)
+            out += "{:<3d} ".format(entry.dpl)
+            out += "{:<1d}{:11s} ".format(entry.s, "({:s})".format(entry.s_s))
+
+            if entry.s == 0: # SYSTEM - Other
+                out += "{:#06b}({:s})".format(entry.type_bytes, entry.type_bytes_s)
+            else: # CODE/DATA
+                type_bytes_s = []
+                type_bytes_s.append(entry.e_s)
+                type_bytes_s.append(entry.dc_s)
+                type_bytes_s.append(entry.rw_s)
+                type_bytes_s.append(entry.ac_s)
+                type_bytes_s = ",".join(type_bytes_s)
+                out += "{:#06b}({:s})".format(entry.type_bytes, type_bytes_s)
+        return out
 
     def get_segreg_list(self):
         regs = {}
@@ -60568,6 +60619,67 @@ class GdtInfoCommand(GenericCommand):
                     regs[index] = regs.get(index, []) + [k]
         return regs
 
+    def print_entries(self, entries, segm_desc=None, skip_null=False):
+        regs = self.get_segreg_list()
+
+        # print legend
+        fmt = "{:2s} {:20s} {:18s} {:18s} {:10s} {:1s} {:8s} {:3s} {:1s} {:3s} {:12s} {:s}"
+        legs = ["#", "SegmentName", "Value", "BASE", "LIMIT", "G", "D/B,L", "AVL", "P", "DPL", "S", "TYPE"]
+        gef_print(Color.colorify(fmt.format(*legs), Config.get_gef_setting("theme.table_heading")))
+
+        # print entry
+        i = 0
+        concat_prev = False
+        while i < len(entries):
+            # check null entry
+            if entries[i] == 0 and skip_null:
+                if not concat_prev:
+                    i += 1
+                    continue
+
+            # segment name
+            if segm_desc:
+                segname = segm_desc.get(i, "Undefined")
+            else:
+                segname = "???"
+
+            # parse and make string
+            entry = self.entry_unpack(entries[i])
+            if concat_prev:
+                # lower half of 64bit SYSTEM entries
+                estr = self.entry2str([entries[i - 1], entries[i]])
+                concat_prev = False
+
+                if not segname.endswith("-part2"):
+                    segname += "-part2"
+
+            elif entry.s == 0 and entry.type_bytes != 0 and (is_x86_64() or is_emulated32()):
+                # upper half of 64bit SYSTEM entries
+                estr = self.entry2str(entries[i], value_only=True)
+                concat_prev = True
+
+                if not segname.endswith("-part1"):
+                    segname += "-part1"
+
+            else:
+                # CODE/DATA segment or 16/32bit SYSTEM entries
+                estr = self.entry2str(entries[i])
+                concat_prev = False
+
+            # extra info
+            reglist = regs.get(i, [])
+            if reglist:
+                reglist = "{:s}{:s}".format(LEFT_ARROW, " ,".join(reglist))
+                regstr = Color.colorify(reglist, Config.get_gef_setting("theme.dereference_register_value"))
+            else:
+                regstr = ""
+
+            # print
+            gef_print("{:<2d} {:20s} {:s} {:s}".format(i, segname, estr, regstr))
+
+            i += 1
+        return
+
     def print_gdt_example(self):
         # print title
         if is_x86_64() or is_emulated32():
@@ -60579,80 +60691,68 @@ class GdtInfoCommand(GenericCommand):
 
         # print legend
         info("*** This is an {:s} ***".format(Color.boldify("EXAMPLE")))
-        gef_print(Color.colorify(self.gdtval2str_legend(), Config.get_gef_setting("theme.table_heading")))
 
         # print entry
         if is_x86_64() or is_emulated32():
             entries = [
-                # idx, value
-                (0,    0x0000000000000000),
-                (1,    0x00cf9b000000ffff),
-                (2,    0x00af9b000000ffff),
-                (3,    0x00cf93000000ffff),
-                (4,    0x00cffb000000ffff),
-                (5,    0x00cff3000000ffff),
-                (6,    0x00affb000000ffff),
-                (7,    0x0000000000000000),
-                (8,    0x00008b000000206f),
-                (9,    [0x00008b000000206f, 0x00000000fffffe00]),
-                (10,   0x0000000000000000),
-                (11,   0x0000000000000000),
-                (12,   0x0000000000000000),
-                (13,   0x0000000000000000),
-                (14,   0x0000000000000000),
-                (15,   0x0040f50000000000),
+                0x0000000000000000,
+                0x00cf9b000000ffff,
+                0x00af9b000000ffff,
+                0x00cf93000000ffff,
+                0x00cffb000000ffff,
+                0x00cff3000000ffff,
+                0x00affb000000ffff,
+                0x0000000000000000,
+                0x00008b000000206f,
+                0x00000000fffffe00,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0040f50000000000,
             ]
         else:
             entries = [
-                # idx, value
-                (0,    0x0000000000000000),
-                (1,    0x0000000000000000),
-                (2,    0x0000000000000000),
-                (3,    0x0000000000000000),
-                (4,    0x0000000000000000),
-                (5,    0x0000000000000000),
-                (6,    0x0000000000000000),
-                (7,    0x0000000000000000),
-                (8,    0x0000000000000000),
-                (9,    0x0000000000000000),
-                (10,   0x0000000000000000),
-                (11,   0x0000000000000000),
-                (12,   0x00cf9a000000ffff),
-                (13,   0x00cf93000000ffff),
-                (14,   0x00cffa000000ffff),
-                (15,   0x00cff3000000ffff),
-                (16,   0xff008b804000206b),
-                (17,   0x0000000000000000),
-                (18,   0x00409a000000ffff),
-                (19,   0x00009a000000ffff),
-                (20,   0x000092000000ffff),
-                (21,   0x0000920000000000),
-                (22,   0x0000920000000000),
-                (23,   0x00409a000000ffff),
-                (24,   0x00009a000000ffff),
-                (25,   0x004092000000ffff),
-                (26,   0x00cf92000000ffff),
-                (27,   0x038f93708000ffff),
-                (28,   0x0000000000000000),
-                (29,   0x0000000000000000),
-                (30,   0x0000000000000000),
-                (31,   0xc40089706000206b),
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x00cf9a000000ffff,
+                0x00cf93000000ffff,
+                0x00cffa000000ffff,
+                0x00cff3000000ffff,
+                0xff008b804000206b,
+                0x0000000000000000,
+                0x00409a000000ffff,
+                0x00009a000000ffff,
+                0x000092000000ffff,
+                0x0000920000000000,
+                0x0000920000000000,
+                0x00409a000000ffff,
+                0x00009a000000ffff,
+                0x004092000000ffff,
+                0x00cf92000000ffff,
+                0x038f93708000ffff,
+                0x0000000000000000,
+                0x0000000000000000,
+                0x0000000000000000,
+                0xc40089706000206b,
             ]
 
-        regs = self.get_segreg_list()
-        for i, value in entries:
-            # get segment regs value
-            reglist = ", ".join(regs.get(i, []))
-            if reglist:
-                reglist = LEFT_ARROW + reglist
-            regstr = Color.colorify(reglist, Config.get_gef_setting("theme.dereference_register_value"))
-
-            # decode
-            segname = segm_desc.get(i, "Undefined")
-            is_part1 = segname in ["TSS-part1", "LDT-part1"]
-            valstr = self.gdtval2str(value, value_only=is_part1)
-
-            gef_print("{:<2d} {:20s} {:s} {:s}".format(i, segname, valstr, regstr))
+        if is_x86_64():
+            segm_desc = self.SEGMENT_DESCRIPTION_64
+        else:
+            segm_desc = self.SEGMENT_DESCRIPTION_32
+        self.print_entries(entries, segm_desc)
         return
 
     def print_gdt_real(self):
@@ -60662,119 +60762,130 @@ class GdtInfoCommand(GenericCommand):
             gdtr = re.search(r"GDT\s*=\s*(\S+) (\S+)", res)
             base, limit = [int(gdtr.group(i), 16) for i in range(1, 3)]
 
-            tr = re.search(r"TR\s*=\s*(\S+) (\S+) (\S+) (\S+)", res)
-            trseg, *_ = [int(tr.group(i), 16) for i in range(1, 5)]
-            tr_idx = trseg >> 3
-
         elif is_vmware():
             res = gdb.execute("monitor r gdtr", to_string=True)
             r = re.search(r"gdtr base=(\S+) limit=(\S+)", res)
             base, limit = int(r.group(1), 16), int(r.group(2), 16)
 
-            # TODO: how to get
-            if is_x86_64():
-                tr_idx = 8
-            else:
-                tr_idx = 16
-
         # print title
-        gef_print(titlify("GDT Entry"))
-
-        # print legend
-        gef_print(Color.colorify(self.gdtval2str_legend(), Config.get_gef_setting("theme.table_heading")))
+        gef_print(titlify("GDT Entry: {:#x}".format(base)))
 
         # check initialized or not
         if (base == 0x0 and limit == 0xffff) or limit == 0x0:
             err("GDT is uninitialized")
             return
 
-        gdtinfo = slice_unpack(read_memory(base, limit + 1), 8)
-
+        entries = slice_unpack(read_memory(base, limit + 1), 8)
         if is_x86_64():
             segm_desc = self.SEGMENT_DESCRIPTION_64
         else:
             segm_desc = self.SEGMENT_DESCRIPTION_32
+        self.print_entries(entries, segm_desc)
+        return
 
-        # print entry
-        regs = self.get_segreg_list()
-        for i, b in enumerate(gdtinfo):
-            # get segment regs value
-            reglist = regs.get(i, [])
+    def print_ldt_real(self):
+        # parse real value
+        if is_qemu_system():
+            res = gdb.execute("monitor info registers", to_string=True)
+            ldtr = re.search(r"LDT=\S+ (\S+) (\S+)", res)
+            base, limit = [int(ldtr.group(i), 16) for i in range(1, 3)]
 
-            # decode
-            if is_x86_64() and i == tr_idx: # for TSS x64
-                valstr = self.gdtval2str(b, value_only=True)
-                prev = b
-                reglist.append("TR")
-            elif is_x86_64() and i == tr_idx + 1: # for TSS x64
-                valstr = self.gdtval2str([prev, b])
-            elif is_x86_64() and i == tr_idx + 2: # for LDT x64
-                valstr = self.gdtval2str(b, value_only=True)
-                prev = b
-            elif is_x86_64() and i == tr_idx + 3: # for LDT x64
-                valstr = self.gdtval2str([prev, b])
-            elif is_x86_32() and i == tr_idx: # for TSS x86
-                valstr = self.gdtval2str(b)
-                reglist.append("TR")
-            else:
-                valstr = self.gdtval2str(b)
+        elif is_vmware():
+            res = gdb.execute("monitor r ldtr", to_string=True)
+            r = re.search(r"ldtr base=(\S+) limit=(\S+)", res)
+            base, limit = int(r.group(1), 16), int(r.group(2), 16)
 
-            if reglist:
-                reglist = "{:s}{:s}".format(LEFT_ARROW, " ,".join(reglist))
-                regstr = Color.colorify(reglist, Config.get_gef_setting("theme.dereference_register_value"))
-            else:
-                regstr = ""
+        # print title
+        gef_print(titlify("LDT Entry: {:#x}".format(base)))
 
-            segname = segm_desc.get(i, "Undefined")
-            gef_print("{:<2d} {:20s} {:s} {:s}".format(i, segname, valstr, regstr))
+        # check initialized or not
+        if (base == 0x0 and limit == 0xffff) or limit == 0x0:
+            err("LDT is uninitialized")
+            return
+
+        entries = slice_unpack(read_memory(base, limit + 1), 8)
+        self.print_entries(entries, skip_null=True)
         return
 
     def print_gdt_entry_legend(self):
-        gef_print(titlify("legend (Normal GDT entry)"))
-        gef_print("              <flag_bytes->        <----access_bytes ---->")
-        gef_print("                                             <type_bytes->")
-        gef_print(" 31            23          19       15                    7            0bit")
-        gef_print("------------------------------------------------------------------------")
-        gef_print("|             |G |D |  |A |        |  |   |  |E |D |R |A |             |")
-        gef_print("| BASE2 31:24 |  |/ |L |V | LIMIT1 |P |DPL|S |  |  |  |  | BASE1 23:16 | 4byte")
-        gef_print("|             |R |B |  |L | 19:16  |  |   |  |X |C |W |C |             |")
-        gef_print("------------------------------------------------------------------------")
-        gef_print("|            BASE0 15:0            |           LIMIT0 15:0             | 0byte")
-        gef_print("------------------------------------------------------------------------")
-        gef_print(" * base               : Start address")
-        gef_print(" * limit              : Segment size (4KB unit if gr==1)")
-        gef_print(" * flag_bytes")
-        gef_print("   * gr               : Granularity flag (0:SegLimitAsByte, 1:SegLimitAs4KB)")
-        gef_print("   * db               : Default operation size (0:16bitSeg, 1:32bitSeg)")
-        gef_print("   * l (Code seg)     : 64-bits code segment flag (0:32bit, 1:64bit)")
-        gef_print("   * l (Data seg)     : Reserved (0)")
-        gef_print("   * avl              : Available bit (0)")
-        gef_print(" * access_bytes")
-        gef_print("   * p                : Segment present flag (0:SegmentNotInMemory, 1:SegmentInMemory)")
-        gef_print("   * dpl              : Descriptor privilege level (0:Ring0, 3:Ring3)")
-        gef_print("   * s                : Descriptor type flag (0:System Segment, 1:Code/Data Segment)")
-        gef_print("   * type_bytes")
-        gef_print("     * ex             : Segment type (0:Data, 1:Code)")
-        gef_print("     * dc (Code seg)  : Conforming bit (0:NoConform, 1:Conform)")
-        gef_print("     * dc (Data seg)  : Direction bit (0:Up, 1:Down)")
-        gef_print("     * rw (Code seg)  : Read/Exec bit (0:ReadOnly, 1:Read/Exec)")
-        gef_print("     * rw (Data seg)  : Read/Write bit (0:ReadOnly, 1:Read/Write)")
-        gef_print("     * ac             : Access bit (0:NotAccessed, 1:Accessed)")
-        gef_print(titlify("legend (GDT entry for TSS/LDT)"))
-        gef_print(" 31            23          19       15                    7            0bit")
-        gef_print("------------------------------------------------------------------------")
-        gef_print("|                           ZERO1 (only x64)                           | 12byte")
-        gef_print("------------------------------------------------------------------------")
-        gef_print("|                        BASE3 47:32 (only x64)                        | 8byte")
-        gef_print("------------------------------------------------------------------------")
-        gef_print("|             |G |        |        |  |   |  |E |D |R |A |             |")
-        gef_print("| BASE2 31:24 |  | ZERO0  | LIMIT1 |P |DPL|S |  |  |  |  | BASE1 23:16 | 4byte")
-        gef_print("|             |R |        | 19:16  |  |   |  |X |C |W |C |             |")
-        gef_print("------------------------------------------------------------------------")
-        gef_print("|            BASE0 15:0            |           LIMIT0 15:0             | 0byte")
-        gef_print("------------------------------------------------------------------------")
-        gef_print(" * limit (tss)        : __KERNEL_TSS_LIMIT")
-        gef_print(" * limit (ldt)        : (LDT entries * 8) - 1")
+        gef_print(titlify("legend (GDT/LDT entry for S=1)"))
+        gef_print("              <Flag bytes->        <----- Access bytes----->")
+        gef_print("                                          <---Type bytes--->")
+        gef_print(" 31            23 22 21 20 19       15 14  12   11 10 9  8  7            0bit")
+        gef_print("-------------------------------------------------------------------------- 8byte")
+        gef_print("|             |  |D |  |A |        |  |   |    |  |D |R |A |             |")
+        gef_print("| BASE2 31:24 |G |/ |L |V | LIMIT1 |P |DPL|S(1)|E |  |  |  | BASE1 23:16 |")
+        gef_print("|             |  |B |  |L | 19:16  |  |   |    |  |C |W |C |             |")
+        gef_print("-------------------------------------------------------------------------- 4byte")
+        gef_print("|            BASE0 15:0            |             LIMIT0 15:0             |")
+        gef_print("-------------------------------------------------------------------------- 0byte")
+        gef_print(" * BASE                 : Start address")
+        gef_print(" * LIMIT                : Segment size (4KB unit if G=1)")
+        gef_print(" * Flag bytes")
+        gef_print("   * G                  : Granularity flag (0:SegLimitAsByte, 1:SegLimitAs4KB)")
+        gef_print("   * D/B                : Segment flag (0:16bitSeg, 1:32bitSeg)")
+        gef_print("   * L (if code seg)    : 64-bit code segment flag (0:32bitSeg, 1:64bitSeg)")
+        gef_print("   * L (if data seg)    : Reserved (0)")
+        gef_print("   * AVL                : Used by system software")
+        gef_print(" * Access bytes")
+        gef_print("   * P                  : Segment present flag (0:SegmentNotInMemory, 1:SegmentInMemory)")
+        gef_print("   * DPL                : Descriptor privilege level (0:Ring0, 3:Ring3)")
+        gef_print("   * S                  : Descriptor type flag (0:SystemSegment, 1:Code/DataSegment)")
+        gef_print("   * Type bytes (if S=1)")
+        gef_print("     * E                : Executable bit (0:Unexecutable/DataSegment, 1:Executable/CodeSegment)")
+        gef_print("     * DC (if code seg) : Conforming bit (0:NoConforming, 1:Conforming)")
+        gef_print("     * DC (if data seg) : Direction bit (0:ExpandUp, 1:ExpandDown)")
+        gef_print("     * RW (if code seg) : Read/Exec bit (0:ExecOnly, 1:Read/Exec)")
+        gef_print("     * RW (if data seg) : Read/Write bit (0:ReadOnly, 1:Read/Write)")
+        gef_print("     * AC               : Access bit (0:NotAccessed, 1:Accessed)")
+        gef_print(titlify("legend (GDT/LDT entry for S=0, not call gate)"))
+        gef_print("                                          <---Type bytes--->")
+        gef_print(" 31            23 22       19       15 14  12   11          7            0bit")
+        gef_print("-------------------------------------------------------------------------- 16byte")
+        gef_print("|                             ZERO1 (only x64)                           |")
+        gef_print("-------------------------------------------------------------------------- 12byte")
+        gef_print("|                          BASE3 47:32 (only x64)                        |")
+        gef_print("-------------------------------------------------------------------------- 8byte")
+        gef_print("|             |  |        |        |  |   |    |           |             |")
+        gef_print("| BASE2 31:24 |G | ZERO0  | LIMIT1 |P |DPL|S(0)|   type    | BASE1 23:16 |")
+        gef_print("|             |  |        | 19:16  |  |   |    |           |             |")
+        gef_print("-------------------------------------------------------------------------- 4byte")
+        gef_print("|            BASE0 15:0            |             LIMIT0 15:0             |")
+        gef_print("-------------------------------------------------------------------------- 0byte")
+        gef_print(" * LIMIT (if TSS Entry) : __KERNEL_TSS_LIMIT")
+        gef_print(" * LIMIT (if LDT Entry) : (LDT entries * 8) - 1")
+        gef_print(" * Access bytes")
+        gef_print("   * Type bytes (if S=0)  16bit/32bit          / 64bit")
+        gef_print("     * 0000             : Reserved             / Reserved")
+        gef_print("     * 0001             : Available 16bit TSS  / Reserved")
+        gef_print("     * 0010             : LDT                  / LDT")
+        gef_print("     * 0011             : Busy 16bit TSS       / Reserved")
+        gef_print("     * 0100             : 16bit call gate      / Reserved")
+        gef_print("     * 0101             : 16/32bit task gate   / Reserved")
+        gef_print("     * 0110             : 16bit interrupt gate / Reserved")
+        gef_print("     * 0111             : 16bit trap gate      / Reserved")
+        gef_print("     * 1000             : Reserved             / Reserved")
+        gef_print("     * 1001             : Available 32bit TSS  / 64bit TSS")
+        gef_print("     * 1010             : Reserved             / Reserved")
+        gef_print("     * 1011             : Busy 32bit TSS       / Busy 64bit TSS")
+        gef_print("     * 1100             : 32bit call gate      / 64bit call gate")
+        gef_print("     * 1101             : Reserved             / Reserved")
+        gef_print("     * 1110             : 32bit interrupt gate / 64bit interrupt gate")
+        gef_print("     * 1111             : 32bit trap gate      / 64bit trap gate")
+        gef_print(titlify("legend (GDT/LDT entry for S=0, call gate)"))
+        gef_print("                                          <---Type bytes--->")
+        gef_print(" 31                        19       15 14  12   11          7      4     0bit")
+        gef_print("-------------------------------------------------------------------------- 16byte")
+        gef_print("|                              ZERO (only x64)                           |")
+        gef_print("-------------------------------------------------------------------------- 12byte")
+        gef_print("|                   OffsetInSegment2 63:32 (only x64)                    |")
+        gef_print("-------------------------------------------------------------------------- 8byte")
+        gef_print("|                                  |  |   |    |           |      |      |")
+        gef_print("|      OffsetInSegment1 31:16      |P |DPL|S(0)|   type    |0 0 0 |Param |")
+        gef_print("|                                  |  |   |    | (1 1 0 0) |      |Count |")
+        gef_print("-------------------------------------------------------------------------- 4byte")
+        gef_print("|       SegmentSelector 15:0       |        OffsetInSegment0 15:0        |")
+        gef_print("-------------------------------------------------------------------------- 0byte")
         return
 
     @parse_args
@@ -60785,7 +60896,10 @@ class GdtInfoCommand(GenericCommand):
             self.print_seg_info()
 
         if is_qemu_system() or is_vmware():
-            self.print_gdt_real()
+            if not args.only_ldt:
+                self.print_gdt_real()
+            if not args.only_gdt:
+                self.print_ldt_real()
         else:
             self.print_gdt_example()
 
@@ -76003,7 +76117,7 @@ class QemuRegistersCommand(GenericCommand, BufferingOutput):
         self.out.append("base : {:s}: starting address of GDT (Global Descriptor Table)".format(Color.boldify("{:#x}".format(base))))
         self.out.append("limit: {:s}: (size of GDT) - 1".format(Color.boldify("{:#x}".format(limit))))
 
-        ret = gdb.execute("gdtinfo -q", to_string=True)
+        ret = gdb.execute("gdtinfo -q --only-gdt", to_string=True)
         self.out.append(ret.rstrip())
 
         # IDTR
@@ -76027,6 +76141,9 @@ class QemuRegistersCommand(GenericCommand, BufferingOutput):
         self.out.append("  base : {:s}: starting address of LDT".format(Color.boldify("{:#x}".format(base))))
         self.out.append("  limit: {:s}: segment limit".format(Color.boldify("{:#x}".format(limit))))
         self.out.append("  attr : {:s}: attribute".format(Color.boldify("{:#x}".format(attr))))
+
+        ret = gdb.execute("gdtinfo -q --only-ldt", to_string=True)
+        self.out.append(ret.rstrip())
         return
 
     def qregisters(self):
