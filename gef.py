@@ -10984,7 +10984,7 @@ def read_int_from_memory(addr):
     return unpack(mem)
 
 
-def read_cstring_from_memory(addr, max_length=None, ascii_only=False):
+def read_cstring_from_memory(addr, max_length=None):
     """Return a C-string read from memory."""
     # original GEF uses gdb.Value().cast("char"), but this is too slow if string is too large.
     # for example 0xcccccccccccccccc....(too long), this is in kernel or firmware commonly.
@@ -11016,21 +11016,15 @@ def read_cstring_from_memory(addr, max_length=None, ascii_only=False):
         except gdb.MemoryError:
             break
 
-    # treat as utf-8
+    # check if ascii
     res = res.split(b"\x00")[0]
-    try:
-        ustr = res.decode("utf-8")
-    except UnicodeDecodeError:
-        ustr = String.bytes2str(res)
+    ustr = String.bytes2str(res)
+
+    if ustr and any(x not in String.STRING_PRINTABLE for x in ustr):
+        return None
 
     if len(ustr) > max_length:
         ustr = "{}[...]".format(ustr[:max_length])
-
-    if ascii_only:
-        if ustr and all(x in String.STRING_PRINTABLE for x in ustr):
-            return ustr
-        else:
-            return None
 
     return ustr
 
@@ -11463,7 +11457,7 @@ def u128(x):
 def is_ascii_string(addr):
     """Helper function to determine if the buffer pointed by `addr` is an ASCII string (in GDB)"""
     try:
-        return read_cstring_from_memory(addr, ascii_only=True) is not None
+        return read_cstring_from_memory(addr) is not None
     except gdb.MemoryError:
         return False
 
@@ -45863,7 +45857,7 @@ class MagicCommand(GenericCommand):
             addr = ProcessMap.lookup_address(addr)
             perm = addr.section.permission
             if is_ascii_string(addr.value):
-                val = read_cstring_from_memory(addr.value, ascii_only=True)
+                val = read_cstring_from_memory(addr.value)
                 gef_print("{:45s} {!s} [{!s}] (+{:#010x}){:s}{:s}".format(
                     sym, addr, perm, addr.value - base, RIGHT_ARROW, val,
                 ))
@@ -46097,7 +46091,7 @@ class KernelMagicCommand(GenericCommand):
                 sym, addr, width, perm, RIGHT_ARROW, val, width,
             ))
         elif to_string:
-            val = read_cstring_from_memory(addr, ascii_only=True) or "???"
+            val = read_cstring_from_memory(addr) or "???"
             gef_print("{:42s} {:#0{:d}x} [{:3s}] (+{:#010x}){:s}{:s}".format(
                 sym, addr, width, perm, addr - base, RIGHT_ARROW, val,
             ))
@@ -49461,7 +49455,7 @@ class KernelAddressHeuristicFinder:
                 res = gdb.execute("x/10i {:#x}".format(addr), to_string=True)
                 g = KernelAddressHeuristicFinderUtil.x64_x86_mov_reg_const(res)
                 for x in g:
-                    s = read_cstring_from_memory(x, ascii_only=True)
+                    s = read_cstring_from_memory(x)
                     if not s:
                         return read_int_from_memory(x)
 
@@ -49901,7 +49895,7 @@ class KernelAddressHeuristicFinder:
                             w = read_int_from_memory(v)
                             if not is_valid_addr(w):
                                 continue
-                            s = read_cstring_from_memory(w, ascii_only=True) # name
+                            s = read_cstring_from_memory(w) # name
                             if s and len(s) > 2:
                                 return x
         return None
@@ -50439,7 +50433,7 @@ class KernelAddressHeuristicFinder:
                     name = read_int_from_memory(maybe_vdso_info)
                     if not is_valid_addr(name):
                         continue
-                    if read_cstring_from_memory(name, ascii_only=True) == "vdso":
+                    if read_cstring_from_memory(name) == "vdso":
                         return maybe_vdso_info
         return None
 
@@ -50509,7 +50503,7 @@ class KernelAddressHeuristicFinder:
                     name = read_int_from_memory(maybe_vdso_lookup)
                     if not is_valid_addr(name):
                         continue
-                    if read_cstring_from_memory(name, ascii_only=True) == "vdso":
+                    if read_cstring_from_memory(name) == "vdso":
                         return maybe_vdso_lookup
         return None
 
@@ -51345,12 +51339,12 @@ class KernelAddressHeuristicFinder:
                 for x in g:
                     name_ptr = read_int_from_memory(x + 0x8 * 2) # sizeof(resource_size_t) == 8
                     if name_ptr and is_valid_addr(name_ptr):
-                        name = read_cstring_from_memory(name_ptr, ascii_only=True)
+                        name = read_cstring_from_memory(name_ptr)
                         if name == "PCI IO":
                             return x
                     name_ptr = read_int_from_memory(x + 0x4 * 2) # sizeof(resource_size_t) == 4
                     if name_ptr and is_valid_addr(name_ptr):
-                        name = read_cstring_from_memory(name_ptr, ascii_only=True)
+                        name = read_cstring_from_memory(name_ptr)
                         if name == "PCI IO":
                             return x
 
@@ -51407,13 +51401,13 @@ class KernelAddressHeuristicFinder:
             offset_name = None
             name_ptr = read_int_from_memory(x + 0x8 * 2) # sizeof(resource_size_t) == 8
             if name_ptr and is_valid_addr(name_ptr):
-                name = read_cstring_from_memory(name_ptr, ascii_only=True)
+                name = read_cstring_from_memory(name_ptr)
                 if name == "PCI IO":
                     offset_name = 0x8 * 2
             if offset_name is None:
                 name_ptr = read_int_from_memory(x + 0x4 * 2) # sizeof(resource_size_t) == 4
                 if name_ptr and is_valid_addr(name_ptr):
-                    name = read_cstring_from_memory(name_ptr, ascii_only=True)
+                    name = read_cstring_from_memory(name_ptr)
                     if name == "PCI IO":
                         offset_name = 0x4 * 2
 
@@ -51423,7 +51417,7 @@ class KernelAddressHeuristicFinder:
                     diff = (current_arch.ptrsize * i)
                     name_ptr = read_int_from_memory(x + diff)
                     if name_ptr and is_valid_addr(name_ptr):
-                        name = read_cstring_from_memory(name_ptr, ascii_only=True)
+                        name = read_cstring_from_memory(name_ptr)
                         if name == "PCI mem":
                             return x + diff - offset_name
         return None
@@ -57981,7 +57975,7 @@ class KernelFileSystemsCommand(GenericCommand):
         while fst != 0:
             # parse name
             name_addr = read_int_from_memory(fst + self.offset_name)
-            name = read_cstring_from_memory(name_addr, ascii_only=True)
+            name = read_cstring_from_memory(name_addr)
 
             # parse suber_block
             fs_supers = read_int_from_memory(fst + self.offset_fs_supers)
@@ -65853,7 +65847,7 @@ class BuddyDumpCommand(GenericCommand):
         for i in range(6):
             zone = self.nodes[0] + self.sizeof_zone * i
             name_ptr = read_int_from_memory(zone + self.offset_name)
-            name = read_cstring_from_memory(name_ptr, ascii_only=True)
+            name = read_cstring_from_memory(name_ptr)
             if not name:
                 break
             self.MAX_NR_ZONES += 1
@@ -66763,7 +66757,7 @@ class KernelBpfCommand(GenericCommand):
                 continue
             if (x & 2) != 2: # tag
                 continue
-            y = read_cstring_from_memory(x, ascii_only=True)
+            y = read_cstring_from_memory(x)
             if y and len(y) > 8 or y == "bpf":
                 continue
             z = read_int_from_memory(x)
@@ -67649,14 +67643,14 @@ class KernelDeviceIOCommand(GenericCommand):
         if not self.sizeof_resource_size_t:
             name_ptr = read_int_from_memory(addr + 0x8 * 2) # sizeof(resource_size_t) == 8
             if name_ptr and is_valid_addr(name_ptr):
-                name = read_cstring_from_memory(name_ptr, ascii_only=True)
+                name = read_cstring_from_memory(name_ptr)
                 if name in ["PCI IO", "PCI mem"]:
                     self.sizeof_resource_size_t = 0x8
 
             if not self.sizeof_resource_size_t:
                 name_ptr = read_int_from_memory(addr + 0x4 * 2) # sizeof(resource_size_t) == 4
                 if name_ptr and is_valid_addr(name_ptr):
-                    name = read_cstring_from_memory(name_ptr, ascii_only=True)
+                    name = read_cstring_from_memory(name_ptr)
                     if name in ["PCI IO", "PCI mem"]:
                         self.sizeof_resource_size_t = 0x4
 
@@ -67958,7 +67952,7 @@ class KernelDmaBufCommand(GenericCommand):
         for i in range(1, 50):
             top = first_dma_buf - self.offset_list_node
             x = read_int_from_memory(top + current_arch.ptrsize * i)
-            s = read_cstring_from_memory(x, ascii_only=True)
+            s = read_cstring_from_memory(x)
             if s and len(s) >= 3:
                 self.offset_exp_name = current_arch.ptrsize * i
                 self.offset_name = current_arch.ptrsize * (i + 1)
@@ -68487,7 +68481,7 @@ class KernelIrqCommand(GenericCommand):
             x = read_int_from_memory(action + current_arch.ptrsize * i)
             if not is_valid_addr(x):
                 continue
-            s = read_cstring_from_memory(x, ascii_only=True)
+            s = read_cstring_from_memory(x)
             if s and len(s) >= 4:
                 self.offset_name = current_arch.ptrsize * i
                 if not self.quiet:
@@ -68517,7 +68511,7 @@ class KernelIrqCommand(GenericCommand):
             else:
                 handler = read_int_from_memory(action + self.offset_handler)
                 name_ptr = read_int_from_memory(action + self.offset_name)
-                name = read_cstring_from_memory(name_ptr, ascii_only=True)
+                name = read_cstring_from_memory(name_ptr)
                 entries[irq] = [desc, action, handler, name]
 
         fmt = "{:3s} {:18s} {:18s} {:24s} {:18s}"
