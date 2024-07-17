@@ -25823,7 +25823,7 @@ class ContextCommand(GenericCommand):
             Color.colorify("ReadOnly", Config.get_gef_setting("theme.address_readonly")),
             Color.colorify("None", Config.get_gef_setting("theme.address_valid_but_none")),
             Color.colorify("RWX", Config.get_gef_setting("theme.address_rwx")),
-            Color.colorify("String", Config.get_gef_setting("theme.dereference_string"))
+            Color.colorify("String", Config.get_gef_setting("theme.dereference_string")),
         )
         gef_print(legend)
         Cache.cached_context_legend = legend
@@ -26049,6 +26049,7 @@ class ContextCommand(GenericCommand):
         show_opcodes_size = Config.get_gef_setting("context.show_opcodes_size")
         past_lines_color = Config.get_gef_setting("theme.context_code_past")
         future_lines_color = Config.get_gef_setting("theme.context_code_future")
+        use_capstone = Config.get_gef_setting("context.use_capstone")
         padding = " " * len(RIGHT_ARROW[1:])
 
         if current_arch is None and is_remote_debug():
@@ -26067,7 +26068,9 @@ class ContextCommand(GenericCommand):
             frame = None
             arch_name = "{}:{}".format(current_arch.arch.lower(), "???")
 
-        if Config.get_gef_setting("context.use_capstone"):
+        if use_native_x_command:
+            arch_name += " (gdb-native)"
+        elif use_capstone:
             arch_name += " (capstone)"
         else:
             arch_name += " (gdb-native)"
@@ -26902,14 +26905,18 @@ class ContextCommand(GenericCommand):
         if is_kgdb():
             return
 
-        self.context_title("threads")
-
+        nb_lines_threads = Config.get_gef_setting("context.nb_lines_threads")
         threads = gdb.selected_inferior().threads()[::-1]
-        idx = Config.get_gef_setting("context.nb_lines_threads")
-        if idx > 0:
-            threads = threads[0:idx]
 
-        if idx == 0:
+        if nb_lines_threads < 0:
+            shown_threads = len(threads)
+        else:
+            shown_threads = nb_lines_threads
+        self.context_title("threads:{:d}/{:d}".format(shown_threads, len(threads)))
+
+        if nb_lines_threads > 0:
+            threads = threads[:nb_lines_threads]
+        elif nb_lines_threads == 0:
             return
 
         if not threads:
