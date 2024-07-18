@@ -2581,11 +2581,15 @@ class Instruction:
         else:
             opcodes_len = int(format_spec[:-1])
 
-        opcodes_text = "".join("{:02x}".format(b) for b in self.opcodes) # e.g.: "488d0de51e0100"
-        # ex1: spec:"4o", opcodes:01020304   -> 01020304
-        # ex2: spec:"4o", opcodes:0102030405 -> 010203..
-        if opcodes_len < len(self.opcodes):
-            opcodes_text = opcodes_text[:opcodes_len * 2 - 2] + ".."
+        if opcodes_len == 0:
+            opcodes_text = ""
+        else:
+            opcodes_text = "".join("{:02x}".format(b) for b in self.opcodes) # e.g.: "488d0de51e0100"
+            # ex1: spec:"4o", opcodes:01020304   -> 01020304
+            # ex2: spec:"4o", opcodes:0102030405 -> 010203..
+            if opcodes_len < len(self.opcodes):
+                opcodes_text = opcodes_text[:opcodes_len * 2 - 2] + ".."
+
         if to_highlight:
             color_opcode = Config.get_gef_setting("theme.disassemble_opcode_highlight")
         else:
@@ -26081,23 +26085,19 @@ class ContextCommand(GenericCommand):
             else:
                 bp_prefix = " "
 
-            # insn to string
-            if show_opcodes_size == 0:
-                text = str(insn)
+            # insn to string with coloring by address against pc
+            if insn.address < pc:
+                text = "{:{}o}".format(insn, show_opcodes_size)
+                if past_lines_color:
+                    text = Color.remove_color(text)
+                    text = Color.colorify(text, past_lines_color)
+            elif insn.address == pc:
+                text = "{:{}O}".format(insn, show_opcodes_size)
             else:
-                # coloring by address against pc
-                if insn.address < pc:
-                    text = "{:{}o}".format(insn, show_opcodes_size)
-                    if past_lines_color:
-                        text = Color.remove_color(text)
-                        text = Color.colorify(text, past_lines_color)
-                elif insn.address == pc:
-                    text = "{:{}O}".format(insn, show_opcodes_size)
-                else:
-                    text = "{:{}o}".format(insn, show_opcodes_size)
-                    if future_lines_color:
-                        text = Color.remove_color(text)
-                        text = Color.colorify(text, future_lines_color)
+                text = "{:{}o}".format(insn, show_opcodes_size)
+                if future_lines_color:
+                    text = Color.remove_color(text)
+                    text = Color.colorify(text, future_lines_color)
 
             # bp prefix and branch info
             if insn.address != pc:
@@ -26142,11 +26142,7 @@ class ContextCommand(GenericCommand):
                 try:
                     if delay_slot:
                         next_insn = list(Disasm.gef_disassemble(insn.address, 2))[-1]
-                        if show_opcodes_size == 0:
-                            text = str(next_insn)
-                        else:
-                            insn_fmt = "{{:{}o}}".format(show_opcodes_size)
-                            text = insn_fmt.format(next_insn)
+                        text = "{:{}o}".format(next_insn, show_opcodes_size)
                         text = "{}{}{}\t{}".format(bp_prefix, padding, text, Color.colorify("Maybe delay-slot", "bold yellow"))
                         gef_print(text)
                 except Exception:
@@ -26155,11 +26151,7 @@ class ContextCommand(GenericCommand):
                 # branch target address
                 try:
                     for i, tinsn in enumerate(Disasm.gef_disassemble(target, nb_insn)):
-                        if show_opcodes_size == 0:
-                            text = str(tinsn)
-                        else:
-                            insn_fmt = "{{:{}o}}".format(show_opcodes_size)
-                            text = insn_fmt.format(tinsn)
+                        text = "{:{}o}".format(tinsn, show_opcodes_size)
                         if i == 0:
                             gef_print("") # need blank line
                             text = "   {} {}".format(RIGHT_ARROW[1:-1], text)
