@@ -17692,20 +17692,9 @@ class EditFlagsCommand(GenericCommand):
                 gdb.execute("set ({:s}) = {:#x}".format(current_arch.flag_register, new_flags))
         return
 
-    def bits_split(self, x, bits=32):
-        out = ""
-        for i in range(bits):
-            if x & (1 << i):
-                out = "1" + out
-            else:
-                out = "0" + out
-            if i % 4 == 3:
-                out = "_" + out
-        return "0b" + out[1:]
-
     def verbose_x86(self):
         eflags = get_register("$eflags")
-        gef_print("{:s}  {:s}".format(self.bits_split(eflags), Color.colorify("MASK", "bold")))
+        gef_print("{:s}  {:s}".format(BitInfo.bits_split(eflags, 32), Color.colorify("MASK", "bold")))
 
         def c(msg):
             mask = int(msg.split()[0], 16)
@@ -17748,7 +17737,7 @@ class EditFlagsCommand(GenericCommand):
 
     def verbose_arm32(self):
         cpsr = get_register("$cpsr")
-        gef_print("{:s}  {:s}".format(self.bits_split(cpsr), Color.colorify("MASK", "bold")))
+        gef_print("{:s}  {:s}".format(BitInfo.bits_split(cpsr, 32), Color.colorify("MASK", "bold")))
 
         def c(msg):
             mask = int(msg.split()[0], 16)
@@ -17789,7 +17778,7 @@ class EditFlagsCommand(GenericCommand):
 
     def verbose_arm64(self):
         cpsr = get_register("$cpsr")
-        gef_print("{:s}  {:s}".format(self.bits_split(cpsr), Color.colorify("MASK", "bold")))
+        gef_print("{:s}  {:s}".format(BitInfo.bits_split(cpsr, 32), Color.colorify("MASK", "bold")))
 
         def c(msg):
             mask = int(msg.split()[0], 16)
@@ -46679,18 +46668,6 @@ class FpuCommand(GenericCommand):
         ptr = ctypes.cast(ctypes.addressof(value), BYTES)
         x = ["{:02x}".format(int(x) & 0xff) for x in ptr[0][::-1]]
         return int("".join(x), 16)
-
-    def bits_split(self, x, bits=32):
-        # 0xaaaabbbb -> 0xaaaa_bbbb
-        out = ""
-        for i in range(bits):
-            if x & (1 << i):
-                out = "1" + out
-            else:
-                out = "0" + out
-            if i % 4 == 3:
-                out = "_" + out
-        return "0b" + out[1:]
 
     def print_fpu_arm(self):
         red = lambda x: Color.colorify("{:4s}".format(x), "bold red")
@@ -75766,10 +75743,11 @@ class BitInfo:
         self.bit_info = bit_info
         return
 
-    def bits_split(self, x):
+    @staticmethod
+    def bits_split(x, bits):
         # split by 4bits. e.g.: 0bXXYYYY -> 0b00XX_YYYY
         out = ""
-        for i in range(self.register_bit):
+        for i in range(bits):
             if x & (1 << i):
                 out = "1" + out
             else:
@@ -75782,7 +75760,8 @@ class BitInfo:
         regname = Color.colorify(self.name, "bold red")
         value_str = Color.colorify_hex(regval, "bold yellow")
         if split:
-            value_str += Color.colorify(" (={:s})".format(self.bits_split(regval)), "bold yellow")
+            bit_split_str = BitInfo.bits_split(regval, self.register_bit)
+            value_str += Color.colorify(" (={:s})".format(bit_split_str), "bold yellow")
         self.out.append("{:s} = {:s}".format(regname, value_str))
         return
 
