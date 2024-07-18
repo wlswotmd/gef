@@ -67438,9 +67438,13 @@ class KernelIpcsCommand(GenericCommand):
                         break
             if self.offset_sem_nsems:
                 nsems = read_int_from_memory(e + self.offset_sem_nsems)
-                self.out.append("{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:d}".format(e, semid, key, uid, gid, mode, nsems))
+                self.out.append("{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:d}".format(
+                    e, semid, key, uid, gid, mode, nsems,
+                ))
             else:
-                self.out.append("{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:s}".format(e, semid, key, uid, gid, mode, "?"))
+                self.out.append("{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:s}".format(
+                    e, semid, key, uid, gid, mode, "?",
+                ))
 
         return
 
@@ -67485,11 +67489,13 @@ class KernelIpcsCommand(GenericCommand):
             if self.offset_q_cbytes:
                 q_cbytes = read_int_from_memory(e + self.offset_q_cbytes)
                 q_qnum = read_int_from_memory(e + self.offset_q_qnum)
-                fmt = "{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:<#10x} {:<8d}"
-                self.out.append(fmt.format(e, msqid, key, uid, gid, mode, q_cbytes, q_qnum))
+                self.out.append("{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:<#10x} {:<8d}".format(
+                    e, msqid, key, uid, gid, mode, q_cbytes, q_qnum,
+                ))
             else:
-                fmt = "{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:10s} {:8s}"
-                self.out.append(fmt.format(e, msqid, key, uid, gid, mode, "?", "?"))
+                self.out.append("{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:10s} {:8s}".format(
+                    e, msqid, key, uid, gid, mode, "?", "?",
+                ))
         return
 
     def dump_ipc_shm_ids(self, ipc_ids_ptr):
@@ -67527,11 +67533,13 @@ class KernelIpcsCommand(GenericCommand):
             if self.offset_shm_nattch:
                 nattch = read_int_from_memory(e + self.offset_shm_nattch)
                 segsz = read_int_from_memory(e + self.offset_shm_segsz)
-                fmt = "{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:<#10x} {:<6d}"
-                self.out.append(fmt.format(e, shmid, key, uid, gid, mode, segsz, nattch))
+                self.out.append("{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:<#10x} {:<6d}".format(
+                    e, shmid, key, uid, gid, mode, segsz, nattch,
+                ))
             else:
-                fmt = "{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:10s} {:6s}"
-                self.out.append(fmt.format(e, shmid, key, uid, gid, mode, "?", "?"))
+                self.out.append("{:#018x} {:<5d} {:#010x} {:<4d} {:<4d} {:#5o} {:10s} {:6s}".format(
+                    e, shmid, key, uid, gid, mode, "?", "?",
+                ))
         return
 
     @parse_args
@@ -67753,8 +67761,9 @@ class KernelDeviceIOCommand(GenericCommand):
             self.out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
 
             for addr, start, end, name, flags in sorted(resources, key=lambda x: x[1]):
-                fmt = "{:#018x} {:#08x}-{:#08x} {:{:d}s} {:#010x} ({:s})"
-                self.out.append(fmt.format(addr, start, end, name, name_width, flags, self.get_flags_str(flags)))
+                self.out.append("{:#018x} {:#08x}-{:#08x} {:{:d}s} {:#010x} ({:s})".format(
+                    addr, start, end, name, name_width, flags, self.get_flags_str(flags),
+                ))
 
         # iomem
         iomem_resource = KernelAddressHeuristicFinder.get_iomem_resource()
@@ -67776,8 +67785,9 @@ class KernelDeviceIOCommand(GenericCommand):
             self.out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
 
             for addr, start, end, name, flags in sorted(resources, key=lambda x: x[1]):
-                fmt = "{:#018x} {:#018x}-{:#018x} {:{:d}s} {:#010x} ({:s})"
-                self.out.append(fmt.format(addr, start, end, name, name_width, flags, self.get_flags_str(flags)))
+                self.out.append("{:#018x} {:#018x}-{:#018x} {:{:d}s} {:#010x} ({:s})".format(
+                    addr, start, end, name, name_width, flags, self.get_flags_str(flags),
+                ))
 
         # print
         if self.out:
@@ -68072,8 +68082,9 @@ class KernelDmaBufCommand(GenericCommand):
                 name = "<none>"
 
             # dump
-            fmt = "{:#018x} {:#018x} {:16s} {:16s} {:#018x} {:#018x}"
-            self.out.append(fmt.format(dma_buf, size, exp_name, name, file, priv))
+            self.out.append("{:#018x} {:#018x} {:16s} {:16s} {:#018x} {:#018x}".format(
+                dma_buf, size, exp_name, name, file, priv,
+            ))
 
             # dump sgl
             sgl = read_int_from_memory(priv + self.offset_sg_table)
