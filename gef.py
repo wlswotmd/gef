@@ -86039,7 +86039,7 @@ class GefConfigCommand(GenericCommand):
             names = [x for x in Config.__gef_config__.keys() if x.startswith(args.setting_name)]
             if not names:
                 return
-            if len(names) == 1:
+            if len(names) == 1 or (args.setting_name in Config.__gef_config__): # uniquely identified or exact match
                 gef_print(titlify("GEF configuration setting: {:s}".format(names[0])))
                 self.print_setting(names[0], verbose=True)
             else:
