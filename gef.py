@@ -52307,46 +52307,47 @@ class KernelTaskCommand(GenericCommand):
     _note_ += "\n"
     _note_ += "Simplified task_struct structure:\n"
     _note_ += "\n"
-    _note_ += "    +-init_task---+      +-->+-kstack----+    +--->+-vm_area_struct--+\n"
-    _note_ += "    | list_head   |--+   |   | ...       |    |    | vm_start        |\n"
-    _note_ += "    +-------------+  |   |   | ...       |    |    | vm_end          |\n"
-    _note_ += "                     |   |   | ...       |    |    | vm_next (~6.1)  |\n"
-    _note_ += "+--------------------+   |   | ...       |    |    | ...             |\n"
-    _note_ += "|                        |   | ...       |    |    | vm_flags        |\n"
-    _note_ += "|   +-task_struct--+     |   | ...       |    |    | vm_file         |-----+\n"
-    _note_ += "|   | ...          |     |   | pt_regs   |    |    | ...             |     |\n"
-    _note_ += "|   | stack        |-----+   +-----------+    |    +-----------------+     |\n"
-    _note_ += "|   | ...          |                          |                            |\n"
-    _note_ += "+-->| tasks        |-->...               +----+<------------------------+  |\n"
-    _note_ += "    | ...          |                     |                              |  |\n"
-    _note_ += "    | mm           |-->+-mm_struct----+  |  +--->+-maple_node(6.1~)--+  |  |\n"
-    _note_ += "    | ...          |   | mmap (~6.1)  |--+  |    | ...               |  |  |\n"
-    _note_ += "    | pid          |   | ...          |     |    | mr64|ma64|alloc   |  |  |\n"
-    _note_ += "    | tid          |   | mm_mt (6.1~) |     |    |   ...             |  |  |\n"
-    _note_ += "    | ...          |   |   ma_root    |-----+    |   slot[]          |--+  |\n"
-    _note_ += "    | stack_canary |   | ...          |          +-------------------+     |\n"
-    _note_ += "    | ...          |   +--------------+                                    |\n"
-    _note_ += "    | group_leader |                                          +------------+                   +-mount----------+\n"
-    _note_ += "    | ...          |         +-->+-cred--------------+        |                                | ...            |\n"
-    _note_ += "    | thread_group |-->...   |   | ...               |        |                                | mnt_parent     |-->mount\n"
-    _note_ += "    | ...          |         |   | uid, gid          |        |                                | mnt_mountpoint |-->dentry\n"
-    _note_ += "    | cred         |---------+   | suid, sgid        |        |                         +----->| mnt (vfsmount) |\n"
-    _note_ += "    | ...          |             | euid, egid        |        |                         |      |   mnt_root     |-->dentry\n"
-    _note_ += "    | comm[16]     |             | fsuid, fsgid      |        |                         |      |   ...          |\n"
-    _note_ += "    | ...          |             | ..., user_ns, ... |        |                         |      | ...            |\n"
-    _note_ += "    | files        |--+          +-------------------+        |                         |      +----------------+\n"
-    _note_ += "    | ...          |  |                                       |                         |\n"
-    _note_ += "    | nsproxy      |------->+-nsproxy----------------+        |                         | +--->+-dentry-----+\n"
-    _note_ += "    | ...          |  |     | count                  |        |                         | |    | ...        |\n"
-    _note_ += "    | sighand      |-----+  | uts_ns, ipc_ns, mnt_ns |        |                         | |    | d_parent   |-->dentry\n"
-    _note_ += "    | ...          |  |  |  | pid_ns_for_children    |        |                         | |    | ...        |\n"
-    _note_ += "    +--------------+  |  |  | net_ns, time_ns, ...   |        |                         | |    | d_inode    |--+\n"
-    _note_ += "                      |  |  +------------------------+        |                         | |    | d_iname    |  |\n"
-    _note_ += "                      |  |                                    |                         | |    | ...        |  |\n"
-    _note_ += "                      |  +->+-sighand_struct----+             |                         | |    +------------+  |\n"
-    _note_ += "                      |     | ...               |             v                         | |                    |\n"
-    _note_ += "                      |     | action[64]        |             +--->+-file------------+  | | +------------------+\n"
-    _note_ += "+---------------------+     +-------------------+             |    | ...             |  | | |\n"
+    _note_ += "    +-init_task-+\n"
+    _note_ += "    | list_head |---+    +-->+-kstack----------+    +--->+-vm_area_struct--+\n"
+    _note_ += "    +-----------+   |    |   | (thread_info)   |    |    | vm_start        |\n"
+    _note_ += "                    |    |   | STACK_END_MAGIC |    |    | vm_end          |\n"
+    _note_ += "+-------------------+    |   | ...             |    |    | vm_next (~6.1)  |\n"
+    _note_ += "|                        |   | ...             |    |    | ...             |\n"
+    _note_ += "|   +-task_struct---+    |   | ...             |    |    | vm_flags        |\n"
+    _note_ += "|   | (thread_info) |    |   | ...             |    |    | vm_file         |-----+\n"
+    _note_ += "|   | ...           |    |   | pt_regs         |    |    | ...             |     |\n"
+    _note_ += "|   | stack         |----+   +-----------------+    |    +-----------------+     |\n"
+    _note_ += "|   | ...           |                               |                            |\n"
+    _note_ += "+-->| tasks         |-->...               +---------+<------------------------+  |\n"
+    _note_ += "    | ...           |                     |                                   |  |\n"
+    _note_ += "    | mm            |-->+-mm_struct----+  |  +-------->+-maple_node(6.1~)--+  |  |\n"
+    _note_ += "    | ...           |   | mmap (~6.1)  |--+  |         | ...               |  |  |\n"
+    _note_ += "    | pid           |   | ...          |     |         | mr64|ma64|alloc   |  |  |\n"
+    _note_ += "    | tid           |   | mm_mt (6.1~) |     |         |   ...             |  |  |\n"
+    _note_ += "    | ...           |   |   ma_root    |-----+         |   slot[]          |--+  |\n"
+    _note_ += "    | stack_canary  |   | ...          |               +-------------------+     |\n"
+    _note_ += "    | ...           |   +--------------+                                         |\n"
+    _note_ += "    | group_leader  |                                         +------------------+             +-mount----------+\n"
+    _note_ += "    | ...           |         +-->+-cred--------------+       |                                | ...            |\n"
+    _note_ += "    | thread_group  |-->...   |   | ...               |       |                                | mnt_parent     |-->mount\n"
+    _note_ += "    | ...           |         |   | uid, gid          |       |                                | mnt_mountpoint |-->dentry\n"
+    _note_ += "    | cred          |---------+   | suid, sgid        |       |                         +----->| mnt (vfsmount) |\n"
+    _note_ += "    | ...           |             | euid, egid        |       |                         |      |   mnt_root     |-->dentry\n"
+    _note_ += "    | comm[16]      |             | fsuid, fsgid      |       |                         |      |   ...          |\n"
+    _note_ += "    | ...           |             | ..., user_ns, ... |       |                         |      | ...            |\n"
+    _note_ += "    | files         |--+          +-------------------+       |                         |      +----------------+\n"
+    _note_ += "    | ...           |  |                                      |                         |\n"
+    _note_ += "    | nsproxy       |------->+-nsproxy----------------+       |                         | +--->+-dentry-----+\n"
+    _note_ += "    | ...           |  |     | count                  |       |                         | |    | ...        |\n"
+    _note_ += "    | sighand       |-----+  | uts_ns, ipc_ns, mnt_ns |       |                         | |    | d_parent   |-->dentry\n"
+    _note_ += "    | ...           |  |  |  | pid_ns_for_children    |       |                         | |    | ...        |\n"
+    _note_ += "    | seccomp       |  |  |  | net_ns, time_ns, ...   |       |                         | |    | d_inode    |--+\n"
+    _note_ += "    | ...           |  |  |  +------------------------+       |                         | |    | d_iname    |  |\n"
+    _note_ += "    +---------------+  |  |                                   |                         | |    | ...        |  |\n"
+    _note_ += "                       |  +->+-sighand_struct----+            |                         | |    +------------+  |\n"
+    _note_ += "                       |     | ...               |            v                         | |                    |\n"
+    _note_ += "                       |     | action[64]        |            +--->+-file------------+  | | +------------------+\n"
+    _note_ += "+----------------------+     +-------------------+            |    | ...             |  | | |\n"
     _note_ += "|                                                             |    | f_path          |  | | v\n"
     _note_ += "+-->+-files_struct-+  +-->+-fdtable---+  +-->+-file*[]-----+  |    |   mnt           |--+ | +->+-inode------+\n"
     _note_ += "    | ...          |  |   | max_fds   |  |   | [0]         |--+    |   dentry        |----+ |  | ...        |\n"
@@ -54442,18 +54443,20 @@ class KernelTaskCommand(GenericCommand):
             if pid == 0:
                 continue
 
+            additional = False
+
             # additional information (maps)
             if args.print_maps:
+                additional = True
                 mms = self.get_mm(task, self.offset_mm)
                 if mms:
                     out.append(titlify("memory map of `{:s}`".format(comm_string)))
                     for mm in mms:
                         out.append("{:#018x}-{:#018x} {:s} {:s}".format(mm.start, mm.end, mm.flags, mm.file))
-                    if not args.print_regs:
-                        out.append(titlify(""))
 
             # additional information (regs)
-            if args.print_regs:
+            if proctype == "U" and args.print_regs:
+                additional = True
                 regs = self.get_regs(kstack, self.offset_ptregs)
                 syscall_table = get_syscall_table().table
                 syscall_nr_regs = ["orig_rax", "orig_eax", "r7", "x8"]
@@ -54469,11 +54472,10 @@ class KernelTaskCommand(GenericCommand):
                             out.append("{:16s}: {:s}".format(
                                 k, AddressUtil.format_address(v, long_fmt=True,
                             )))
-                    if not args.print_fd:
-                        out.append(titlify(""))
 
             # additional information (files)
             if proctype == "U" and args.print_fd:
+                additional = True
                 out.append(titlify("file descriptors of `{:s}`".format(comm_string)))
                 fmt = "{:3s} {:18s} {:18s} {:18s} {:s}"
                 legend = ["fd", "struct file", "struct dentry", "struct inode", "path"]
@@ -54492,11 +54494,10 @@ class KernelTaskCommand(GenericCommand):
                         inode = read_int_from_memory(dentry + self.offset_d_inode)
                         filepath = self.get_filepath(file)
                         out.append("{:<3d} {:#018x} {:#018x} {:#018x} {:s}".format(i, file, dentry, inode, filepath))
-                    if not args.print_sighand:
-                        out.append(titlify(""))
 
             # additional information (sighands)
             if proctype == "U" and args.print_sighand:
+                additional = True
                 out.append(titlify("sighandlers of `{:s}`".format(comm_string)))
                 fmt = "{:14s} {:18s} {:18s} {:18s}"
                 legend = ["sig", "sigaction", "handler", "flags"]
@@ -54517,11 +54518,10 @@ class KernelTaskCommand(GenericCommand):
                         handler = "{:#018x}".format(handler)
                     flags = read_int_from_memory(sigaction + current_arch.ptrsize * 1)
                     out.append("{:<2d} {:11s} {:#018x} {:18s} {:#018x}".format(i + 1, signame, sigaction, handler, flags))
-                if not args.print_namespace:
-                    out.append(titlify(""))
 
             # additional information (namespace)
             if proctype == "U" and args.print_namespace:
+                additional = True
                 out.append(titlify("namespace of `{:s}`".format(comm_string)))
                 fmt = "{:30s} {:18s} {:8s}"
                 legend = ["name", "value", "init_ns?"]
@@ -54543,6 +54543,9 @@ class KernelTaskCommand(GenericCommand):
                         init_value = read_int_from_memory(init_nsproxy + current_arch.ptrsize * i)
                         is_init_ns = str(value == init_value)
                     out.append("{:30s} {:#018x} {:8s}".format("nsproxy->" + name, value, is_init_ns))
+
+            # print separator
+            if additional:
                 out.append(titlify(""))
         return out
 
