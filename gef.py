@@ -52292,6 +52292,8 @@ class KernelTaskCommand(GenericCommand):
                         help="print file descriptors for each user process.")
     parser.add_argument("-s", "--print-sighand", action="store_true",
                         help="print signals for each user process.")
+    parser.add_argument("-S", "--print-seccomp", action="store_true",
+                        help="print seccomp informations for each user process.")
     parser.add_argument("-N", "--print-namespace", action="store_true",
                         help="print namespaces for each user process.")
     parser.add_argument("-u", "--user-process-only", action="store_true",
@@ -52371,6 +52373,7 @@ class KernelTaskCommand(GenericCommand):
         self.offset_sighand = None
         self.offset_nsproxy = None
         self.offset_signal = None
+        self.offset_seccomp = None
         # files_struct
         self.offset_fdt = None
         # kstack
@@ -52396,6 +52399,11 @@ class KernelTaskCommand(GenericCommand):
         # sighand_struct
         self.offset_action = None
         self.sizeof_action = None
+        # seccomp_filter
+        self.offset_prev = None
+        self.offset_prog = None
+        # bpf_prog
+        self.offset_bpf_func = None
         return
 
     def quiet_info(self, msg):
@@ -52606,6 +52614,18 @@ class KernelTaskCommand(GenericCommand):
                 return bool(flags & (1 << 8)) # TIF_SECCOMP
         elif is_arm32():
             if kversion >= "6.0":
+                flags = read_int_from_memory(thread_info)
+                return bool(flags & (1 << 23)) # TIF_SECCOMP
+            elif kversion >= "5.16":
+                flags = read_int_from_memory(thread_info)
+                return bool(flags & (1 << 7)) # TIF_SECCOMP
+            elif kversion >= "5.15":
+                flags = read_int_from_memory(thread_info)
+                return bool(flags & (1 << 23)) # TIF_SECCOMP
+            elif kversion >= "5.11":
+                flags = read_int_from_memory(thread_info)
+                return bool(flags & (1 << 7)) # TIF_SECCOMP
+            elif kversion >= "5.10":
                 flags = read_int_from_memory(thread_info)
                 return bool(flags & (1 << 23)) # TIF_SECCOMP
             elif kversion >= "4.3":
@@ -52923,6 +52943,168 @@ class KernelTaskCommand(GenericCommand):
         };
         """
         return offset_nsproxy + current_arch.ptrsize
+
+    def get_offset_seccomp(self, task_addrs, offset_signal):
+        """
+        struct task_struct {
+            ...
+            struct signal_struct *signal;
+            struct sighand_struct __rcu *sighand;
+            sigset_t blocked;
+            sigset_t real_blocked;
+            sigset_t saved_sigmask;
+            struct sigpending {
+                struct list_head list;
+                sigset_t signal;
+            } pending;
+            unsigned long sas_ss_sp;
+            size_t sas_ss_size;
+            unsigned int sas_ss_flags;
+            struct callback_head *task_works;
+        #ifdef CONFIG_AUDIT
+        #ifdef CONFIG_AUDITSYSCALL
+            struct audit_context *audit_context;
+        #endif
+            kuid_t loginuid;
+            unsigned int sessionid;
+        #endif
+            struct seccomp {
+                int mode;
+                atomic_t filter_count;
+                struct seccomp_filter *filter;
+            } seccomp;
+            ...
+        }
+        """
+
+        # search seccomped process
+        for task in task_addrs:
+            if self.has_seccomp(task):
+                seccomped_task = task
+                break
+        else:
+            # Not found
+            return None
+
+        """
+        0xffff99353fe721d8|+0x0000|+000: 0xffff99353fe6e600 <- &task_struct.signal
+        0xffff99353fe721e0|+0x0008|+001: 0x0000000000004002
+        0xffff99353fe721e8|+0x0010|+002: 0x0000000000000000
+        0xffff99353fe721f0|+0x0018|+003: 0x0000000000000000
+        0xffff99353fe721f8|+0x0020|+004: 0xffff99353fe721f8 <- &task_struct.pending.list
+        0xffff99353fe72200|+0x0028|+005: 0xffff99353fe721f8
+        0xffff99353fe72208|+0x0030|+006: 0x0000000000000000
+        0xffff99353fe72210|+0x0038|+007: 0x0000000000000000
+        0xffff99353fe72218|+0x0040|+008: 0x0000000000000000
+        0xffff99353fe72220|+0x0048|+009: 0x0000000000000002
+        0xffff99353fe72228|+0x0050|+010: 0x0000000000000000
+        0xffff99353fe72230|+0x0058|+011: 0x0000000000000000
+        0xffff99353fe72238|+0x0060|+012: 0xffffffffffffffff
+        0xffff99353fe72240|+0x0068|+013: 0x0000002300000002 <- &task_struct.seccomp
+        0xffff99353fe72248|+0x0070|+014: 0xffff9934c39e2300 <- &task_struct.seccomp.filter
+        0xffff99353fe72250|+0x0078|+015: 0x0000000000000003
+        0xffff99353fe72258|+0x0080|+016: 0x0000000000000004
+        """
+        # search sigpending
+        base = offset_signal + current_arch.ptrsize
+        for i in range(0x100):
+            if is_double_link_list(seccomped_task + base + current_arch.ptrsize * i):
+                base += current_arch.ptrsize * i * 2
+                break
+        else:
+            # Not found sigpending
+            return None
+
+        # search seccomp
+        for i in range(0x100):
+            offset_filter = base + current_arch.ptrsize * i
+
+            filt = read_int_from_memory(seccomped_task + offset_filter)
+            if not is_valid_addr(filt):
+                continue
+
+            mode = u32(read_memory(seccomped_task + offset_filter - 4, 4))
+            filtcnt = u32(read_memory(seccomped_task + offset_filter - 4 * 2, 4))
+
+            """
+            #define SECCOMP_MODE_DISABLED 0
+            #define SECCOMP_MODE_STRICT   1
+            #define SECCOMP_MODE_FILTER   2
+            """
+            if mode == 0 or filtcnt == 0:
+                continue
+            offset_seccomp = offset_filter - 4 * 2
+            return offset_seccomp
+
+        return None
+
+    def get_offset_prev(self, task_addrs, offset_seccomp):
+        if offset_seccomp is None:
+            return None
+
+        """
+        struct seccomp_filter {
+            refcount_t refs; // 5.9~
+            refcount_t users; // 5.9~
+            refcount_t usage; // ~5.9
+            bool log; // 4.14~
+            bool wait_killable_recv; // 5.19~
+            struct action_cache cache; // 5.11~
+            struct seccomp_filter *prev;
+            struct bpf_prog *prog;
+            ...
+        """
+        for task in task_addrs:
+            if not self.has_seccomp(task):
+                continue
+
+            mode = u32(read_memory(task + self.offset_seccomp, 4))
+            if mode != 2: # SECCOMP_MODE_FILTER
+                continue
+
+            filter_count = u32(read_memory(task + self.offset_seccomp + 4, 4))
+            if filter_count == 0:
+                continue # something is wrong
+
+            filter_ = read_int_from_memory(task + self.offset_seccomp + 4 + 4)
+            for i in range(0x100):
+                x = read_int_from_memory(filter_ + current_arch.ptrsize * i)
+                if is_valid_addr(x):
+                    if filter_count == 1:
+                        return current_arch.ptrsize * (i - 1) # prev is NULL
+                    else:
+                        return current_arch.ptrsize * i # prev is non-NULL
+        return None
+
+    def get_offset_prog(self, offset_prev):
+        if offset_prev is None:
+            return None
+        return offset_prev + current_arch.ptrsize
+
+    def get_offset_bpf_func(self, task_addrs, offset_seccomp, offset_prog):
+        if offset_seccomp is None:
+            return None
+        if offset_prog is None:
+            return None
+
+        def is_executable(x):
+            maps = Kernel.get_maps()
+            for start, size, perm in maps:
+                if start <= x and x < start + size:
+                    return perm.endswith("X")
+            return False
+
+        for task in task_addrs:
+            if not self.has_seccomp(task):
+                continue
+
+            filter_ = read_int_from_memory(task + offset_seccomp + 4 + 4)
+            bpf_prog = read_int_from_memory(filter_ + offset_prog)
+            for i in range(0x100):
+                x = read_int_from_memory(bpf_prog + current_arch.ptrsize * i)
+                if is_valid_addr(x) and is_executable(x):
+                    return current_arch.ptrsize * i
+        return None
 
     def get_offset_thread_head(self, task_addr, offset_signal):
         """
@@ -54223,7 +54405,7 @@ class KernelTaskCommand(GenericCommand):
             self.quiet_info("offsetof(inode, i_ino): {:#x}".format(self.offset_i_ino))
 
         # task_struct->files
-        if args.print_fd or args.print_sighand or args.print_namespace or (kversion >= "6.7" and args.print_thread):
+        if args.print_fd or args.print_sighand or args.print_namespace or (kversion >= "6.7" and args.print_thread) or args.print_seccomp:
             if self.offset_files is None:
                 self.offset_files = self.get_offset_files(task_addrs, self.offset_comm)
             if self.offset_files is None:
@@ -54242,7 +54424,7 @@ class KernelTaskCommand(GenericCommand):
 
         # cred->user_ns
         # task_struct->nsproxy
-        if args.print_namespace or (kversion >= "6.7" and args.print_thread):
+        if args.print_namespace or (kversion >= "6.7" and args.print_thread) or args.print_seccomp:
             if self.offset_user_ns is None:
                 init_cred = read_int_from_memory(task_addrs[0] + self.offset_cred)
                 self.offset_user_ns = self.get_offset_user_ns(init_cred, self.offset_uid)
@@ -54349,6 +54531,40 @@ class KernelTaskCommand(GenericCommand):
                 self.signame_list[i] = "SIGRTMIN+{:d}".format(i - 34)
             for i in range(63, 49, -1):
                 self.signame_list[i] = "SIGRTMAX-{:d}".format(64 - i)
+
+        # task_struct->seccomp
+        if args.print_seccomp:
+            if self.offset_signal is None:
+                self.offset_signal = self.get_offset_signal(self.offset_nsproxy)
+            self.quiet_info("offsetof(task_struct, signal): {:#x}".format(self.offset_signal))
+
+            if self.offset_seccomp is None:
+                self.offset_seccomp = self.get_offset_seccomp(task_addrs, self.offset_signal)
+            if self.offset_seccomp:
+                self.quiet_info("offsetof(task_struct, seccomp): {:#x}".format(self.offset_seccomp))
+            else:
+                self.quiet_info("offsetof(task_struct, seccomp): None")
+
+            if self.offset_prog is None:
+                self.offset_prev = self.get_offset_prev(task_addrs, self.offset_seccomp)
+            if self.offset_prev:
+                self.quiet_info("offsetof(seccomp_filter, prev): {:#x}".format(self.offset_prev))
+            else:
+                self.quiet_info("offsetof(seccomp_filter, prev): None")
+
+            if self.offset_prog is None:
+                self.offset_prog = self.get_offset_prog(self.offset_prev)
+            if self.offset_prog:
+                self.quiet_info("offsetof(seccomp_filter, prog): {:#x}".format(self.offset_prog))
+            else:
+                self.quiet_info("offsetof(seccomp_filter, prog): None")
+
+            if self.offset_bpf_func is None:
+                self.offset_bpf_func = self.get_offset_bpf_func(task_addrs, self.offset_seccomp, self.offset_prog)
+            if self.offset_bpf_func:
+                self.quiet_info("offsetof(bpf_prog, bpf_func): {:#x}".format(self.offset_bpf_func))
+            else:
+                self.quiet_info("offsetof(bpf_prog, bpf_func): None")
 
         return task_addrs
 
@@ -54543,6 +54759,40 @@ class KernelTaskCommand(GenericCommand):
                         init_value = read_int_from_memory(init_nsproxy + current_arch.ptrsize * i)
                         is_init_ns = str(value == init_value)
                     out.append("{:30s} {:#018x} {:8s}".format("nsproxy->" + name, value, is_init_ns))
+
+            # additional information (seccomp)
+            if proctype == "U" and args.print_seccomp:
+                if self.has_seccomp(task):
+                    additional = True
+                    out.append(titlify("seccomp of `{:s}`".format(comm_string)))
+                    fmt = "{:18s} {:25s} {:12s} {:18s}"
+                    legend = ["&task.seccomp", "mode", "filter_count", "filter"]
+                    out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
+
+                    seccomp = task + self.offset_seccomp
+                    mode = u32(read_memory(seccomp, 4))
+                    mode_define = {
+                        0: "SECCOMP_MODE_DISABLED",
+                        1: "SECCOMP_MODE_STRICT",
+                        2: "SECCOMP_MODE_FILTER",
+                    }.get(mode, "UNKNOWN")
+                    mode_str = "{:d} ({:s})".format(mode, mode_define)
+                    filter_count = u32(read_memory(seccomp + 4, 4))
+                    filter_current = read_int_from_memory(seccomp + 4 * 2)
+                    out.append("{:#018x} {:25s} {:<12d} {:#018x}".format(seccomp, mode_str, filter_count, filter_current))
+
+                    i = 1
+                    while filter_current:
+                        prog = read_int_from_memory(filter_current + self.offset_prog)
+                        bpf_func = read_int_from_memory(prog + self.offset_bpf_func)
+
+                        out.append("[{:d}/{:d}] filter:{:#x} bpf_func:{:#x}".format(i, filter_count, filter_current, bpf_func))
+                        ret = gdb.execute("capstone-disassemble {:#x}".format(bpf_func), to_string=True).rstrip()
+                        out.append(ret)
+                        out.append("      ...")
+
+                        filter_current = read_int_from_memory(filter_current + self.offset_prev)
+                        i += 1
 
             # print separator
             if additional:
