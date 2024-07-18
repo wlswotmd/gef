@@ -52572,6 +52572,59 @@ class KernelTaskCommand(GenericCommand):
             return offset_stack
         return None
 
+    def get_thread_info(self, task_addr, offset_stack):
+        kstack = read_int_from_memory(task_addr + offset_stack)
+        stack_top_val = u32(read_memory(kstack, 4))
+        if stack_top_val == 0x57ac6e9d: # STACK_END_MAGIC
+            """
+            struct task_struct {
+            #ifdef CONFIG_THREAD_INFO_IN_TASK
+                struct thread_info thread_info;
+            #endif
+                ...
+            """
+            return task_addr # CONFIG_THREAD_INFO_IN_TASK=y
+        else:
+            return kstack # CONFIG_THREAD_INFO_IN_TASK=n
+
+    def has_seccomp(self, task_addr):
+        thread_info = self.get_thread_info(task_addr, self.offset_stack)
+        kversion = Kernel.kernel_version()
+        if is_x86():
+            if kversion >= "5.11":
+                syscall_work = read_int_from_memory(thread_info + current_arch.ptrsize)
+                return bool(syscall_work & (1 << 0)) # SYSCALL_WORK_SECCOMP
+            elif kversion >= "4.9":
+                flags = read_int_from_memory(thread_info)
+                return bool(flags & (1 << 8)) # TIF_SECCOMP
+            elif kversion >= "4.1":
+                flags = u32(read_memory(thread_info + current_arch.ptrsize, 4))
+                return bool(flags & (1 << 8)) # TIF_SECCOMP
+            else:
+                flags = u32(read_memory(thread_info + current_arch.ptrsize * 2, 4))
+                return bool(flags & (1 << 8)) # TIF_SECCOMP
+        elif is_arm32():
+            if kversion >= "6.0":
+                flags = read_int_from_memory(thread_info)
+                return bool(flags & (1 << 23)) # TIF_SECCOMP
+            elif kversion >= "4.3":
+                flags = read_int_from_memory(thread_info)
+                return bool(flags & (1 << 7)) # TIF_SECCOMP
+            elif kversion >= "3.8":
+                flags = read_int_from_memory(thread_info)
+                return bool(flags & (1 << 11)) # TIF_SECCOMP
+            else:
+                flags = read_int_from_memory(thread_info)
+                return bool(flags & (1 << 21)) # TIF_SECCOMP
+        elif is_arm64():
+            if kversion >= "3.16":
+                flags = read_int_from_memory(thread_info)
+                return bool(flags & (1 << 11)) # TIF_SECCOMP
+            else:
+                # unimplemented
+                return None
+        return None
+
     def get_offset_ptregs(self, task_addrs, offset_stack):
         # calc kstack address pattern
         kstacks_raw = []
@@ -54306,7 +54359,7 @@ class KernelTaskCommand(GenericCommand):
         # print legend
         out = []
         if not self.quiet:
-            fmt = "{:<18s} {:3s} {:<7s} {:<16s} {:<18s} [{:s}] {:<18s} {:<18s}"
+            fmt = "{:<18s} {:3s} {:<7s} {:<16s} {:<18s} [{:s}] {:<8s} {:<18s} {:<18s}"
             if args.print_all_id:
                 ids_str = ["uid", "gid", "suid", "sgid", "euid", "egid", "fsuid", "fsgid"]
                 uids_fmt = "{:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s}"
@@ -54314,7 +54367,7 @@ class KernelTaskCommand(GenericCommand):
                 ids_str = ["uid", "gid"]
                 uids_fmt = "{:>5s} {:>5s}"
             uids_str = uids_fmt.format(*ids_str)
-            legend = ["task", "K/U", "lwpid", "task->comm", "task->cred", uids_str, "kstack", "kcanary"]
+            legend = ["task", "K/U", "lwpid", "task->comm", "task->cred", uids_str, "seccomp", "kstack", "kcanary"]
             out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
 
         if args.print_namespace:
@@ -54374,9 +54427,16 @@ class KernelTaskCommand(GenericCommand):
             else:
                 kcanary = "None"
 
+            # seccomp
+            if self.has_seccomp(task):
+                seccomp = "Enabled"
+            else:
+                seccomp = "Disabled"
+
             # make output
-            fmt = "{:#018x} {:<3s} {:<7d} {:<16s} {:#018x} [{:s}] {:#018x} {:<18s}"
-            out.append(fmt.format(task, proctype, pid, comm_string, cred, uids_str, kstack, kcanary))
+            out.append("{:#018x} {:<3s} {:<7d} {:<16s} {:#018x} [{:s}] {:<8s} {:#018x} {:<18s}".format(
+                task, proctype, pid, comm_string, cred, uids_str, seccomp, kstack, kcanary,
+            ))
 
             # skip additional information when swapper/N
             if pid == 0:
