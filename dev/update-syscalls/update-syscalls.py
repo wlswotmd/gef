@@ -14,7 +14,7 @@ def init():
         print("example: {:s} /tmp/work/linux-6.6-rc7 /tmp/work/gef".format(sys.argv[0]))
         exit()
 
-    which("clang-format-15")
+    which("clang-format")
 
     global K_DIR, GEF_DIR, GEF_PATH, GEF_TMP_PATH
     K_DIR = sys.argv[1]
@@ -117,7 +117,7 @@ def write_back(lines, s, e):
 # update syscall interfaces
 
 def get_new_defs(header_path):
-    clang = which("clang-format-15")
+    clang = which("clang-format")
     header = os.path.join(K_DIR, header_path)
     cmd = "{:s} --style='{{BasedOnStyle: Google, ColumnLimit: 1000}}' {:s}".format(clang, header)
     syscall_defs = subprocess.getoutput(cmd)
@@ -219,6 +219,7 @@ def syscall_defs_update():
         "asmlinkage long sys_clone(",
         "asmlinkage long sys_sigsuspend(int",
         "asmlinkage long sys_ni_syscall(",
+        "asmlinkage long sys_fanotify_mark(",
     ]
 
     new_syscall_defs = replace_lines1(replace_rules1, new_syscall_defs)
@@ -243,7 +244,10 @@ def syscall_defs_compat_update():
         ],
         ["asmlinkage long compat_sys_rt_sigaction(int, const struct compat_sigaction __user *, struct compat_sigaction __user *, compat_size_t);",
          "asmlinkage long compat_sys_rt_sigaction(int sig, const struct compat_sigaction __user *act, struct compat_sigaction __user *oact, compat_size_t sigsetsize);",
-        ]
+        ],
+        ["asmlinkage long compat_sys_fanotify_mark(int, unsigned int, __u32, __u32, int, const char __user *);",
+         "asmlinkage long compat_sys_fanotify_mark(int fanotify_fd, unsigned int flags, __u32 mask_1, __u32 mask_2, int dfd, const char __user *pathname);",
+        ],
     ]
 
     replace_rules2 = [

@@ -32266,10 +32266,10 @@ class SyscallSearchCommand(GenericCommand):
         return
 
 
-# System call table (linux-6.5.3)
+# System call table (linux-6.10)
 
 # [How to make]
-# clang-format-15 --style='{BasedOnStyle: Google, ColumnLimit: 1000}' FILENAME | grep ^asmlinkage
+# clang-format --style='{BasedOnStyle: Google, ColumnLimit: 1000}' FILENAME | grep ^asmlinkage
 #   `!` at the beginning of the line: manually fixed the argument information
 #   `#` at the beginning of the line: excluded for reasons such as duplication
 
@@ -32281,8 +32281,8 @@ asmlinkage long sys_io_destroy(aio_context_t ctx);
 asmlinkage long sys_io_cancel(aio_context_t ctx_id, struct iocb __user *iocb, struct io_event __user *result);
 asmlinkage long sys_io_getevents(aio_context_t ctx_id, long min_nr, long nr, struct io_event __user *events, struct __kernel_timespec __user *timeout);
 asmlinkage long sys_io_getevents_time32(__u32 ctx_id, __s32 min_nr, __s32 nr, struct io_event __user *events, struct old_timespec32 __user *timeout);
-asmlinkage long sys_io_pgetevents(aio_context_t ctx_id, long min_nr, long nr, struct io_event __user *events, struct __kernel_timespec __user *timeout, const struct __aio_sigset *sig);
-asmlinkage long sys_io_pgetevents_time32(aio_context_t ctx_id, long min_nr, long nr, struct io_event __user *events, struct old_timespec32 __user *timeout, const struct __aio_sigset *sig);
+asmlinkage long sys_io_pgetevents(aio_context_t ctx_id, long min_nr, long nr, struct io_event __user *events, struct __kernel_timespec __user *timeout, const struct __aio_sigset __user *sig);
+asmlinkage long sys_io_pgetevents_time32(aio_context_t ctx_id, long min_nr, long nr, struct io_event __user *events, struct old_timespec32 __user *timeout, const struct __aio_sigset __user *sig);
 asmlinkage long sys_io_uring_setup(u32 entries, struct io_uring_params __user *p);
 asmlinkage long sys_io_uring_enter(unsigned int fd, u32 to_submit, u32 min_complete, u32 flags, const void __user *argp, size_t argsz);
 asmlinkage long sys_io_uring_register(unsigned int fd, unsigned int op, void __user *arg, unsigned int nr_args);
@@ -32331,7 +32331,7 @@ asmlinkage long sys_fstatfs64(unsigned int fd, size_t sz, struct statfs64 __user
 asmlinkage long sys_statmount(const struct mnt_id_req __user *req, struct statmount __user *buf, size_t bufsize, unsigned int flags);
 asmlinkage long sys_listmount(const struct mnt_id_req __user *req, u64 __user *mnt_ids, size_t nr_mnt_ids, unsigned int flags);
 asmlinkage long sys_truncate(const char __user *path, long length);
-asmlinkage long sys_ftruncate(unsigned int fd, unsigned long length);
+asmlinkage long sys_ftruncate(unsigned int fd, off_t length);
 asmlinkage long sys_truncate64(const char __user *path, loff_t length);
 asmlinkage long sys_ftruncate64(unsigned int fd, loff_t length);
 asmlinkage long sys_fallocate(int fd, int mode, loff_t offset, loff_t len);
@@ -32346,7 +32346,7 @@ asmlinkage long sys_fchmodat2(int dfd, const char __user *filename, umode_t mode
 asmlinkage long sys_fchownat(int dfd, const char __user *filename, uid_t user, gid_t group, int flag);
 asmlinkage long sys_fchown(unsigned int fd, uid_t user, gid_t group);
 asmlinkage long sys_openat(int dfd, const char __user *filename, int flags, umode_t mode);
-asmlinkage long sys_openat2(int dfd, const char __user *filename, struct open_how *how, size_t size);
+asmlinkage long sys_openat2(int dfd, const char __user *filename, struct open_how __user *how, size_t size);
 asmlinkage long sys_close(unsigned int fd);
 asmlinkage long sys_close_range(unsigned int fd, unsigned int max_fd, unsigned int flags);
 asmlinkage long sys_vhangup(void);
@@ -32403,7 +32403,7 @@ asmlinkage long sys_futex(u32 __user *uaddr, int op, u32 val, const struct __ker
 asmlinkage long sys_futex_time32(u32 __user *uaddr, int op, u32 val, const struct old_timespec32 __user *utime, u32 __user *uaddr2, u32 val3);
 asmlinkage long sys_get_robust_list(int pid, struct robust_list_head __user *__user *head_ptr, size_t __user *len_ptr);
 asmlinkage long sys_set_robust_list(struct robust_list_head __user *head, size_t len);
-asmlinkage long sys_futex_waitv(struct futex_waitv *waiters, unsigned int nr_futexes, unsigned int flags, struct __kernel_timespec __user *timeout, clockid_t clockid);
+asmlinkage long sys_futex_waitv(struct futex_waitv __user *waiters, unsigned int nr_futexes, unsigned int flags, struct __kernel_timespec __user *timeout, clockid_t clockid);
 asmlinkage long sys_futex_wake(void __user *uaddr, unsigned long mask, int nr, unsigned int flags);
 asmlinkage long sys_futex_wait(void __user *uaddr, unsigned long val, unsigned long mask, unsigned int flags, struct __kernel_timespec __user *timespec, clockid_t clockid);
 asmlinkage long sys_futex_requeue(struct futex_waitv __user *waiters, unsigned int flags, int nr_wake, int nr_requeue);
@@ -32574,7 +32574,8 @@ asmlinkage long sys_recvmmsg_time32(int fd, struct mmsghdr __user *msg, unsigned
 asmlinkage long sys_wait4(pid_t pid, int __user *stat_addr, int options, struct rusage __user *ru);
 asmlinkage long sys_prlimit64(pid_t pid, unsigned int resource, const struct rlimit64 __user *new_rlim, struct rlimit64 __user *old_rlim);
 asmlinkage long sys_fanotify_init(unsigned int flags, unsigned int event_f_flags);
-asmlinkage long sys_fanotify_mark(int fanotify_fd, unsigned int flags, u64 mask, int fd, const char __user *pathname);
+#asmlinkage long sys_fanotify_mark(int fanotify_fd, unsigned int flags, unsigned int mask_1, unsigned int mask_2, int dfd, const char __user *pathname);
+#asmlinkage long sys_fanotify_mark(int fanotify_fd, unsigned int flags, u64 mask, int fd, const char __user *pathname);
 asmlinkage long sys_name_to_handle_at(int dfd, const char __user *name, struct file_handle __user *handle, int __user *mnt_id, int flag);
 asmlinkage long sys_open_by_handle_at(int mountdirfd, struct file_handle __user *handle, int flags);
 asmlinkage long sys_clock_adjtime(clockid_t which_clock, struct __kernel_timex __user *tx);
@@ -32593,7 +32594,7 @@ asmlinkage long sys_renameat2(int olddfd, const char __user *oldname, int newdfd
 asmlinkage long sys_seccomp(unsigned int op, unsigned int flags, void __user *uargs);
 asmlinkage long sys_getrandom(char __user *buf, size_t count, unsigned int flags);
 asmlinkage long sys_memfd_create(const char __user *uname_ptr, unsigned int flags);
-asmlinkage long sys_bpf(int cmd, union bpf_attr *attr, unsigned int size);
+asmlinkage long sys_bpf(int cmd, union bpf_attr __user *attr, unsigned int size);
 asmlinkage long sys_execveat(int dfd, const char __user *filename, const char __user *const __user *argv, const char __user *const __user *envp, int flags);
 asmlinkage long sys_userfaultfd(int flags);
 asmlinkage long sys_membarrier(int cmd, unsigned int flags, int cpu_id);
@@ -32622,9 +32623,9 @@ asmlinkage long sys_memfd_secret(unsigned int flags);
 asmlinkage long sys_set_mempolicy_home_node(unsigned long start, unsigned long len, unsigned long home_node, unsigned long flags);
 asmlinkage long sys_cachestat(unsigned int fd, struct cachestat_range __user *cstat_range, struct cachestat __user *cstat, unsigned int flags);
 asmlinkage long sys_map_shadow_stack(unsigned long addr, unsigned long size, unsigned int flags);
-asmlinkage long sys_lsm_get_self_attr(unsigned int attr, struct lsm_ctx *ctx, u32 *size, u32 flags);
-asmlinkage long sys_lsm_set_self_attr(unsigned int attr, struct lsm_ctx *ctx, u32 size, u32 flags);
-asmlinkage long sys_lsm_list_modules(u64 *ids, u32 *size, u32 flags);
+asmlinkage long sys_lsm_get_self_attr(unsigned int attr, struct lsm_ctx __user *ctx, u32 __user *size, u32 flags);
+asmlinkage long sys_lsm_set_self_attr(unsigned int attr, struct lsm_ctx __user *ctx, u32 size, u32 flags);
+asmlinkage long sys_lsm_list_modules(u64 __user *ids, u32 __user *size, u32 flags);
 asmlinkage long sys_ioperm(unsigned long from, unsigned long num, int on);
 asmlinkage long sys_pciconfig_read(unsigned long bus, unsigned long dfn, unsigned long off, unsigned long len, void __user *buf);
 asmlinkage long sys_pciconfig_write(unsigned long bus, unsigned long dfn, unsigned long off, unsigned long len, void __user *buf);
@@ -32745,7 +32746,7 @@ asmlinkage long compat_sys_statfs64(const char __user *pathname, compat_size_t s
 asmlinkage long compat_sys_fstatfs(unsigned int fd, struct compat_statfs __user *buf);
 asmlinkage long compat_sys_fstatfs64(unsigned int fd, compat_size_t sz, struct compat_statfs64 __user *buf);
 asmlinkage long compat_sys_truncate(const char __user *, compat_off_t);
-asmlinkage long compat_sys_ftruncate(unsigned int, compat_ulong_t);
+asmlinkage long compat_sys_ftruncate(unsigned int, compat_off_t);
 asmlinkage long compat_sys_openat(int dfd, const char __user *filename, int flags, umode_t mode);
 asmlinkage long compat_sys_getdents(unsigned int fd, struct compat_linux_dirent __user *dirent, unsigned int count);
 asmlinkage long compat_sys_lseek(unsigned int, compat_off_t, unsigned int);
@@ -32805,7 +32806,7 @@ asmlinkage long compat_sys_rt_tgsigqueueinfo(compat_pid_t tgid, compat_pid_t pid
 asmlinkage long compat_sys_recvmmsg_time64(int fd, struct compat_mmsghdr __user *mmsg, unsigned vlen, unsigned int flags, struct __kernel_timespec __user *timeout);
 asmlinkage long compat_sys_recvmmsg_time32(int fd, struct compat_mmsghdr __user *mmsg, unsigned vlen, unsigned int flags, struct old_timespec32 __user *timeout);
 asmlinkage long compat_sys_wait4(compat_pid_t pid, compat_uint_t __user *stat_addr, int options, struct compat_rusage __user *ru);
-asmlinkage long compat_sys_fanotify_mark(int, unsigned int, __u32, __u32, int, const char __user *);
+!asmlinkage long compat_sys_fanotify_mark(int fanotify_fd, unsigned int flags, __u32 mask_1, __u32 mask_2, int dfd, const char __user *pathname);
 asmlinkage long compat_sys_open_by_handle_at(int mountdirfd, struct file_handle __user *handle, int flags);
 asmlinkage long compat_sys_sendmmsg(int fd, struct compat_mmsghdr __user *mmsg, unsigned vlen, unsigned int flags);
 asmlinkage long compat_sys_execveat(int dfd, const char __user *filename, const compat_uptr_t __user *argv, const compat_uptr_t __user *envp, int flags);
@@ -33700,7 +33701,7 @@ x86_syscall_tbl = """
 412     i386    utimensat_time64        sys_utimensat
 413     i386    pselect6_time64         sys_pselect6                    compat_sys_pselect6_time64
 414     i386    ppoll_time64            sys_ppoll                       compat_sys_ppoll_time64
-416     i386    io_pgetevents_time64    sys_io_pgetevents
+416     i386    io_pgetevents_time64    sys_io_pgetevents               compat_sys_io_pgetevents_time64
 417     i386    recvmmsg_time64         sys_recvmmsg                    compat_sys_recvmmsg_time64
 418     i386    mq_timedsend_time64     sys_mq_timedsend
 419     i386    mq_timedreceive_time64  sys_mq_timedreceive
@@ -34458,7 +34459,7 @@ arm_compat_syscall_tbl = """
 412  arm  utimensat_time64              sys_utimensat
 413  arm  pselect6_time64               compat_sys_pselect6_time64
 414  arm  ppoll_time64                  compat_sys_ppoll_time64
-416  arm  io_pgetevents_time64          sys_io_pgetevents
+416  arm  io_pgetevents_time64          compat_sys_io_pgetevents_time64
 417  arm  recvmmsg_time64               compat_sys_recvmmsg_time64
 418  arm  mq_timedsend_time64           sys_mq_timedsend
 419  arm  mq_timedreceive_time64        sys_mq_timedreceive
@@ -35020,7 +35021,7 @@ mips_o32_syscall_tbl = """
 17      o32     break                           sys_ni_syscall
 # 18 was sys_stat
 18      o32     unused18                        sys_ni_syscall
-19      o32     lseek                           sys_lseek
+19      o32     lseek                           sys_lseek                       compat_sys_lseek
 20      o32     getpid                          sys_getpid
 21      o32     mount                           sys_mount
 22      o32     umount                          sys_oldumount
@@ -35396,7 +35397,7 @@ mips_o32_syscall_tbl = """
 412     o32     utimensat_time64                sys_utimensat                   sys_utimensat
 413     o32     pselect6_time64                 sys_pselect6                    compat_sys_pselect6_time64
 414     o32     ppoll_time64                    sys_ppoll                       compat_sys_ppoll_time64
-416     o32     io_pgetevents_time64            sys_io_pgetevents               sys_io_pgetevents
+416     o32     io_pgetevents_time64            sys_io_pgetevents               compat_sys_io_pgetevents_time64
 417     o32     recvmmsg_time64                 sys_recvmmsg                    compat_sys_recvmmsg_time64
 418     o32     mq_timedsend_time64             sys_mq_timedsend                sys_mq_timedsend
 419     o32     mq_timedreceive_time64          sys_mq_timedreceive             sys_mq_timedreceive
@@ -35803,7 +35804,7 @@ mips_n32_syscall_tbl = """
 412     n32     utimensat_time64                sys_utimensat
 413     n32     pselect6_time64                 compat_sys_pselect6_time64
 414     n32     ppoll_time64                    compat_sys_ppoll_time64
-416     n32     io_pgetevents_time64            sys_io_pgetevents
+416     n32     io_pgetevents_time64            compat_sys_io_pgetevents_time64
 417     n32     recvmmsg_time64                 compat_sys_recvmmsg_time64
 418     n32     mq_timedsend_time64             sys_mq_timedsend
 419     n32     mq_timedreceive_time64          sys_mq_timedreceive
@@ -36469,8 +36470,10 @@ ppc_syscall_tbl = """
 178     nospu   rt_sigsuspend                   sys_rt_sigsuspend               compat_sys_rt_sigsuspend
 179     32      pread64                         sys_ppc_pread64                 compat_sys_ppc_pread64
 179     64      pread64                         sys_pread64
+179     spu     pread64                         sys_pread64
 180     32      pwrite64                        sys_ppc_pwrite64                compat_sys_ppc_pwrite64
 180     64      pwrite64                        sys_pwrite64
+180     spu     pwrite64                        sys_pwrite64
 181     common  chown                           sys_chown
 182     common  getcwd                          sys_getcwd
 183     common  capget                          sys_capget
@@ -36485,6 +36488,7 @@ ppc_syscall_tbl = """
 190     common  ugetrlimit                      sys_getrlimit                   compat_sys_getrlimit
 191     32      readahead                       sys_ppc_readahead               compat_sys_ppc_readahead
 191     64      readahead                       sys_readahead
+191     spu     readahead                       sys_readahead
 192     32      mmap2                           sys_mmap2                       compat_sys_mmap2
 193     32      truncate64                      sys_ppc_truncate64              compat_sys_ppc_truncate64
 194     32      ftruncate64                     sys_ppc_ftruncate64             compat_sys_ppc_ftruncate64
@@ -36532,6 +36536,7 @@ ppc_syscall_tbl = """
 232     nospu   set_tid_address                 sys_set_tid_address
 233     32      fadvise64                       sys_ppc32_fadvise64             compat_sys_ppc32_fadvise64
 233     64      fadvise64                       sys_fadvise64
+233     spu     fadvise64                       sys_fadvise64
 234     nospu   exit_group                      sys_exit_group
 235     nospu   lookup_dcookie                  sys_ni_syscall
 236     common  epoll_create                    sys_epoll_create
@@ -36741,7 +36746,7 @@ ppc_syscall_tbl = """
 412     32      utimensat_time64                sys_utimensat                   sys_utimensat
 413     32      pselect6_time64                 sys_pselect6                    compat_sys_pselect6_time64
 414     32      ppoll_time64                    sys_ppoll                       compat_sys_ppoll_time64
-416     32      io_pgetevents_time64            sys_io_pgetevents               sys_io_pgetevents
+416     32      io_pgetevents_time64            sys_io_pgetevents               compat_sys_io_pgetevents_time64
 417     32      recvmmsg_time64                 sys_recvmmsg                    compat_sys_recvmmsg_time64
 418     32      mq_timedsend_time64             sys_mq_timedsend                sys_mq_timedsend
 419     32      mq_timedreceive_time64          sys_mq_timedreceive             sys_mq_timedreceive
@@ -36911,7 +36916,7 @@ sparc_syscall_tbl = """
 90      common  dup2                    sys_dup2
 91      32      setfsuid32              sys_setfsuid
 92      common  fcntl                   sys_fcntl                       compat_sys_fcntl
-93      common  select                  sys_select
+93      common  select                  sys_select                      compat_sys_select
 94      32      setfsgid32              sys_setfsgid
 95      common  fsync                   sys_fsync
 96      common  setpriority             sys_setpriority
@@ -36949,7 +36954,7 @@ sparc_syscall_tbl = """
 123     32      fchown                  sys_fchown16
 123     64      fchown                  sys_fchown
 124     common  fchmod                  sys_fchmod
-125     common  recvfrom                sys_recvfrom
+125     common  recvfrom                sys_recvfrom                    compat_sys_recvfrom
 126     32      setreuid                sys_setreuid16
 126     64      setreuid                sys_setreuid
 127     32      setregid                sys_setregid16
@@ -37041,7 +37046,7 @@ sparc_syscall_tbl = """
 204     32      readdir                 sys_old_readdir                 compat_sys_old_readdir
 204     64      readdir                 sys_nis_syscall
 205     common  readahead               sys_readahead                   compat_sys_readahead
-206     common  socketcall              sys_socketcall                  sys32_socketcall
+206     common  socketcall              sys_socketcall                  compat_sys_socketcall
 207     common  syslog                  sys_syslog
 208     common  lookup_dcookie          sys_ni_syscall
 209     common  fadvise64               sys_fadvise64                   compat_sys_fadvise64
@@ -37255,7 +37260,7 @@ sparc_syscall_tbl = """
 412     32      utimensat_time64                sys_utimensat                   sys_utimensat
 413     32      pselect6_time64                 sys_pselect6                    compat_sys_pselect6_time64
 414     32      ppoll_time64                    sys_ppoll                       compat_sys_ppoll_time64
-416     32      io_pgetevents_time64            sys_io_pgetevents               sys_io_pgetevents
+416     32      io_pgetevents_time64            sys_io_pgetevents               compat_sys_io_pgetevents_time64
 417     32      recvmmsg_time64                 sys_recvmmsg                    compat_sys_recvmmsg_time64
 418     32      mq_timedsend_time64             sys_mq_timedsend                sys_mq_timedsend
 419     32      mq_timedreceive_time64          sys_mq_timedreceive             sys_mq_timedreceive
@@ -38378,7 +38383,7 @@ s390x_syscall_tbl = """
 412     32      utimensat_time64        -                               sys_utimensat
 413     32      pselect6_time64         -                               compat_sys_pselect6_time64
 414     32      ppoll_time64            -                               compat_sys_ppoll_time64
-416     32      io_pgetevents_time64    -                               sys_io_pgetevents
+416     32      io_pgetevents_time64    -                               compat_sys_io_pgetevents_time64
 417     32      recvmmsg_time64         -                               compat_sys_recvmmsg_time64
 418     32      mq_timedsend_time64     -                               sys_mq_timedsend
 419     32      mq_timedreceive_time64  -                               sys_mq_timedreceive
@@ -38752,7 +38757,7 @@ sh4_syscall_tbl = """
 311     common  set_robust_list                 sys_set_robust_list
 312     common  get_robust_list                 sys_get_robust_list
 313     common  splice                          sys_splice
-314     common  sync_file_range                 sys_sync_file_range
+314     common  sync_file_range                 sys_sh_sync_file_range6
 315     common  tee                             sys_tee
 316     common  vmsplice                        sys_vmsplice
 317     common  move_pages                      sys_move_pages
@@ -38826,6 +38831,7 @@ sh4_syscall_tbl = """
 385     common  pkey_alloc                      sys_pkey_alloc
 386     common  pkey_free                       sys_pkey_free
 387     common  rseq                            sys_rseq
+388     common  sync_file_range2                sys_sync_file_range2
 # room for arch specific syscalls
 393     common  semget                          sys_semget
 394     common  semctl                          sys_semctl
@@ -39986,7 +39992,7 @@ hppa_syscall_tbl = """
 95      common  fchown                  sys_fchown
 96      common  getpriority             sys_getpriority
 97      common  setpriority             sys_setpriority
-98      common  recv                    sys_recv
+98      common  recv                    sys_recv                        compat_sys_recv
 99      common  statfs                  sys_statfs                      compat_sys_statfs
 100     common  fstatfs                 sys_fstatfs                     compat_sys_fstatfs
 101     common  stat64                  sys_stat64
@@ -40013,7 +40019,7 @@ hppa_syscall_tbl = """
 120     common  clone                   sys_clone_wrapper
 121     common  setdomainname           sys_setdomainname
 122     common  sendfile                sys_sendfile                    compat_sys_sendfile
-123     common  recvfrom                sys_recvfrom
+123     common  recvfrom                sys_recvfrom                    compat_sys_recvfrom
 124     32      adjtimex                sys_adjtimex_time32
 124     64      adjtimex                sys_adjtimex
 125     common  mprotect                sys_mprotect
@@ -40242,7 +40248,7 @@ hppa_syscall_tbl = """
 320     common  accept4                 sys_accept4
 321     common  prlimit64               sys_prlimit64
 322     common  fanotify_init           sys_fanotify_init
-323     common  fanotify_mark           sys_fanotify_mark               sys32_fanotify_mark
+323     common  fanotify_mark           sys_fanotify_mark               compat_sys_fanotify_mark
 324     32      clock_adjtime           sys_clock_adjtime32
 324     64      clock_adjtime           sys_clock_adjtime
 325     common  name_to_handle_at       sys_name_to_handle_at
@@ -43028,7 +43034,7 @@ csky_syscall_tbl = """
 81   csky  sync                     sys_sync
 82   csky  fsync                    sys_fsync
 83   csky  fdatasync                sys_fdatasync
-84   csky  sync_file_range          sys_sync_file_range
+84   csky  sync_file_range          sys_sync_file_range2
 85   csky  timerfd_create           sys_timerfd_create
 86   csky  timerfd_settime          sys_timerfd_settime
 87   csky  timerfd_gettime          sys_timerfd_gettime
@@ -43559,6 +43565,10 @@ class Syscall:
                     "unsigned long flags", "unsigned long fd", "unsigned long off",
                 ], # arch/x86/kernel/sys_x86_64.c
                 "sys_rt_sigreturn": [], # arch/x86/kernel/signal.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # include/linux/syscalls.h
             }
 
             syscall_list = []
@@ -43742,6 +43752,10 @@ class Syscall:
                 "sys_arch_prctl": [
                     "int option", "unsigned long arg2",
                 ], # arch/x86/kernel/process_32.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "unsigned int mask_1",
+                    "unsigned int mask_2", "int dfd", "const char  __user *pathname",
+                ], # include/linux/syscalls.h
             }
 
             syscall_list = []
@@ -43788,6 +43802,10 @@ class Syscall:
                     "unsigned long addr", "unsigned long len", "unsigned long prot",
                     "unsigned long flags", "unsigned long fd", "unsigned long off",
                 ], # arch/arm64/kernel/sys.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # include/linux/syscalls.h
             }
 
             syscall_list = []
@@ -43915,7 +43933,11 @@ class Syscall:
                 ], # arch/arm/kernel/entry-common.S
                 "sys_arm_fadvise64_64": [
                     "int fd", "int advice", "loff_t offset", "loff_t len",
-                ] # arch/arm/kernel/sys_arm.c
+                ], # arch/arm/kernel/sys_arm.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44002,6 +44024,10 @@ class Syscall:
                 "sys_sigaction": [
                     "int sig2", "const struct sigaction __user *act", "struct sigaction __user *oact",
                 ], # arch/mips/kernel/signal.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44066,6 +44092,10 @@ class Syscall:
                     "unsigned long personality",
                 ], # arch/mips/kernel/linux32.c
                 "sysn32_rt_sigreturn": [], # arch/mips/kernel/signal_n32.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44118,6 +44148,10 @@ class Syscall:
                 "__sys_clone3": [
                     "struct clone_args __user *uargs", "size_t size",
                 ], #
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44200,6 +44234,10 @@ class Syscall:
                 "sys_ppc_fallocate": [
                     "int fd", "int mode", "u32 offset1", "u32 offset2", "u32 len1", "u32 len2",
                 ], # arch/powerpc/kernel/sys_ppc32.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "unsigned int mask_1",
+                    "unsigned int mask_2", "int dfd", "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44251,6 +44289,10 @@ class Syscall:
                     "unsigned long addr", "unsigned long len", "u32 __user *map",
                 ], # arch/powerpc/mm/book3s64/subpage_prot.c
                 "sys_switch_endian": [], # arch/powerpc/kernel/syscalls.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44310,6 +44352,10 @@ class Syscall:
                     "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
                     "int __user *child_tidptr", "unsigned long tls",
                 ], # kernel/fork.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44393,6 +44439,10 @@ class Syscall:
                 "sys_rt_sigreturn": [
                     "struct pt_regs *regs",
                 ], # arch/sparc/kernel/signal_64.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44427,6 +44477,10 @@ class Syscall:
                     "unsigned long addr", "unsigned long len", "unsigned long prot",
                     "unsigned long flags", "unsigned long fd", "off_t offset",
                 ], # arch/riscv/kernel/sys_riscv.c"
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44468,6 +44522,10 @@ class Syscall:
                     "unsigned long addr", "unsigned long len", "unsigned long prot",
                     "unsigned long flags", "unsigned long fd", "off_t offset",
                 ], # arch/riscv/kernel/sys_riscv.c"
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44529,6 +44587,10 @@ class Syscall:
                     "unsigned long function_code", "void __user *buffer", "u64 __user *return_code",
                     "unsigned long flags",
                 ], # arch/s390/kernel/sthyi.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44581,6 +44643,13 @@ class Syscall:
                 "sys_fadvise64_64_wrapper": [
                     "int fd", "u32 offset0", "u32 offset1", "u32 len0", "u32 len1", "int advice",
                 ], # arch/sh/kernel/sys_sh32.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
+                "sys_sh_sync_file_range6": [
+                    "int fd", "u64 offset", "u64 nbytes", "unsigned int flags",
+                ], # sh/kernel/sys_sh32.c
             }
 
             syscall_list = []
@@ -44634,6 +44703,10 @@ class Syscall:
                 "__sys_clone3": [
                     "struct clone_args __user *uargs", "size_t size",
                 ], #
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44771,12 +44844,19 @@ class Syscall:
                 "alpha_clone": [
                     "unsigned long clone_flags", "unsigned long newsp", "int __user *parent_tidptr",
                     "int __user *child_tidptr", "unsigned long tls",
-                ], # kernel/fork.c
+                ], # arch/alpha/kernel/entry.S (fork_like macro)
+                "alpha_clone3": [
+                    "struct clone_args __user *uargs", "size_t size",
+                ], # arch/alpha/kernel/entry.S (fork_like macro)
                 "sys_rt_sigreturn": [], # arch/alpha/kernel/entry.S (sigreturn_like macro)
                 "sys_rt_sigaction": [
                     "int sig", "const struct sigaction __user *act", "struct sigaction __user *oact",
                     "size_t sigsetsize", "void __user *restorer",
-                ] # arch/alpha/kernel/signal.c
+                ], # arch/alpha/kernel/signal.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44875,6 +44955,10 @@ class Syscall:
                 "sys_cacheflush": [
                     "unsigned long addr", "unsigned long bytes", "unsigned int cache",
                 ], # arch/parisc/kernel/cache.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "unsigned int mask_1",
+                    "unsigned int mask_2", "int dfd", "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -44942,6 +45026,11 @@ class Syscall:
                 "sys_cacheflush": [
                     "unsigned long addr", "unsigned long bytes", "unsigned int cache",
                 ], # arch/parisc/kernel/cache.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
+
             }
             syscall_list = []
             for entry in tbl:
@@ -44975,6 +45064,10 @@ class Syscall:
                     "unsigned long addr", "unsigned long len", "unsigned long prot",
                     "unsigned long flags", "unsigned long fd", "off_t pgoff",
                 ], # include/asm-generic/syscalls.h
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -45009,6 +45102,10 @@ class Syscall:
                     "unsigned long addr", "unsigned long len", "unsigned long prot",
                     "unsigned long flags", "unsigned long fd", "off_t pgoff",
                 ], # include/asm-generic/syscalls.h
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -45047,6 +45144,10 @@ class Syscall:
                     "unsigned long addr", "unsigned long len", "unsigned long prot",
                     "unsigned long flags", "unsigned long fd", "unsigned long pgoff",
                 ], # arch/microblaze/kernel/sys_microblaze.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -45083,6 +45184,10 @@ class Syscall:
                     "unsigned long tls", "int *child_tidptr",
                 ], # kernel/fork.c (CONFIG_CLONE_BACKWARDS)
                 "xtensa_rt_sigreturn": [], # arch/xtensa/kernel/signal.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -45124,6 +45229,13 @@ class Syscall:
                     "unsigned long addr", "unsigned long len", "unsigned long prot",
                     "unsigned long flags", "unsigned long fd", "unsigned long pgoff",
                 ], # arch/cris/kernel/sys_cris.c
+                "sys_lookup_dcookie": [
+                    "u64 cookie64", "char __user *buf", "size_t, len",
+                ], # fs/dcookies.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -45158,6 +45270,10 @@ class Syscall:
                     "unsigned long addr", "unsigned long len", "unsigned long prot",
                     "unsigned long flags", "unsigned long fd", "off_t pgoff",
                 ], # arch/loongarch/kernel/syscall.c
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -45202,6 +45318,10 @@ class Syscall:
                     "unsigned long addr", "unsigned long len", "unsigned long prot",
                     "unsigned long flags", "unsigned long fd", "off_t pgoff",
                 ], # include/uapi/asm/unistd.h (sys_mmap_pgoff)
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
@@ -45256,6 +45376,10 @@ class Syscall:
                 "sys_fadvise64_64": [
                     "int fd", "int advice", "loff_t offset", "loff_t len",
                 ], # arch/csky/include/asm/syscalls.h
+                "sys_fanotify_mark": [
+                    "int fanotify_fd", "unsigned int flags", "u64 mask", "int fd",
+                    "const char  __user *pathname",
+                ], # fs/notify/fanotify/fanotify_user.c
             }
 
             syscall_list = []
