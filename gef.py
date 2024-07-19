@@ -26861,6 +26861,10 @@ class ContextCommand(GenericCommand):
             level += 1
             nb_backtrace -= 1
 
+        if nb_backtrace == 0:
+            if current_frame:
+                gef_print("   [..]")
+
         orig_frame.select()
         return
 
