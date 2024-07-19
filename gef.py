@@ -12270,6 +12270,7 @@ class ProcessMap:
         if is_x86():
             tls_list = []
             orig_thread = gdb.selected_thread()
+            orig_frame = gdb.selected_frame()
             if orig_thread: # orig_thread may be None if under winedbg
                 for thread in gdb.selected_inferior().threads():
                     thread.switch() # change thread
@@ -12277,6 +12278,7 @@ class ProcessMap:
                     tls = get_register("$fs_base" if is_x86_64() else "$gs_base") # get tls address
                     tls_list.append([thread.num, tls, current_arch.sp])
                 orig_thread.switch() # revert thread
+                orig_frame.select()
                 extra_info = sorted(tls_list)
 
                 # When using gdbserver, thread.num may start from 2 even though there is no thread.
