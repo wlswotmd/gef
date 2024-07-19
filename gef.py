@@ -419,6 +419,7 @@ class Cache:
 
 class Config:
     __gef_config__ = {} # keep gef configs
+    __gef_config_orig__ = {} # for debugging
 
     @staticmethod
     @Cache.cache_until_next
@@ -13814,6 +13815,9 @@ class GenericCommand(gdb.Command):
         # add
         key = "{:s}.{:s}".format(class_name, name)
         Config.__gef_config__[key] = [value, type(value), description]
+        Config.__gef_config_orig__[key] = [value, type(value), description] # for debugging
+
+        # reset cache
         Cache.reset_gef_caches(function=Config.get_gef_setting)
         return
 
@@ -86389,31 +86393,41 @@ class GefConfigCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("setting_name", metavar="SETTING_NAME", nargs="?", help="setting name.")
     parser.add_argument("setting_value", metavar="SETTING_VALUE", nargs="?", help="setting value.")
+    parser.add_argument("-s", "--show-only-changes", action="store_true", help="show only changed settings.")
     _syntax_ = parser.format_help()
 
     def __init__(self):
         super().__init__(complete="use_user_complete")
         return
 
-    def print_setting(self, config_name, verbose=False):
+    def print_setting(self, config_name, with_description=False, show_only_changes=False):
         res = Config.__gef_config__.get(config_name)
+        res_orig = Config.__gef_config_orig__.get(config_name)
+        if not res or not res_orig:
+            return
+
         string_color = Config.get_gef_setting("theme.dereference_string")
         misc_color = Config.get_gef_setting("theme.dereference_base_address")
 
-        if not res:
-            return
-
         _value, _type, _desc = res
+        _value_orig, _, _ = res_orig
+
         _setting = Color.colorify(config_name, "green")
         _type = _type.__name__
         if _type == "str":
             _value = '"{:s}"'.format(Color.colorify(_value, string_color))
+            _value_orig = '"{:s}"'.format(Color.colorify(_value_orig, string_color))
         else:
             _value = Color.colorify(_value, misc_color)
+            _value_orig = Color.colorify(_value_orig, misc_color)
 
-        gef_print("{:s} ({:s}) = {:s}".format(_setting, _type, _value))
+        if show_only_changes:
+            if _value != _value_orig:
+                gef_print("{:s} ({:s}) = {:s}   (orig: {:s})".format(_setting, _type, _value, _value_orig))
+        else:
+            gef_print("{:s} ({:s}) = {:s}".format(_setting, _type, _value))
 
-        if verbose:
+        if with_description:
             gef_print(Color.colorify("\nDescription:", "bold underline"))
             gef_print("\t{:s}".format(_desc))
         return
@@ -86470,7 +86484,7 @@ class GefConfigCommand(GenericCommand):
         if (args.setting_name, args.setting_value) == (None, None):
             gef_print(titlify("GEF configuration settings"))
             for name in sorted(Config.__gef_config__):
-                self.print_setting(name)
+                self.print_setting(name, show_only_changes=args.show_only_changes)
             return
 
         # show name-matched config(s)
@@ -86480,11 +86494,11 @@ class GefConfigCommand(GenericCommand):
                 return
             if len(names) == 1 or (args.setting_name in Config.__gef_config__): # uniquely identified or exact match
                 gef_print(titlify("GEF configuration setting: {:s}".format(names[0])))
-                self.print_setting(names[0], verbose=True)
+                self.print_setting(names[0], with_description=True, show_only_changes=args.show_only_changes)
             else:
                 gef_print(titlify("GEF configuration settings matching '{:s}'".format(args.setting_name)))
                 for name in names:
-                    self.print_setting(name)
+                    self.print_setting(name, show_only_changes=args.show_only_changes)
             return
 
         # set config value
