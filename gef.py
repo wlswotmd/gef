@@ -22371,7 +22371,11 @@ class ChecksecCommand(GenericCommand):
         gef_print("{:<40s}: {:s}".format("NX", self.get_colored_msg(sec["NX"])))
 
         # PIE
-        gef_print("{:<40s}: {:s}".format("PIE", self.get_colored_msg(sec["PIE"])))
+        if sec["PIE"]:
+            gef_print("{:<40s}: {:s}".format("PIE", self.get_colored_msg(sec["PIE"])))
+        else:
+            vaddr = min([p.p_vaddr for p in elf.phdrs if p.p_type==Elf.Phdr.PT_LOAD])
+            gef_print("{:<40s}: {:s} ({:#x})".format("PIE", self.get_colored_msg(sec["PIE"]), vaddr))
 
         # RELRO
         if sec["Full RELRO"]:
@@ -22424,14 +22428,10 @@ class ChecksecCommand(GenericCommand):
         # RPATH
         if sec["RPATH"]:
             gef_print("{:<40s}: {:s}".format("RPATH", Color.colorify("Found", "bold red")))
-        else:
-            gef_print("{:<40s}: {:s}".format("RPATH", Color.colorify("Not found", "bold green")))
 
         # RUNPATH
         if sec["RUNPATH"]:
             gef_print("{:<40s}: {:s}".format("RUNPATH", Color.colorify("Found", "bold red")))
-        else:
-            gef_print("{:<40s}: {:s}".format("RUNPATH", Color.colorify("Not found", "bold green")))
 
         # Clang CFI
         if sec["Clang CFI"]:
@@ -22502,7 +22502,6 @@ class ChecksecCommand(GenericCommand):
             print_filename = "{:s} (remote: {:s})".format(local_filepath, remote_filepath)
         else:
             print_filename = local_filepath
-        gef_print(titlify("checksec - {:s}".format(print_filename)))
 
         self.print_security_properties(local_filepath)
 
