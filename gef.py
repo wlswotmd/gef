@@ -52414,6 +52414,7 @@ class KernelTaskCommand(GenericCommand):
         self.offset_prog = None
         # bpf_prog
         self.offset_bpf_func = None
+        self.offset_orig_prog = None
         return
 
     def quiet_info(self, msg):
@@ -53064,6 +53065,7 @@ class KernelTaskCommand(GenericCommand):
             struct bpf_prog *prog;
             ...
         """
+
         for task in task_addrs:
             if not self.has_seccomp(task):
                 continue
@@ -53078,17 +53080,29 @@ class KernelTaskCommand(GenericCommand):
 
             filter_ = read_int_from_memory(task + self.offset_seccomp + 4 + 4)
             for i in range(0x100):
+                # prev
                 x = read_int_from_memory(filter_ + current_arch.ptrsize * i)
-                if is_valid_addr(x):
-                    if filter_count == 1:
-                        return current_arch.ptrsize * (i - 1) # prev is NULL
-                    else:
-                        return current_arch.ptrsize * i # prev is non-NULL
+                if (x & 0x7) or not is_valid_addr(x): # must aligned
+                    continue
+                # prog
+                y = read_int_from_memory(filter_ + current_arch.ptrsize * (i + 1))
+                if (y & 0x7) or not is_valid_addr(y): # must aligned
+                    continue
+
+                if filter_count == 1:
+                    return current_arch.ptrsize * (i - 1) # prev is NULL
+                else:
+                    return current_arch.ptrsize * i # prev is non-NULL
         return None
 
     def get_offset_prog(self, offset_prev):
         if offset_prev is None:
             return None
+
+        kversion = Kernel.kernel_version()
+        if kversion < "3.16":
+            return None
+
         return offset_prev + current_arch.ptrsize
 
     def get_offset_bpf_func(self, task_addrs, offset_seccomp, offset_prog):
@@ -53113,7 +53127,24 @@ class KernelTaskCommand(GenericCommand):
             for i in range(0x100):
                 x = read_int_from_memory(bpf_prog + current_arch.ptrsize * i)
                 if is_valid_addr(x) and is_executable(x):
+                    if read_int_from_memory(x) == 0: # something is wrong
+                        continue
                     return current_arch.ptrsize * i
+        return None
+
+    def get_offset_orig_prog(self, offset_bpf_func):
+        if offset_bpf_func is None:
+            return None
+
+        kversion = Kernel.kernel_version()
+        if kversion >= "5.12":
+            return offset_bpf_func + current_arch.ptrsize * 2
+        elif kversion >= "4.1":
+            return offset_bpf_func - current_arch.ptrsize
+        elif kversion >= "3.18":
+            return offset_bpf_func - current_arch.ptrsize * 2
+        elif kversion >= "3.16":
+            return offset_bpf_func - current_arch.ptrsize
         return None
 
     def get_offset_thread_head(self, task_addr, offset_signal):
@@ -54470,6 +54501,7 @@ class KernelTaskCommand(GenericCommand):
                 if self.offset_signal is None:
                     self.offset_signal = self.get_offset_signal(self.offset_nsproxy)
                 self.quiet_info("offsetof(task_struct, signal): {:#x}".format(self.offset_signal))
+
                 if self.offset_thread_head is None:
                     self.offset_thread_head = self.get_offset_thread_head(task_addrs[0], self.offset_signal)
                 self.quiet_info("offsetof(signal, thread_head): {:#x}".format(self.offset_thread_head))
@@ -54486,16 +54518,16 @@ class KernelTaskCommand(GenericCommand):
             if self.offset_action is None:
                 sighand = read_int_from_memory(task_addrs[1] + self.offset_sighand)
                 self.offset_action = self.get_offset_action(sighand)
-                if self.offset_action is None:
-                    self.quiet_err("Not found sighand_struct->action")
-                    return False
-                self.quiet_info("offsetof(sighand_struct, action): {:#x}".format(self.offset_action))
+            if self.offset_action is None:
+                self.quiet_err("Not found sighand_struct->action")
+                return False
+            self.quiet_info("offsetof(sighand_struct, action): {:#x}".format(self.offset_action))
 
             if self.sizeof_action is None:
                 self.sizeof_action = self.get_sizeof_action(task_addrs, self.offset_sighand, self.offset_action, self.offset_mm)
-                if self.sizeof_action is None:
-                    self.quiet_err("Not found sizeof(action[0])")
-                    return False
+            if self.sizeof_action is None:
+                self.quiet_err("Not found sizeof(action[0])")
+                return False
             self.quiet_info("sizeof(action[0]): {:#x}".format(self.sizeof_action))
 
             self.signame_list = {
@@ -54550,31 +54582,48 @@ class KernelTaskCommand(GenericCommand):
 
             if self.offset_seccomp is None:
                 self.offset_seccomp = self.get_offset_seccomp(task_addrs, self.offset_signal)
-            if self.offset_seccomp:
-                self.quiet_info("offsetof(task_struct, seccomp): {:#x}".format(self.offset_seccomp))
-            else:
-                self.quiet_info("offsetof(task_struct, seccomp): None")
+            if self.offset_seccomp is None:
+                self.quiet_err("Not found task_struct->seccomp")
+                return False
+            self.quiet_info("offsetof(task_struct, seccomp): {:#x}".format(self.offset_seccomp))
 
-            if self.offset_prog is None:
+            if self.offset_prev is None:
                 self.offset_prev = self.get_offset_prev(task_addrs, self.offset_seccomp)
-            if self.offset_prev:
-                self.quiet_info("offsetof(seccomp_filter, prev): {:#x}".format(self.offset_prev))
-            else:
-                self.quiet_info("offsetof(seccomp_filter, prev): None")
+            if self.offset_prev is None:
+                self.quiet_err("Not found seccomp_filter->prev")
+                return False
+            self.quiet_info("offsetof(seccomp_filter, prev): {:#x}".format(self.offset_prev))
 
             if self.offset_prog is None:
                 self.offset_prog = self.get_offset_prog(self.offset_prev)
-            if self.offset_prog:
-                self.quiet_info("offsetof(seccomp_filter, prog): {:#x}".format(self.offset_prog))
-            else:
-                self.quiet_info("offsetof(seccomp_filter, prog): None")
+            if self.offset_prog is None:
+                self.quiet_err("Not found seccomp_filter->prog")
+                return False
+            self.quiet_info("offsetof(seccomp_filter, prog): {:#x}".format(self.offset_prog))
 
             if self.offset_bpf_func is None:
                 self.offset_bpf_func = self.get_offset_bpf_func(task_addrs, self.offset_seccomp, self.offset_prog)
-            if self.offset_bpf_func:
-                self.quiet_info("offsetof(bpf_prog, bpf_func): {:#x}".format(self.offset_bpf_func))
-            else:
-                self.quiet_info("offsetof(bpf_prog, bpf_func): None")
+            if self.offset_bpf_func is None:
+                self.quiet_err("Not found bpf_prog->bpf_func")
+                return False
+            self.quiet_info("offsetof(bpf_prog, bpf_func): {:#x}".format(self.offset_bpf_func))
+
+            if self.offset_orig_prog is None:
+                self.offset_orig_prog = self.get_offset_orig_prog(self.offset_bpf_func)
+            if self.offset_orig_prog is None:
+                self.quiet_err("Not found bpf_prog->orig_prog")
+                return False
+            self.quiet_info("offsetof(bpf_prog: orig_prog): {:#x}".format(self.offset_orig_prog))
+
+            try:
+                self.seccomp_tools_command = GefUtil.which("seccomp-tools")
+                self.quiet_info("seccomp-tools is found")
+                if is_arm32():
+                    if not self.quiet:
+                        warn("seccomp-tools is unsupported on arm32")
+            except FileNotFoundError:
+                self.quiet_info("seccomp-tools is not found, use `capstone-disable bpf_func`")
+                self.seccomp_tools_command = None
 
         return task_addrs
 
@@ -54792,16 +54841,32 @@ class KernelTaskCommand(GenericCommand):
                     out.append("{:#018x} {:25s} {:<12d} {:#018x}".format(seccomp, mode_str, filter_count, filter_current))
 
                     i = 1
-                    while filter_current:
+                    while filter_current and i <= filter_count:
                         prog = read_int_from_memory(filter_current + self.offset_prog)
+                        filter_prev = read_int_from_memory(filter_current + self.offset_prev)
                         bpf_func = read_int_from_memory(prog + self.offset_bpf_func)
+                        orig_prog = read_int_from_memory(prog + self.offset_orig_prog)
 
-                        out.append("[{:d}/{:d}] filter:{:#x} bpf_func:{:#x}".format(i, filter_count, filter_current, bpf_func))
-                        ret = gdb.execute("capstone-disassemble {:#x}".format(bpf_func), to_string=True).rstrip()
-                        out.append(ret)
-                        out.append("      ...")
+                        out.append("")
+                        out.append("[{:d}/{:d}] filter:{:#x} prev:{:#x} bpf_func:{:#x} orig_prog:{:#x}".format(
+                            i, filter_count, filter_current, filter_prev, bpf_func, orig_prog,
+                        ))
 
-                        filter_current = read_int_from_memory(filter_current + self.offset_prev)
+                        if self.seccomp_tools_command:
+                            cnt = read_int_from_memory(orig_prog) & 0xffff
+                            prog = read_int_from_memory(orig_prog + current_arch.ptrsize)
+                            data = read_memory(prog, cnt * 8)
+                            tmp_fd, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR, prefix="ktask_")
+                            os.fdopen(tmp_fd, "wb").write(data)
+                            ret = GefUtil.gef_execute_external([self.seccomp_tools_command, "disasm", tmp_path], as_list=True)
+                            out.extend(ret)
+                            os.unlink(tmp_path)
+                        else:
+                            ret = gdb.execute("capstone-disassemble {:#x}".format(bpf_func), to_string=True).rstrip()
+                            out.append(ret)
+                            out.append("      ...")
+
+                        filter_current = filter_prev
                         i += 1
 
             # print separator
