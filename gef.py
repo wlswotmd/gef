@@ -48767,36 +48767,14 @@ class KernelAddressHeuristicFinder:
             # search init_task->tasks
             for i in range(0x200):
                 offset_tasks = current_arch.ptrsize * i
-                pos1 = current_task + offset_tasks
-                pos2 = current_task + offset_tasks + current_arch.ptrsize
-                list1 = [pos1]
-                list2 = [pos2]
-                # validating candidate offset
-                while True:
-                    # read check
-                    if not is_valid_addr(pos1) or not is_valid_addr(pos2):
-                        found = False
-                        break
-                    pos1 = read_int_from_memory(pos1)
-                    pos2 = read_int_from_memory(pos2) + current_arch.ptrsize
-                    # list validate
-                    if pos1 in list1[1:] or pos2 in list2[1:]: # incomplete infinity loop detected
-                        found = False
-                        break
-                    if (pos1 == list1[0] and len(list1) == 1) or (pos2 == list2[0] and len(list2) == 1): # self reference
-                        found = False
-                        break
-                    if (pos1 == list1[0] and len(list1) > 5) and (pos2 == list2[0] and len(list2) > 5): # maybe link list
-                        found = True
-                        break
-                    list1.append(pos1)
-                    list2.append(pos2)
-                if found:
+                if not is_double_link_list(current_task + offset_tasks):
+                    continue
+                if len(get_task_list(current_task, offset_tasks)) > 5: # process count
                     return offset_tasks
             return None
 
-        def get_task_list(init_task, offset_tasks):
-            pos = init_task + offset_tasks
+        def get_task_list(task, offset_tasks):
+            pos = task + offset_tasks
             task_list = [pos]
             # validating candidate offset
             while True:
