@@ -83,27 +83,31 @@ Following are the breakdown. It may not be comprehensive.
 
 If you install with `install-minimal.sh`, you will not be able to use these commands unless you install the required packages and tools.
 
-* `apt` packages
-    * `gdb-multiarch`: `gdb` is also good, but of course one is required.
-    * `binutils`: is required by following commands.
-        * `objdump` and `readelf`: are required by `got` command.
-        * `nm`: is required by `rp --kernel` and `qemu-device-info` commands.
-        * `objcopy`: is required by `add-symbol-temporary` and `ksymaddr-remote-apply` commands.
-    * `python3-pip`: is required to install `vmlinux-to-elf` and some python3 packages.
-    * `git`: is required to install `vmlinux-to-elf` and required by `diffo git-diff` command.
-    * `ruby-dev`: is required to install `one_gadget` and `seccomp-tools`.
-* `python3` packages
-    * `crccheck`: is required by `uefi-ovmf-info` and `hash-memory -v` commands.
-    * `unicorn`: is required by `unicorn-emulate` command.
-    * `capstone`: is required by `i8086` mode and required by `unicorn-emulate`, `capstone-disassemble`, `dasm` and `asm-list` commands.
-    * `ropper`: is required by `ropper` command.
-    * `keystone-engine`: is required by `mprotect` and `asm` commands.
-    * `tqdm`: just makes it look better, so GEF will work without it.
-* Others
-  * `vmlinux-to-elf`: is required by `vmlinux-to-elf-apply` command.
-  * `rp++`: is required by `rp` command.
-  * `seccomp-tools`: is required by `seccomp-tools` command.
-  * `one_gadget`: is required by `onegadget` command.
+|GEF command/feature|required apt package|required python3 package|required other tools|
+|:---|:---|:---|:---|
+|(`gef`)|`gdb` or `gdb-multiarch`|-|-|
+|`got`|`binutils` (`objdump`, `readelf`)|-|-|
+|`rp --kernel`|`binutils` (`nm`)|-|-|
+|`qemu-device-info`|`binutils` (`nm`)|-|-|
+|`add-symbol-temporary`|`binutils` (`objcopy`)|-|-|
+|`ksymaddr-remote-apply`|`binutils` (`objcopy`)|-|-|
+|`diffo git-diff`|`git`|-|-|
+|`vmlinux-to-elf-apply`|`python3-pip`, `git`|`vmlinux-to-elf`|-|
+|`uefi-ovmf-info`|`python3-pip`|`crccheck`|-|
+|`hash-memory -v`|`python3-pip`|`crccheck`|-|
+|`unicorn-emulate`|`python3-pip`|`unicorn`, `capstone`|-|
+|`capstone-disassemble`|`python3-pip`|`capstone`|-|
+|`dasm`|`python3-pip`|`capstone`|-|
+|`asm-list`|`python3-pip`|`capstone`|-|
+|`i8086` mode|`python3-pip`|`capstone`|-|
+|`ropper`|`python3-pip`|`ropper`|-|
+|`mprotect`|`python3-pip`|`keystone-engine`|-|
+|`asm`|`python3-pip`|`keystone-engine`|-|
+|(Progress Indicator)|`python3-pip`|`tqdm`|-|
+|`onegadget`|`ruby-dev`|-|`one_gadget`|
+|`seccomp-tools`|`ruby-dev`|-|`seccomp-tools`|
+|`ktask -S`|`ruby-dev`|-|`seccomp-tools`|
+|`rp`|-|-|`rp++`|
 
 ## How can I install GEF offline?
 Please refer to [`install.sh`](https://github.com/bata24/gef/blob/dev/install.sh) or [`install-minimal.sh`](https://github.com/bata24/gef/blob/dev/install-minimal.sh), and set it up manually.
