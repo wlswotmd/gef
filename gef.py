@@ -2545,6 +2545,15 @@ class Instruction:
         self.address = address
         self.location = location
         self.mnemonic = mnemo
+
+        # merge symbol includes ","; e.g.: <... , ...>
+        if len(operands) > 1:
+            operands, o = operands[:-1], operands[-1]
+            while o.count("<") < o.count(">"):
+                operands, oo = operands[:-1], operands[-1]
+                o = oo + ", " + o
+            operands += [o]
+
         self.operands = operands
         self.opcodes = opcodes
         return
@@ -2554,9 +2563,9 @@ class Instruction:
     RE_SPLIT_LAST_OPERAND_ARM32 = re.compile(r";.+$")
     RE_SPLIT_LAST_OPERAND_MICROBLAZE = re.compile(r"//.+$")
     RE_SPLIT_LAST_OPERAND_LOONGARCH64 = re.compile(r"(# .*)$")
-    RE_SPLIT_ELEM = re.compile(r"([*%\[\](): ]|(?<![#@%])(?<=.)[-+]|<.+?>)")
+    RE_SPLIT_ELEM = re.compile(r"([*%\[\](): ]|(?<![#@%])(?<=.)[-+]|<.+>)")
     RE_IS_DIGIT_COMMENT = re.compile(r"#?-?(0x[0-9a-f]+|\d+)")
-    RE_SPLIT_SYMBOL = re.compile(r"(.*)<(.+?)>(.*)$")
+    RE_SPLIT_SYMBOL = re.compile(r"(.*?)<(.+)>(.*)$")
     RE_SPLIT_SYMBOL_OFFSET = re.compile(r"(.+)\+(\d+)$")
 
     # Allow formatting an instruction with {:o} to show opcodes.
@@ -2661,7 +2670,7 @@ class Instruction:
                     operands = operands[:-1]
 
         def hexlify_symbol_offset(x):
-            r1 = self.RE_SPLIT_SYMBOL.match(x) # r"(.*)<(.+?)>(.*)$"
+            r1 = self.RE_SPLIT_SYMBOL.match(x) # r"(.*?)<(.+)>(.*)$"
             if not r1:
                 return x
             r2 = self.RE_SPLIT_SYMBOL_OFFSET.match(r1.group(2)) # r"(.+)\+(\d+)$"
@@ -2686,10 +2695,8 @@ class Instruction:
         # extract -> coloring -> join
         for o1 in operands:
             colored_o1 = []
-            # *, [, ], (, ), %, :, space
-            # not first +, - (without #, @)
-            # <...>
-            for o2 in self.RE_SPLIT_ELEM.split(o1): # r"([*%\[\](): ]|(?<![#@%])(?<=.)[-+]|<.+?>)"
+            # split by *, [, ], (, ), %, :, space, non-first +, - (without #, @, %), <...>
+            for o2 in self.RE_SPLIT_ELEM.split(o1): # r"([*%\[\](): ]|(?<![#@%])(?<=.)[-+]|<.+>)"
                 o2 = o2.strip()
                 if o2 == "":
                     continue
@@ -5018,7 +5025,7 @@ class Disasm:
         It is also called directly from some commands such as Disasm.capstone_disassemble."""
         def cs_insn_to_gef_insn(cs_insn):
             loc = Symbol.get_symbol_string(cs_insn.address, nosymbol_string=" <NO_SYMBOL>")
-            ops = [] + cs_insn.op_str.split(", ")
+            ops = cs_insn.op_str.split(", ")
             return Instruction(cs_insn.address, loc, cs_insn.mnemonic, ops, cs_insn.bytes)
 
         capstone = sys.modules["capstone"]
