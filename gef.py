@@ -26073,7 +26073,7 @@ class ContextCommand(GenericCommand):
         else:
             arch_name += " (gdb-native)"
 
-        self.context_title("code:{}".format(arch_name))
+        self.context_title("code: {}".format(arch_name))
         if use_native_x_command:
             gdb.execute("x/16i {:#x}".format(current_arch.pc))
             return
@@ -26690,7 +26690,7 @@ class ContextCommand(GenericCommand):
 
         nb_line = Config.get_gef_setting("context.nb_lines_code")
         cur_line_color = Config.get_gef_setting("theme.source_current_line")
-        self.context_title("source:{}+{}".format(os.path.realpath(symtab.filename), line_num + 1))
+        self.context_title("source: {}+{}".format(os.path.normpath(symtab.filename), line_num + 1))
         show_extra_info = Config.get_gef_setting("context.show_source_code_variable_values")
 
         for i in range(line_num - nb_line + 1, line_num + nb_line):
@@ -26902,7 +26902,7 @@ class ContextCommand(GenericCommand):
             shown_threads = len(threads)
         else:
             shown_threads = nb_lines_threads
-        self.context_title("threads:{:d}/{:d}".format(shown_threads, len(threads)))
+        self.context_title("threads: {:d}/{:d}".format(shown_threads, len(threads)))
 
         if nb_lines_threads > 0:
             threads = threads[:nb_lines_threads]
