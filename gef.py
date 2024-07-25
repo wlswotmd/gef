@@ -2540,23 +2540,40 @@ class Instruction:
         #   address: 0x55555555a7d0
         #   location: "" or "<main+0>"
         #   mnemo: "lea"
-        #   operands: ['rcx', '[rip+0x11ee5]        # 0x55555556c69a']
+        #   operands: "rcx, [rip+0x11ee5]        # 0x55555556c69a"
         #   opcodes: b'H\x8d\r\xe5\x1e\x01\x00'
         self.address = address
         self.location = location
         self.mnemonic = mnemo
 
         # merge symbol includes ","; e.g.: <... , ...>
+        operands = [x.strip() for x in operands.split(",")]
         if len(operands) > 1:
             operands, o = operands[:-1], operands[-1]
-            while o.count("<") < o.count(">"):
-                operands, oo = operands[:-1], operands[-1]
-                o = oo + ", " + o
+            while (o.count("<") - o.count("operator<<") * 2) != (o.count(">") - o.count("operator>>") * 2):
+                if len(operands) > 1:
+                    operands, oo = operands[:-1], operands[-1]
+                    o = oo + ", " + o
+                else:
+                    o = operands[0] + ", " + o
+                    operands = []
+                    break
             operands += [o]
 
         self.operands = operands
         self.opcodes = opcodes
         return
+
+    def hexlify_symbol_offset(self, x):
+        r1 = self.RE_SPLIT_SYMBOL.match(x) # r"(.*?)<(.+)>(.*)$"
+        if not r1:
+            return x
+        r2 = self.RE_SPLIT_SYMBOL_OFFSET.match(r1.group(2)) # r"(.+)\+(\d+)$"
+        if r2:
+            sym_x = "{}+{:#x}".format(self.smartify_text(r2.group(1)), int(r2.group(2)))
+        else:
+            sym_x = self.smartify_text(r1.group(2))
+        return "{:s}<{:s}>{:s}".format(r1.group(1), sym_x, r1.group(3))
 
     RE_SPLIT_LAST_OPERAND_X86_64 = re.compile(r"(.*?)\s+(#.+)$")
     RE_SPLIT_LAST_OPERAND_ARM64 = re.compile(r"//.+$")
@@ -2669,18 +2686,7 @@ class Instruction:
                     additional_1 = r.group(1)
                     operands = operands[:-1]
 
-        def hexlify_symbol_offset(x):
-            r1 = self.RE_SPLIT_SYMBOL.match(x) # r"(.*?)<(.+)>(.*)$"
-            if not r1:
-                return x
-            r2 = self.RE_SPLIT_SYMBOL_OFFSET.match(r1.group(2)) # r"(.+)\+(\d+)$"
-            if r2:
-                sym_x = "{}+{:#x}".format(self.smartify_text(r2.group(1)), int(r2.group(2)))
-            else:
-                sym_x = self.smartify_text(r1.group(2))
-            return "{:s}<{:s}>{:s}".format(r1.group(1), sym_x, r1.group(3))
-
-        additional_1 = hexlify_symbol_offset(additional_1)
+        additional_1 = self.hexlify_symbol_offset(additional_1)
 
         # format operands
         if to_highlight:
@@ -2691,8 +2697,9 @@ class Instruction:
             color_operands_normal = Config.get_gef_setting("theme.disassemble_operands_normal")
             color_operands_const = Config.get_gef_setting("theme.disassemble_operands_const")
             color_operands_symbol = Config.get_gef_setting("theme.disassemble_operands_symbol")
-        colored_operands = []
+
         # extract -> coloring -> join
+        colored_operands = []
         for o1 in operands:
             colored_o1 = []
             # split by *, [, ], (, ), %, :, space, non-first +, - (without #, @, %), <...>
@@ -2701,7 +2708,7 @@ class Instruction:
                 if o2 == "":
                     continue
                 if o2[0] == "<":
-                    colored_o1.append(hexlify_symbol_offset(o2))
+                    colored_o1.append(self.hexlify_symbol_offset(o2))
                     colored_o1.append(" ")
                 elif o2 in ["-", "+", "*"]:
                     colored_o1.append(Color.colorify(o2, color_operands_symbol))
@@ -2726,10 +2733,12 @@ class Instruction:
         operands = Color.colorify(", ", color_operands_symbol).join(colored_operands)
 
         # the case that gdb does not append symbol but symbol exists
-        if is_branch and "<" not in operands and self.operands and self.operands[-1]:
-            addr = ContextCommand.get_branch_addr(self)
-            sym = Symbol.get_symbol_string(addr).lstrip()
-            additional_1 = sym
+        if is_branch:
+            if "<" not in operands and "<" not in additional_1:
+                if self.operands and self.operands[-1]:
+                    addr = ContextCommand.get_branch_addr(self)
+                    sym = Symbol.get_symbol_string(addr).lstrip()
+                    additional_1 = sym
 
         # formatting
         out = "{:s} {:s}   {:s}   {:s} {:s} {:s}".format(
@@ -4920,14 +4929,10 @@ class Disasm:
             address = insn["addr"]
             asm = insn["asm"].rstrip().split(None, 1)
             if len(asm) > 1:
-                mnemo, operands = asm
-                if "\t" in operands:
-                    first, second = operands.rsplit("\t", 1)
-                    operands = [x.strip() for x in first.split(",")] + [second]
-                else:
-                    operands = [x.strip() for x in operands.split(",")]
+                mnemo = asm[0]
+                operands = asm[1].replace("\t", " ")
             else:
-                mnemo, operands = asm[0], []
+                mnemo, operands = asm[0], ""
 
             location = Symbol.get_symbol_string(address, nosymbol_string=" <NO_SYMBOL>")
 
@@ -5025,8 +5030,7 @@ class Disasm:
         It is also called directly from some commands such as Disasm.capstone_disassemble."""
         def cs_insn_to_gef_insn(cs_insn):
             loc = Symbol.get_symbol_string(cs_insn.address, nosymbol_string=" <NO_SYMBOL>")
-            ops = cs_insn.op_str.split(", ")
-            return Instruction(cs_insn.address, loc, cs_insn.mnemonic, ops, cs_insn.bytes)
+            return Instruction(cs_insn.address, loc, cs_insn.mnemonic, cs_insn.op_str, cs_insn.bytes)
 
         capstone = sys.modules["capstone"]
         _arch = kwargs.get("arch", None)
@@ -5093,7 +5097,7 @@ class Disasm:
                     break
 
                 # failure (maybe the code is invalid)
-                yield Instruction(location, "", "(bad)", [], code_remain[:arch_inst_length])
+                yield Instruction(location, "", "(bad)", "", code_remain[:arch_inst_length])
                 nb_insn -= 1
                 if nb_insn == 0:
                     return
