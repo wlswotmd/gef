@@ -11473,7 +11473,8 @@ def u128(x):
 def is_ascii_string(addr):
     """Helper function to determine if the buffer pointed by `addr` is an ASCII string (in GDB)"""
     try:
-        return read_cstring_from_memory(addr) is not None
+        x = read_cstring_from_memory(addr)
+        return x is not None and len(x) > 0
     except gdb.MemoryError:
         return False
 
@@ -45981,21 +45982,23 @@ class MagicCommand(GenericCommand):
         width = AddressUtil.get_format_address_width()
         try:
             addr = int(gdb.parse_and_eval(f"&{sym}"))
-            addr = ProcessMap.lookup_address(addr)
-            perm = addr.section.permission
-            if is_ascii_string(addr.value):
-                val = read_cstring_from_memory(addr.value)
-                gef_print("{:45s} {!s} [{!s}] (+{:#010x}){:s}{:s}".format(
-                    sym, addr, perm, addr.value - base, RIGHT_ARROW, val,
-                ))
-            else:
-                val = ProcessMap.lookup_address(read_int_from_memory(addr.value))
-                val_sym = Symbol.get_symbol_string(val.value)
-                gef_print("{:45s} {!s} [{!s}] (+{:#010x}){:s}{:s}{:s}".format(
-                    sym, addr, perm, addr.value - base, RIGHT_ARROW, val.long_fmt(), val_sym,
-                ))
-        except Exception:
+        except gdb.error:
             gef_print("{:45s} {:>{:d}s}".format(sym, "Not found", width))
+            return
+
+        addr = ProcessMap.lookup_address(addr)
+        perm = addr.section.permission
+        if is_ascii_string(addr.value):
+            val = read_cstring_from_memory(addr.value)
+            gef_print("{:45s} {!s} [{!s}] (+{:#010x}){:s}{:s}".format(
+                sym, addr, perm, addr.value - base, RIGHT_ARROW, val,
+            ))
+        else:
+            val = ProcessMap.lookup_address(read_int_from_memory(addr.value))
+            val_sym = Symbol.get_symbol_string(val.value)
+            gef_print("{:45s} {!s} [{!s}] (+{:#010x}){:s}{:s}{:s}".format(
+                sym, addr, perm, addr.value - base, RIGHT_ARROW, val.long_fmt(), val_sym,
+            ))
         return
 
     def resolve_and_print_fj(self, sym, base):
