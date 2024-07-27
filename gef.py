@@ -54993,7 +54993,10 @@ class KernelModuleCommand(GenericCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
-    parser.add_argument("-s", "--resolve-symbol", action="store_true", help="try to resolve symbols.")
+    group = parser.add_mutually_exclusive_group(required=False)
+    group.add_argument("-s", "--resolve-symbol", action="store_true", help="try to resolve symbols.")
+    group.add_argument("-a", "--apply-symbol", action="store_true",
+                        help="try to apply symbol in the form 'module_name.symbol'.")
     parser.add_argument("--symbol-unsort", action="store_true",
                         help="print resolved symbols without sorting by address.")
     parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP filter.")
@@ -55004,7 +55007,7 @@ class KernelModuleCommand(GenericCommand):
 
     _note_ = "This command needs CONFIG_RANDSTRUCT=n.\n"
     _note_ += "\n"
-    _note_ += "Simplified clocksource structure:\n"
+    _note_ += "Simplified module structure:\n"
     _note_ += "\n"
     _note_ += "                   +-module------------------+\n"
     _note_ += "+-modules-----+    | ...                     |\n"
@@ -55030,7 +55033,13 @@ class KernelModuleCommand(GenericCommand):
     _note_ += "                   | ...                     |  |   | num_symtab     |\n"
     _note_ += "                   | kallsyms                |--+   | strtab         |\n"
     _note_ += "                   | ...                     |      | typetab (v5.2~)|\n"
-    _note_ += "                   +-------------------------+      +----------------+"
+    _note_ += "                   +-------------------------+      +----------------+\n"
+    _note_ += "\n"
+    _note_ += "Notes for -a option:\n"
+    _note_ += "- You can check the added symbols with the `symbols` command.\n"
+    _note_ += "- Added symbols are in the format `module_name.symbol` to avoid collisions.\n"
+    _note_ += "  When used from the command line, they must be enclosed in single quotes.\n"
+    _note_ += "  e.g. `p 'virtio_net.__this_module'`"
 
     def get_modules_list(self):
         modules = KernelAddressHeuristicFinder.get_modules()
@@ -55520,6 +55529,73 @@ class KernelModuleCommand(GenericCommand):
             entries.append([sym_addr, sym_type, sym_name])
         return entries
 
+    def print_symbol(self, entries, symbol_unsort):
+        self.out.append(titlify("module symbols"))
+        # symbol_unsort is used for debugging.
+        if not symbol_unsort:
+            entries = sorted(entries)
+        # add output
+        for sym_addr, sym_type, sym_name in entries:
+            self.out.append("{:#018x} {:s} {:s}".format(sym_addr, sym_type, sym_name))
+        self.out.append(titlify(""))
+        return
+
+    def apply_symbol(self, module_name, text_base, entries):
+        # remove old file
+        sym_elf_path = os.path.join(GEF_TEMP_DIR, "kmod-{:s}.elf".format(module_name))
+        if os.path.exists(sym_elf_path):
+            os.unlink(sym_elf_path)
+
+        # make blank elf
+        text_base &= gef_getpagesize_mask_high()
+        text_end = entries[-1][0]
+        blank_elf = AddSymbolTemporaryCommand.create_blank_elf(text_base, text_end)
+        if blank_elf is None:
+            if not self.quiet:
+                err("Failed to create blank elf")
+            return
+
+        # create command
+        cmd_string_arr = []
+        for sym_addr, sym_type, sym_name in entries:
+            if sym_addr < text_base:
+                continue
+
+            if sym_type in ["T", "t", "W", None]:
+                type_flag = "function"
+            else:
+                type_flag = "object"
+            if sym_type and sym_type in "abcdefghijklmnopqrstuvwxyz":
+                global_flag = "local"
+            else:
+                global_flag = "global"
+
+            # higher address needs relative
+            relative_addr = sym_addr - text_base
+            cmd_string_arr.append("--add-symbol")
+            cmd_string_arr.append("{:s}.{:s}=.text:{:#x},{:s},{:s}".format(
+                # modules often contain the same symbols, such as "__this_module".
+                # to avoid collisions, register them in the form "module_name.symbol".
+                module_name, sym_name, relative_addr, global_flag, type_flag,
+            ))
+
+        # embedding symbols
+        objcopy = GefUtil.which("objcopy")
+        processed_count = 0
+        for cmd_string_arr_sliced in slicer(cmd_string_arr, 10000 * 2):
+            subprocess.check_output([objcopy] + cmd_string_arr_sliced + [blank_elf])
+            processed_count += len(cmd_string_arr_sliced) // 2
+        if not self.quiet:
+            info("{:s}: {:d} entries were processed".format(module_name, processed_count))
+        os.rename(blank_elf, sym_elf_path)
+
+        # apply
+        cmd = "add-symbol-file {:s} {:#x}".format(sym_elf_path, text_base)
+        if not self.quiet:
+            warn("Execute `{:s}`".format(cmd))
+        gdb.execute(cmd, to_string=True)
+        return
+
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
@@ -55553,18 +55629,20 @@ class KernelModuleCommand(GenericCommand):
             if offset_module_core is None:
                 return
 
-        if args.resolve_symbol:
+        if args.resolve_symbol or args.apply_symbol:
             offset_kallsyms = self.get_offset_kallsyms(module_addrs)
             if offset_kallsyms is None:
                 return
 
         self.out = []
-        if not self.quiet:
-            fmt = "{:<18s} {:<24s} {:<18s} {:<18s}"
-            legend = ["module", "module->name", "base", "size"]
-            self.out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
 
-        tqdm = GefUtil.get_tqdm(not args.quiet)
+        if not args.apply_symbol:
+            if not self.quiet:
+                fmt = "{:<18s} {:<24s} {:<18s} {:<18s}"
+                legend = ["module", "module->name", "base", "size"]
+                self.out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
+
+        tqdm = GefUtil.get_tqdm(not args.quiet and not args.apply_symbol)
         for module in tqdm(module_addrs, leave=False):
             name_string = read_cstring_from_memory(module + offset_name)
             if args.filter:
@@ -55580,21 +55658,19 @@ class KernelModuleCommand(GenericCommand):
             else: # ~ 4.5
                 base = read_int_from_memory(module + offset_module_core)
                 size = u32(read_memory(module + offset_module_core + current_arch.ptrsize + 4, 4))
-            self.out.append("{:#018x} {:<24s} {:#018x} {:#018x}".format(module, name_string, base, size))
+
+            if not args.apply_symbol:
+                self.out.append("{:#018x} {:<24s} {:#018x} {:#018x}".format(module, name_string, base, size))
 
             if args.resolve_symbol:
-                self.out.append(titlify("module symbols"))
                 kallsyms = read_int_from_memory(module + offset_kallsyms)
                 entries = self.parse_kallsyms(kallsyms)
+                self.print_symbol(entries, args.symbol_unsort)
 
-                # symbol_unsort is used for debugging.
-                if not args.symbol_unsort:
-                    entries = sorted(entries)
-
-                for sym_addr, sym_type, sym_name in entries:
-                    self.out.append("{:#018x} {:s} {:s}".format(sym_addr, sym_type, sym_name))
-
-                self.out.append(titlify(""))
+            elif args.apply_symbol:
+                kallsyms = read_int_from_memory(module + offset_kallsyms)
+                entries = self.parse_kallsyms(kallsyms)
+                self.apply_symbol(name_string, base, entries)
 
         if self.out:
             if len(self.out) > GefUtil.get_terminal_size()[0]:
