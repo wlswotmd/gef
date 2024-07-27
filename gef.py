@@ -22509,11 +22509,6 @@ class ChecksecCommand(GenericCommand):
             err("File name could not be determined.")
             return
 
-        if remote_filepath:
-            print_filename = "{:s} (remote: {:s})".format(local_filepath, remote_filepath)
-        else:
-            print_filename = local_filepath
-
         self.print_security_properties(local_filepath)
 
         if tmp_filepath and os.path.exists(tmp_filepath):
