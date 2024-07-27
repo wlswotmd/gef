@@ -52286,7 +52286,7 @@ class KernelTaskCommand(GenericCommand):
     parser.add_argument("-s", "--print-sighand", action="store_true",
                         help="print signals for each user process.")
     parser.add_argument("-S", "--print-seccomp", action="store_true",
-                        help="print seccomp informations for each user process.")
+                        help="print seccomp information for each user process.")
     parser.add_argument("-N", "--print-namespace", action="store_true",
                         help="print namespaces for each user process.")
     parser.add_argument("-u", "--user-process-only", action="store_true",
@@ -87089,7 +87089,7 @@ class GefSetArchCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("arch", metavar="ARCH", nargs="?", help="target architecture.")
-    group.add_argument("-l", "--list", action="store_true", help="show supported architecure words.")
+    group.add_argument("-l", "--list", action="store_true", help="show supported architecture words.")
     _syntax_ = parser.format_help()
 
     def arch_listup(self):

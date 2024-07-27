@@ -74,7 +74,7 @@
     * Host OS
         * Configure 2 `serial port`s as `named pipe` in both (debugger/debuggee) virtual machine settings.
         * Vmware example:
-            * Debuggger
+            * Debugger
                 * Use named pipe: `\\.\pipe\pipe0` (Windows host) / `/tmp/sock0` (Linux host), `This end is the client.`, `The other end is a virtual machine.`
                 * Use named pipe: `\\.\pipe\pipe1` (Windows host) / `/tmp/sock1` (Linux host), `This end is the client.`, `The other end is a virtual machine.`
             * Debuggee
@@ -93,7 +93,7 @@
 * Note
     * It needs gdb 12.x or later.
     * It runs very slowly and is not recommended.
-    * Ctrl+C interrupt does not work. You need to do `echo g > /proc/sysrq-trigger` in console.
+    * `Ctrl+C` interrupt does not work. You need to do `echo g > /proc/sysrq-trigger` in console.
     * Many commands are UNSUPPORTED in KGDB mode, because just creating the memory map would take several hours.
 
 ## With VMware
@@ -111,7 +111,7 @@
 * Supported architectures
     * x64 only.
 * Note
-    * It runs faster than KGDB mode and Ctrl+C interrupt works, but it is still slow.
+    * It runs faster than KGDB mode and `Ctrl+C` interrupt works, but it is still slow.
     * Access to physical memory and control registers is possible thanks to the `monitor` command.
 
 ## With rr
