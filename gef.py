@@ -183,6 +183,7 @@ HORIZONTAL_LINE             = "-"
 VERTICAL_LINE               = "|"
 BP_GLYPH                    = "*"
 
+
 def perf(f): # noqa
     """Decorator wrapper to perf."""
 
@@ -227,16 +228,19 @@ def cperf(f): # noqa
 
 
 class DisplayHook:
+    """It enables pretty printing of list, dict, set, and so on.
+    It also displays in hexadecimal by default."""
+
     @staticmethod
     def pp(o, idt):
         """Makes a string for pretty print by recursively."""
 
         def I1(idt):
-            """Adds an indent for current level."""
+            """Makes an indent for current level."""
             return "  " * idt
 
         def I2(idt):
-            """Adds an indent for next level."""
+            """Makes an indent for next level."""
             return "  " * (idt + 1)
 
         def R1(o, idt):
@@ -247,15 +251,9 @@ class DisplayHook:
             """Returns a list of the elements with indent and comma (for list, tuple, set, ...)."""
             return [I2(idt) + DisplayHook.pp(x, idt + 1) + "," for x in o]
 
-        def RD1(o, idt):
-            """Returns a string of the elements concatenated with comma (for dict, ...)."""
-            return ", ".join([DisplayHook.pp(k, idt + 1) + ": " + DisplayHook.pp(v, idt + 1) for k, v in o])
-
-        def RD2(o, idt):
-            """Returns a list of the elements with indent and comma (for dict, ...)."""
-            return [I2(idt) + DisplayHook.pp(k, idt + 1) + ": " + DisplayHook.pp(v, idt + 1) + "," for k, v in o]
-
         def Z(s, e, o, idt):
+            """Returns a string of the elements concatenated with commas (for list, tuple, set, ...),
+            taking into account the width of the screen."""
             # Creates a string without newlines and returns it if it's short enough.
             f = s + R1(o, idt) + e
             if len(f) < width:
@@ -264,7 +262,17 @@ class DisplayHook:
             f = [s] + R2(o, idt) + [I1(idt) + e]
             return "\n".join(f)
 
+        def RD1(o, idt):
+            """Returns a string of the elements concatenated with comma (for dict, ...)."""
+            return ", ".join([DisplayHook.pp(k, idt + 1) + ": " + DisplayHook.pp(v, idt + 1) for k, v in o])
+
+        def RD2(o, idt):
+            """Returns a list of the elements with indent and comma (for dict, ...)."""
+            return [I2(idt) + DisplayHook.pp(k, idt + 1) + ": " + DisplayHook.pp(v, idt + 1) + "," for k, v in o]
+
         def ZD(s, e, o, idt):
+            """Returns a string of the elements concatenated with comma (for dict, ...),
+            taking into account the width of the screen."""
             # Creates a string without newlines and returns it if it's short enough.
             f = s + RD1(o, idt) + e
             if len(f) < width:
@@ -322,6 +330,7 @@ class DisplayHook:
 
     @staticmethod
     def displayhook(o): # noqa
+        """An alternative to the default display function."""
         __builtins__._ = o # noqa
 
         if o is None:
@@ -333,16 +342,23 @@ class DisplayHook:
 
 
 def hexon(): # noqa
+    """Replaces the print function that is implicitly called when running "python-interactive 1" etc."""
     sys.displayhook = DisplayHook.displayhook # noqa
     return
 
 
 def hexoff(): # noqa
+    """Reverts the print function that is implicitly called when running "python-interactive 1" etc."""
     sys.displayhook = sys.__displayhook__ # noqa
     return
 
 
 class Cache:
+    """Manages the gef cache. The cache has 2 types: "until_next" and "this_session".
+    "until_next": Cached for a very short period of time. Cleared every time an instruction is stepped, etc.
+    "this_session": Cached until gdb exits.
+    Note: each command may have its own cache without using this mechanism. Not all caches are centralized here."""
+
     __gef_caches__ = {
         "until_next": {},
         "this_session": {},
@@ -397,6 +413,9 @@ class Cache:
 
     @staticmethod
     def reset_gef_caches(function=None, all=False):
+        """Clears the cache of GEF.
+        By default, it only clears caches of `until_next` type."""
+
         if function:
             for v in Cache.__gef_caches__.values():
                 try:
@@ -418,6 +437,9 @@ class Cache:
 
 
 class Config:
+    """Manages gef configurations. Most configs are tied to specific commands.
+    They are defined in the form `command_name.config_name`."""
+
     __gef_config__ = {} # keep gef configs
     __gef_config_orig__ = {} # for debugging
 
@@ -1004,6 +1026,7 @@ class Color:
 
 class Address:
     """GEF representation of memory addresses."""
+
     def __init__(self, *args, **kwargs):
         self.value = kwargs.get("value", 0)
         self.section = kwargs.get("section", None)
@@ -1116,9 +1139,12 @@ class Address:
 
 
 class AddressUtil:
+    """A collection of utility functions that operate on addresses."""
+
     @staticmethod
     @Cache.cache_this_session
     def ptr_width():
+        """Determines whether the environment is 32-bit or 64-bit and returns the result."""
         void = GefUtil.cached_lookup_type("void")
         if void is None:
             uintptr_t = GefUtil.cached_lookup_type("uintptr_t")
@@ -1165,6 +1191,7 @@ class AddressUtil:
 
     @staticmethod
     def get_format_address_width(memalign_size=None):
+        """Returns the display width."""
         if not is_alive():
             return 18
         if is_32bit() or memalign_size == 4:
@@ -1293,13 +1320,13 @@ class AddressUtil:
     @staticmethod
     @Cache.cache_this_session
     def get_recursive_dereference_blacklist():
+        """Returns the blacklist of addresses. This is a function for caching purposes."""
         return eval(Config.get_gef_setting("dereference.blacklist")) or []
 
     @staticmethod
     @Cache.cache_until_next
     def recursive_dereference(addr, phys=False):
         """Create dereference array."""
-
         if not is_alive():
             return [addr], None
 
@@ -1421,6 +1448,7 @@ class AddressUtil:
 
 class Permission:
     """GEF representation of Linux permission."""
+
     NONE    = 0
     READ    = 1
     WRITE   = 2
@@ -1472,6 +1500,7 @@ class Permission:
 
 class Section:
     """GEF representation of process memory sections."""
+
     def __init__(self, *args, **kwargs):
         self.page_start = kwargs.get("page_start")
         self.page_end = kwargs.get("page_end")
@@ -1508,6 +1537,7 @@ class Section:
 
 class Elf:
     """Basic ELF parsing."""
+
     # e_ident[EI_MAG0:EI_MAG3]
     ELF_MAGIC                = 0x7f454c46
 
@@ -2535,6 +2565,7 @@ class Elf:
 
 class Instruction:
     """GEF representation of a CPU instruction."""
+
     def __init__(self, address, location, mnemo, operands, opcodes):
         # example:
         #   address: 0x55555555a7d0
@@ -2803,6 +2834,8 @@ class Instruction:
 
 
 class GlibcHeap:
+    """Manages Glibc Heap-specific settings."""
+
     class HeapInfo:
         """GEF representation of heap_info"""
 
@@ -4548,6 +4581,8 @@ def info(msg):
 
 
 class String:
+    """Manages string related functions."""
+
     STRING_ASCII_LOWERCASE = "abcdefghijklmnopqrstuvwxyz"
     STRING_ASCII_UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     STRING_ASCII_LETTERS = STRING_ASCII_LOWERCASE + STRING_ASCII_UPPERCASE
@@ -4732,6 +4767,8 @@ def hexdump(source, length=0x10, separator=".", color=True, show_symbol=True, ba
 
 
 class Symbol:
+    """Manages symbol related functions."""
+
     # `info symbol` called from gdb_get_location is heavy processing.
     # Moreover, AddressUtil.recursive_dereference causes each address to be resolved every time.
     # Cache.cache_until_next is not effective as-is, as it is cleared by Cache.reset_gef_caches() each time the `stepi` runs.
@@ -5183,6 +5220,8 @@ def get_insn_prev(addr=None):
 
 
 class Checksec:
+    """Manages checksec related functions."""
+
     @staticmethod
     @Cache.cache_until_next
     def get_cet_status_old_interface():
@@ -5298,6 +5337,8 @@ class Checksec:
 
 
 class Endian:
+    """Manages endianness related functions."""
+
     @staticmethod
     @Cache.cache_this_session
     def get_endian():
@@ -5325,6 +5366,7 @@ class Endian:
 
 class Architecture:
     """Generic metaclass for the architecture supported by GEF."""
+
     __metaclass__ = abc.ABCMeta
 
     # base properties
