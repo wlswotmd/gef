@@ -11266,7 +11266,31 @@ def is_valid_addr_addr(addr):
 
 
 @Cache.cache_until_next
+def is_single_link_list(addr):
+    # +------+   +------+           +------+
+    # | head |-->| next |--> ... -->| next |--> NULL
+    # +------+   +------+           +------+
+
+    seen = []
+    while True:
+        if addr == 0:
+            return True
+        if addr in seen:
+            return False
+        if not is_valid_addr(addr):
+            return False
+        seen.append(addr)
+        addr = read_int_from_memory(addr)
+
+
+@Cache.cache_until_next
 def is_double_link_list(addr):
+    # +------+<-+   +------+<-+        <-+   +------+<-+   +------+
+    # | head |--|-->| next |--|--> ... --|-->| next |--|-->| head |
+    # +------+  |   +------+  |          |   +------+  |   +------+
+    # | tail |  +---| prev |  +---       +---| prev |  +---| tail |
+    # +------+      +------+                 +------+      +------+
+
     # list up next pointer
     seen = []
     while True:
@@ -49016,18 +49040,6 @@ class KernelAddressHeuristicFinder:
 
         kversion = Kernel.kernel_version()
 
-        def is_single_link_list(x):
-            seen = []
-            while True:
-                if x == 0:
-                    return True
-                if x in seen:
-                    return False
-                seen.append(x)
-                if not is_valid_addr(x):
-                    return False
-                x = read_int_from_memory(x)
-
         # plan 2 (available v2.6.16.12 or later)
         if kversion and kversion >= "2.6.17":
             addr = Symbol.get_ksymaddr("chrdev_show")
@@ -52463,31 +52475,17 @@ class KernelTaskCommand(GenericCommand):
         # search init_task->tasks
         for i in range(0x200):
             offset_tasks = current_arch.ptrsize * i
-            pos1 = init_task + offset_tasks
-            pos2 = init_task + offset_tasks + current_arch.ptrsize
-            list1 = [pos1]
-            list2 = [pos2]
-            # validating candidate offset
-            while True:
-                # read check
-                if not is_valid_addr(pos1) or not is_valid_addr(pos2):
-                    found = False
-                    break
-                pos1 = read_int_from_memory(pos1)
-                pos2 = read_int_from_memory(pos2) + current_arch.ptrsize
-                # list validate
-                if pos1 in list1[1:] or pos2 in list2[1:]: # incomplete infinity loop detected
-                    found = False
-                    break
-                if (pos1 == list1[0] and len(list1) == 1) or (pos2 == list2[0] and len(list2) == 1): # self reference
-                    found = False
-                    break
-                if (pos1 == list1[0] and len(list1) > 5) and (pos2 == list2[0] and len(list2) > 5): # maybe link list
-                    found = True
-                    break
-                list1.append(pos1)
-                list2.append(pos2)
-            if found:
+            if not is_double_link_list(init_task + offset_tasks):
+                continue
+
+            # length check
+            # I don't think the number of processes is less than 5
+            x = init_task + offset_tasks
+            tasks = []
+            while x not in tasks:
+                tasks.append(x)
+                x = read_int_from_memory(x)
+            if len(tasks) > 5:
                 return offset_tasks
         return None
 
