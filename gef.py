@@ -11105,7 +11105,7 @@ def read_physmem(paddr, size):
                 disable_phys()
         return None
 
-    def qemu_system_strict_way(paddr, size):
+    def qemu_system_proc_mem(paddr, size):
         qemu_system_pid = Pid.get_pid()
         if qemu_system_pid is None:
             return None
@@ -11141,7 +11141,8 @@ def read_physmem(paddr, size):
             out += bytes([int(x, 16) for x in data])
         return out
 
-    def kgdb_use_mdp(paddr, size): # for kgdb
+    def kgdb_use_mdp(paddr, size):
+        # for kgdb
         # Note: `mdp` command can only handle aligned addresses.
         paddr_aligned = paddr & ~0xf
         read_n_line = (size + (paddr - paddr_aligned) + 15) // 16
@@ -11167,6 +11168,7 @@ def read_physmem(paddr, size):
         return out[paddr & 0xf:][:size]
 
     # ----
+
     if size == 0:
         return b""
 
@@ -11174,7 +11176,7 @@ def read_physmem(paddr, size):
         return None
 
     if is_qemu_system():
-        out = qemu_system_strict_way(paddr, size)
+        out = qemu_system_proc_mem(paddr, size)
         if out:
             return out
         if is_supported_physmode():
