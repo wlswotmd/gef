@@ -1375,7 +1375,7 @@ class AddressUtil:
     @staticmethod
     @Cache.cache_until_next
     def recursive_dereference_to_string(value, skip_idx=0, phys=False):
-        """Create string from dereference array"""
+        """Create string from dereference array."""
         string_color = Config.get_gef_setting("theme.dereference_string")
         nb_max_string_length = Config.get_gef_setting("context.nb_max_string_length")
         recursion = Config.get_gef_setting("dereference.max_recursion") or 4
@@ -2834,10 +2834,10 @@ class Instruction:
 
 
 class GlibcHeap:
-    """Manages Glibc Heap-specific settings."""
+    """Manages glibc heap-specific settings."""
 
     class HeapInfo:
-        """GEF representation of heap_info"""
+        """GEF representation of heap_info."""
 
         def __init__(self, addr):
             self.__addr = addr
@@ -2948,7 +2948,8 @@ class GlibcHeap:
             return getattr(self, item)
 
     class MallocPar:
-        """GEF representation of malloc_par"""
+        """GEF representation of malloc_par."""
+
         def __init__(self, addr):
             self.__addr = addr
 
@@ -3251,7 +3252,8 @@ class GlibcHeap:
         return None
 
     class MallocStateStruct:
-        """GEF representation of malloc_state"""
+        """GEF representation of malloc_state."""
+
         def __init__(self, addr):
             if (is_x86_32() or is_riscv32() or is_ppc32()) and get_libc_version() >= (2, 26):
                 # MALLOC_ALIGNMENT is changed from libc 2.26.
@@ -3558,7 +3560,8 @@ class GlibcHeap:
         return None
 
     class GlibcArena:
-        """Glibc arena class"""
+        """Glibc arena class."""
+
         TCACHE_MAX_BINS = 0x40
 
         def __init__(self, arena_addr=None):
@@ -4109,9 +4112,9 @@ class GlibcHeap:
             return read_int_from_memory(self.size_addr) & 0x04
 
         def is_used(self):
-            """Check if the current block is used by:
-            - checking the M bit is true
-            - or checking that next chunk PREV_INUSE flag is true"""
+            # Check if the current block is used by:
+            # - checking the M bit is true
+            # - or checking that next chunk PREV_INUSE flag is true
             if self.has_m_bit():
                 return True
             next_chunk = self.get_next_chunk()
@@ -4581,7 +4584,7 @@ def info(msg):
 
 
 class String:
-    """Manages string related functions."""
+    """A collection of utility functions that are related to strings."""
 
     STRING_ASCII_LOWERCASE = "abcdefghijklmnopqrstuvwxyz"
     STRING_ASCII_UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -4767,7 +4770,7 @@ def hexdump(source, length=0x10, separator=".", color=True, show_symbol=True, ba
 
 
 class Symbol:
-    """Manages symbol related functions."""
+    """A collection of utility functions that are related to symbols."""
 
     # `info symbol` called from gdb_get_location is heavy processing.
     # Moreover, AddressUtil.recursive_dereference causes each address to be resolved every time.
@@ -4937,6 +4940,8 @@ def load_ropper(f):
 
 
 class Disasm:
+    """A collection of utility functions that makes disassemble."""
+
     __gef_prev_arch__ = None # previous valid result of edb.selected_frame().architecture()
 
     @staticmethod
@@ -5618,6 +5623,8 @@ class Architecture:
 
 
 class RISCV(Architecture):
+    """GEF representation of RISCV-32 architecture."""
+
     arch = "RISCV"
     mode = "32"
 
@@ -5833,6 +5840,8 @@ class RISCV(Architecture):
 
 
 class RISCV64(RISCV):
+    """GEF representation of RISCV-64 architecture."""
+
     arch = "RISCV"
     mode = "64"
 
@@ -5909,6 +5918,8 @@ class RISCV64(RISCV):
 
 
 class ARM(Architecture):
+    """GEF representation of ARM-32 architecture."""
+
     arch = "ARM"
 
     load_condition = [
@@ -6256,6 +6267,8 @@ class ARM(Architecture):
 
 
 class AARCH64(ARM):
+    """GEF representation of ARM-64 architecture."""
+
     arch = "ARM64"
     mode = "ARM"
 
@@ -6387,6 +6400,8 @@ class AARCH64(ARM):
 
 
 class X86(Architecture):
+    """GEF representation of x86-32 architecture."""
+
     arch = "X86"
     mode = "32"
 
@@ -6663,6 +6678,8 @@ class X86(Architecture):
 
 
 class X86_64(X86):
+    """GEF representation of x86-64 architecture."""
+
     arch = "X86"
     mode = "64"
 
@@ -6841,6 +6858,8 @@ class X86_64(X86):
 
 
 class X86_16(X86):
+    """GEF representation of i8086 architecture."""
+
     arch = "X86"
     mode = "16"
 
@@ -6924,6 +6943,8 @@ class X86_16(X86):
 
 
 class PPC(Architecture):
+    """GEF representation of PowerPC-32 architecture."""
+
     arch = "PPC"
     mode = "32"
 
@@ -7150,6 +7171,8 @@ class PPC(Architecture):
 
 
 class PPC64(PPC):
+    """GEF representation of PowerPC-64 architecture."""
+
     arch = "PPC"
     mode = "64"
 
@@ -7230,6 +7253,8 @@ class PPC64(PPC):
 
 
 class SPARC(Architecture):
+    """GEF representation of SPARC-32 architecture."""
+
     arch = "SPARC"
     mode = "32"
 
@@ -7419,6 +7444,8 @@ class SPARC(Architecture):
 
 
 class SPARC32PLUS(SPARC):
+    """GEF representation of SPARC-32+ architecture."""
+
     arch = "SPARC"
     mode = "32PLUS"
 
@@ -7440,6 +7467,8 @@ class SPARC32PLUS(SPARC):
 
 
 class SPARC64(SPARC):
+    """GEF representation of SPARC-64 architecture."""
+
     arch = "SPARC"
     mode = "64"
 
@@ -7522,6 +7551,8 @@ class SPARC64(SPARC):
 
 
 class MIPS(Architecture):
+    """GEF representation of MIPS-32 architecture."""
+
     arch = "MIPS"
     mode = "32"
 
@@ -7729,6 +7760,8 @@ class MIPS(Architecture):
 
 
 class MIPS64(MIPS):
+    """GEF representation of MIPS-64 architecture."""
+
     arch = "MIPS"
     mode = "64"
 
@@ -7808,6 +7841,8 @@ class MIPS64(MIPS):
 
 
 class MIPSN32(MIPS64):
+    """GEF representation of MIPS-N32-ABI architecture."""
+
     arch = "MIPS"
     mode = "n32"
 
@@ -7819,6 +7854,8 @@ class MIPSN32(MIPS64):
 
 
 class S390X(Architecture):
+    """GEF representation of s390x architecture."""
+
     arch = "S390X"
     mode = "64"
 
@@ -8197,6 +8234,8 @@ class S390X(Architecture):
 
 
 class SH4(Architecture):
+    """GEF representation of SH4 architecture."""
+
     arch = "SH4"
     mode = "SH4"
 
@@ -8391,6 +8430,8 @@ class SH4(Architecture):
 
 
 class M68K(Architecture):
+    """GEF representation of m68000 architecture."""
+
     arch = "M68K"
     mode = "32"
 
@@ -8656,6 +8697,8 @@ class M68K(Architecture):
 
 
 class ALPHA(Architecture):
+    """GEF representation of Alpha architecture."""
+
     arch = "ALPHA"
     mode = "ALPHA"
 
@@ -8852,6 +8895,8 @@ class ALPHA(Architecture):
 
 
 class HPPA(Architecture):
+    """GEF representation of HP-PA-32 architecture."""
+
     arch = "HPPA"
     mode = "32"
 
@@ -9246,6 +9291,8 @@ class HPPA(Architecture):
 
 
 class HPPA64(HPPA):
+    """GEF representation of HP-PA-64 architecture."""
+
     arch = "HPPA"
     mode = "64"
 
@@ -9258,6 +9305,8 @@ class HPPA64(HPPA):
 
 
 class OR1K(Architecture):
+    """GEF representation of OpenRISC 1000 architecture."""
+
     arch = "OR1K"
     mode = "OR1K"
 
@@ -9395,6 +9444,8 @@ class OR1K(Architecture):
 
 
 class NIOS2(Architecture):
+    """GEF representation of NiosII architecture."""
+
     arch = "NIOS2"
     mode = "NIOS2"
 
@@ -9552,6 +9603,8 @@ class NIOS2(Architecture):
 
 
 class MICROBLAZE(Architecture):
+    """GEF representation of MicroBlaze architecture."""
+
     arch = "MICROBLAZE"
     mode = "MICROBLAZE"
 
@@ -9713,6 +9766,8 @@ class MICROBLAZE(Architecture):
 
 
 class XTENSA(Architecture):
+    """GEF representation of Xtensa architecture."""
+
     arch = "XTENSA"
     mode = "XTENSA"
 
@@ -9966,6 +10021,8 @@ class XTENSA(Architecture):
 
 
 class CRIS(Architecture):
+    """GEF representation of CRIS architecture."""
+
     arch = "CRIS"
     mode = "CRIS"
 
@@ -10116,6 +10173,8 @@ class CRIS(Architecture):
 
 
 class LOONGARCH64(Architecture):
+    """GEF representation of Loongarch-64 architecture."""
+
     arch = "LOONGARCH"
     mode = "64"
 
@@ -10298,6 +10357,8 @@ class LOONGARCH64(Architecture):
 
 
 class ARC(Architecture):
+    """GEF representation of ARC-v2-32 architecture."""
+
     arch = "ARC"
     mode = "32v2"
 
@@ -10587,6 +10648,8 @@ class ARC(Architecture):
 
 
 class ARCv3(ARC):
+    """GEF representation of ARC-v3-32 architecture."""
+
     arch = "ARC"
     mode = "32v3"
 
@@ -10612,6 +10675,8 @@ class ARCv3(ARC):
 
 
 class ARC64(ARCv3):
+    """GEF representation of ARC-v3-64 architecture."""
+
     arch = "ARC"
     mode = "64v3"
 
@@ -10637,6 +10702,8 @@ class ARC64(ARCv3):
 
 
 class CSKY(Architecture):
+    """GEF representation of C-SKY architecture."""
+
     arch = "CSKY"
     mode = "CSKY"
 
@@ -10810,6 +10877,8 @@ class CSKY(Architecture):
 # The prototype for new architecture.
 #
 #class XXX(Architecture):
+#   """GEF representation of XXX architecture."""
+#
 #    arch = "XXX"
 #    mode = "XXX"
 #
@@ -11044,10 +11113,6 @@ def read_int_from_memory(addr):
 
 def read_cstring_from_memory(addr, max_length=None):
     """Return a C-string read from memory."""
-    # original GEF uses gdb.Value().cast("char"), but this is too slow if string is too large.
-    # for example 0xcccccccccccccccc....(too long), this is in kernel or firmware commonly.
-    # to avoid this, gdb.Value().cast() is removed.
-
     if max_length is None:
         max_length = Config.get_gef_setting("context.nb_max_string_length")
 
@@ -11313,6 +11378,8 @@ def is_double_link_list(addr):
 
 
 class QemuMonitor:
+    """A collection of utility functions that are related to qemu-monitor."""
+
     @staticmethod
     @Cache.cache_this_session
     def get_gic_addrs():
@@ -12129,6 +12196,8 @@ def is_kvm_enabled():
 
 
 class Pid:
+    """A collection of utility functions that obtains a pid."""
+
     @staticmethod
     def get_tcp_sess(pid):
         # get inode information from opened file descriptor
@@ -12250,6 +12319,8 @@ class Pid:
 
 
 class Path:
+    """A collection of utility functions that obtains a path."""
+
     @staticmethod
     def append_proc_root(filepath):
         if filepath is None:
@@ -12331,6 +12402,8 @@ class Path:
 
 
 class ProcessMap:
+    """A collection of utility functions that obtains a process map."""
+
     @staticmethod
     @Cache.cache_until_next
     def get_process_maps_linux(pid, remote=False):
@@ -12405,7 +12478,7 @@ class ProcessMap:
     @staticmethod
     @Cache.cache_this_session
     def get_explored_regions():
-        """Return sections from auxv exploring"""
+        """Return sections from auxv exploring."""
 
         if current_arch is None:
             return []
@@ -12706,6 +12779,8 @@ class ProcessMap:
                     new_regions += make_regions(addr, "<explored>")
             return new_regions
 
+        # ----
+
         regions = []
         regions += parse_auxv()
         regions += parse_stack_register()
@@ -12786,7 +12861,7 @@ class ProcessMap:
     @staticmethod
     @Cache.cache_until_next
     def get_process_maps(outer=False):
-        """Return the mapped memory sections"""
+        """Return the mapped memory sections."""
         if is_qemu_user():
             if outer:
                 pid = Pid.get_pid()
@@ -12939,6 +13014,8 @@ class ProcessMap:
 
 
 class EventHandler:
+    """A collection of handler functions that are called when the specified events occur."""
+
     @staticmethod
     def continue_handler(_event):
         """GDB event handler for new object continue cases."""
@@ -13044,6 +13121,8 @@ class EventHandler:
 
 
 class UnicornKeystoneCapstone:
+    """A collection of utility functions that are related to unicorn, keystone, and capstone."""
+
     @staticmethod
     def get_generic_arch(module, prefix, arch, mode, big_endian, to_string):
         """Retrieves architecture and mode from the arguments for use for the holy
@@ -13517,9 +13596,11 @@ def set_arch(arch_str=None):
 
 
 class Auxv:
+    """A collection of utility functions that are related to ELF Auxiliary Vectors."""
+
     @staticmethod
     def get_auxiliary_walk(offset=0):
-        """Find AUXV by walking stack"""
+        """Find AUXV by walking stack."""
 
         # do not use gef_getpagesize(), gef_getpagesize_mask_high(), etc.
         # because gef_getpagesize() -> Auxv.get_auxiliary_values() -> Auxv.get_auxiliary_walk()
@@ -13634,6 +13715,8 @@ class Auxv:
                     return res
             return None
 
+        # ----
+
         if force_heuristic:
             return slow_path()
 
@@ -13681,6 +13764,8 @@ def only_if_events_supported(event_type):
 
 
 class EventHooking:
+    """A collection of utility functions that hook up specified events."""
+
     @staticmethod
     @only_if_events_supported("cont")
     def gef_on_continue_hook(func):
@@ -13764,6 +13849,7 @@ def register_priority_command(cls):
 
 class GenericCommand(gdb.Command):
     """This is an abstract class for invoking commands, should not be instantiated."""
+
     __metaclass__ = abc.ABCMeta
 
     @abc.abstractproperty
@@ -13915,6 +14001,8 @@ class GenericCommand(gdb.Command):
 
 
 class BufferingOutput:
+    """A collection of utility functions that append a messages to self.out."""
+
     def ok(self, msg):
         msg = "{} {}".format(Color.colorify("[+]", "bold green"), msg)
         self.out.append(msg)
@@ -13950,6 +14038,7 @@ class BufferingOutput:
 # @register_command
 # class TemplateCommand(GenericCommand):
 #     """TemplateCommand: description here will be seen in the help menu for the command."""
+#
 #     _cmdline_ = "template-fake"
 #     _category_ = "99. GEF Maintenance Command"
 #     _aliases_ = ["tpl-fk"]
@@ -13972,6 +14061,7 @@ class BufferingOutput:
 @register_command
 class ResetCacheCommand(GenericCommand):
     """Reset all caches (both Cache.cache_until_next and Cache.cache_this_session)."""
+
     _cmdline_ = "reset-cache"
     _category_ = "99. GEF Maintenance Command"
 
@@ -14000,6 +14090,7 @@ class ResetCacheCommand(GenericCommand):
 @register_command
 class ResetBreakpointsCommand(GenericCommand):
     """Show and reset all breakpoints (include internal breakpoints)."""
+
     _cmdline_ = "reset-bp"
     _category_ = "99. GEF Maintenance Command"
 
@@ -14029,6 +14120,7 @@ class ResetBreakpointsCommand(GenericCommand):
 @register_priority_command
 class GefThemeCommand(GenericCommand):
     """Customize GEF appearance."""
+
     _cmdline_ = "theme"
     _category_ = "99. GEF Maintenance Command"
 
@@ -14162,6 +14254,7 @@ class GefThemeCommand(GenericCommand):
 @register_command
 class VersionCommand(GenericCommand):
     """Display GEF version info."""
+
     _cmdline_ = "version"
     _category_ = "99. GEF Maintenance Command"
 
@@ -14394,6 +14487,7 @@ class VersionCommand(GenericCommand):
 @register_command
 class HighlightCommand(GenericCommand):
     """The base command to highlight user defined text matches which modifies GEF output universally."""
+
     _cmdline_ = "highlight"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -14453,6 +14547,7 @@ class HighlightCommand(GenericCommand):
 @register_command
 class HighlightListCommand(GenericCommand):
     """Display the current highlight table with matches to colors."""
+
     _cmdline_ = "highlight list"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["highlight ls"]
@@ -14483,6 +14578,7 @@ class HighlightListCommand(GenericCommand):
 @register_command
 class HighlightClearCommand(GenericCommand):
     """Clear the highlight table, remove all matches."""
+
     _cmdline_ = "highlight clear"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["highlight reset"]
@@ -14499,6 +14595,7 @@ class HighlightClearCommand(GenericCommand):
 @register_command
 class HighlightAddCommand(GenericCommand):
     """Add a match to the highlight table."""
+
     _cmdline_ = "highlight add"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["highlight set"]
@@ -14521,6 +14618,7 @@ class HighlightAddCommand(GenericCommand):
 @register_command
 class HighlightRemoveCommand(GenericCommand):
     """Remove a match in the highlight table."""
+
     _cmdline_ = "highlight remove"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["highlight del", "highlight unset", "highlight rm"]
@@ -14539,6 +14637,7 @@ class HighlightRemoveCommand(GenericCommand):
 
 class SimpleInternalTemporaryBreakpoint(gdb.Breakpoint):
     """A simple wrapper that takes into account the bug where temporary breakpoints isn't deleted after it is hit."""
+
     def __init__(self, loc):
         super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=True, temporary=True)
         return
@@ -14553,6 +14652,7 @@ class SimpleInternalTemporaryBreakpoint(gdb.Breakpoint):
 
 class SecondBreakpoint(gdb.Breakpoint):
     """Breakpoint which sets a 2nd breakpoint, when hit."""
+
     def __init__(self, loc, second_loc):
         self.second_loc = second_loc
         super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=True, temporary=True)
@@ -14572,6 +14672,7 @@ class NiCommand(GenericCommand):
     """`ni` wrapper for specific arch.
     or1k: branch operations don't work well, so use breakpoints to simulate.
     cris: si/ni commands don't work well. so use breakpoints to simulate."""
+
     _cmdline_ = "nexti-for-qemu-user"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
@@ -14655,6 +14756,7 @@ class SiCommand(GenericCommand):
     """`si` wrapper for specific arch.
     or1k: branch operations don't work well, so use breakpoints to simulate.
     cris: si/ni commands don't work well. so use breakpoints to simulate."""
+
     _cmdline_ = "stepi-for-qemu-user"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
@@ -14736,6 +14838,7 @@ class SiCommand(GenericCommand):
 @register_command
 class ContCommand(GenericCommand):
     """`c` wrapper to solve the problem that Ctrl+C cannot interrupt when using gdb stub of qemu-user or Intel Pin."""
+
     _cmdline_ = "continue-for-qemu-user"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
@@ -14815,6 +14918,7 @@ class ContCommand(GenericCommand):
 @register_command
 class UpCommand(GenericCommand):
     """`up` wrapper."""
+
     _cmdline_ = "up"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
@@ -14865,6 +14969,7 @@ class UpCommand(GenericCommand):
 @register_command
 class DownCommand(GenericCommand):
     """`down` wrapper."""
+
     _cmdline_ = "down"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
@@ -14915,6 +15020,7 @@ class DownCommand(GenericCommand):
 @register_command
 class DisplayTypeCommand(GenericCommand, BufferingOutput):
     """Makes it easier to use `ptype /ox TYPE` and `p ((TYPE*) ADDRESS)[0]`."""
+
     _cmdline_ = "dt"
     _category_ = "02-h. Process Information - Type"
 
@@ -15034,6 +15140,7 @@ class DisplayTypeCommand(GenericCommand, BufferingOutput):
 @register_command
 class BreakRelativeVirtualAddressCommand(GenericCommand):
     """Set a breakpoint at relative offset from codebase."""
+
     _cmdline_ = "break-rva"
     _category_ = "01-b. Debugging Support - Breakpoint"
     _aliases_ = ["brva"]
@@ -15076,6 +15183,7 @@ class BreakRelativeVirtualAddressCommand(GenericCommand):
 @register_command
 class PrintFormatCommand(GenericCommand):
     """Print bytes format in high level languages."""
+
     _cmdline_ = "print-format"
     _category_ = "09-c. Misc - Generation"
     _aliases_ = ["pf"]
@@ -15163,6 +15271,7 @@ class PrintFormatCommand(GenericCommand):
 @register_command
 class CanaryCommand(GenericCommand):
     """Display the canary value of the current process from auxv information."""
+
     _cmdline_ = "canary"
     _category_ = "02-f. Process Information - Security"
 
@@ -15239,6 +15348,7 @@ class CanaryCommand(GenericCommand):
 @register_command
 class AuxvCommand(GenericCommand):
     """Display ELF auxiliary vectors."""
+
     _cmdline_ = "auxv"
     _category_ = "02-d. Process Information - Trivial Information"
 
@@ -15349,6 +15459,7 @@ class AuxvCommand(GenericCommand):
 @register_command
 class ArgvCommand(GenericCommand, BufferingOutput):
     """Display argv."""
+
     _cmdline_ = "argv"
     _category_ = "02-d. Process Information - Trivial Information"
 
@@ -15457,6 +15568,7 @@ class ArgvCommand(GenericCommand, BufferingOutput):
 @register_command
 class EnvpCommand(GenericCommand, BufferingOutput):
     """Display initial envp from __environ@ld, or modified envp from last_environ@libc."""
+
     _cmdline_ = "envp"
     _category_ = "02-d. Process Information - Trivial Information"
 
@@ -15570,6 +15682,7 @@ class EnvpCommand(GenericCommand, BufferingOutput):
 @register_command
 class DumpArgsCommand(GenericCommand):
     """Dump arguments of current function."""
+
     _cmdline_ = "dumpargs"
     _category_ = "02-d. Process Information - Trivial Information"
     _aliases_ = ["args"]
@@ -15607,6 +15720,7 @@ class DumpArgsCommand(GenericCommand):
 @register_command
 class VdsoCommand(GenericCommand, BufferingOutput):
     """Disassemble the text area of vdso smartly."""
+
     _cmdline_ = "vdso"
     _category_ = "02-d. Process Information - Trivial Information"
 
@@ -15665,6 +15779,7 @@ class VdsoCommand(GenericCommand, BufferingOutput):
 @register_command
 class VvarCommand(GenericCommand):
     """Dump the area of vvar (only x64/x86)."""
+
     _cmdline_ = "vvar"
     _category_ = "02-d. Process Information - Trivial Information"
 
@@ -15722,6 +15837,7 @@ class VvarCommand(GenericCommand):
 @register_command
 class IouringDumpCommand(GenericCommand):
     """Dump the area of iouring (only x64)."""
+
     _cmdline_ = "iouring-dump"
     _category_ = "02-e. Process Information - Complex Structure Information"
 
@@ -15778,6 +15894,7 @@ class IouringDumpCommand(GenericCommand):
 @register_command
 class PidCommand(GenericCommand):
     """Display the local PID or remote PID."""
+
     _cmdline_ = "pid"
     _category_ = "02-d. Process Information - Trivial Information"
     _aliases_ = ["getpid"]
@@ -15809,6 +15926,7 @@ class PidCommand(GenericCommand):
 @register_command
 class TidCommand(GenericCommand):
     """Display the Thread ID."""
+
     _cmdline_ = "tid"
     _category_ = "02-d. Process Information - Trivial Information"
     _aliases_ = ["gettid"]
@@ -15828,6 +15946,7 @@ class TidCommand(GenericCommand):
 @register_command
 class FilenameCommand(GenericCommand):
     """Display current debugged filename."""
+
     _cmdline_ = "filename"
     _category_ = "02-d. Process Information - Trivial Information"
     _aliases_ = ["getfile"]
@@ -15858,6 +15977,7 @@ class FilenameCommand(GenericCommand):
 @register_command
 class ProcInfoCommand(GenericCommand):
     """Extend the info given by GDB `info proc`."""
+
     _cmdline_ = "proc-info"
     _category_ = "02-a. Process Information - General"
     _aliases_ = ["pr"]
@@ -16212,6 +16332,7 @@ class ProcInfoCommand(GenericCommand):
 @register_command
 class FileDescriptorsCommand(GenericCommand):
     """Show opened file descriptors."""
+
     _cmdline_ = "fds"
     _category_ = "02-a. Process Information - General"
 
@@ -16241,6 +16362,7 @@ class FileDescriptorsCommand(GenericCommand):
 @register_command
 class ProcDumpCommand(GenericCommand):
     """Dump each file under `/proc/PID`."""
+
     _cmdline_ = "proc-dump"
     _category_ = "02-a. Process Information - General"
 
@@ -16494,6 +16616,7 @@ class ProcDumpCommand(GenericCommand):
 @register_command
 class CapabilityCommand(GenericCommand):
     """Display the capabilities of the debugging process."""
+
     _cmdline_ = "capability"
     _category_ = "02-f. Process Information - Security"
 
@@ -16680,6 +16803,7 @@ class CapabilityCommand(GenericCommand):
 @register_command
 class SmartMemoryDumpCommand(GenericCommand):
     """Dump the memory of the entire process smartly."""
+
     _cmdline_ = "smart-memory-dump"
     _category_ = "03-e. Memory - Dump"
 
@@ -16771,6 +16895,7 @@ class SmartMemoryDumpCommand(GenericCommand):
 @register_command
 class HijackFdCommand(GenericCommand):
     """Redirect the file descriptor during runtime."""
+
     _cmdline_ = "hijack-fd"
     _category_ = "01-g. Debugging Support - Other"
 
@@ -16953,6 +17078,7 @@ class HijackFdCommand(GenericCommand):
 @register_command
 class ScanSectionCommand(GenericCommand):
     """Search for addresses located in a memory mapping (haystack) that belonging to another (needle)."""
+
     _cmdline_ = "scan-section"
     _category_ = "03-a. Memory - Search"
 
@@ -17040,6 +17166,7 @@ class ScanSectionCommand(GenericCommand):
 @register_command
 class SearchPatternCommand(GenericCommand):
     """Search a pattern in memory."""
+
     _cmdline_ = "search-pattern"
     _category_ = "03-a. Memory - Search"
     _aliases_ = ["find", "grep"]
@@ -17370,6 +17497,7 @@ class SearchPatternCommand(GenericCommand):
 @register_command
 class PtrDemangleCommand(GenericCommand):
     """Demangle a mangled value by PTR_MANGLE."""
+
     _cmdline_ = "ptr-demangle"
     _category_ = "02-f. Process Information - Security"
 
@@ -17449,6 +17577,7 @@ class PtrDemangleCommand(GenericCommand):
 @register_command
 class PtrMangleCommand(GenericCommand):
     """Mangle a mangled value by PTR_MANGLE."""
+
     _cmdline_ = "ptr-mangle"
     _category_ = "02-f. Process Information - Security"
 
@@ -17483,6 +17612,7 @@ class PtrMangleCommand(GenericCommand):
 @register_command
 class SearchMangledPtrCommand(GenericCommand):
     """Search mangled values from RW memory."""
+
     _cmdline_ = "search-mangled-ptr"
     _category_ = "02-f. Process Information - Security"
     _aliases_ = ["cookie"]
@@ -17602,6 +17732,7 @@ class SearchMangledPtrCommand(GenericCommand):
 @register_command
 class SearchCfiGadgetsCommand(GenericCommand):
     """Search CFI-valid and controllable generally gadgets from executable area."""
+
     _cmdline_ = "search-cfi-gadgets"
     _category_ = "03-a. Memory - Search"
 
@@ -17715,6 +17846,7 @@ class SearchCfiGadgetsCommand(GenericCommand):
 @register_command
 class EditFlagsCommand(GenericCommand):
     """Edit flags in a human friendly way."""
+
     _cmdline_ = "edit-flags"
     _category_ = "04-b. Register - Modify"
 
@@ -17965,6 +18097,7 @@ class EditFlagsCommand(GenericCommand):
 
 class MprotectBreakpoint(gdb.Breakpoint):
     """When hit, this temporary breakpoint will restore the original code, and position $pc correctly."""
+
     def __init__(self, loc, code, pc, regs):
         super().__init__(loc, gdb.BP_BREAKPOINT, internal=True, temporary=True)
         self.original_code = code
@@ -17990,6 +18123,7 @@ class MprotectBreakpoint(gdb.Breakpoint):
 @register_command
 class MprotectCommand(GenericCommand):
     """Change a page permission (default: RWX)."""
+
     _cmdline_ = "mprotect"
     _category_ = "05-a. Syscall - Invoke"
 
@@ -18087,6 +18221,7 @@ class MprotectCommand(GenericCommand):
 @register_command
 class KillThreadsCommand(GenericCommand):
     """Invoke pthread_exit(0) for specific THREAD_ID."""
+
     _cmdline_ = "killthreads"
     _category_ = "05-a. Syscall - Invoke"
 
@@ -18149,6 +18284,7 @@ class KillThreadsCommand(GenericCommand):
 @register_command
 class CallSyscallCommand(GenericCommand):
     """A wrapper for calling syscall easily."""
+
     _cmdline_ = "call-syscall"
     _category_ = "05-a. Syscall - Invoke"
 
@@ -18209,6 +18345,7 @@ class CallSyscallCommand(GenericCommand):
 @register_command
 class MmapMemoryCommand(GenericCommand):
     """Allocate a new memory."""
+
     _cmdline_ = "mmap"
     _category_ = "05-a. Syscall - Invoke"
 
@@ -18292,6 +18429,7 @@ class MmapMemoryCommand(GenericCommand):
 @register_command
 class ReadControlRegisterCommand(GenericCommand):
     """Read control register for kgdb."""
+
     _cmdline_ = "read-control-register"
     _category_ = "04-a. Register - View"
 
@@ -18360,6 +18498,7 @@ class ReadControlRegisterCommand(GenericCommand):
 @register_command
 class ReadSystemRegisterCommand(GenericCommand):
     """Read system register for old qemu-system-arm."""
+
     _cmdline_ = "read-system-register"
     _category_ = "04-a. Register - View"
 
@@ -19056,6 +19195,7 @@ class ReadSystemRegisterCommand(GenericCommand):
 @register_command
 class UnicornEmulateCommand(GenericCommand):
     """Use Unicorn-Engine to emulate the behavior of the binary."""
+
     _cmdline_ = "unicorn-emulate"
     _category_ = "01-d. Debugging Support - Execution"
     _aliases_ = ["emulate"]
@@ -19502,6 +19642,7 @@ class UnicornEmulateCommand(GenericCommand):
 
 class StubBreakpoint(gdb.Breakpoint):
     """Create a breakpoint to permanently disable a call (fork/alarm/signal/etc.)."""
+
     def __init__(self, func, retval):
         super().__init__(func, gdb.BP_BREAKPOINT, internal=False)
         self.func = func
@@ -19524,6 +19665,7 @@ class StubBreakpoint(gdb.Breakpoint):
 @register_command
 class StubCommand(GenericCommand):
     """Stub out the specified function to skip it. (e.g.: fork)"""
+
     _cmdline_ = "stub"
     _category_ = "03-c. Memory - Patch"
     _aliases_ = ["deactivate"]
@@ -19552,6 +19694,7 @@ class StubCommand(GenericCommand):
 @register_command
 class CapstoneDisassembleCommand(GenericCommand):
     """Use capstone disassembly framework to disassemble code."""
+
     _cmdline_ = "capstone-disassemble"
     _category_ = "01-e. Debugging Support - Assemble"
     _repeat_ = True
@@ -19623,6 +19766,7 @@ class CapstoneDisassembleCommand(GenericCommand):
 @register_command
 class GlibcHeapCommand(GenericCommand):
     """The base command to get information about the Glibc heap structure."""
+
     _cmdline_ = "heap"
     _category_ = "06-a. Heap - Glibc"
 
@@ -19654,6 +19798,7 @@ class GlibcHeapCommand(GenericCommand):
 @register_command
 class GlibcHeapTopCommand(GenericCommand):
     """Display heap top chunk."""
+
     _cmdline_ = "heap top"
     _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["top-chunk"]
@@ -19699,6 +19844,7 @@ class GlibcHeapTopCommand(GenericCommand):
 @register_command
 class GlibcHeapArenasCommand(GenericCommand):
     """List up heap arenas."""
+
     _cmdline_ = "heap arenas"
     _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["arenas"]
@@ -19733,6 +19879,7 @@ class GlibcHeapArenasCommand(GenericCommand):
 @register_command
 class GlibcHeapArenaCommand(GenericCommand, BufferingOutput):
     """Display information on a heap arena."""
+
     _cmdline_ = "heap arena"
     _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["arena"]
@@ -19885,6 +20032,7 @@ class GlibcHeapArenaCommand(GenericCommand, BufferingOutput):
 @register_command
 class GlibcHeapChunkCommand(GenericCommand):
     """Display information on a heap chunk."""
+
     _cmdline_ = "heap chunk"
     _category_ = "06-a. Heap - Glibc"
 
@@ -19947,6 +20095,7 @@ class GlibcHeapChunkCommand(GenericCommand):
 @register_command
 class GlibcHeapChunksCommand(GenericCommand, BufferingOutput):
     """Display information all heap chunks."""
+
     _cmdline_ = "heap chunks"
     _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["chunks"]
@@ -20073,6 +20222,7 @@ class GlibcHeapChunksCommand(GenericCommand, BufferingOutput):
 @register_command
 class GlibcHeapBinsCommand(GenericCommand):
     """Display information on the bins on an arena (default: main_arena)."""
+
     _cmdline_ = "heap bins"
     _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["bins"]
@@ -20212,6 +20362,7 @@ class GlibcHeapBinsCommand(GenericCommand):
 @register_command
 class GlibcHeapTcachebinsCommand(GenericCommand):
     """Display information on the Tcache on an arena."""
+
     _cmdline_ = "heap bins tcache"
     _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["tcache"]
@@ -20324,6 +20475,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
 @register_command
 class GlibcHeapFastbinsYCommand(GenericCommand):
     """Display information on the fastbinsY on an arena."""
+
     _cmdline_ = "heap bins fast"
     _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["fastbins"]
@@ -20433,6 +20585,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
 @register_command
 class GlibcHeapUnsortedBinsCommand(GenericCommand):
     """Display information on the Unsorted Bins of an arena."""
+
     _cmdline_ = "heap bins unsorted"
     _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["unsortedbin"]
@@ -20480,6 +20633,7 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
 @register_command
 class GlibcHeapSmallBinsCommand(GenericCommand):
     """Display information on the Small Bins of an arena."""
+
     _cmdline_ = "heap bins small"
     _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["smallbin"]
@@ -20533,6 +20687,7 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
 @register_command
 class GlibcHeapLargeBinsCommand(GenericCommand):
     """Display information on the Large Bins of an arena."""
+
     _cmdline_ = "heap bins large"
     _category_ = "06-a. Heap - Glibc"
     _aliases_ = ["largebin"]
@@ -20586,6 +20741,7 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
 @register_command
 class RegistersCommand(GenericCommand):
     """Display full details on one, many or all registers value from current architecture."""
+
     _cmdline_ = "registers"
     _category_ = "01-a. Debugging Support - Context"
     _aliases_ = ["regs"]
@@ -20729,6 +20885,7 @@ class RegistersCommand(GenericCommand):
 @register_command
 class RopperCommand(GenericCommand):
     """Invoke ropper to search rop gadgets."""
+
     _cmdline_ = "ropper"
     _category_ = "07-b. External Command - Exploit Development"
 
@@ -20805,6 +20962,7 @@ class RopperCommand(GenericCommand):
 @register_command
 class RpCommand(GenericCommand):
     """Invoke rp++ (v2) command to search rop gadgets (only x64/x86)."""
+
     _cmdline_ = "rp"
     _category_ = "07-b. External Command - Exploit Development"
 
@@ -20937,6 +21095,7 @@ class RpCommand(GenericCommand):
 @register_command
 class AssembleCommand(GenericCommand):
     """Inline code assemble by keystone."""
+
     _cmdline_ = "asm"
     _category_ = "01-e. Debugging Support - Assemble"
 
@@ -21046,6 +21205,7 @@ class AssembleCommand(GenericCommand):
 @register_command
 class DisassembleCommand(GenericCommand):
     """Inline code disassemble by capstone."""
+
     _cmdline_ = "dasm"
     _category_ = "01-e. Debugging Support - Assemble"
 
@@ -21140,6 +21300,7 @@ class DisassembleCommand(GenericCommand):
 @register_command
 class AsmListCommand(GenericCommand):
     """List up general instructions by capstone (only x64/x86)."""
+
     _cmdline_ = "asm-list"
     _category_ = "01-e. Debugging Support - Assemble"
 
@@ -21375,6 +21536,7 @@ class AsmListCommand(GenericCommand):
 @register_command
 class ProcessSearchCommand(GenericCommand, BufferingOutput):
     """Display a smart list of processes."""
+
     _cmdline_ = "ps"
     _category_ = "07-a. External Command - General"
     _aliases_ = ["process-search"]
@@ -21481,6 +21643,7 @@ class ProcessSearchCommand(GenericCommand, BufferingOutput):
 @register_command
 class ArchInfoCommand(GenericCommand):
     """Display current architecture information."""
+
     _cmdline_ = "arch-info"
     _category_ = "02-a. Process Information - General"
 
@@ -21575,6 +21738,7 @@ class ArchInfoCommand(GenericCommand):
 @register_command
 class ElfInfoCommand(GenericCommand):
     """Display a limited subset of ELF header information."""
+
     _cmdline_ = "elf-info"
     _category_ = "02-a. Process Information - General"
 
@@ -22170,6 +22334,7 @@ class ElfInfoCommand(GenericCommand):
 @register_command
 class ChecksecCommand(GenericCommand):
     """Checksec the security properties of the current executable or passed as argument."""
+
     _cmdline_ = "checksec"
     _category_ = "02-f. Process Information - Security"
     _aliases_ = ["cs"]
@@ -22588,6 +22753,7 @@ class ChecksecCommand(GenericCommand):
 @register_command
 class KernelChecksecCommand(GenericCommand):
     """Checksec the security properties of the current kernel."""
+
     _cmdline_ = "kchecksec"
     _category_ = "08-b. Qemu-system Cooperation - Linux Basic"
 
@@ -23663,6 +23829,7 @@ class KernelChecksecCommand(GenericCommand):
 @register_command
 class DwarfExceptionHandlerInfoCommand(GenericCommand):
     """Dump the DWARF exception handler information with the byte code itself."""
+
     _cmdline_ = "dwarf-exception-handler"
     _category_ = "02-e. Process Information - Complex Structure Information"
 
@@ -25441,6 +25608,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
 @register_command
 class MainBreakCommand(GenericCommand):
     """Set a breakpoint at the beginning of main with or without symbols, then continue."""
+
     _cmdline_ = "main-break"
     _category_ = "01-b. Debugging Support - Breakpoint"
 
@@ -25526,6 +25694,7 @@ class MainBreakCommand(GenericCommand):
 
 class EntryBreakBreakpoint(gdb.Breakpoint):
     """Breakpoint used internally to stop execution at the most convenient entry point."""
+
     def __init__(self, location):
         super().__init__(location, gdb.BP_BREAKPOINT, internal=True, temporary=True)
         self.silent = True
@@ -25542,6 +25711,7 @@ class EntryBreakBreakpoint(gdb.Breakpoint):
 @register_command
 class EntryPointBreakCommand(GenericCommand):
     """Try to find best entry point and set a temporary breakpoint on it."""
+
     _cmdline_ = "entry-break"
     _category_ = "01-b. Debugging Support - Breakpoint"
     _aliases_ = ["start"]
@@ -25647,6 +25817,7 @@ class EntryPointBreakCommand(GenericCommand):
 
 class NamedBreakpoint(gdb.Breakpoint):
     """Breakpoint which shows a specified name."""
+
     def __init__(self, location, name):
         super().__init__(location, gdb.BP_BREAKPOINT, internal=False, temporary=False)
         self.name = name
@@ -25664,6 +25835,7 @@ class NamedBreakpoint(gdb.Breakpoint):
 @register_command
 class NamedBreakCommand(GenericCommand):
     """Set a breakpoint and assigns a name to it, which will be shown if hit."""
+
     _cmdline_ = "named-break"
     _category_ = "01-b. Debugging Support - Breakpoint"
 
@@ -25687,6 +25859,7 @@ class NamedBreakCommand(GenericCommand):
 
 class CommandBreakpoint(gdb.Breakpoint):
     """Breakpoint which executes user defined command silently and continue."""
+
     def __init__(self, loc, cmd):
         super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False, temporary=False)
         self.loc = loc
@@ -25702,6 +25875,7 @@ class CommandBreakpoint(gdb.Breakpoint):
 @register_command
 class CommandBreakCommand(GenericCommand):
     """Set a breakpoint which executes user defined command silently and continue, if hit."""
+
     _cmdline_ = "command-break"
     _category_ = "01-b. Debugging Support - Breakpoint"
 
@@ -25724,6 +25898,7 @@ class CommandBreakCommand(GenericCommand):
 
 class TakenOrNotBreakpoint(gdb.Breakpoint):
     """Breakpoint which only branch is taken or not."""
+
     def __init__(self, loc, taken, is_hwbp):
         if is_hwbp:
             bp_type = gdb.BP_HARDWARE_BREAKPOINT
@@ -25751,6 +25926,7 @@ class TakenOrNotBreakpoint(gdb.Breakpoint):
 @register_command
 class BreakIfTakenCommand(GenericCommand):
     """Set a breakpoint which breaks if branch is taken."""
+
     _cmdline_ = "break-if-taken"
     _category_ = "01-b. Debugging Support - Breakpoint"
 
@@ -25769,6 +25945,7 @@ class BreakIfTakenCommand(GenericCommand):
 @register_command
 class BreakIfNotTakenCommand(GenericCommand):
     """Set a breakpoint which breaks if branch is not taken."""
+
     _cmdline_ = "break-if-not-taken"
     _category_ = "01-b. Debugging Support - Breakpoint"
 
@@ -25787,6 +25964,7 @@ class BreakIfNotTakenCommand(GenericCommand):
 @register_command
 class ContextCommand(GenericCommand):
     """Display various information every time GDB hits a breakpoint."""
+
     _cmdline_ = "context"
     _category_ = "01-a. Debugging Support - Context"
     _aliases_ = ["ctx"]
@@ -27156,6 +27334,7 @@ class ContextCommand(GenericCommand):
 @register_command
 class MemoryCommand(GenericCommand):
     """The base command to watch the memory."""
+
     _cmdline_ = "memory"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -27184,6 +27363,7 @@ class MemoryCommand(GenericCommand):
 @register_command
 class MemoryWatchCommand(GenericCommand):
     """Add address ranges to the memory view."""
+
     _cmdline_ = "memory watch"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -27217,6 +27397,7 @@ class MemoryWatchCommand(GenericCommand):
 @register_command
 class MemoryUnwatchCommand(GenericCommand):
     """Remove address ranges to the memory view."""
+
     _cmdline_ = "memory unwatch"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -27246,6 +27427,7 @@ class MemoryUnwatchCommand(GenericCommand):
 @register_command
 class MemoryWatchResetCommand(GenericCommand):
     """Remove all watchpoints."""
+
     _cmdline_ = "memory reset"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -27263,6 +27445,7 @@ class MemoryWatchResetCommand(GenericCommand):
 @register_command
 class MemoryWatchListCommand(GenericCommand):
     """List all watchpoints to display in context layout."""
+
     _cmdline_ = "memory list"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -27285,6 +27468,7 @@ class MemoryWatchListCommand(GenericCommand):
 @register_command
 class HexdumpCommand(GenericCommand):
     """Display the hexdump from the memory location specified."""
+
     _cmdline_ = "hexdump"
     _category_ = "03-b. Memory - View"
     _repeat_ = True
@@ -27412,6 +27596,7 @@ class HexdumpCommand(GenericCommand):
 @register_command
 class HexdumpFlexibleCommand(GenericCommand):
     """Display the hexdump with user defined format."""
+
     _cmdline_ = "hexdump-flexible"
     _category_ = "03-b. Memory - View"
     _aliases_ = ["xxdf", "hdf"]
@@ -27503,6 +27688,7 @@ class HexdumpFlexibleCommand(GenericCommand):
 @register_command
 class PatchCommand(GenericCommand):
     """The base command to write specified values to the specified address."""
+
     _cmdline_ = "patch"
     _category_ = "03-c. Memory - Patch"
 
@@ -27625,6 +27811,7 @@ class PatchCommand(GenericCommand):
 @register_command
 class PatchQwordCommand(PatchCommand):
     """Write specified QWORD to the specified address."""
+
     _cmdline_ = "patch qword"
     _category_ = "03-c. Memory - Patch"
     _aliases_ = ["patch q"]
@@ -27650,6 +27837,7 @@ class PatchQwordCommand(PatchCommand):
 @register_command
 class PatchDwordCommand(PatchCommand):
     """Write specified DWORD to the specified address."""
+
     _cmdline_ = "patch dword"
     _category_ = "03-c. Memory - Patch"
     _aliases_ = ["patch d"]
@@ -27675,6 +27863,7 @@ class PatchDwordCommand(PatchCommand):
 @register_command
 class PatchWordCommand(PatchCommand):
     """Write specified WORD to the specified address."""
+
     _cmdline_ = "patch word"
     _category_ = "03-c. Memory - Patch"
     _aliases_ = ["patch w"]
@@ -27700,6 +27889,7 @@ class PatchWordCommand(PatchCommand):
 @register_command
 class PatchByteCommand(PatchCommand):
     """Write specified BYTE to the specified address."""
+
     _cmdline_ = "patch byte"
     _category_ = "03-c. Memory - Patch"
     _aliases_ = ["patch b"]
@@ -27725,6 +27915,7 @@ class PatchByteCommand(PatchCommand):
 @register_command
 class PatchStringCommand(PatchCommand):
     """Write specified string to the specified memory address."""
+
     _cmdline_ = "patch string"
     _category_ = "03-c. Memory - Patch"
 
@@ -27776,6 +27967,7 @@ class PatchStringCommand(PatchCommand):
 @register_command
 class PatchHexCommand(PatchCommand):
     """Write specified hex string to the specified address."""
+
     _cmdline_ = "patch hex"
     _category_ = "03-c. Memory - Patch"
 
@@ -27826,6 +28018,7 @@ class PatchHexCommand(PatchCommand):
 @register_command
 class PatchPatternCommand(PatchCommand):
     """Write a pattern string to the specified memory address."""
+
     _cmdline_ = "patch pattern"
     _category_ = "03-c. Memory - Patch"
 
@@ -27875,6 +28068,7 @@ class PatchPatternCommand(PatchCommand):
 @register_command
 class PatchNopCommand(PatchCommand):
     """Patch the instruction(s) pointed by parameters with NOP."""
+
     _cmdline_ = "patch nop"
     _category_ = "03-c. Memory - Patch"
     _aliases_ = ["nop"]
@@ -27978,6 +28172,7 @@ class PatchNopCommand(PatchCommand):
 @register_command
 class PatchInfloopCommand(PatchCommand):
     """Patch the instruction(s) pointed by parameters with infinity loop."""
+
     _cmdline_ = "patch inf"
     _category_ = "03-c. Memory - Patch"
 
@@ -28049,6 +28244,7 @@ class PatchInfloopCommand(PatchCommand):
 @register_command
 class PatchTrapCommand(PatchCommand):
     """Patch the instruction(s) pointed by parameters with breakpoint or trap (if available)."""
+
     _cmdline_ = "patch trap"
     _category_ = "03-c. Memory - Patch"
 
@@ -28116,6 +28312,7 @@ class PatchTrapCommand(PatchCommand):
 @register_command
 class PatchRetCommand(PatchCommand):
     """Patch the instruction(s) pointed by parameters with return."""
+
     _cmdline_ = "patch ret"
     _category_ = "03-c. Memory - Patch"
 
@@ -28183,6 +28380,7 @@ class PatchRetCommand(PatchCommand):
 @register_command
 class PatchSyscallCommand(PatchCommand):
     """Patch the instruction(s) pointed by parameters with syscall."""
+
     _cmdline_ = "patch syscall"
     _category_ = "03-c. Memory - Patch"
 
@@ -28250,6 +28448,7 @@ class PatchSyscallCommand(PatchCommand):
 @register_command
 class PatchHistoryCommand(PatchCommand):
     """Display the patch history."""
+
     _cmdline_ = "patch history"
     _category_ = "03-c. Memory - Patch"
     _aliases_ = ["patch list"]
@@ -28286,6 +28485,7 @@ class PatchHistoryCommand(PatchCommand):
 @register_command
 class PatchRevertCommand(PatchCommand):
     """Revert patch from the patch history."""
+
     _cmdline_ = "patch revert"
     _category_ = "03-c. Memory - Patch"
 
@@ -28354,6 +28554,7 @@ class PatchRevertCommand(PatchCommand):
 @register_command
 class DereferenceCommand(GenericCommand):
     """Dereference recursively from an address and display information."""
+
     _cmdline_ = "dereference"
     _category_ = "01-a. Debugging Support - Context"
     _repeat_ = True
@@ -28645,6 +28846,7 @@ class DereferenceCommand(GenericCommand):
 @register_command
 class ASLRCommand(GenericCommand):
     """View / modify the ASLR setting of GDB."""
+
     _cmdline_ = "aslr"
     _category_ = "02-f. Process Information - Security"
 
@@ -28679,6 +28881,7 @@ class ASLRCommand(GenericCommand):
 @register_command
 class FollowCommand(GenericCommand):
     """View / modify the follow-fork-mode setting of GDB."""
+
     _cmdline_ = "follow"
     _category_ = "01-g. Debugging Support - Other"
 
@@ -28709,6 +28912,7 @@ class FollowCommand(GenericCommand):
 @register_command
 class SmartCppFunctionNameCommand(GenericCommand):
     """Toggle the setting of `context.smart_cpp_function_name`."""
+
     _cmdline_ = "smart-cpp-function-name"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -28728,6 +28932,7 @@ class SmartCppFunctionNameCommand(GenericCommand):
 @register_command
 class ContextExtraCommand(GenericCommand):
     """The base command to add, remove, list or clear user specified command to context-extra."""
+
     _cmdline_ = "context-extra"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -28756,6 +28961,7 @@ class ContextExtraCommand(GenericCommand):
 @register_command
 class ContextExtraAddCommand(ContextExtraCommand):
     """Add user specified command to execute when each step."""
+
     _cmdline_ = "context-extra add"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["context-extra set"]
@@ -28773,6 +28979,7 @@ class ContextExtraAddCommand(ContextExtraCommand):
 @register_command
 class ContextExtraListCommand(ContextExtraCommand):
     """List user specified command to execute when each step."""
+
     _cmdline_ = "context-extra list"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["context-extra ls"]
@@ -28793,6 +29000,7 @@ class ContextExtraListCommand(ContextExtraCommand):
 @register_command
 class ContextExtraRemoveCommand(ContextExtraCommand):
     """Remove user specified command to execute when each step."""
+
     _cmdline_ = "context-extra remove"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["context-extra del", "context-extra unset", "context-extra rm"]
@@ -28814,6 +29022,7 @@ class ContextExtraRemoveCommand(ContextExtraCommand):
 @register_command
 class ContextExtraClearCommand(ContextExtraCommand):
     """clear all user specified commands to execute when each step."""
+
     _cmdline_ = "context-extra clear"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -28830,6 +29039,7 @@ class ContextExtraClearCommand(ContextExtraCommand):
 @register_command
 class CommentCommand(GenericCommand):
     """The base command to add, remove, list or clear the comment."""
+
     _cmdline_ = "comment"
     _category_ = "01-f. Debugging Support - Context Extension"
 
@@ -28860,6 +29070,7 @@ class CommentCommand(GenericCommand):
 @register_command
 class CommentAddCommand(CommentCommand):
     """Add a comment to specific address."""
+
     _cmdline_ = "comment add"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["comment set"]
@@ -28880,6 +29091,7 @@ class CommentAddCommand(CommentCommand):
 @register_command
 class CommentLsCommand(CommentCommand):
     """List the comments."""
+
     _cmdline_ = "comment list"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["comment ls"]
@@ -28901,6 +29113,7 @@ class CommentLsCommand(CommentCommand):
 @register_command
 class CommentRemoveCommand(CommentCommand):
     """Remove the specified comment."""
+
     _cmdline_ = "comment remove"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["comment del", "comment unset", "comment rm"]
@@ -28932,6 +29145,7 @@ class CommentRemoveCommand(CommentCommand):
 @register_command
 class CommentClearCommand(CommentCommand):
     """Clear all comments."""
+
     _cmdline_ = "comment clear"
     _category_ = "01-f. Debugging Support - Context Extension"
     _aliases_ = ["comment reset"]
@@ -28948,6 +29162,7 @@ class CommentClearCommand(CommentCommand):
 @register_command
 class VMMapCommand(GenericCommand, BufferingOutput):
     """Display a comprehensive layout of the virtual memory mapping."""
+
     _cmdline_ = "vmmap"
     _category_ = "02-c. Process Information - Memory/Section"
 
@@ -29087,6 +29302,7 @@ class VMMapCommand(GenericCommand, BufferingOutput):
 @register_command
 class XFilesCommand(GenericCommand):
     """Display all libraries (and sections) loaded by binary."""
+
     _cmdline_ = "xfiles"
     _category_ = "02-c. Process Information - Memory/Section"
 
@@ -29127,6 +29343,7 @@ class XFilesCommand(GenericCommand):
 @register_command
 class XInfoCommand(GenericCommand):
     """Retrieve and display runtime information for the location(s) given as parameter."""
+
     _cmdline_ = "xinfo"
     _category_ = "02-c. Process Information - Memory/Section"
 
@@ -29219,6 +29436,7 @@ class XInfoCommand(GenericCommand):
 @register_command
 class XorMemoryCommand(GenericCommand):
     """The base command to XOR a block of memory."""
+
     _cmdline_ = "xor-memory"
     _category_ = "03-d. Memory - Calculation"
 
@@ -29245,6 +29463,7 @@ class XorMemoryCommand(GenericCommand):
 @register_command
 class XorMemoryDisplayCommand(GenericCommand):
     """Display a block of memory by xor-ing each byte with specified key."""
+
     _cmdline_ = "xor-memory display"
     _category_ = "03-d. Memory - Calculation"
 
@@ -29287,6 +29506,7 @@ class XorMemoryDisplayCommand(GenericCommand):
 @register_command
 class XorMemoryPatchCommand(GenericCommand):
     """Patch a block of memory by xor-ing each byte with specified key."""
+
     _cmdline_ = "xor-memory patch"
     _category_ = "03-d. Memory - Calculation"
 
@@ -29324,6 +29544,7 @@ class XorMemoryPatchCommand(GenericCommand):
 @register_command
 class PatternCommand(GenericCommand):
     """The base command to create or search a De Bruijn cyclic pattern (used pwntools)."""
+
     _cmdline_ = "pattern"
     _category_ = "09-c. Misc - Generation"
 
@@ -29350,6 +29571,7 @@ class PatternCommand(GenericCommand):
 @register_command
 class PatternCreateCommand(GenericCommand):
     """Generate a de Bruijn cyclic pattern."""
+
     _cmdline_ = "pattern create"
     _category_ = "09-c. Misc - Generation"
     _aliases_ = ["pattc"]
@@ -29411,6 +29633,7 @@ class PatternCreateCommand(GenericCommand):
 @register_command
 class PatternSearchCommand(GenericCommand):
     """Search for the cyclic de Bruijn pattern generated by the `pattern create` command."""
+
     _cmdline_ = "pattern search"
     _category_ = "09-c. Misc - Generation"
     _aliases_ = ["patto"]
@@ -29493,6 +29716,7 @@ class PatternSearchCommand(GenericCommand):
 @register_command
 class SigreturnCommand(GenericCommand):
     """Display stack values for sigreturn syscall."""
+
     _cmdline_ = "sigreturn"
     _category_ = "03-b. Memory - View"
 
@@ -29693,6 +29917,7 @@ class SigreturnCommand(GenericCommand):
 @register_command
 class SropHintCommand(GenericCommand):
     """Hint for sigreturn oriented programming."""
+
     _cmdline_ = "srop-hint"
     _category_ = "09-d. Misc - Show Example"
 
@@ -29868,6 +30093,7 @@ class SropHintCommand(GenericCommand):
 @register_command
 class Ret2dlHintCommand(GenericCommand):
     """Hint for return-to-dl-resolve."""
+
     _cmdline_ = "ret2dl-hint"
     _category_ = "09-d. Misc - Show Example"
 
@@ -29976,6 +30202,7 @@ class Ret2dlHintCommand(GenericCommand):
 @register_command
 class LinkMapCommand(GenericCommand):
     """Dump useful members of link_map with iterating."""
+
     _cmdline_ = "link-map"
     _category_ = "02-e. Process Information - Complex Structure Information"
 
@@ -30175,6 +30402,7 @@ class LinkMapCommand(GenericCommand):
 @register_command
 class DynamicCommand(GenericCommand):
     """Display current status of the _DYNAMIC area."""
+
     _cmdline_ = "dynamic"
     _category_ = "02-e. Process Information - Complex Structure Information"
 
@@ -30477,6 +30705,7 @@ class DynamicCommand(GenericCommand):
 @register_command
 class DestructorDumpCommand(GenericCommand):
     """Display registered destructor functions."""
+
     _cmdline_ = "dtor-dump"
     _category_ = "02-e. Process Information - Complex Structure Information"
 
@@ -31163,6 +31392,7 @@ class DestructorDumpCommand(GenericCommand):
 @register_command
 class GotCommand(GenericCommand):
     """Display current status of the got/plt inside the process."""
+
     _cmdline_ = "got"
     _category_ = "02-e. Process Information - Complex Structure Information"
     _aliases_ = ["plt"]
@@ -31635,6 +31865,7 @@ class GotCommand(GenericCommand):
 @register_command
 class GotAllCommand(GenericCommand):
     """Show got entries for all libraries."""
+
     _cmdline_ = "got-all"
     _category_ = "02-e. Process Information - Complex Structure Information"
     _aliases_ = ["plt-all"]
@@ -31684,6 +31915,7 @@ class GotAllCommand(GenericCommand):
 
 class FormatStringBreakpoint(gdb.Breakpoint):
     """Inspect stack for format string."""
+
     def __init__(self, spec, num_args):
         super().__init__(spec, type=gdb.BP_BREAKPOINT, internal=False)
         self.num_args = num_args
@@ -31717,6 +31949,7 @@ class FormatStringBreakpoint(gdb.Breakpoint):
 @register_command
 class FormatStringSearchCommand(GenericCommand):
     """The helper to search exploitable format-string."""
+
     _cmdline_ = "format-string-helper"
     _category_ = "01-g. Debugging Support - Other"
     _aliases_ = ["fmtstr-helper"]
@@ -31825,6 +32058,7 @@ class FormatStringSearchCommand(GenericCommand):
 
 class TraceMallocBreakpoint(gdb.Breakpoint):
     """Track allocations done with malloc() or calloc()."""
+
     def __init__(self, name):
         super().__init__(name, gdb.BP_BREAKPOINT, internal=True)
         self.silent = True
@@ -31847,6 +32081,7 @@ class TraceMallocBreakpoint(gdb.Breakpoint):
 
 class TraceMallocRetBreakpoint(gdb.FinishBreakpoint):
     """Internal temporary breakpoint to retrieve the return value of malloc()."""
+
     def __init__(self, size, name):
         try:
             frame = gdb.newest_frame()
@@ -31942,6 +32177,7 @@ class TraceMallocRetBreakpoint(gdb.FinishBreakpoint):
 
 class TraceReallocBreakpoint(gdb.Breakpoint):
     """Track re-allocations done with realloc()."""
+
     def __init__(self):
         super().__init__("__libc_realloc", gdb.BP_BREAKPOINT, internal=True)
         self.silent = True
@@ -31966,6 +32202,7 @@ class TraceReallocBreakpoint(gdb.Breakpoint):
 
 class TraceReallocRetBreakpoint(gdb.FinishBreakpoint):
     """Internal temporary breakpoint to retrieve the return value of realloc()."""
+
     def __init__(self, ptr, size):
         try:
             frame = gdb.newest_frame()
@@ -32031,6 +32268,7 @@ class TraceReallocRetBreakpoint(gdb.FinishBreakpoint):
 
 class TraceFreeBreakpoint(gdb.Breakpoint):
     """Track calls to free() and attempts to detect inconsistencies."""
+
     def __init__(self):
         super().__init__("__libc_free", gdb.BP_BREAKPOINT, internal=True)
         self.silent = True
@@ -32091,6 +32329,7 @@ class TraceFreeBreakpoint(gdb.Breakpoint):
 
 class TraceFreeRetBreakpoint(gdb.FinishBreakpoint):
     """Internal temporary breakpoint to track free()d values."""
+
     def __init__(self, ptr):
         super().__init__(gdb.newest_frame(), internal=True)
         self.silent = True
@@ -32115,6 +32354,7 @@ class TraceFreeRetBreakpoint(gdb.FinishBreakpoint):
 
 class UafWatchpoint(gdb.Breakpoint):
     """Custom watchpoints set TraceFreeBreakpoint() to monitor free()d pointers being used."""
+
     def __init__(self, ptr):
         super().__init__("*{:#x}".format(ptr), gdb.BP_WATCHPOINT, internal=True)
         self.ptr = ptr
@@ -32147,6 +32387,7 @@ class UafWatchpoint(gdb.Breakpoint):
 @register_command
 class HeapAnalysisCommand(GenericCommand):
     """Trace malloc/free to check heap integrity for Use-after-Free, Double Free, Heap overlap."""
+
     _cmdline_ = "heap-analysis-helper"
     _category_ = "06-a. Heap - Glibc"
 
@@ -32256,6 +32497,7 @@ class HeapAnalysisCommand(GenericCommand):
 @register_command
 class SyscallSearchCommand(GenericCommand):
     """Search the syscall number for specified architecture."""
+
     _cmdline_ = "syscall-search"
     _category_ = "05-b. Syscall - Search"
 
@@ -43579,6 +43821,8 @@ x86_16_dos_syscall_list = [
 
 
 class Syscall:
+    """A collection of utility functions that are related to syscall tables."""
+
     @staticmethod
     def parse_common_syscall_defs():
         sc_defs = [
@@ -45563,6 +45807,7 @@ def get_syscall_table(arch=None, mode=None):
 @register_command
 class SyscallArgsCommand(GenericCommand):
     """Get the syscall name and arguments based on the register values in the current state."""
+
     _cmdline_ = "syscall-args"
     _category_ = "01-a. Debugging Support - Context"
 
@@ -45680,6 +45925,7 @@ class SyscallArgsCommand(GenericCommand):
 @register_command
 class SyscallSampleCommand(GenericCommand):
     """Show the syscall calling sample for specified architecture."""
+
     _cmdline_ = "syscall-sample"
     _category_ = "05-c. Syscall - Show Example"
 
@@ -45728,6 +45974,7 @@ class SyscallSampleCommand(GenericCommand):
 @register_command
 class CodebaseCommand(GenericCommand):
     """Display various base addresses."""
+
     _cmdline_ = "codebase"
     _category_ = "02-b. Process Information - Base Address"
     _aliases_ = ["base"]
@@ -45795,6 +46042,7 @@ class CodebaseCommand(GenericCommand):
 @register_command
 class HeapbaseCommand(GenericCommand):
     """Display heap base address."""
+
     _cmdline_ = "heapbase"
     _category_ = "02-b. Process Information - Base Address"
 
@@ -45875,6 +46123,7 @@ class HeapbaseCommand(GenericCommand):
 @register_command
 class LibcCommand(GenericCommand):
     """Display libc base address."""
+
     _cmdline_ = "libc"
     _category_ = "02-b. Process Information - Base Address"
 
@@ -45953,6 +46202,7 @@ class LibcCommand(GenericCommand):
 @register_command
 class LdCommand(GenericCommand):
     """Display ld base address."""
+
     _cmdline_ = "ld"
     _category_ = "02-b. Process Information - Base Address"
 
@@ -46026,6 +46276,7 @@ class LdCommand(GenericCommand):
 @register_command
 class MagicCommand(GenericCommand):
     """Display useful userland addresses and offsets."""
+
     _cmdline_ = "magic"
     _category_ = "02-g. Process Information - Symbol"
 
@@ -46227,6 +46478,7 @@ class MagicCommand(GenericCommand):
 @register_command
 class KernelMagicCommand(GenericCommand):
     """Display useful kernel addresses and offsets."""
+
     _cmdline_ = "kmagic"
     _category_ = "08-b. Qemu-system Cooperation - Linux Basic"
 
@@ -46439,6 +46691,7 @@ class KernelMagicCommand(GenericCommand):
 @register_command
 class OneGadgetCommand(GenericCommand):
     """Invoke `one_gadget`."""
+
     _cmdline_ = "onegadget"
     _category_ = "07-b. External Command - Exploit Development"
 
@@ -46467,6 +46720,7 @@ class OneGadgetCommand(GenericCommand):
 @register_command
 class SeccompCommand(GenericCommand):
     """Invoke `seccomp-tools`."""
+
     _cmdline_ = "seccomp"
     _category_ = "07-b. External Command - Exploit Development"
 
@@ -46491,6 +46745,7 @@ class SeccompCommand(GenericCommand):
 @register_command
 class SysregCommand(GenericCommand):
     """Pretty-print system registers (not general parpose) from `info register`."""
+
     _cmdline_ = "sysreg"
     _category_ = "04-a. Register - View"
 
@@ -46558,6 +46813,7 @@ class SysregCommand(GenericCommand):
 @register_command
 class MmxSetCommand(GenericCommand):
     """Simply set the value to mm register."""
+
     _cmdline_ = "mmxset"
     _category_ = "04-b. Register - Modify"
 
@@ -46617,6 +46873,7 @@ class MmxSetCommand(GenericCommand):
 @register_command
 class MmxCommand(GenericCommand):
     """Display MMX registers."""
+
     _cmdline_ = "mmx"
     _category_ = "04-a. Register - View"
 
@@ -46664,6 +46921,7 @@ class MmxCommand(GenericCommand):
 @register_command
 class XmmSetCommand(GenericCommand):
     """Simply set the value to xmm or ymm register."""
+
     _cmdline_ = "xmmset"
     _category_ = "04-b. Register - Modify"
 
@@ -46710,6 +46968,7 @@ class XmmSetCommand(GenericCommand):
 @register_command
 class SseCommand(GenericCommand):
     """Display SSE registers."""
+
     _cmdline_ = "sse"
     _category_ = "04-a. Register - View"
     _aliases_ = ["xmm"]
@@ -46788,6 +47047,7 @@ class SseCommand(GenericCommand):
 @register_command
 class AvxCommand(GenericCommand):
     """Display AVX registers."""
+
     _cmdline_ = "avx"
     _category_ = "04-a. Register - View"
     _aliases_ = ["ymm"]
@@ -46836,6 +47096,7 @@ class AvxCommand(GenericCommand):
 @register_command
 class FpuCommand(GenericCommand):
     """Display fpu registers (x86/x64:x87-fpu, ARM/ARM64:vfp-d16)."""
+
     _cmdline_ = "fpu"
     _category_ = "04-a. Register - View"
 
@@ -47177,6 +47438,7 @@ class FpuCommand(GenericCommand):
 @register_command
 class ErrnoCommand(GenericCommand):
     """Convert errno (or argument) to its string representation."""
+
     _cmdline_ = "errno"
     _category_ = "02-d. Process Information - Trivial Information"
 
@@ -47367,6 +47629,7 @@ class ErrnoCommand(GenericCommand):
 @register_command
 class ExtractHeapAddrCommand(GenericCommand):
     """Extract heap address from protected `fd` pointer of single linked-list (introduced from glibc 2.32)."""
+
     _cmdline_ = "extract-heap-addr"
     _category_ = "06-a. Heap - Glibc"
 
@@ -47409,6 +47672,7 @@ class ExtractHeapAddrCommand(GenericCommand):
 @register_command
 class FindFakeFastCommand(GenericCommand, BufferingOutput):
     """Find candidate fake fast chunks from RW memory."""
+
     _cmdline_ = "find-fake-fast"
     _category_ = "06-a. Heap - Glibc"
 
@@ -47505,6 +47769,7 @@ class FindFakeFastCommand(GenericCommand, BufferingOutput):
 @register_command
 class VisualHeapCommand(GenericCommand):
     """Visualize chunks on a heap."""
+
     _cmdline_ = "visual-heap"
     _category_ = "06-a. Heap - Glibc"
 
@@ -47709,6 +47974,7 @@ class VisualHeapCommand(GenericCommand):
 @register_command
 class DistanceCommand(GenericCommand):
     """Calculate the offset from its base address."""
+
     _cmdline_ = "distance"
     _category_ = "09-f. Misc - Calculation"
 
@@ -47748,6 +48014,7 @@ class DistanceCommand(GenericCommand):
 @register_command
 class U2dCommand(GenericCommand):
     """Convert type (unsigned long <-> double/float)."""
+
     _cmdline_ = "u2d"
     _category_ = "09-a. Misc - Conversion"
 
@@ -47833,6 +48100,7 @@ class U2dCommand(GenericCommand):
 @register_command
 class UnsignedCommand(GenericCommand):
     """Convert the negative number to unsigned."""
+
     _cmdline_ = "unsigned"
     _category_ = "09-a. Misc - Conversion"
     _aliases_ = ["us", "signed"]
@@ -47874,6 +48142,7 @@ class UnsignedCommand(GenericCommand):
 @register_command
 class ConvertCommand(GenericCommand):
     """Convert values to various (pack, pack-hex, unpack, tohex, unhex, byteswap, etc.)."""
+
     _cmdline_ = "convert"
     _category_ = "09-a. Misc - Conversion"
     _aliases_ = ["transform", "trans"]
@@ -51690,6 +51959,8 @@ KFU = KernelAddressHeuristicFinderUtil # for convenience using from python-inter
 
 
 class Kernel:
+    """A collection of utility functions that are related to kernel specific features."""
+
     @staticmethod
     @Cache.cache_until_next
     def get_maps():
@@ -52063,6 +52334,7 @@ class Kernel:
 @register_command
 class KernelbaseCommand(GenericCommand):
     """Display kernel base address."""
+
     _cmdline_ = "kbase"
     _category_ = "08-b. Qemu-system Cooperation - Linux Basic"
 
@@ -52106,6 +52378,7 @@ class KernelbaseCommand(GenericCommand):
 @register_command
 class KernelVersionCommand(GenericCommand):
     """Display kernel version string."""
+
     _cmdline_ = "kversion"
     _category_ = "08-b. Qemu-system Cooperation - Linux Basic"
 
@@ -52141,6 +52414,7 @@ class KernelVersionCommand(GenericCommand):
 @register_command
 class KernelCmdlineCommand(GenericCommand):
     """Display kernel cmdline string."""
+
     _cmdline_ = "kcmdline"
     _category_ = "08-b. Qemu-system Cooperation - Linux Basic"
 
@@ -52176,6 +52450,7 @@ class KernelCmdlineCommand(GenericCommand):
 @register_command
 class KernelCurrentCommand(GenericCommand):
     """Display current task."""
+
     _cmdline_ = "kcurrent"
     _category_ = "08-b. Qemu-system Cooperation - Linux Basic"
 
@@ -52326,6 +52601,7 @@ class KernelCurrentCommand(GenericCommand):
 @register_command
 class KernelTaskCommand(GenericCommand):
     """Display process list."""
+
     _cmdline_ = "ktask"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -54930,6 +55206,7 @@ class KernelTaskCommand(GenericCommand):
 @register_command
 class KernelFilesCommand(GenericCommand):
     """Display open files list of each process (shortcut for `ktask -quF`)."""
+
     _cmdline_ = "kfiles"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -54955,6 +55232,7 @@ class KernelFilesCommand(GenericCommand):
 @register_command
 class KernelSavedRegsCommand(GenericCommand):
     """Display saved registers of each process (shortcut for `ktask -qur`)."""
+
     _cmdline_ = "kregs"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -54980,6 +55258,7 @@ class KernelSavedRegsCommand(GenericCommand):
 @register_command
 class KernelSignalsCommand(GenericCommand):
     """Display signal handlers of each process (shortcut for `ktask -qus`)."""
+
     _cmdline_ = "ksighands"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -55005,6 +55284,7 @@ class KernelSignalsCommand(GenericCommand):
 @register_command
 class KernelNamespacesCommand(GenericCommand):
     """Display namespaces of each process (shortcut for `ktask -quN`)."""
+
     _cmdline_ = "knamespaces"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -55030,6 +55310,7 @@ class KernelNamespacesCommand(GenericCommand):
 @register_command
 class KernelModuleCommand(GenericCommand):
     """Display kernel module list."""
+
     _cmdline_ = "kmod"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -55725,6 +56006,7 @@ class KernelModuleCommand(GenericCommand):
 @register_command
 class KernelBlockDevicesCommand(GenericCommand):
     """Display block device list."""
+
     _cmdline_ = "kbdev"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -56102,6 +56384,7 @@ class KernelBlockDevicesCommand(GenericCommand):
 @register_command
 class KernelCharacterDevicesCommand(GenericCommand):
     """Display character device list."""
+
     _cmdline_ = "kcdev"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -57246,6 +57529,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
 @register_command
 class KernelOperationsCommand(GenericCommand):
     """Display the members of commonly used function table (like struct file_operations) in the kernel."""
+
     _cmdline_ = "kops"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -57749,6 +58033,7 @@ class KernelOperationsCommand(GenericCommand):
 @register_command
 class KernelSysctlCommand(GenericCommand):
     """Dump sysctl parameters."""
+
     _cmdline_ = "ksysctl"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -58165,6 +58450,7 @@ class KernelSysctlCommand(GenericCommand):
 @register_command
 class KernelFileSystemsCommand(GenericCommand):
     """Dump filesystems."""
+
     _cmdline_ = "kfilesystems"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
     _aliases_ = ["kmounts"]
@@ -58646,6 +58932,7 @@ class KernelFileSystemsCommand(GenericCommand):
 @register_command
 class KernelClockSourceCommand(GenericCommand):
     """Dump clock sources."""
+
     _cmdline_ = "kclock-source"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -58755,6 +59042,7 @@ class KernelClockSourceCommand(GenericCommand):
 @register_command
 class KernelTimerCommand(GenericCommand):
     """Dump timer."""
+
     _cmdline_ = "ktimer"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -59197,6 +59485,7 @@ class KernelTimerCommand(GenericCommand):
 @register_command
 class KernelPciDeviceCommand(GenericCommand):
     """Dump PCI devices."""
+
     _cmdline_ = "kpcidev"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -59682,6 +59971,7 @@ class KernelPciDeviceCommand(GenericCommand):
 @register_command
 class KernelConfigCommand(GenericCommand):
     """Dump kernel config if available."""
+
     _cmdline_ = "kconfig"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -59751,6 +60041,7 @@ class KernelConfigCommand(GenericCommand):
 @register_command
 class KernelSearchCodePtrCommand(GenericCommand):
     """Search the code pointer in kernel data area."""
+
     _cmdline_ = "ksearch-code-ptr"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -59864,6 +60155,7 @@ class KernelSearchCodePtrCommand(GenericCommand):
 @register_command
 class KernelDmesgCommand(GenericCommand):
     """Dump the ring buffer of dmesg area."""
+
     _cmdline_ = "kdmesg"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -60258,6 +60550,7 @@ class KernelDmesgCommand(GenericCommand):
 @register_command
 class StringsCommand(GenericCommand):
     """Search ASCII string (recursively) from specific location."""
+
     _cmdline_ = "strings"
     _category_ = "03-a. Memory - Search"
     _aliases_ = ["ascii-search"]
@@ -60369,6 +60662,7 @@ class StringsCommand(GenericCommand):
 @register_command
 class SyscallTableViewCommand(GenericCommand):
     """Display syscall_table entries."""
+
     _cmdline_ = "syscall-table-view"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -60599,6 +60893,7 @@ class SyscallTableViewCommand(GenericCommand):
 class ExecAsm:
     """Execute embedded asm. e.g.: ExecAsm(asm_op_list).exec_code().
     WARNING: Disable `-enable-kvm` option for qemu-system; If set, this code will crash the guest OS."""
+
     def __init__(self, target_codes, regs=None, step=None, debug=False):
         self.stdout = 1
         self.debug = debug
@@ -60746,6 +61041,7 @@ class ExecAsm:
 class ExecSyscall(ExecAsm):
     """Execute embedded asm for syscall. e.g.: ExecSyscall(nr, args).exec_code().
     WARNING: Disable `-enable-kvm` option for qemu-system; If set, this code will crash the guest OS."""
+
     def __init__(self, nr, args, debug=False):
         self.stdout = 1
         self.debug = debug
@@ -60841,6 +61137,7 @@ class ExecSyscall(ExecAsm):
 @register_command
 class TlsCommand(GenericCommand):
     """Display TLS base address. Requires glibc."""
+
     _cmdline_ = "tls"
     _category_ = "02-b. Process Information - Base Address"
 
@@ -60917,6 +61214,7 @@ class TlsCommand(GenericCommand):
 @register_command
 class FsbaseCommand(GenericCommand):
     """Display fsbase address."""
+
     _cmdline_ = "fsbase"
     _category_ = "02-b. Process Information - Base Address"
     _aliases_ = ["fs"]
@@ -60940,6 +61238,7 @@ class FsbaseCommand(GenericCommand):
 @register_command
 class GsbaseCommand(GenericCommand):
     """Display gsbase address."""
+
     _cmdline_ = "gsbase"
     _category_ = "02-b. Process Information - Base Address"
     _aliases_ = ["gs"]
@@ -60961,6 +61260,7 @@ class GsbaseCommand(GenericCommand):
 @register_command
 class GdtInfoCommand(GenericCommand):
     """Print GDT/LDT entries. If user-land, show sample entries."""
+
     _cmdline_ = "gdtinfo"
     _category_ = "04-a. Register - View"
 
@@ -61500,6 +61800,7 @@ class GdtInfoCommand(GenericCommand):
 @register_command
 class IdtInfoCommand(GenericCommand):
     """Print IDT entries. If user-land, show sample entries."""
+
     _cmdline_ = "idtinfo"
     _category_ = "04-a. Register - View"
 
@@ -61729,6 +62030,7 @@ class IdtInfoCommand(GenericCommand):
 @register_command
 class MemoryCompareCommand(GenericCommand):
     """Compare the memory contents of two locations."""
+
     _cmdline_ = "memcmp"
     _category_ = "03-b. Memory - View"
 
@@ -61831,6 +62133,7 @@ class MemoryCompareCommand(GenericCommand):
 @register_command
 class MemorySetCommand(GenericCommand):
     """Set the value to the memory range."""
+
     _cmdline_ = "memset"
     _category_ = "03-c. Memory - Patch"
 
@@ -61888,6 +62191,7 @@ class MemorySetCommand(GenericCommand):
 @register_command
 class MemoryCopyCommand(GenericCommand):
     """Copy the contents of one memory to another."""
+
     _cmdline_ = "memcpy"
     _category_ = "03-c. Memory - Patch"
 
@@ -61968,6 +62272,7 @@ class MemoryCopyCommand(GenericCommand):
 @register_command
 class MemorySwapCommand(GenericCommand):
     """Swap the contents of one memory to another."""
+
     _cmdline_ = "memswap"
     _category_ = "03-c. Memory - Patch"
 
@@ -62056,6 +62361,7 @@ class MemorySwapCommand(GenericCommand):
 @register_command
 class MemoryInsertCommand(GenericCommand):
     """Insert the contents of one memory to another."""
+
     _cmdline_ = "meminsert"
     _category_ = "03-c. Memory - Patch"
 
@@ -62138,6 +62444,7 @@ class MemoryInsertCommand(GenericCommand):
 @register_command
 class HashMemoryCommand(GenericCommand):
     """Calculate memory hash and CRC."""
+
     _cmdline_ = "hash-memory"
     _category_ = "03-d. Memory - Calculation"
 
@@ -62245,6 +62552,7 @@ class HashMemoryCommand(GenericCommand):
 @register_command
 class IsMemoryZeroCommand(GenericCommand):
     """Check if all the memory in the specified range is 0x00, 0xff."""
+
     _cmdline_ = "is-mem-zero"
     _category_ = "03-d. Memory - Calculation"
 
@@ -62313,6 +62621,7 @@ class IsMemoryZeroCommand(GenericCommand):
 @register_command
 class SequenceLengthCommand(GenericCommand):
     """Detect consecutive lengths of the same sequence."""
+
     _cmdline_ = "seq-length"
     _category_ = "03-d. Memory - Calculation"
 
@@ -62406,6 +62715,7 @@ class SequenceLengthCommand(GenericCommand):
 @register_command
 class MultiLineCommand(GenericCommand):
     """Execute multiple GDB commands in sequence."""
+
     _cmdline_ = "multi-line"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
     _aliases_ = ["ml"]
@@ -62475,6 +62785,7 @@ class MultiLineCommand(GenericCommand):
 @register_command
 class TimeCommand(GenericCommand):
     """Measure the time of the GDB command."""
+
     _cmdline_ = "time"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
 
@@ -62523,6 +62834,7 @@ class TimeCommand(GenericCommand):
 @register_command
 class SaveOutputCommand(GenericCommand):
     """Save the command outputs."""
+
     _cmdline_ = "saveo"
     _category_ = "09-g. Misc - Diff"
 
@@ -62583,6 +62895,7 @@ class SaveOutputCommand(GenericCommand):
 @register_command
 class DiffOutputCommand(GenericCommand):
     """The base command to diff of the command outputs."""
+
     _cmdline_ = "diffo"
     _category_ = "09-g. Misc - Diff"
 
@@ -62625,6 +62938,7 @@ class DiffOutputCommand(GenericCommand):
 @register_command
 class DiffOutputColordiffCommand(DiffOutputCommand):
     """Diff the two outputs by colordiff."""
+
     _cmdline_ = "diffo colordiff"
     _category_ = "09-g. Misc - Diff"
 
@@ -62683,6 +62997,7 @@ class DiffOutputColordiffCommand(DiffOutputCommand):
 @register_command
 class DiffOutputGitDiffCommand(DiffOutputCommand):
     """Diff the two outputs by git."""
+
     _cmdline_ = "diffo git-diff"
     _category_ = "09-g. Misc - Diff"
 
@@ -62740,6 +63055,7 @@ class DiffOutputGitDiffCommand(DiffOutputCommand):
 @register_command
 class DiffOutputListCommand(DiffOutputCommand):
     """List up saved outputs."""
+
     _cmdline_ = "diffo list"
     _category_ = "09-g. Misc - Diff"
     _aliases_ = ["diffo ls"]
@@ -62771,6 +63087,7 @@ class DiffOutputListCommand(DiffOutputCommand):
 @register_command
 class DiffOutputClearCommand(DiffOutputCommand):
     """Clear all saved outputs."""
+
     _cmdline_ = "diffo clear"
     _category_ = "09-g. Misc - Diff"
     _aliases_ = ["diffo del", "diffo rm"]
@@ -62806,6 +63123,7 @@ class DiffOutputClearCommand(DiffOutputCommand):
 @register_command
 class IiCommand(GenericCommand):
     """Shortcut `x/50i $pc` with opcode bytes."""
+
     _cmdline_ = "ii"
     _category_ = "01-e. Debugging Support - Assemble"
 
@@ -62897,6 +63215,7 @@ class IiCommand(GenericCommand):
 @register_command
 class ConstGrepCommand(GenericCommand):
     """Grep for lines with #define in files under /usr/include."""
+
     _cmdline_ = "constgrep"
     _category_ = "09-b. Misc - Search"
 
@@ -62942,6 +63261,7 @@ class ConstGrepCommand(GenericCommand):
 @register_command
 class SlubDumpCommand(GenericCommand):
     """Dump slub free-list."""
+
     _cmdline_ = "slub-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
 
@@ -64031,6 +64351,7 @@ class SlubDumpCommand(GenericCommand):
 @register_command
 class SlubTinyDumpCommand(GenericCommand):
     """Dump slub-tiny free-list."""
+
     _cmdline_ = "slub-tiny-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
 
@@ -64729,6 +65050,7 @@ class SlubTinyDumpCommand(GenericCommand):
 @register_command
 class SlabDumpCommand(GenericCommand):
     """Dump slab free-list."""
+
     _cmdline_ = "slab-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
 
@@ -65579,6 +65901,7 @@ class SlabDumpCommand(GenericCommand):
 @register_command
 class SlobDumpCommand(GenericCommand):
     """Dump slob free-list."""
+
     _cmdline_ = "slob-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
 
@@ -66007,6 +66330,7 @@ class SlobDumpCommand(GenericCommand):
 @register_command
 class SlabContainsCommand(GenericCommand):
     """Resolve the slab cache (kmem_cache) an object belongs to."""
+
     _cmdline_ = "slab-contains"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
     _aliases_ = ["slub-contains", "slub-tiny-contains", "xslub", "xslab"]
@@ -66192,6 +66516,7 @@ class SlabContainsCommand(GenericCommand):
 @register_command
 class BuddyDumpCommand(GenericCommand):
     """Dump zone of page allocator (buddy allocator) free-list."""
+
     _cmdline_ = "buddy-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
     _aliases_ = ["zone-dump"]
@@ -66803,6 +67128,7 @@ class BuddyDumpCommand(GenericCommand):
 @register_command
 class KernelPipeCommand(GenericCommand):
     """Dump pipe information."""
+
     _cmdline_ = "kpipe"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -67238,6 +67564,7 @@ class KernelPipeCommand(GenericCommand):
 @register_command
 class KernelBpfCommand(GenericCommand):
     """Dump bpf information."""
+
     _cmdline_ = "kbpf"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -67728,6 +68055,7 @@ class KernelBpfCommand(GenericCommand):
 @register_command
 class KernelIpcsCommand(GenericCommand):
     """Dump IPCs information (System V semaphore, message queue and shared memory)."""
+
     _cmdline_ = "kipcs"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -68194,6 +68522,7 @@ class KernelIpcsCommand(GenericCommand):
 @register_command
 class KernelDeviceIOCommand(GenericCommand):
     """Dump I/O-port and I/O-memory information."""
+
     _cmdline_ = "kdevio"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -68409,6 +68738,7 @@ class KernelDeviceIOCommand(GenericCommand):
 @register_command
 class KernelDmaBufCommand(GenericCommand):
     """Dump DMA-BUF information."""
+
     _cmdline_ = "kdmabuf"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -68735,6 +69065,7 @@ class KernelDmaBufCommand(GenericCommand):
 @register_command
 class KernelIrqCommand(GenericCommand):
     """Dump IRQ (interrupt request) information."""
+
     _cmdline_ = "kirq"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -69169,6 +69500,7 @@ class KernelIrqCommand(GenericCommand):
 @register_command
 class KernelNetDeviceCommand(GenericCommand):
     """Dump net device information."""
+
     _cmdline_ = "knetdev"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -69320,6 +69652,7 @@ class KernelNetDeviceCommand(GenericCommand):
 @register_command
 class VmallocDumpCommand(GenericCommand):
     """Dump vmalloc used list and freed list."""
+
     _cmdline_ = "vmalloc-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
 
@@ -69572,6 +69905,7 @@ class VmallocDumpCommand(GenericCommand):
 class KsymaddrRemoteCommand(GenericCommand):
     """Resolve kernel symbols from kallsyms table."""
     # Thanks to https://github.com/marin-m/vmlinux-to-elf
+
     _cmdline_ = "ksymaddr-remote"
     _category_ = "08-c. Qemu-system Cooperation - Linux Symbol"
     _aliases_ = ["ks"]
@@ -70750,6 +71084,7 @@ class KsymaddrRemoteCommand(GenericCommand):
 @register_command
 class VmlinuxToElfApplyCommand(GenericCommand):
     """Apply symbol from kallsyms in memory using vmlinux-to-elf."""
+
     _cmdline_ = "vmlinux-to-elf-apply"
     _category_ = "08-c. Qemu-system Cooperation - Linux Symbol"
 
@@ -70890,6 +71225,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
 @register_command
 class TcmallocDumpCommand(GenericCommand):
     """tcmalloc (google-perftools-2.9.1) free-list viewer (only x64)."""
+
     _cmdline_ = "tcmalloc-dump"
     _category_ = "06-b. Heap - Other"
 
@@ -71308,6 +71644,7 @@ class TcmallocDumpCommand(GenericCommand):
 @register_command
 class GoHeapDumpCommand(GenericCommand):
     """go language v1.22.2 mheap dumper (only x64)."""
+
     _cmdline_ = "go-heap-dump"
     _category_ = "06-b. Heap - Other"
 
@@ -71576,6 +71913,7 @@ class GoHeapDumpCommand(GenericCommand):
 @register_command
 class TlsfHeapDumpCommand(GenericCommand):
     """TLSF (Two-Level Segregated Fit) v2.4.6 free-list viewer (only x64)."""
+
     _cmdline_ = "tlsf-heap-dump"
     _category_ = "06-b. Heap - Other"
 
@@ -71772,6 +72110,7 @@ class TlsfHeapDumpCommand(GenericCommand):
 @register_command
 class HoardHeapDumpCommand(GenericCommand):
     """Hoard v3.13 heap free-list viewer (only x64)."""
+
     _cmdline_ = "hoard-heap-dump"
     _category_ = "06-b. Heap - Other"
 
@@ -71923,6 +72262,7 @@ class HoardHeapDumpCommand(GenericCommand):
 @register_command
 class MimallocHeapDumpCommand(GenericCommand):
     """mimalloc heap free-list viewer (only x64)."""
+
     _cmdline_ = "mimalloc-heap-dump"
     _category_ = "06-b. Heap - Other"
 
@@ -72124,6 +72464,7 @@ class MimallocHeapDumpCommand(GenericCommand):
 @register_command
 class V8Command(GenericCommand):
     """Print v8 tagged object, or load more commands from internet."""
+
     _cmdline_ = "v8"
     _category_ = "09-e. Misc - V8"
 
@@ -72172,6 +72513,7 @@ class V8Command(GenericCommand):
 @register_command
 class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
     """PartitionAlloc free-list viewer for chromium stable."""
+
     _cmdline_ = "partition-alloc-dump"
     _category_ = "06-b. Heap - Other"
 
@@ -72406,7 +72748,7 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
         return roots
 
     def get_sentinel_slot_spans(self):
-        """sentinel_slot_span is default slot_span, so search it"""
+        """sentinel_slot_span is default slot_span, so search it."""
         sentinel = []
         try:
             t = AddressUtil.parse_address("&'base::internal::SlotSpanMetadata<true>::sentinel_slot_span_'")
@@ -72981,6 +73323,7 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
 @register_command
 class MuslHeapDumpCommand(GenericCommand, BufferingOutput):
     """musl v1.2.5 (src/malloc/mallocng) heap reusable chunks viewer (only x64/x86)."""
+
     # See https://h-noson.hatenablog.jp/entry/2021/05/03/161933#-177pts-mooosl
     _cmdline_ = "musl-heap-dump"
     _category_ = "06-b. Heap - Other"
@@ -73459,8 +73802,11 @@ class MuslHeapDumpCommand(GenericCommand, BufferingOutput):
 
 
 class uClibcNgHeap:
+    """Manages uClibc heap-specific settings."""
+
     class uClibcChunk:
         """uClibc chunk class."""
+
         def __init__(self, addr, from_base=False):
             self.ptrsize = current_arch.ptrsize
             if from_base:
@@ -73545,6 +73891,7 @@ class uClibcNgHeap:
 @register_command
 class UclibcNgHeapDumpCommand(GenericCommand):
     """uclibc-ng v1.0.42 (libc/stdlib/malloc-standard) heap reusable chunks viewer (only x64/x86)."""
+
     _cmdline_ = "uclibc-ng-heap-dump"
     _category_ = "06-b. Heap - Other"
 
@@ -74003,6 +74350,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
 @register_command
 class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
     """Visualize chunks on a heap for uClibc-ng."""
+
     _cmdline_ = "uclibc-ng-visual-heap"
     _category_ = "06-b. Heap - Other"
 
@@ -74289,6 +74637,7 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
 @register_command
 class XStringCommand(GenericCommand):
     """Dump string like x/s command, but with hex-string style."""
+
     _cmdline_ = "xs"
     _category_ = "03-b. Memory - View"
 
@@ -74380,6 +74729,7 @@ class XStringCommand(GenericCommand):
 @register_command
 class XColoredCommand(GenericCommand):
     """Dump address like x/x command, but with coloring at some intervals."""
+
     _cmdline_ = "xc"
     _category_ = "03-b. Memory - View"
 
@@ -74435,6 +74785,7 @@ class XColoredCommand(GenericCommand):
 @register_command
 class XphysAddrCommand(GenericCommand):
     """Dump physical memory taking into account ROM mapping."""
+
     _cmdline_ = "xp"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -74536,6 +74887,7 @@ class XphysAddrCommand(GenericCommand):
 @register_command
 class XSecureMemAddrCommand(GenericCommand):
     """Dump secure memory via qemu-system memory map."""
+
     _cmdline_ = "xsm"
     _category_ = "08-g. Qemu-system Cooperation - TrustZone"
 
@@ -74688,12 +75040,14 @@ class XSecureMemAddrCommand(GenericCommand):
         return
 
 
-# The wsm command directly modifies /proc/<PID>/mem of qemu-system.
-# However, even though the memory change was successful, it may not be reflected in the behavior of the code.
-# I don't know the cause, but I'm guessing it's because qemu has an internal cache.
-# Apparently setting a breakpoint ignores this cache, so setting a temporary breakpoint avoids this problem.
 class TemporaryDummyBreakpoint(gdb.Breakpoint):
-    """Create a breakpoint to avoid gdb cache problem"""
+    """Create a breakpoint to avoid gdb cache problem."""
+
+    # The wsm command directly modifies /proc/<PID>/mem of qemu-system.
+    # However, even though the memory change was successful, it may not be reflected in the behavior of the code.
+    # I don't know the cause, but I'm guessing it's because qemu has an internal cache.
+    # Apparently setting a breakpoint ignores this cache, so setting a temporary breakpoint avoids this problem.
+
     def __init__(self):
         super().__init__("*{:#x}".format(0x0), type=gdb.BP_BREAKPOINT, internal=True, temporary=True)
         return
@@ -74707,6 +75061,7 @@ class TemporaryDummyBreakpoint(gdb.Breakpoint):
 @register_command
 class WSecureMemAddrCommand(GenericCommand):
     """Write secure memory via qemu-system memory map."""
+
     _cmdline_ = "wsm"
     _category_ = "08-g. Qemu-system Cooperation - TrustZone"
 
@@ -74830,6 +75185,7 @@ class WSecureMemAddrCommand(GenericCommand):
 @register_command
 class BreakSecureMemAddrCommand(GenericCommand):
     """Set a breakpoint in virtual memory by specifying the physical memory of the secure world."""
+
     _cmdline_ = "bsm"
     _category_ = "08-g. Qemu-system Cooperation - TrustZone"
 
@@ -74855,7 +75211,8 @@ class BreakSecureMemAddrCommand(GenericCommand):
 
 
 class OpteeThreadEnterUserModeBreakpoint(gdb.Breakpoint):
-    """Create a breakpoint to thread_enter_user_mode"""
+    """Create a breakpoint to thread_enter_user_mode."""
+
     def __init__(self, vaddr, ta_offset):
         super().__init__("*{:#x}".format(vaddr), type=gdb.BP_BREAKPOINT, internal=True)
         self.count = 0
@@ -74911,6 +75268,7 @@ class OpteeThreadEnterUserModeBreakpoint(gdb.Breakpoint):
 @register_command
 class OpteeBreakTaAddrCommand(GenericCommand):
     """Set a breakpoint to OPTEE-TA."""
+
     _cmdline_ = "optee-break-ta"
     _category_ = "08-g. Qemu-system Cooperation - TrustZone"
 
@@ -74944,6 +75302,7 @@ class OpteeBreakTaAddrCommand(GenericCommand):
 @register_command
 class OpteeBgetDumpCommand(GenericCommand):
     """Dump bget allocator of OPTEE-Trusted-App."""
+
     _cmdline_ = "optee-bget-dump"
     _category_ = "08-g. Qemu-system Cooperation - TrustZone"
 
@@ -75305,6 +75664,7 @@ class OpteeBgetDumpCommand(GenericCommand):
 @register_command
 class CpuidCommand(GenericCommand):
     """Get cpuid result."""
+
     _cmdline_ = "cpuid"
     _category_ = "04-a. Register - View"
 
@@ -76142,6 +76502,7 @@ class CpuidCommand(GenericCommand):
 @register_command
 class MsrCommand(GenericCommand):
     """Read or write MSR value."""
+
     _cmdline_ = "msr"
     _category_ = "04-a. Register - View"
 
@@ -76288,6 +76649,7 @@ class MsrCommand(GenericCommand):
 @register_command
 class MteTagsCommand(GenericCommand):
     """Display the MTE tag for the specified address (only ARM64)."""
+
     _cmdline_ = "mte-tags"
     _category_ = "02-f. Process Information - Security"
 
@@ -76324,6 +76686,7 @@ class MteTagsCommand(GenericCommand):
 @register_command
 class PacKeysCommand(GenericCommand):
     """Pretty-print PAC keys from qemu registers (only ARM64)."""
+
     _cmdline_ = "pac-keys"
     _category_ = "04-a. Register - View"
 
@@ -76348,7 +76711,7 @@ class PacKeysCommand(GenericCommand):
 
 
 class BitInfo:
-    """Printing various bit information of the register"""
+    """Printing various bit information of the register."""
 
     def __init__(self, name, register_bit=None, bit_info=(), desc=None):
         self.name = name
@@ -76488,6 +76851,7 @@ class BitInfo:
 @register_command
 class QemuRegistersCommand(GenericCommand, BufferingOutput):
     """Get registers via qemu-monitor and shows the detail of x64/x86 system registers."""
+
     _cmdline_ = "qreg"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -76774,6 +77138,8 @@ class QemuRegistersCommand(GenericCommand, BufferingOutput):
 
 
 class PageMap:
+    """A collection of utility functions that are related to memory map from page tables."""
+
     @staticmethod
     @Cache.cache_until_next
     def get_page_maps_by_pagewalk(command):
@@ -76917,6 +77283,7 @@ class PageMap:
 @register_command
 class Virt2PhysCommand(GenericCommand):
     """Transfer from virtual address to physical address."""
+
     _cmdline_ = "v2p"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -76959,6 +77326,7 @@ class Virt2PhysCommand(GenericCommand):
 @register_command
 class Phys2VirtCommand(GenericCommand):
     """Transfer from physical address to virtual address."""
+
     _cmdline_ = "p2v"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -77012,6 +77380,7 @@ class Phys2VirtCommand(GenericCommand):
 @register_command
 class PagewalkCommand(GenericCommand, BufferingOutput):
     """The base command to get physical memory info via qemu-monitor."""
+
     _cmdline_ = "pagewalk"
     _category_ = "08-a. Qemu-system Cooperation - General"
     _aliases_ = ["pw", "ptdump", "pt"]
@@ -77344,6 +77713,7 @@ class PagewalkCommand(GenericCommand, BufferingOutput):
 @register_command
 class PagewalkX64Command(PagewalkCommand):
     """Dump pagetable for x64/x86 using qemu-monitor."""
+
     _cmdline_ = "pagewalk x64"
     _category_ = "08-a. Qemu-system Cooperation - General"
     _aliases_ = ["pagewalk x86"]
@@ -77920,6 +78290,7 @@ class PagewalkX64Command(PagewalkCommand):
 @register_command
 class PagewalkArmCommand(PagewalkCommand):
     """Dump pagetable for ARM (only Cortex-A) using qemu-monitor. PL2 pagewalk is unsupported."""
+
     _cmdline_ = "pagewalk arm"
     _category_ = "08-a. Qemu-system Cooperation - General"
     _aliases_ = ["pagewalk arm32"]
@@ -78928,6 +79299,7 @@ class PagewalkArmCommand(PagewalkCommand):
 @register_command
 class PagewalkArm64Command(PagewalkCommand):
     """Dump pagetable for ARM64 (only Cortex-A; ARM v8.7 base) using qemu-monitor."""
+
     _cmdline_ = "pagewalk arm64"
     _category_ = "08-a. Qemu-system Cooperation - General"
     _aliases_ = [] # re-overwrite
@@ -80696,6 +81068,7 @@ class PagewalkArm64Command(PagewalkCommand):
 @register_command
 class SwitchELCommand(GenericCommand):
     """Switch EL (Exception Level) on ARM64 architecture."""
+
     _cmdline_ = "switch-el"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -80750,6 +81123,7 @@ class SwitchELCommand(GenericCommand):
 @register_command
 class PagewalkWithHintsCommand(GenericCommand):
     """Add hint to the result of pagewalk."""
+
     _cmdline_ = "pagewalk-with-hints"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -81437,6 +81811,7 @@ class PagewalkWithHintsCommand(GenericCommand):
 @register_command
 class PageCommand(GenericCommand):
     """The base command for converting virtual addresses and physical addresses from page."""
+
     _cmdline_ = "page"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -81930,6 +82305,7 @@ class PageCommand(GenericCommand):
 @register_command
 class Page2VirtCommand(GenericCommand):
     """Transfer from page to virtual address (shortcut for `page to-virt ...`)."""
+
     _cmdline_ = "page2virt"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -81953,6 +82329,7 @@ class Page2VirtCommand(GenericCommand):
 @register_command
 class Virt2PageCommand(GenericCommand):
     """Transfer from virtual address to page (shortcut for `page from-virt ...`)."""
+
     _cmdline_ = "virt2page"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -81976,6 +82353,7 @@ class Virt2PageCommand(GenericCommand):
 @register_command
 class Page2PhysCommand(GenericCommand):
     """Transfer from page to physical address (shortcut for `page to-phys ...`)."""
+
     _cmdline_ = "page2phys"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -81999,6 +82377,7 @@ class Page2PhysCommand(GenericCommand):
 @register_command
 class Phys2PageCommand(GenericCommand):
     """Transfer from physical address to page (shortcut for `page from-phys ...`)."""
+
     _cmdline_ = "phys2page"
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
@@ -82022,6 +82401,7 @@ class Phys2PageCommand(GenericCommand):
 @register_command
 class QemuDeviceInfoCommand(GenericCommand):
     """Dump device information for qemu-escape."""
+
     _cmdline_ = "qemu-device-info"
     _category_ = "08-a. Qemu-system Cooperation - General"
 
@@ -82100,6 +82480,7 @@ class QemuDeviceInfoCommand(GenericCommand):
 @register_command
 class XUntilCommand(GenericCommand):
     """Execute until specified address. It is slightly easier to use than the original until command."""
+
     _cmdline_ = "xuntil"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -82126,6 +82507,7 @@ class XUntilCommand(GenericCommand):
 @register_command
 class ExecUntilCommand(GenericCommand):
     """The base command to execute until specific condition."""
+
     _cmdline_ = "exec-until"
     _category_ = "01-d. Debugging Support - Execution"
 
@@ -82397,6 +82779,7 @@ class ExecUntilCommand(GenericCommand):
 @register_command
 class ExecUntilCallCommand(ExecUntilCommand):
     """Execute until next call instruction."""
+
     _cmdline_ = "exec-until call"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -82421,6 +82804,7 @@ class ExecUntilCallCommand(ExecUntilCommand):
 @register_command
 class ExecUntilJumpCommand(ExecUntilCommand):
     """Execute until next jmp instruction."""
+
     _cmdline_ = "exec-until jmp"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -82460,6 +82844,7 @@ class ExecUntilJumpCommand(ExecUntilCommand):
 @register_command
 class ExecUntilIndirectBranchCommand(ExecUntilCommand):
     """Execute until next indirect call/jmp instruction (only x64/x86)."""
+
     _cmdline_ = "exec-until indirect-branch"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -82500,6 +82885,7 @@ class ExecUntilIndirectBranchCommand(ExecUntilCommand):
 @register_command
 class ExecUntilAllBranchCommand(ExecUntilCommand):
     """Execute until next call/jump/ret instruction."""
+
     _cmdline_ = "exec-until all-branch"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -82539,6 +82925,7 @@ class ExecUntilAllBranchCommand(ExecUntilCommand):
 @register_command
 class ExecUntilSyscallCommand(ExecUntilCommand):
     """Execute until next syscall instruction."""
+
     _cmdline_ = "exec-until syscall"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -82578,6 +82965,7 @@ class ExecUntilSyscallCommand(ExecUntilCommand):
 @register_command
 class ExecUntilRetCommand(ExecUntilCommand):
     """Execute until next ret instruction."""
+
     _cmdline_ = "exec-until ret"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -82602,6 +82990,7 @@ class ExecUntilRetCommand(ExecUntilCommand):
 @register_command
 class ExecUntilMemaccessCommand(ExecUntilCommand):
     """Execute until next mem-access instruction."""
+
     _cmdline_ = "exec-until memaccess"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -82626,6 +83015,7 @@ class ExecUntilMemaccessCommand(ExecUntilCommand):
 @register_command
 class ExecUntilKeywordReCommand(ExecUntilCommand):
     """Execute until specified keyword instruction."""
+
     _cmdline_ = "exec-until keyword"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -82666,6 +83056,7 @@ class ExecUntilKeywordReCommand(ExecUntilCommand):
 @register_command
 class ExecUntilCondCommand(ExecUntilCommand):
     """Execute until specified condition is filled."""
+
     _cmdline_ = "exec-until cond"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -82728,6 +83119,7 @@ class ExecUntilCondCommand(ExecUntilCommand):
 @register_command
 class ExecUntilUserCodeCommand(ExecUntilCommand):
     """Execute until next user-code instruction."""
+
     _cmdline_ = "exec-until user-code"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -82778,6 +83170,7 @@ class ExecUntilUserCodeCommand(ExecUntilCommand):
 @register_command
 class ExecUntilLibcCodeCommand(ExecUntilCommand):
     """Execute until next libc instruction."""
+
     _cmdline_ = "exec-until libc-code"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -82824,6 +83217,7 @@ class ExecUntilLibcCodeCommand(ExecUntilCommand):
 @register_command
 class ExecUntilSecureWorldCommand(ExecUntilCommand):
     """Execute until next secure-world instruction (only ARM/ARM64)."""
+
     _cmdline_ = "exec-until secure-world"
     _category_ = "01-d. Debugging Support - Execution"
     _repeat_ = True
@@ -82866,6 +83260,7 @@ class ExecUntilSecureWorldCommand(ExecUntilCommand):
 
 class CallUsermodehelperSetupBreakpoint(gdb.Breakpoint):
     """Create a breakpoint to print argv information at call_usermodehelper_setup."""
+
     def __init__(self, loc):
         super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False)
         return
@@ -82890,6 +83285,7 @@ class CallUsermodehelperSetupBreakpoint(gdb.Breakpoint):
 @register_command
 class UsermodehelperTracerCommand(GenericCommand):
     """Collect and display information that is executed by call_usermodehelper_setup."""
+
     _cmdline_ = "usermodehelper-tracer"
     _category_ = "08-f. Qemu-system Cooperation - Linux Dynamic Inspection"
 
@@ -82914,6 +83310,7 @@ class UsermodehelperTracerCommand(GenericCommand):
 
 class ThunkBreakpoint(gdb.Breakpoint):
     """Create a breakpoint to print caller address for thunk function."""
+
     def __init__(self, loc, sym, reg, maps):
         super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False)
         self.loc = loc
@@ -82983,6 +83380,7 @@ class ThunkBreakpoint(gdb.Breakpoint):
 @register_command
 class ThunkTracerCommand(GenericCommand):
     """Collect and display the thunk addresses that are called automatically (only x64/x86)."""
+
     _cmdline_ = "thunk-tracer"
     _category_ = "08-f. Qemu-system Cooperation - Linux Dynamic Inspection"
 
@@ -83013,6 +83411,7 @@ class ThunkTracerCommand(GenericCommand):
 
 class KmallocBreakpoint(gdb.Breakpoint):
     """Create a breakpoint to print information of kmalloc."""
+
     def __init__(self, loc, sym, index_of_size_arg, task, option, extra):
         super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False)
         self.sym = sym
@@ -83046,6 +83445,7 @@ class KmallocBreakpoint(gdb.Breakpoint):
 
 class KmallocRetBreakpoint(gdb.FinishBreakpoint):
     """Create a breakpoint to print information of kmalloc."""
+
     def __init__(self, size, sym, option, extra):
         super().__init__(gdb.newest_frame(), internal=True)
         # gdb.FinishBreakpoint detects that it is desired task or not, from frame information
@@ -83093,6 +83493,7 @@ class KmallocRetBreakpoint(gdb.FinishBreakpoint):
 
 class KfreeBreakpoint(gdb.Breakpoint):
     """Create a breakpoint to print information of kfree."""
+
     def __init__(self, loc, sym, index_of_addr_arg, task, option, extra):
         super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False)
         self.sym = sym
@@ -83144,6 +83545,7 @@ class KfreeBreakpoint(gdb.Breakpoint):
 @register_command
 class KmallocTracerCommand(GenericCommand):
     """Collect and display information when kmalloc/kfree."""
+
     _cmdline_ = "kmalloc-tracer"
     _category_ = "08-f. Qemu-system Cooperation - Linux Dynamic Inspection"
 
@@ -83434,6 +83836,7 @@ class KmallocTracerCommand(GenericCommand):
 
 class KmallocAllocatedBy_UserlandHardwareBreakpoint(gdb.Breakpoint):
     """Breakpoint to userland `sleep` process for KmallocAllocatedByCommand."""
+
     def __init__(self, loc):
         super().__init__("*{:#x}".format(loc), gdb.BP_HARDWARE_BREAKPOINT, internal=False)
         self.silent = True
@@ -83446,6 +83849,7 @@ class KmallocAllocatedBy_UserlandHardwareBreakpoint(gdb.Breakpoint):
 @register_command
 class KmallocAllocatedByCommand(GenericCommand):
     """Call a predefined set of system calls and print structures allocated by kmalloc or freed by kfree (only x64)."""
+
     _cmdline_ = "kmalloc-allocated-by"
     _category_ = "08-f. Qemu-system Cooperation - Linux Dynamic Inspection"
 
@@ -84795,6 +85199,7 @@ class KmallocAllocatedByCommand(GenericCommand):
 @register_command
 class UefiOvmfInfoCommand(GenericCommand):
     """Print UEFI OVMF info."""
+
     # https://github.com/tianocore/tianocore.github.io/wiki/OVMF-Boot-Overview
     # https://github.com/tianocore/edk2/blob/master/OvmfPkg/Sec/SecMain.c
     # https://github.com/tianocore/edk2/blob/master/MdeModulePkg/Core/Pei/PeiMain/PeiMain.c
@@ -85292,6 +85697,7 @@ class UefiOvmfInfoCommand(GenericCommand):
 @register_command
 class AddSymbolTemporaryCommand(GenericCommand):
     """Add symbol from command temporarily."""
+
     _cmdline_ = "add-symbol-temporary"
     _category_ = "01-g. Debugging Support - Other"
 
@@ -85479,6 +85885,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
 @register_command
 class KsymaddrRemoteApplyCommand(GenericCommand):
     """Apply symbol from kallsyms in memory."""
+
     _cmdline_ = "ksymaddr-remote-apply"
     _category_ = "08-c. Qemu-system Cooperation - Linux Symbol"
     _aliases_ = ["ks-apply"]
@@ -85589,6 +85996,7 @@ class KsymaddrRemoteApplyCommand(GenericCommand):
 @register_command
 class WalkLinkListCommand(GenericCommand, BufferingOutput):
     """Walk the link list."""
+
     _cmdline_ = "walk-link-list"
     _category_ = "03-b. Memory - View"
     _aliases_ = ["chain", "print-list"]
@@ -85671,6 +86079,7 @@ class WalkLinkListCommand(GenericCommand, BufferingOutput):
 @register_command
 class PeekPointersCommand(GenericCommand):
     """Find pointers belonging to other memory regions."""
+
     _cmdline_ = "peek-pointers"
     _category_ = "03-a. Memory - Search"
     _aliases_ = ["leakfind"]
@@ -85765,6 +86174,7 @@ class PeekPointersCommand(GenericCommand):
 @register_command
 class StackFrameCommand(GenericCommand):
     """Display the entire stack of the current frame."""
+
     _cmdline_ = "stack-frame"
     _category_ = "02-d. Process Information - Trivial Information"
 
@@ -85824,6 +86234,7 @@ class StackFrameCommand(GenericCommand):
 @register_command
 class XRefTelescopeCommand(SearchPatternCommand):
     """Recursively search for cross-references to a pattern in memory."""
+
     _cmdline_ = "xref-telescope"
     _category_ = "03-a. Memory - Search"
     _repeat_ = False # re-overwrite
@@ -85907,6 +86318,7 @@ class XRefTelescopeCommand(SearchPatternCommand):
 @register_command
 class BytearrayCommand(GenericCommand):
     """Generate a bytearray to be compared with possible badchars (ported from mona.py)."""
+
     _cmdline_ = "bytearray"
     _category_ = "09-c. Misc - Generation"
 
@@ -86000,6 +86412,7 @@ class BytearrayCommand(GenericCommand):
 @register_command
 class FiletypeMemoryCommand(GenericCommand):
     """Scan memory by file and magika."""
+
     _cmdline_ = "filetype-memory"
     _category_ = "03-f. Memory - Investigation"
 
@@ -86061,6 +86474,7 @@ class FiletypeMemoryCommand(GenericCommand):
 @register_command
 class BinwalkMemoryCommand(GenericCommand):
     """Scan memory by binwalk."""
+
     _cmdline_ = "binwalk-memory"
     _category_ = "03-f. Memory - Investigation"
 
@@ -86150,6 +86564,7 @@ class BinwalkMemoryCommand(GenericCommand):
 @register_command
 class BincompareCommand(GenericCommand):
     """Compare an binary file with the memory position looking for badchars."""
+
     _cmdline_ = "bincompare"
     _category_ = "03-d. Memory - Calculation"
 
@@ -86268,6 +86683,7 @@ class BincompareCommand(GenericCommand):
 @register_command
 class SymbolsCommand(GenericCommand):
     """List up all symbols (shortcut for `maintenance print msymbols`) with coloring."""
+
     _cmdline_ = "symbols"
     _category_ = "02-g. Process Information - Symbol"
 
@@ -86312,6 +86728,7 @@ class SymbolsCommand(GenericCommand):
 @register_command
 class TypesCommand(GenericCommand):
     """List up all types (shortcut for `info types`) with compaction."""
+
     _cmdline_ = "types"
     _category_ = "02-h. Process Information - Type"
 
@@ -86402,6 +86819,7 @@ class TypesCommand(GenericCommand):
 @register_command
 class GefCommand(GenericCommand):
     """The base command of GEF maintenance."""
+
     _cmdline_ = "gef"
     _category_ = "99. GEF Maintenance Command"
 
@@ -86509,6 +86927,7 @@ class GefCommand(GenericCommand):
 @register_command
 class GefHelpCommand(GenericCommand):
     """Display GEF command list."""
+
     _cmdline_ = "gef help"
     _category_ = "99. GEF Maintenance Command"
 
@@ -86560,6 +86979,7 @@ class GefHelpCommand(GenericCommand):
 @register_command
 class GefConfigCommand(GenericCommand):
     """Display or change GEF configuration."""
+
     _cmdline_ = "gef config"
     _category_ = "99. GEF Maintenance Command"
 
@@ -86682,6 +87102,7 @@ class GefConfigCommand(GenericCommand):
 @register_command
 class GefSaveCommand(GenericCommand):
     """Save the current settings to '~/.gef.rc'."""
+
     _cmdline_ = "gef save"
     _category_ = "99. GEF Maintenance Command"
 
@@ -86730,6 +87151,7 @@ class GefSaveCommand(GenericCommand):
 @register_command
 class GefRestoreCommand(GenericCommand):
     """Load settings from '~/.gef.rc'."""
+
     _cmdline_ = "gef restore"
     _category_ = "99. GEF Maintenance Command"
 
@@ -86800,6 +87222,7 @@ class GefRestoreCommand(GenericCommand):
 @register_command
 class GefMissingCommand(GenericCommand):
     """Display the GEF commands that could not be loaded with the reason."""
+
     _cmdline_ = "gef missing"
     _category_ = "99. GEF Maintenance Command"
 
@@ -86821,6 +87244,7 @@ class GefMissingCommand(GenericCommand):
 @register_command
 class GefReloadCommand(GenericCommand):
     """Reload the GEF."""
+
     _cmdline_ = "gef reload"
     _category_ = "99. GEF Maintenance Command"
 
@@ -86873,6 +87297,7 @@ class GefReloadCommand(GenericCommand):
 @register_command
 class GefArchListCommand(GenericCommand):
     """Display defined architecture information."""
+
     _cmdline_ = "gef arch-list"
     _category_ = "99. GEF Maintenance Command"
 
@@ -86952,6 +87377,7 @@ class GefArchListCommand(GenericCommand):
 @register_command
 class GefRaiseExceptionCommand(GenericCommand):
     """Raise an exception for development."""
+
     _cmdline_ = "gef raise-exception"
     _category_ = "99. GEF Maintenance Command"
 
@@ -86966,6 +87392,7 @@ class GefRaiseExceptionCommand(GenericCommand):
 @register_command
 class GefPyObjListCommand(GenericCommand):
     """Display defined global python object."""
+
     _cmdline_ = "gef pyobj-list"
     _category_ = "99. GEF Maintenance Command"
 
@@ -87090,6 +87517,7 @@ class GefPyObjListCommand(GenericCommand):
 @register_command
 class GefAvailableCommandListCommand(GenericCommand):
     """Displays a list of commands available for the current architecture and gdb execution mode."""
+
     _cmdline_ = "gef avail-comm-list"
     _category_ = "99. GEF Maintenance Command"
 
@@ -87204,6 +87632,7 @@ class GefAvailableCommandListCommand(GenericCommand):
 @register_command
 class GefSetArchCommand(GenericCommand):
     """Set a specific architecture to gef."""
+
     _cmdline_ = "gef set-arch"
     _category_ = "99. GEF Maintenance Command"
 
@@ -87245,6 +87674,7 @@ class GefSetArchCommand(GenericCommand):
 
 class GefAlias(gdb.Command):
     """Simple aliasing wrapper because GDB doesn't do what it should."""
+
     _category_ = "99. GEF Maintenance Command"
 
     def __init__(self, alias, command, force_repeat=None, pre_defined=False):
@@ -87289,6 +87719,7 @@ class GefAlias(gdb.Command):
 @register_command
 class AliasesCommand(GenericCommand):
     """The base command to add, remove or list aliases."""
+
     _cmdline_ = "aliases"
     _category_ = "99. GEF Maintenance Command"
 
@@ -87316,6 +87747,7 @@ class AliasesCommand(GenericCommand):
 @register_command
 class AliasesAddCommand(AliasesCommand):
     """Add the command alias."""
+
     _cmdline_ = "aliases add"
     _category_ = "99. GEF Maintenance Command"
 
@@ -87342,6 +87774,7 @@ class AliasesAddCommand(AliasesCommand):
 @register_command
 class AliasesRmCommand(AliasesCommand):
     """Remove the command alias."""
+
     _cmdline_ = "aliases rm"
     _category_ = "99. GEF Maintenance Command"
 
@@ -87367,6 +87800,7 @@ class AliasesRmCommand(AliasesCommand):
 @register_command
 class AliasesListCommand(AliasesCommand):
     """List the command alias."""
+
     _cmdline_ = "aliases ls"
     _category_ = "99. GEF Maintenance Command"
 
@@ -87399,6 +87833,8 @@ class AliasesListCommand(AliasesCommand):
 
 
 class GefUtil:
+    """A collection of utility functions that are related to GEF basic features."""
+
     @staticmethod
     @Cache.cache_until_next
     def cached_lookup_type(_type):
@@ -87523,6 +87959,8 @@ class GefUtil:
 
 
 class Gef:
+    """A collection of utility functions that are related to GEF start up."""
+
     @staticmethod
     def gef_prompt(_current_prompt):
         """GEF custom prompt function."""
