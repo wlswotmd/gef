@@ -62610,7 +62610,7 @@ class IsMemoryZeroCommand(GenericCommand):
 
 @register_command
 class SequenceLengthCommand(GenericCommand):
-    """Detect consecutive lengths of the same sequence."""
+    """Detect consecutive length of the same sequence."""
 
     _cmdline_ = "seq-length"
     _category_ = "03-d. Memory - Calculation"
@@ -62634,12 +62634,12 @@ class SequenceLengthCommand(GenericCommand):
         current = addr
         while True:
             # calc read_size
-            if current & 0xfff:
-                read_size = AddressUtil.align_address_to_size(current, 0x1000) - current
+            if current & gef_getpagesize_mask_low():
+                read_size = AddressUtil.align_address_to_size(current, gef_getpagesize()) - current
             else:
-                read_size = 0x1000
+                read_size = gef_getpagesize()
             while read_size < unit:
-                read_size += 0x1000
+                read_size += gef_getpagesize()
             # read
             try:
                 if phys_mode:
