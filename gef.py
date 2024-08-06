@@ -72512,30 +72512,47 @@ class V8Command(GenericCommand):
                        help="target map address.")
     group.add_argument("-l", "--load-v8-gdbinit", action="store_true",
                        help="load gdbinit for v8 from internet")
+    group.add_argument("-L", "--list-command", action="store_true",
+                       help="show newly added commands from v8 gdbinit.")
     _syntax_ = parser.format_help()
+
+    def get_gdbinit(self):
+        gdbinit_filename = os.path.join(GEF_TEMP_DIR, "gdbinit-v8")
+        if not os.path.exists(gdbinit_filename):
+            # https://chromium.googlesource.com/v8/v8/+/refs/heads/main/tools/gdbinit
+            url = "https://chromium.googlesource.com/v8/v8/+/refs/heads/main/tools/gdbinit?format=TEXT"
+            gdbinit_data = http_get(url)
+            import base64
+            gdbinit_data = base64.b64decode(gdbinit_data)
+            open(gdbinit_filename, "wb").write(gdbinit_data)
+            info("download gdbinit from internet.")
+        else:
+            info("reuse gdbinit cached previously.")
+        return gdbinit_filename
 
     @parse_args
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         if args.load_v8_gdbinit:
-            gdbinit_filename = os.path.join(GEF_TEMP_DIR, "gdbinit-v8")
-            if not os.path.exists(gdbinit_filename):
-                # https://chromium.googlesource.com/v8/v8/+/refs/heads/main/tools/gdbinit
-                url = "https://chromium.googlesource.com/v8/v8/+/refs/heads/main/tools/gdbinit?format=TEXT"
-                gdbinit_data = http_get(url)
-                import base64
-                gdbinit_data = base64.b64decode(gdbinit_data)
-                open(gdbinit_filename, "wb").write(gdbinit_data)
-                info("download gdbinit from internet.")
-            else:
-                info("reuse gdbinit cached previously.")
-
+            gdbinit_filename = self.get_gdbinit()
             try:
                 gdb.execute("source {:s}".format(gdbinit_filename))
                 info("Successfully loaded.")
             except gdb.error:
                 err("Failed to load.")
+            return
+
+        if args.list_command:
+            gdb.execute("v8 -l", to_string=True)
+            gdbinit_filename = self.get_gdbinit()
+            data = open(gdbinit_filename).read()
+            for line in data.splitlines():
+                line = line.strip()
+                if line.startswith(("alias ", "define ")):
+                    comm = line.split()[1]
+                    gef_print(titlify(comm))
+                    gdb.execute("help {:s}".format(comm))
             return
 
         if args.address:
