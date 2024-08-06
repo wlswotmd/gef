@@ -87631,6 +87631,7 @@ class GefAvailableCommandListCommand(GenericCommand):
         return False
 
     @parse_args
+    @only_if_gdb_running
     def do_invoke(self, args):
         arch_name = self.get_arch_name()
 
