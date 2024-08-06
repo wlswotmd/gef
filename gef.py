@@ -11349,7 +11349,7 @@ def is_single_link_list(addr):
 
 
 @Cache.cache_until_next
-def is_double_link_list(addr):
+def is_double_link_list(addr, min_len=0):
     # +------+<-+   +------+<-+        <-+   +------+<-+   +------+
     # | head |--|-->| next |--|--> ... --|-->| next |--|-->| head |
     # +------+  |   +------+  |          |   +------+  |   +------+
@@ -11374,7 +11374,9 @@ def is_double_link_list(addr):
         p = read_int_from_memory(x + current_arch.ptrsize)
         if p != seen[i - 1]:
             return False
-    return True
+
+    # minimum length check
+    return len(seen) > min_len
 
 
 class QemuMonitor:
@@ -49112,9 +49114,7 @@ class KernelAddressHeuristicFinder:
             # search init_task->tasks
             for i in range(0x200):
                 offset_tasks = current_arch.ptrsize * i
-                if not is_double_link_list(current_task + offset_tasks):
-                    continue
-                if len(get_task_list(current_task, offset_tasks)) > 5: # process count
+                if is_double_link_list(current_task + offset_tasks, min_len=5):
                     return offset_tasks
             return None
 
@@ -52751,17 +52751,7 @@ class KernelTaskCommand(GenericCommand):
         # search init_task->tasks
         for i in range(0x200):
             offset_tasks = current_arch.ptrsize * i
-            if not is_double_link_list(init_task + offset_tasks):
-                continue
-
-            # length check
-            # I don't think the number of processes is less than 5
-            x = init_task + offset_tasks
-            tasks = []
-            while x not in tasks:
-                tasks.append(x)
-                x = read_int_from_memory(x)
-            if len(tasks) > 5:
+            if is_double_link_list(init_task + offset_tasks, min_len=5):
                 return offset_tasks
         return None
 
@@ -66734,23 +66724,14 @@ class BuddyDumpCommand(GenericCommand):
             per_cpu_pageset = AddressUtil.align_address(per_cpu_pageset)
 
         current = AddressUtil.align_address_to_size(per_cpu_pageset + 4 * 3, current_arch.ptrsize) # count, high, batch
-        while True:
-            # search list_head
-            val1 = read_int_from_memory(current)
-            val2 = read_int_from_memory(current + current_arch.ptrsize)
-            if is_double_link_list(val1) and is_double_link_list(val2):
-                break
-            current += current_arch.ptrsize
+        while not is_double_link_list(current): # search list_head
+            current += current_arch.ptrsize * 2
         self.offset_lists = current - per_cpu_pageset
         self.quiet_info("offsetof(per_cpu_pageset, lists): {:#x}".format(self.offset_lists))
 
         # NR_PCP_LISTS
         current = per_cpu_pageset + self.offset_lists
-        while True:
-            val1 = read_int_from_memory(current)
-            val2 = read_int_from_memory(current + current_arch.ptrsize)
-            if not (is_double_link_list(val1) and is_double_link_list(val2)):
-                break
+        while is_double_link_list(current): # search not list_head
             current += current_arch.ptrsize * 2
         self.NR_PCP_LISTS = ((current - per_cpu_pageset) - self.offset_lists) // (current_arch.ptrsize * 2)
         self.quiet_info("NR_PCP_LISTS: {:d}".format(self.NR_PCP_LISTS))
