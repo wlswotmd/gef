@@ -86029,7 +86029,7 @@ class WalkLinkListCommand(GenericCommand, BufferingOutput):
         idx = 1
         while True:
             try:
-                flink = read_int_from_memory(current + offset)
+                flink = read_int_from_memory(AddressUtil.align_address(current + offset))
             except gdb.MemoryError:
                 self.err("memory corrupted")
                 return
