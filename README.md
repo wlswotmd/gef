@@ -526,6 +526,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * `memswap`: swaps the contents of the address A and B, whether virtual or physical.
 * `meminsert`: inserts the contents of the address A to B, whether virtual or physical.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/meminsert.png)
+* `strlen`: detects the length of the string.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/strlen.png)
 * `is-mem-zero`: checks the contents of address range is all 0x00 or 0xff or not.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/is-mem-zero.png)
 * `seq-length`: detects consecutive length of the same sequence.

@@ -62609,6 +62609,63 @@ class IsMemoryZeroCommand(GenericCommand):
 
 
 @register_command
+class StringLengthCommand(GenericCommand):
+    """Detect the length of the string."""
+
+    _cmdline_ = "strlen"
+    _category_ = "03-d. Memory - Calculation"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("--phys", action="store_true", help="treat ADDRESS as a physical address.")
+    parser.add_argument("addr", metavar="ADDRESS", type=AddressUtil.parse_address,
+                        help="target address for checking.")
+    _syntax_ = parser.format_help()
+
+    def check(self, phys_mode, addr):
+        count = 0
+        current = addr
+        while True:
+            # calc read_size
+            if current & gef_getpagesize_mask_low():
+                read_size = AddressUtil.align_address_to_size(current, gef_getpagesize()) - current
+            else:
+                read_size = gef_getpagesize()
+            # read
+            try:
+                if phys_mode:
+                    data = read_physmem(current, read_size)
+                else:
+                    data = read_memory(current, read_size)
+            except (gdb.MemoryError, ValueError, OverflowError):
+                err("Read error {:#x}".format(addr))
+                return None
+            # count
+            idx = data.find(b"\0")
+            if idx != -1:
+                return count + idx
+            # goto next
+            count += len(data)
+            current += len(data)
+        return None
+
+    @parse_args
+    @only_if_gdb_running
+    def do_invoke(self, args):
+        if args.phys:
+            if not is_qemu_system():
+                err("Unsupported `--phys` option in this gdb mode")
+                return
+
+        length = self.check(args.phys, args.addr)
+        if length is None:
+            return
+
+        colored_length = Color.boldify("{:#x}".format(length))
+        gef_print("{:s} bytes".format(colored_length))
+        return
+
+
+@register_command
 class SequenceLengthCommand(GenericCommand):
     """Detect consecutive length of the same sequence."""
 
