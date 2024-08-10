@@ -26952,6 +26952,9 @@ class ContextCommand(GenericCommand):
             if i < 0:
                 continue
 
+            if len(lines) <= i:
+                break
+
             if self.line_has_breakpoint(file_base_name, i + 1, bp_locations):
                 bp_prefix = Color.redify(BP_GLYPH)
             else:
@@ -26972,12 +26975,9 @@ class ContextCommand(GenericCommand):
                 gef_print(Color.colorify("{}{:s}".format(prefix, lines[i]), cur_line_color))
 
             elif i > line_num:
-                try:
-                    future_line = "{:4d}   {:s}".format(i + 1, lines[i])
-                    future_line = Color.colorify(future_line, future_lines_color)
-                    gef_print("{:1s}{:2s}{:s}".format(bp_prefix, "", future_line))
-                except IndexError:
-                    break
+                future_line = "{:4d}   {:s}".format(i + 1, lines[i])
+                future_line = Color.colorify(future_line, future_lines_color)
+                gef_print("{:1s}{:2s}{:s}".format(bp_prefix, "", future_line))
         return
 
     def get_pc_context_info(self, pc, line):
