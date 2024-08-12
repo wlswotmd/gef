@@ -489,7 +489,7 @@ def gef_print(x="", less=False, *args, **kwargs):
             return
         tmp_fd, tmp_path = tempfile.mkstemp(dir=GEF_TEMP_DIR, suffix=".txt", prefix="gef_print_")
         os.fdopen(tmp_fd, "wb").write(String.str2bytes(x))
-        os.system("{:s} -Rf {:s}".format(less, tmp_path))
+        os.system("{!r} -Rf {!r}".format(less, tmp_path))
 
         keep_pager_result = Config.get_gef_setting("gef.keep_pager_result")
         if keep_pager_result:
@@ -12392,7 +12392,7 @@ class Path:
     def read_remote_file(filepath, as_byte=True):
         tmp_name = os.path.join(GEF_TEMP_DIR, "read_remote_file.tmp")
         try:
-            gdb.execute("remote get {:s} {:s}".format(filepath, tmp_name), to_string=True)
+            gdb.execute("remote get {!r} {!r}".format(filepath, tmp_name), to_string=True)
         except gdb.error:
             return ""
         if as_byte:
@@ -14249,7 +14249,7 @@ class GefThemeCommand(GenericCommand):
 
         # set
         val = [x for x in args.value if x in Color.colors]
-        gdb.execute("gef config theme.{:s} '{:s}'".format(args.key, " ".join(val)))
+        gdb.execute("gef config theme.{:s} {!r}".format(args.key, " ".join(val)))
         return
 
 
@@ -20992,7 +20992,7 @@ class RpCommand(GenericCommand):
     def exec_rp(self, rp, ropN, path):
         output_file = "rp{}_rop_{}.txt".format(ropN, os.path.basename(path))
         output_path = os.path.join(GEF_TEMP_DIR, output_file)
-        cmd = f"{rp} --file='{path}' --rop={ropN} --unique > {output_path}"
+        cmd = "{!r} --file={!r} --rop={:d} --unique > {!r}".format(rp, path, ropN, output_path)
         gef_print(titlify(cmd))
         if not os.path.exists(output_path):
             os.system(cmd)
@@ -21000,7 +21000,7 @@ class RpCommand(GenericCommand):
 
     def apply_filter(self, rp_output_path, filter_patterns, base_address):
         if not os.path.exists(rp_output_path):
-            err(f"{rp_output_path} is not found")
+            err("{!r} is not found".format(rp_output_path))
             return
         lines = open(rp_output_path, "r").read()
 
@@ -21039,6 +21039,7 @@ class RpCommand(GenericCommand):
         if args.kernel:
             try:
                 nm = GefUtil.which("nm")
+                grep = GefUtil.which("grep")
             except FileNotFoundError as e:
                 err("{}".format(e))
                 return
@@ -21075,7 +21076,7 @@ class RpCommand(GenericCommand):
                 return
             path = symboled_vmlinux_file
 
-            cmd = "{:s} '{:s}' | grep ' _stext$'".format(nm, symboled_vmlinux_file)
+            cmd = "{!r} {!r} | {!r} ' _stext$'".format(nm, symboled_vmlinux_file, grep)
             out = GefUtil.gef_execute_external(cmd, as_list=True, shell=True)
             if len(out) != 1:
                 err("Failed to resolve _stext")
@@ -22310,10 +22311,19 @@ class ElfInfoCommand(GenericCommand):
 
         # readelf pattern
         if args.use_readelf:
-            if args.no_pager:
-                os.system("LANG=C readelf -a --wide '{:s}'".format(local_filepath))
+            try:
+                readelf = GefUtil.which("readelf")
+            except FileNotFoundError:
+                err("Not found readelf.")
+                return
+            try:
+                less = GefUtil.which("less")
+            except FileNotFoundError:
+                less = False
+            if args.no_pager or not less:
+                os.system("LANG=C {!r} -a --wide {!r}".format(readelf, local_filepath))
             else:
-                os.system("LANG=C readelf -a --wide '{:s}' | less".format(local_filepath))
+                os.system("LANG=C {!r} -a --wide {!r} | {!r}".format(readelf, local_filepath, less))
             if tmp_filepath and os.path.exists(tmp_filepath):
                 os.unlink(tmp_filepath)
             return
@@ -31902,7 +31912,7 @@ class GotAllCommand(GenericCommand):
             if x != b"\x7fELF":
                 continue
 
-            ret = gdb.execute("got -f {:s} -n {:s}".format(m.path, extra_args), to_string=True)
+            ret = gdb.execute("got -f {!r} -n {:s}".format(m.path, extra_args), to_string=True)
             if "<" in Color.remove_color(ret): # at least one element is hit
                 self.out.extend(ret.splitlines())
                 self.out.append("")
@@ -46712,8 +46722,8 @@ class OneGadgetCommand(GenericCommand):
 
         try:
             one_gadget = GefUtil.which("one_gadget")
-            gef_print(titlify(f"{one_gadget} '{libc.path}' -l 1"))
-            os.system(f"{one_gadget} '{libc.path}' -l 1")
+            gef_print(titlify("{!r} {!r} -l 1".format(one_gadget, libc.path)))
+            os.system("{!r} {!r} -l 1".format(one_gadget, libc.path))
         except Exception:
             err("Missing `one_gadget`, install with: `gem install one_gadget`.")
         return
@@ -46737,8 +46747,8 @@ class SeccompCommand(GenericCommand):
         path = Path.get_filepath()
         try:
             seccomp = GefUtil.which("seccomp-tools")
-            gef_print(titlify(f"{seccomp} dump '{path}'"))
-            os.system(f"{seccomp} dump '{path}'")
+            gef_print(titlify("{!r} dump {!r}".format(seccomp, path)))
+            os.system("{!r} dump {!r}".format(seccomp, path))
         except Exception:
             err("Missing `seccomp-tools`, install with: `gem install seccomp-tools`.")
         return
@@ -55903,7 +55913,7 @@ class KernelModuleCommand(GenericCommand):
         os.rename(blank_elf, sym_elf_path)
 
         # apply
-        cmd = "add-symbol-file {:s} {:#x}".format(sym_elf_path, text_base)
+        cmd = "add-symbol-file {!r} {:#x}".format(sym_elf_path, text_base)
         if not self.quiet:
             warn("Execute `{:s}`".format(cmd))
         gdb.execute(cmd, to_string=True)
@@ -71171,21 +71181,21 @@ class VmlinuxToElfApplyCommand(GenericCommand):
 
         # delete old file
         if os.path.exists(dumped_mem_file):
-            gef_print("Delete old {}".format(dumped_mem_file))
+            gef_print("Delete old {:s}".format(dumped_mem_file))
             os.unlink(dumped_mem_file)
         if os.path.exists(symboled_vmlinux_file):
-            gef_print("Delete old {}".format(symboled_vmlinux_file))
+            gef_print("Delete old {:s}".format(symboled_vmlinux_file))
             os.unlink(symboled_vmlinux_file)
 
         # delete files related to old file
         for f in os.listdir(GEF_TEMP_DIR):
             if os.path.basename(dumped_mem_file) in f:
                 remove_file = os.path.join(GEF_TEMP_DIR, f)
-                gef_print("Delete old {}".format(remove_file))
+                gef_print("Delete old {:s}".format(remove_file))
                 os.unlink(remove_file)
             if os.path.basename(symboled_vmlinux_file) in f:
                 remove_file = os.path.join(GEF_TEMP_DIR, f)
-                gef_print("Delete old {}".format(remove_file))
+                gef_print("Delete old {:s}".format(remove_file))
                 os.unlink(remove_file)
 
         # dump text
@@ -71215,10 +71225,10 @@ class VmlinuxToElfApplyCommand(GenericCommand):
             err("Memory read error. Make sure the context is in supervisor mode / Ring-0")
             return None
 
-        gef_print("Dumped to {}".format(dumped_mem_file))
+        gef_print("Dumped to {:s}".format(dumped_mem_file))
 
         # apply vmlinux-to-elf
-        cmd = "{} '{}' '{}' --base-address={:#x}".format(vmlinux2elf, dumped_mem_file, symboled_vmlinux_file, kinfo.text_base)
+        cmd = "{!r} {!r} {!r} --base-address={:#x}".format(vmlinux2elf, dumped_mem_file, symboled_vmlinux_file, kinfo.text_base)
         warn("Execute `{:s}`".format(cmd))
         os.system(cmd)
 
@@ -71254,7 +71264,7 @@ class VmlinuxToElfApplyCommand(GenericCommand):
         #   gdb 8.x: Usage: add-symbol-file FILE ADDR [-readnow | -readnever | -s SECT-NAME SECT-ADDR]...
         # But the created ELF has no .text, only a .kernel
         # Applying an empty symbol has no effect, so tentatively specify the same address as the .kernel.
-        cmd = "add-symbol-file {} {:#x} -s .kernel {:#x}".format(symboled_vmlinux_file, kinfo.text_base, kinfo.text_base)
+        cmd = "add-symbol-file {!r} {:#x} -s .kernel {:#x}".format(symboled_vmlinux_file, kinfo.text_base, kinfo.text_base)
         warn("Execute `{:s}`".format(cmd))
         gdb.execute(cmd)
         return
@@ -74095,7 +74105,7 @@ class UclibcNgHeapDumpCommand(GenericCommand):
         libc = ProcessMap.process_lookup_path("libuClibc-")
         if libc is None:
             return None
-        ret = gdb.execute("got --no-pager --quiet --file '{:s}' <malloc>".format(libc.path), to_string=True)
+        ret = gdb.execute("got --no-pager --quiet --file {!r} <malloc>".format(libc.path), to_string=True)
         if not ret:
             return None
         elem = Color.remove_color(ret).splitlines()[0].split()
@@ -85788,11 +85798,11 @@ class AddSymbolTemporaryCommand(GenericCommand):
             # When adding symbols, it is not necessary to match the architecture of the ELF to be created
             # and the architecture of the debugged kernel. Regardless of the architecture of the kernel
             # you are debugging, create an ELF using gcc in the host environment.
-            os.system("{:s} '{:s}' -no-pie -o '{:s}'".format(gcc, fname, blank_elf))
+            os.system("{!r} {!r} -no-pie -o {!r}".format(gcc, fname, blank_elf))
             os.unlink(fname)
             # delete unneeded section for faster (`ksymaddr-remote-apply` will embed many symbols)
-            os.system("{:s} --only-keep-debug '{:s}'".format(objcopy, blank_elf))
-            os.system("{:s} --strip-all '{:s}'".format(objcopy, blank_elf))
+            os.system("{!r} --only-keep-debug {!r}".format(objcopy, blank_elf))
+            os.system("{!r} --strip-all {!r}".format(objcopy, blank_elf))
             elf = Elf.get_elf(blank_elf)
             for s in elf.shdrs:
                 if s.sh_name == "": # null, skip
@@ -85809,7 +85819,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
                     continue
                 if s.sh_name == ".bss": # broken if remove
                     continue
-                os.system("{:s} --remove-section='{:s}' '{:s}' 2>/dev/null".format(
+                os.system("{!r} --remove-section={!r} {!r} 2>/dev/null".format(
                     objcopy, s.sh_name, blank_elf,
                 ))
         else:
@@ -85863,7 +85873,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
             elf = Elf.get_elf(blank_elf)
 
         # fix .text base address
-        os.system("{:s} --change-section-address .text={:#x} '{:s}' 2>/dev/null".format(
+        os.system("{!r} --change-section-address .text={:#x} {!r} 2>/dev/null".format(
             objcopy, text_base, blank_elf,
         ))
 
@@ -85924,7 +85934,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
 
         # embedding symbols
         relative_addr = args.function_start - text_base
-        os.system("{:s} --add-symbol '{:s}'=.text:{:#x},global,function '{}' 2>/dev/null".format(
+        os.system("{!r} --add-symbol {!r}=.text:{:#x},global,function {!r} 2>/dev/null".format(
             objcopy, args.function_name, relative_addr, sym_elf,
         ))
 
@@ -85932,7 +85942,7 @@ class AddSymbolTemporaryCommand(GenericCommand):
             info("1 entries were processed")
 
         # add symbol to gdb
-        gdb.execute("add-symbol-file {:s} {:#x}".format(sym_elf, text_base), to_string=True)
+        gdb.execute("add-symbol-file {!r} {:#x}".format(sym_elf, text_base), to_string=True)
         os.unlink(sym_elf)
         return
 
@@ -86509,16 +86519,16 @@ class FiletypeMemoryCommand(GenericCommand):
         open(filepath, "wb").write(data)
 
         try:
-            gef_print(titlify("file {:s}".format(filepath)))
+            gef_print(titlify("file {!r}".format(filepath)))
             file_command = GefUtil.which("file")
-            os.system("{:s} {:s}".format(file_command, filepath))
+            os.system("{!r} {!r}".format(file_command, filepath))
         except FileNotFoundError as e:
             warn("{}".format(e))
 
         try:
-            gef_print(titlify("magika {:s}".format(filepath)))
+            gef_print(titlify("magika {!r}".format(filepath)))
             magika_command = GefUtil.which("magika")
-            os.system("{:s} {:s}".format(magika_command, filepath))
+            os.system("{!r} {!r}".format(magika_command, filepath))
         except FileNotFoundError as e:
             warn("{}".format(e))
 
@@ -86854,7 +86864,7 @@ class TypesCommand(GenericCommand):
         tqdm = GefUtil.get_tqdm()
         for type_name in tqdm(out, leave=False):
             if args.verbose:
-                ret = gdb.execute('dt -n "{:s}"'.format(type_name), to_string=True)
+                ret = gdb.execute("dt -n {!r}".format(type_name), to_string=True)
                 if not ret or (" is not struct or union" in ret) or ("Not found " in ret):
                     new_out.append(Instruction.smartify_text(type_name))
                     new_out.append("")
@@ -87917,7 +87927,7 @@ class GefUtil:
         """Defines a new convenience value."""
         var_name = "$_gef{:d}".format(GefUtil.__gef_convenience_vars_index__)
         GefUtil.__gef_convenience_vars_index__ += 1
-        gdb.execute("""set {:s} = "{:s}" """.format(var_name, value))
+        gdb.execute('set {:s} = "{:s}"'.format(var_name, value))
         return var_name
 
     class ArgparseExitProxyException(Exception):
