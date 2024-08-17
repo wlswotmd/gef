@@ -68,7 +68,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 ### Supported mode
 * Normal debugging
 * Attach to the process
-* Attach to the process in another pid namespace (e.g. attaching from outside of `docker`)
+* Attach to the process in another mnt namespace (e.g. attaching from outside of `docker`)
 * Connect to `gdbserver`
 * Connect to the gdb stub of `qemu-system`
 * Connect to the gdb stub of `qemu-user`
@@ -444,7 +444,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 ### Added features
 * `pid`/`tid`: prints pid and tid.
 * `filename`: prints filename.
-* `fds`: shows opensed file descriptors.
+* `fds`: shows opened file descriptors.
 * `auxv`: pretty prints ELF auxiliary vector.
     * Supported also under qemu-user.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/auxv.png)

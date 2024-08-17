@@ -61148,6 +61148,8 @@ class TlsCommand(GenericCommand):
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
+    _example_ = "{:s} -vvv   # repeat `-v` to display more lines".format(_cmdline_)
+
     def print_all_tls(self):
         selected_thread = gdb.selected_thread()
         threads = gdb.selected_inferior().threads()
