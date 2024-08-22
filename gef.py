@@ -31883,6 +31883,8 @@ class GotAllCommand(GenericCommand):
     _aliases_ = ["plt-all"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-r", "--remote", action="store_true",
+                        help="parse remote binary if download feature is available.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose output.")
     parser.add_argument("filter", metavar="FILTER", nargs="*", help="filter string.")
@@ -31890,11 +31892,11 @@ class GotAllCommand(GenericCommand):
 
     @parse_args
     @only_if_gdb_running
-    @only_if_gdb_target_local
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
     def do_invoke(self, args):
         verbose = ["", "-v"][args.verbose]
-        extra_args = "{:s} {:s}".format(verbose, " ".join(args.filter))
+        remote = ["", "-r"][args.remote]
+        extra_args = "{:s} {:s} {:s}".format(verbose, remote, " ".join(args.filter))
 
         self.out = []
         processed = []
@@ -31913,9 +31915,8 @@ class GotAllCommand(GenericCommand):
                 continue
 
             ret = gdb.execute("got -f {!r} -n {:s}".format(m.path, extra_args), to_string=True)
-            if "<" in Color.remove_color(ret): # at least one element is hit
-                self.out.extend(ret.splitlines())
-                self.out.append("")
+            self.out.extend(ret.splitlines())
+            self.out.append("")
             processed.append(m.path)
 
         if len(self.out) > GefUtil.get_terminal_size()[0]:
