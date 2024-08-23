@@ -21597,37 +21597,36 @@ class ProcessSearchCommand(GenericCommand, BufferingOutput):
             if not args.verbose:
                 if command.startswith("[") and command.endswith("]"): # kernel thread
                     continue
-                if command.startswith("socat "):
-                    continue
-                if command.startswith("grep "):
-                    continue
-                if command.startswith("gdb "):
-                    continue
-                if command.startswith("gdb-multiarch "):
-                    continue
-                if command.startswith("-bash"):
-                    continue
-                if command.startswith("sshd: "):
-                    continue
-                if command.startswith("avahi-daemon: "):
-                    continue
-                if command.startswith("@dbus-daemon "):
-                    continue
-                if command.startswith("(sd-pam)"):
-                    continue
-                if command.startswith("/lib/systemd/"):
-                    continue
-                if command.startswith("vmhgfs-fuse "):
-                    continue
-                if command.startswith("vmware-vmblock-fuse "):
-                    continue
-                if command.startswith("fusermount3 "):
-                    continue
-                if command.startswith("/usr/bin/vmtoolsd"):
-                    continue
-                if command.startswith("/usr/libexec/"):
-                    continue
-                if command.startswith("/snap/"):
+
+                skip_list = [
+                    # common
+                    "socat ",
+                    "grep ",
+                    "gdb ",
+                    "gdb-multiarch",
+                    "-bash",
+                    "sshd:",
+                    "ssh-agent ",
+                    # VMware tools
+                    "vmhgfs-fuse",
+                    "vmware-vmblock-fuse",
+                    "fusermount3",
+                    # system service
+                    "avahi-daemon:",
+                    "@dbus-daemon",
+                    "(sd-pam)",
+                    "gjs ",
+                    "gdm-session-worker",
+                    "cupsd ",
+                    # common path
+                    ("/bin/", "/usr/bin/"),
+                    ("/sbin/", "/usr/sbin/"),
+                    ("/lib/", "/usr/lib/"),
+                    "/usr/libexec/",
+                    "/snap/",
+                    "/var/lib/pcp/pmdas",
+                ]
+                if any(command.startswith(x) for x in skip_list):
                     continue
 
             if args.attach:
