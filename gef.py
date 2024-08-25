@@ -60649,8 +60649,12 @@ class StringsCommand(GenericCommand):
         self.search_range = args.range
         if args.end_location:
             first_range = args.end_location - args.location
+            if first_range != AddressUtil.align_address(first_range):
+                self.usage()
+                return
         else:
             first_range = args.range
+
         self.out = []
         queue = [(args.location, first_range, args.depth)]
         self.search_ascii(queue)
