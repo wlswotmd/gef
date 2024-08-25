@@ -26755,15 +26755,16 @@ class ContextCommand(GenericCommand):
         #   s390x:   basr   %lr, %r1
         #   sh4:     jsr    @r1
         #   alpha:   jmp    (t0)
-        maybe_reg = insn.operands[-1].split()[0]
-        if len(maybe_reg) <= 5 and maybe_reg[0] == "(" and maybe_reg[-1] == ")":
-            maybe_reg = maybe_reg[1:-1]
-        ptr = get_register(maybe_reg)
-        if ptr is not None:
-            if to_str:
-                return "{:#x}".format(ptr)
-            else:
-                return ptr
+        if insn.operands[-1].split():
+            maybe_reg = insn.operands[-1].split()[0]
+            if len(maybe_reg) <= 5 and maybe_reg[0] == "(" and maybe_reg[-1] == ")":
+                maybe_reg = maybe_reg[1:-1]
+            ptr = get_register(maybe_reg)
+            if ptr is not None:
+                if to_str:
+                    return "{:#x}".format(ptr)
+                else:
+                    return ptr
 
         return None
 
