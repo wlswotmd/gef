@@ -56005,6 +56005,237 @@ class KernelModuleCommand(GenericCommand):
 
 
 @register_command
+class KernelModuleLoadCommand(GenericCommand):
+    """Load kernel module without loaded address."""
+
+    _cmdline_ = "kmod-load"
+    _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("name", type=str, help="name of the loaded module to search by `kmod`.")
+    parser.add_argument("path", type=str, help="path to compiled kernel module.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} sample /path/to/sample.ko".format(_cmdline_)
+
+    _note_ = "This command needs CONFIG_RANDSTRUCT=n.\n"
+    _note_ += "It is useful if you have a kernel module with debuginfo at hand."
+
+    def get_modules_list(self):
+        modules = KernelAddressHeuristicFinder.get_modules()
+        if modules is None:
+            if not self.quiet:
+                err("Not found modules (maybe, CONFIG_MODULES is not set)")
+            return None
+
+        if not self.quiet:
+            info("modules: {:#x}".format(modules))
+
+        module_addrs = []
+        current = modules
+        while True:
+            try:
+                addr = read_int_from_memory(current)
+            except gdb.MemoryError:
+                return None
+            if addr == modules:
+                break
+            module_addrs.append(addr - current_arch.ptrsize)
+            current = addr
+        return module_addrs
+
+    def get_offset_name(self, module_addrs):
+        for i in range(0x100):
+            offset_name = i * current_arch.ptrsize
+            valid = True
+            for module in module_addrs:
+                if not is_ascii_string(module + offset_name):
+                    valid = False
+                    break
+                s = read_cstring_from_memory(module + offset_name)
+                if len(s) < 2:
+                    valid = False
+                    break
+            if valid:
+                if not self.quiet:
+                    info("offsetof(module, name): {:#x}".format(offset_name))
+                return offset_name
+
+        if not self.quiet:
+            err("Not found module->name[MODULE_NAME_LEN]")
+        return None
+
+    def get_offset_sect_attrs(self, module_addrs):
+        """
+        struct attribute {
+            const char *name;
+            umode_t mode;
+        #ifdef CONFIG_DEBUG_LOCK_ALLOC
+            bool ignore_lockdep:1;
+            struct lock_class_key *key;
+            struct lock_class_key skey;
+        #endif
+        };
+
+        struct module_sect_attrs {
+            struct attribute_group {
+                const char *name;
+                umode_t (*is_visible)(struct kobject *, struct attribute *, int);
+                umode_t (*is_bin_visible)(struct kobject *, struct bin_attribute *, int); // v4.4~
+                struct attribute **attrs;
+                struct bin_attribute **bin_attrs; // v3.11~
+            } grp;
+            unsigned int nsections;
+            struct module_sect_attr {
+                struct bin_attribute { // v5.7~
+                    struct attribute attr;
+                    size_t size;
+                    void *private;
+                    struct address_space *(*f_mapping)(void); // v5.15~
+                    struct address_space *mapping; // v5.12~5.14
+                    ssize_t (*read)(struct file *, struct kobject *, struct bin_attribute *, char *, loff_t, size_t);
+                    ssize_t (*write)(struct file *, struct kobject *, struct bin_attribute *, char *, loff_t, size_t);
+                    loff_t (*llseek)(struct file *, struct kobject *, struct bin_attribute *, loff_t, int); // v6.7~
+                    int (*mmap)(struct file *, struct kobject *, struct bin_attribute *attr, struct vm_area_struct *vma);
+                } battr;
+                struct module_attribute { // ~v5.6
+                    struct attribute attr;
+                    ssize_t (*show)(struct module_attribute *, struct module_kobject *, char *);
+                    ssize_t (*store)(struct module_attribute *, struct module_kobject *, const char *, size_t count);
+                    void (*setup)(struct module *, const char *);
+                    int (*test)(struct module *);
+                    void (*free)(struct module *);
+                } mattr;
+                char *name; // ~v5.6
+                unsigned long address;
+            } attrs[];
+        };
+        """
+        for i in range(300):
+            offset_sect_attrs = current_arch.ptrsize * i
+            valid = True
+            for module in module_addrs:
+                # access check
+                if not is_valid_addr(module + offset_sect_attrs):
+                    valid = False
+                    break
+                sect_attrs = read_int_from_memory(module + offset_sect_attrs)
+                if not is_valid_addr(sect_attrs):
+                    valid = False
+                    break
+                firstname = read_int_from_memory(sect_attrs + self.offset_firstname)
+                if not is_valid_addr(firstname):
+                    valid = False
+                    break
+                sectname = read_cstring_from_memory(firstname)
+                # not really a requirement but oh well
+                if sectname is None or not sectname.startswith("."):
+                    valid = False
+                    break
+            if valid:
+                if not self.quiet:
+                    info("offsetof(module, sect_attrs): {:#x}".format(offset_sect_attrs))
+                return offset_sect_attrs
+
+        if not self.quiet:
+            err("Not found module->sect_attrs")
+        return None
+
+    def initialize(self):
+        self.module_addrs = self.get_modules_list()
+        if self.module_addrs is None:
+            return False
+
+        self.offset_name = self.get_offset_name(self.module_addrs)
+        if self.offset_name is None:
+            return False
+
+        kversion = Kernel.kernel_version()
+
+        if kversion < "3.11":
+            self.offset_nsections = current_arch.ptrsize * 3
+            self.offset_firstname = current_arch.ptrsize * 4
+        elif kversion < "4.4":
+            self.offset_nsections = current_arch.ptrsize * 4
+            self.offset_firstname = current_arch.ptrsize * 5
+        else:
+            self.offset_nsections = current_arch.ptrsize * 5
+            self.offset_firstname = current_arch.ptrsize * 6
+
+        if kversion < "5.7":
+            self.offset_address = self.offset_firstname + current_arch.ptrsize * 8
+            self.sizeof_module_sect_attr = current_arch.ptrsize * 9
+        elif kversion < "5.12":
+            self.offset_address = self.offset_firstname + current_arch.ptrsize * 7
+            self.sizeof_module_sect_attr = current_arch.ptrsize * 8
+        elif kversion < "6.7":
+            self.offset_address = self.offset_firstname + current_arch.ptrsize * 8
+            self.sizeof_module_sect_attr = current_arch.ptrsize * 9
+        else:
+            self.offset_address = self.offset_firstname + current_arch.ptrsize * 9
+            self.sizeof_module_sect_attr = current_arch.ptrsize * 10
+
+        self.offset_sect_attrs = self.get_offset_sect_attrs(self.module_addrs)
+        if self.offset_sect_attrs is None:
+            return False
+
+        return True
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_in_kernel_or_kpti_disabled
+    def do_invoke(self, args):
+        kversion = Kernel.kernel_version()
+        if kversion < "3.0":
+            if not self.quiet:
+                err("Unsupported v3.0 or before")
+            return
+
+        self.quiet = args.quiet
+
+        if self.initialize() is False:
+            if not self.quiet:
+                err("Failed to initialize")
+            return
+
+        for module in self.module_addrs:
+            name_string = read_cstring_from_memory(module + self.offset_name)
+            if name_string != args.name:
+                continue
+
+            # get nsections
+            sect_attrs = read_int_from_memory(module + self.offset_sect_attrs)
+            nsections = read_int_from_memory(sect_attrs + self.offset_nsections) & 0xffffffff
+            if not self.quiet:
+                info("nsections = {}".format(nsections))
+
+            # get each section name and address
+            sections = []
+            for i in range(nsections):
+                name_ptr = read_int_from_memory(sect_attrs + self.offset_firstname + self.sizeof_module_sect_attr * i)
+                name = read_cstring_from_memory(name_ptr)
+                addr = read_int_from_memory(sect_attrs + self.offset_address + self.sizeof_module_sect_attr * i)
+                if not self.quiet:
+                    info("name={:s}, addr={:#x}".format(name, addr))
+                sections.append((name, addr))
+
+                # unneeded, but for convenience
+                gdb.execute("set ${:s} = {:#x}".format(name.replace(".", "").replace("-", ""), addr))
+
+            # load
+            command = " ".join(['-s {:s} {:#x}'.format(name, addr) for (name, addr) in sections])
+            gdb.execute("add-symbol-file {!r} {:s}".format(args.path, command))
+            break
+        else:
+            if not self.quiet:
+                err("Not found {:s}".format(args.name))
+        return
+
+
+@register_command
 class KernelBlockDevicesCommand(GenericCommand):
     """Display block device list."""
 
