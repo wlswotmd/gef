@@ -70201,6 +70201,7 @@ class KsymaddrRemoteCommand(GenericCommand):
     parser.add_argument("-t", "--type", action="append", default=[], help="filter by symbol type.")
     parser.add_argument("-e", "--exact", action="store_true", help="use exact match.")
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
+    parser.add_argument("-s", "--smart", action="store_true", help="filter __pfx_*, __ksymtab_*, etc.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
@@ -70292,7 +70293,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             self.kallsyms.append([addr, name[1:], name[0]])
         return
 
-    def print_kallsyms(self, keywords, types):
+    def print_kallsyms(self, keywords, types, smart):
         if is_32bit():
             fmt = "{:#010x} {:s} {:s}"
         else:
@@ -70303,6 +70304,16 @@ class KsymaddrRemoteCommand(GenericCommand):
             kallsyms = [entry for entry in self.kallsyms if entry[2].lower() in types]
         else:
             kallsyms = self.kallsyms
+
+        if smart:
+            ignore_list = (
+                "__pfx_", # prefix symbols for function padding
+                "__kstrtab_",
+                "__ksymtab_",
+                "__kcrctab_",
+                "__tpstrtab_", # tracepoint
+            )
+            kallsyms = [entry for entry in kallsyms if not entry[1].startswith(ignore_list)]
 
         self.out = []
         if not keywords:
@@ -71357,7 +71368,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             self.quiet_err("Failed to parse.")
             return
 
-        self.print_kallsyms(args.keyword, args.type)
+        self.print_kallsyms(args.keyword, args.type, args.smart)
 
         if self.out:
             if len(self.out) > GefUtil.get_terminal_size()[0]:
