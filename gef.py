@@ -83809,7 +83809,7 @@ class KmallocRetBreakpoint(gdb.FinishBreakpoint):
         loc_s = Color.colorify_hex(loc, Config.get_gef_setting("theme.heap_chunk_address_used"))
 
         if self.extra:
-            ret = KmallocTracerCommand.virt2name_and_size(self.extra, loc)
+            ret = KmallocTracerCommand.virt2name_and_size(loc)
             if ret:
                 # print more info
                 name, chunk_size = ret
@@ -83860,7 +83860,7 @@ class KfreeBreakpoint(gdb.Breakpoint):
         loc_s = Color.colorify_hex(loc, Config.get_gef_setting("theme.heap_chunk_address_freed"))
 
         if self.extra:
-            ret = KmallocTracerCommand.virt2name_and_size(self.extra, loc)
+            ret = KmallocTracerCommand.virt2name_and_size(loc)
             if ret:
                 # print more info
                 name, chunk_size = ret
@@ -83926,8 +83926,7 @@ class KmallocTracerCommand(GenericCommand):
     def initialize(allocator, verbose):
         if allocator != "SLUB":
             # Do nothing other than SLUB.
-            extra_info = None
-            return extra_info
+            return None
 
         res = gdb.execute("slub-dump --meta", to_string=True)
 
@@ -83974,7 +83973,7 @@ class KmallocTracerCommand(GenericCommand):
         return 0, ""
 
     @staticmethod
-    def virt2name_and_size(extra, vaddr):
+    def virt2name_and_size(vaddr):
         ret = Kernel.get_slab_contains(vaddr)
         if not ret:
             return None
@@ -84017,68 +84016,91 @@ class KmallocTracerCommand(GenericCommand):
         # Since `kmalloc` is always inlined and not exported, so the symbol cannot be determined.
         # So put a breakpoint in each non-inlined function called from kmalloc.
         """
-        (1) static __always_inline void *kmalloc(size_t size, gfp_t flags)
-            - [~v6.1]
-                - static __always_inline void *kmalloc_large(size_t size, gfp_t flags)
-                    - [CONFIG_TRACING=n]
-                        - static __always_inline void *kmalloc_order_trace(size_t size, gfp_t flags, unsigned int order)
-                            - void *kmalloc_order(size_t size, gfp_t flags, unsigned int order) <-- bp here
-                    - [CONFIG_TRACING=y]
-                        - void *kmalloc_order_trace(size_t size, gfp_t flags, unsigned int order)
-                            - void *kmalloc_order(size_t size, gfp_t flags, unsigned int order) <-- bp here
-                - [CONFIG_TRACING=y]
-                    - void *kmem_cache_alloc_trace(struct kmem_cache *s, gfp_t flags, size_t size) <-- bp here
-                - [CONFIG_TRACING=n]
-                    - static __always_inline void *kmem_cache_alloc_trace(struct kmem_cache *s, gfp_t flags, size_t size)
-                        - void *kmem_cache_alloc(struct kmem_cache *s, gfp_t flags) <-- bp here
+        (1) kmalloc
+            - [~6.0]
+                - static __always_inline void *kmalloc(size_t size, gfp_t flags)
+                    - kmalloc_large
+                        - [CONFIG_TRACING=n]
+                            - static __always_inline void *kmalloc_order_trace(size_t size, gfp_t flags, unsigned int order)
+                                - void *kmalloc_order(size_t size, gfp_t flags, unsigned int order)
+                        - [CONFIG_TRACING=y]
+                            - void *kmalloc_order_trace(size_t size, gfp_t flags, unsigned int order)
+                                - void *kmalloc_order(size_t size, gfp_t flags, unsigned int order)
+                    - kmem_cache_alloc_trace
+                        - [CONFIG_TRACING=y]
+                            - void *kmem_cache_alloc_trace(struct kmem_cache *s, gfp_t flags, size_t size)
+                        - [CONFIG_TRACING=n]
+                            - static __always_inline void *kmem_cache_alloc_trace(struct kmem_cache *s, gfp_t flags, size_t size)
+                                - void *kmem_cache_alloc(struct kmem_cache *s, gfp_t flags)
+                    - __kmalloc
+                        - void *__kmalloc(size_t size, gfp_t flags)
+            - [6.1~6.9]
+                - static __always_inline void *kmalloc(size_t size, gfp_t flags)
+                    - void *kmalloc_large(size_t size, gfp_t flags)
+                    - void *kmalloc_trace(struct kmem_cache *s, gfp_t flags, size_t size)
+                    - void *__kmalloc(size_t size, gfp_t flags)
+            - [6.10~]
+                - static __always_inline void *kmalloc_noprof(size_t size, gfp_t flags)
+                    - void *kmalloc_large_noprof(size_t size, gfp_t flags)
+                    - void *kmalloc_trace_noprof(struct kmem_cache *s, gfp_t gfpflags, size_t size)
+                    - void *__kmalloc_noprof(size_t size, gfp_t flags)
 
-            - [v6.1~]
-                - void *kmalloc_large(size_t size, gfp_t flags) <-- bp here
-                - void *kmalloc_trace(struct kmem_cache *s, gfp_t flags, size_t size) <-- bp here
+        (2) kmalloc_node
+            - [~6.0]
+                - static __always_inline void *kmalloc_node(size_t size, gfp_t flags, int node)
+                    - kmem_cache_alloc_node_trace
+                        - [CONFIG_TRACING=y && CONFIG_NUMA=y]
+                            - void *kmem_cache_alloc_node_trace(struct kmem_cache *s, gfp_t gfpflags, int node, size_t size)
+                        - [CONFIG_TRACING=y && CONFIG_NUMA=n]
+                            - void *kmem_cache_alloc_trace(struct kmem_cache *cachep, gfp_t flags, size_t size)
+                        - [CONFIG_TRACING=n && CONFIG_NUMA=y]
+                            - static __always_inline void *kmem_cache_alloc_trace(struct kmem_cache *s, gfp_t flags, size_t size)
+                                - void *kmem_cache_alloc_node(struct kmem_cache *cachep, gfp_t flags, int nodeid)
+                        - [CONFIG_TRACING=n && CONFIG_NUMA=n]
+                            - static __always_inline void *kmem_cache_alloc_trace(struct kmem_cache *s, gfp_t flags, size_t size)
+                                - static __always_inline void *kmem_cache_alloc_node(struct kmem_cache *s, gfp_t flags, int node)
+                                    - void *kmem_cache_alloc(struct kmem_cache *s, gfp_t flags)
+                    - __kmalloc_node
+                        - [CONFIG_NUMA=y]
+                            void *__kmalloc_node(size_t size, gfp_t flags, int node)
+                        - [CONFIG_NUMA=n]
+                            - void *__kmalloc(size_t size, gfp_t flags)
+            - [6.1~6.9]
+                - static __always_inline void *kmalloc_node(size_t size, gfp_t flags, int node)
+                    - void *kmalloc_large_node(size_t size, gfp_t flags, int node)
+                    - void *kmalloc_node_trace(struct kmem_cache *s, gfp_t gfpflags, int node, size_t size)
+                    - void *__kmalloc_node(size_t size, gfp_t flags, int node)
+            - [6.10~]
+                - static __always_inline void *kmalloc_node_noprof(size_t size, gfp_t flags, int node)
+                    - void *kmalloc_large_node_noprof(size_t size, gfp_t flags, int node)
+                    - void *kmalloc_node_trace_noprof(struct kmem_cache *s, gfp_t gfpflags, int node, size_t size)
+                    - void *__kmalloc_node_noprof(size_t size, gfp_t flags, int node)
 
-            - void *__kmalloc(size_t size, gfp_t flags) <-- bp here
+        (3) kmemdup, etc.
+            - void *kmemdup(const void *src, size_t len, gfp_t gfp)
+                - [~6.0]
+                    - void *__kmalloc_track_caller(size_t size, gfp_t flags, unsigned long caller)
+                - [6.1~6.9]
+                    - void *__kmalloc_node_track_caller(size_t size, gfp_t flags, int node, unsigned long caller)
+                - [6.10~]
+                    - void *kmalloc_node_track_caller_noprof(size_t size, gfp_t flags, int node, unsigned long caller)
 
-        (2) static __always_inline void *kmalloc_node(size_t size, gfp_t flags, int node)
-            - [~v6.1]
-                - [CONFIG_NUMA=n]
-                    - redirect to kmem_cache_alloc_trace
-                - [CONFIG_TRACING=y]
-                    - void *kmem_cache_alloc_node_trace(struct kmem_cache *s, gfp_t flags, int node, size_t size) <-- bp here
-                - [CONFIG_TRACING=n && CONFIG_NUMA=n]
-                    - redirect to kmem_cache_alloc
-                - [CONFIG_TRACING=n && CONFIG_NUMA=y]
-                    - static __always_inline void *kmem_cache_alloc_node_trace(struct kmem_cache *s, gfp_t gfpflags, int node, size_t size)
-                        - void *kmem_cache_alloc_node(struct kmem_cache *s, gfp_t flags, int node) <-- bp here
+        (4) krealloc
+            - [~6.9]
+                - void *krealloc(const void *p, size_t new_size, gfp_t flags)
+            - [6.10~]
+                - void *krealloc_noprof(const void *p, size_t new_size, gfp_t flags)
 
-            - [v6.1~]
-                - void *kmalloc_node_trace(struct kmem_cache *s, gfp_t flags, int node, size_t size) <-- bp here
-
-            - [CONFIG_NUMA=n]
-                - redirect to __kmalloc
-            - [CONFIG_NUMA=y]
-                void *__kmalloc_node(size_t size, gfp_t flags, int node) <-- bp here
-
-        (3) void *memdup_user(const void __user *src, size_t len), etc.
-            - void *__kmalloc_track_caller(size_t size, gfp_t flags, unsigned long caller) <-- bp here
-
-        (4) void *krealloc(const void *p, size_t new_size, gfp_t flags) <-- bp here
-
-        (5) void kfree(const void *object) <-- bp here
-
-        (Other)
-        * kmalloc_array -> kmalloc or __kmalloc
-        * kmalloc_array_node -> kmalloc_node or __kmalloc_node
-        * krealloc_array -> krealloc
-        * kcalloc -> kmalloc_array
-        * kcalloc_node -> kmalloc_array_node
-        * kzalloc -> kmalloc
-        * kzalloc_node -> kmalloc_node
+        (5) kfree
+            - void kfree(const void *object)
         """
 
         kversion = Kernel.kernel_version()
+
+        # This list may be incomplete.
+        # If you know of any memory-allocating functions that may be freed with kfree, please let us know.
         if kversion < "6.1":
-            # number is the argument index of the size.
-            # -1 means index 0 is `struct kmem_cache*`.
+            # The number is the argument index of the size. -1 means index 0 is `struct kmem_cache*`.
             kmalloc_syms = [
                 # for kmalloc
                 [0, "kmalloc_order"],
@@ -84089,24 +84111,40 @@ class KmallocTracerCommand(GenericCommand):
                 [3, "kmem_cache_alloc_node_trace"],
                 [-1, "kmem_cache_alloc_node"],
                 [0, "__kmalloc_node"],
-                # for memdup_user, etc.
+                # for kmemdup, etc.
                 [0, "__kmalloc_track_caller"],
                 # for krealloc
                 [1, "krealloc"],
             ]
-        else:
+        elif kversion < "6.10":
             kmalloc_syms = [
                 # for kmalloc
                 [0, "kmalloc_large"],
                 [2, "kmalloc_trace"],
                 [0, "__kmalloc"],
                 # for kmalloc_node
+                [0, "kmalloc_large_node"],
                 [3, "kmalloc_node_trace"],
                 [0, "__kmalloc_node"],
-                # for memdup_user, etc.
-                [0, "__kmalloc_track_caller"],
+                # for kmemdup, etc.
+                [0, "__kmalloc_node_track_caller"],
                 # for krealloc
                 [1, "krealloc"],
+            ]
+        else: # >= 6.10
+            kmalloc_syms = [
+                # for kmalloc
+                [0, "kmalloc_large_noprof"],
+                [2, "kmalloc_trace_noprof"],
+                [0, "__kmalloc_noprof"],
+                # for kmalloc_node
+                [0, "kmalloc_large_node_noprof"],
+                [3, "kmalloc_node_trace_noprof"],
+                [0, "__kmalloc_node_noprof"],
+                # for kmemdup, etc.
+                [0, "kmalloc_node_track_caller_noprof"],
+                # for krealloc
+                [1, "krealloc_noprof"],
             ]
 
         kfree_syms = [
@@ -84136,11 +84174,9 @@ class KmallocTracerCommand(GenericCommand):
     @only_if_in_kernel
     @only_if_kvm_disabled
     def do_invoke(self, args):
-        # create option_info
-        option_info = KmallocTracerCommand.create_option_info(args)
+        info("Wait for memory scan")
 
         # initialize
-        info("Wait for memory scan")
         allocator = KernelChecksecCommand.get_slab_type()
         if allocator != "SLUB":
             warn("Unsupported viewing detailed information for SLAB, SLOB, SLUB_TINY")
@@ -84158,6 +84194,9 @@ class KmallocTracerCommand(GenericCommand):
                 info("offsetof(page, slab_cache): {:#x}".format(self.extra_info.page_offset_slab_cache))
                 info("offsetof(kmem_cache, name): {:#x}".format(self.extra_info.kmem_cache_offset_name))
                 info("offsetof(kmem_cache, size): {:#x}".format(self.extra_info.kmem_cache_offset_size))
+
+        # create option_info
+        option_info = KmallocTracerCommand.create_option_info(args)
 
         # set kmalloc break points
         breakpoints = KmallocTracerCommand.set_bp_to_kmalloc_kfree(option_info, self.extra_info)
