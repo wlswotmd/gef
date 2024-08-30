@@ -53016,7 +53016,11 @@ class KernelTaskCommand(GenericCommand):
             };
             """
             ptregs_size = current_arch.ptrsize * 21
-            bottom_offset = 0
+            kversion = Kernel.kernel_version()
+            if kversion < "6.10":
+                bottom_offset = 0
+            else:
+                bottom_offset = current_arch.ptrsize * 2 # ?
         elif is_x86_32():
             """
             struct pt_regs {
