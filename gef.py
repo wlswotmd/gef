@@ -11746,6 +11746,19 @@ def only_if_kvm_disabled(f):
     return wrapper
 
 
+def only_if_smp_disabled(f):
+    """Decorator wrapper to check if there is not -smp N option."""
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        if is_smp_enabled():
+            err("Disable `-smp N` option for qemu-system.")
+            return
+        return f(*args, **kwargs)
+
+    return wrapper
+
+
 def only_if_specific_gdb_mode(mode=()):
     """Decorator wrapper to check if the gdb mode is specific."""
 
@@ -12193,6 +12206,16 @@ def is_kvm_enabled():
     try:
         res = gdb.execute("monitor info kvm", to_string=True)
         return "enabled" in res
+    except gdb.error:
+        return False
+
+
+@Cache.cache_this_session
+def is_smp_enabled():
+    """GDB mode determination function for smp."""
+    try:
+        res = gdb.execute("monitor info cpus", to_string=True)
+        return len(res.splitlines()) >= 2
     except gdb.error:
         return False
 
@@ -84183,6 +84206,7 @@ class KmallocAllocatedByCommand(GenericCommand):
     _example_ += "{:s} -dtv    # useful output".format(_cmdline_)
 
     _note_ = "Disable `-enable-kvm` option for qemu-system (#PF may occur).\n"
+    _note_ += "Disable `-smp N` option for qemu-system (write memory error may occur).\n"
     _note_ += "Append `tsc=unstable` option for kernel cmdline.\n"
     _note_ += "This command needs CONFIG_RANDSTRUCT=n."
 
@@ -85422,12 +85446,23 @@ class KmallocAllocatedByCommand(GenericCommand):
         self.setup_syscall("exit", [0])
         return
 
+    def cleanup(self, hwbp, breakpoints):
+        # clean up
+        hwbp.delete()
+        for bp in breakpoints:
+            bp.delete()
+        gdb.execute("context on")
+        info("Exiting `sleep` process... (Please issue Ctrl+C)")
+        gdb.execute("continue")
+        return
+
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system",))
     @only_if_specific_arch(arch=("x86_64",))
     @only_if_in_kernel
     @only_if_kvm_disabled
+    @only_if_smp_disabled
     def do_invoke(self, args):
         # create option_info
         option_info = KmallocTracerCommand.create_option_info(args)
@@ -85475,7 +85510,7 @@ class KmallocAllocatedByCommand(GenericCommand):
         # get rsp for checking process
         r1 = re.search(r"rip\s*: (0x\S+)", res)
         r2 = re.search(r"rsp\s*: (0x\S+)", res)
-        if not r or not r2:
+        if not r1 or not r2:
             err("Failed to get rip and rsp.")
             return
         rip_of_sleep = int(r1.group(1), 16)
@@ -85496,21 +85531,17 @@ class KmallocAllocatedByCommand(GenericCommand):
         # here, stop in userland `sleep` process
         if current_arch.sp != rsp_of_sleep:
             err("Stack pointer is different from expected. Unable to continue.")
+            self.cleanup(hwbp, breakpoints)
             return
         # rsp align
         gdb.execute("set $rsp = {:#x}".format(rsp_of_sleep & ~0xf))
+        # For some reason, setting rsp can break rip. Here's a workaround for that.
+        gdb.execute("set $rip = {:#x}".format(rip_of_sleep))
 
         # do test
         self.test_syscall(breakpoints)
-
-        # clean up
         info("Syscall test is complete, cleaning up...")
-        hwbp.delete()
-        for bp in breakpoints:
-            bp.delete()
-        gdb.execute("context on")
-        info("Exiting `sleep` process... (Please issue Ctrl+C)")
-        gdb.execute("continue")
+        self.cleanup(hwbp, breakpoints)
         return
 
 
