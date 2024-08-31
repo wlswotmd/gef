@@ -3868,17 +3868,36 @@ class GlibcHeap:
             head = GlibcHeap.GlibcChunk(bk, from_base=True).fwd
             if fw == head:
                 return [] # no entry
-            chunks = []
-            while fw != head:
-                chunk = GlibcHeap.GlibcChunk(fw, from_base=True)
-                if chunk.chunk_base_address in chunks:
+
+            corrupted = False
+            chunks_bk = []
+            while bk != head:
+                chunk = GlibcHeap.GlibcChunk(bk, from_base=True)
+                if chunk.chunk_base_address in chunks_bk:
                     err("bins[{:d}] has a loop.".format(index))
+                    corrupted = True
                     break
-                chunks.append(chunk.chunk_base_address)
-                fw = chunk.fwd
-                if fw is None:
+                chunks_bk.append(chunk.chunk_base_address)
+                bk= chunk.bck
+                if bk is None:
                     err("bins[{:d}] is corrupted.".format(index))
+                    corrupted = True
                     break
+            chunks = chunks_bk[::-1]
+
+            if corrupted:
+                chunks_fw = []
+                while fw != head:
+                    chunk = GlibcHeap.GlibcChunk(fw, from_base=True)
+                    if chunk.chunk_base_address in chunks:
+                        break
+                    if chunk.chunk_base_address in chunks_fw:
+                        break
+                    chunks_fw.append(chunk.chunk_base_address)
+                    fw = chunk.fwd
+                    if fw is None:
+                        break
+                chunks = chunks_fw + chunks
             return chunks
 
         def unsortedbin_list(self):
@@ -3899,24 +3918,24 @@ class GlibcHeap:
             return chunks_all
 
         def reset_bins_info(self):
+            # cached_XXX_list = {bin_idx1: [chunk, chunk, ...], bin_idx2: [chunk, chunk, ...]}
             self.cached_tcache_list = self.tcache_list()
-            self.cached_tcache_addr_list = set().union(*self.cached_tcache_list.values())
-
             self.cached_fastbins_list = self.fastbins_list()
-            self.cached_fastbins_addr_list = set().union(*self.cached_fastbins_list.values())
-
             self.cached_unsortedbin_list = self.unsortedbin_list()
-            self.cached_unsortedbin_addr_list = self.cached_unsortedbin_list[0]
-
             self.cached_smallbins_list = self.smallbins_list()
-            self.cached_smallbins_addr_list = set().union(*self.cached_smallbins_list.values())
-
             self.cached_largebins_list = self.largebins_list()
+
+            # cacheed_XXX_addr_list = {chunk, chunk, ...}
+            self.cached_tcache_addr_list = set().union(*self.cached_tcache_list.values())
+            self.cached_fastbins_addr_list = set().union(*self.cached_fastbins_list.values())
+            self.cached_unsortedbin_addr_list = self.cached_unsortedbin_list[0]
+            self.cached_smallbins_addr_list = set().union(*self.cached_smallbins_list.values())
             self.cached_largebins_addr_list = set().union(*self.cached_largebins_list.values())
 
+            # dict[address] = ["bins info1", "bins info2", ...]
             self.bins_dict_for_address = {}
             for tcache_idx, tcache_list in self.cached_tcache_list.items():
-                for address in set(tcache_list):
+                for address in tcache_list:
                     pos = ",".join([str(i + 1) for i, x in enumerate(tcache_list) if x == address])
                     sz = GlibcHeap.get_binsize_table()["tcache"][tcache_idx]["size"]
                     m = "tcache[idx={:d},sz={:#x}][{:s}/{:d}]".format(tcache_idx, sz, pos, len(tcache_list))
@@ -3928,20 +3947,21 @@ class GlibcHeap:
                     m = "fastbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(fastbin_idx, sz, pos, len(fastbin_list))
                     self.bins_dict_for_address[address] = self.bins_dict_for_address.get(address, []) + [m]
 
+            # dict[base_address] = ["bins info1", "bins info2", ...]
             self.bins_dict_for_base_address = {}
             for _, unsortedbin_list in self.cached_unsortedbin_list.items():
-                for base_address in set(unsortedbin_list):
+                for base_address in unsortedbin_list:
                     pos = ",".join([str(i + 1) for i, x in enumerate(unsortedbin_list) if x == base_address])
                     m = "unsortedbins[{:s}/{:d}]".format(pos, len(unsortedbin_list))
                     self.bins_dict_for_base_address[base_address] = self.bins_dict_for_base_address.get(base_address, []) + [m]
             for smallbin_idx, smallbin_list in self.cached_smallbins_list.items():
-                for base_address in set(smallbin_list):
+                for base_address in smallbin_list:
                     pos = ",".join([str(i + 1) for i, x in enumerate(smallbin_list) if x == base_address])
                     sz = GlibcHeap.get_binsize_table()["small_bins"][smallbin_idx]["size"]
                     m = "smallbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(smallbin_idx, sz, pos, len(smallbin_list))
                     self.bins_dict_for_base_address[base_address] = self.bins_dict_for_base_address.get(base_address, []) + [m]
             for largebin_idx, largebin_list in self.cached_largebins_list.items():
-                for base_address in set(largebin_list):
+                for base_address in largebin_list:
                     pos = ",".join([str(i + 1) for i, x in enumerate(largebin_list) if x == base_address])
                     sz_min = GlibcHeap.get_binsize_table()["large_bins"][largebin_idx]["size_min"]
                     sz_max = GlibcHeap.get_binsize_table()["large_bins"][largebin_idx]["size_max"]
@@ -4079,7 +4099,10 @@ class GlibcHeap:
         fd = fwd # for compat
 
         def get_bkw_ptr(self):
-            return read_int_from_memory(self.address + self.ptrsize)
+            try:
+                return read_int_from_memory(self.address + self.ptrsize)
+            except gdb.MemoryError:
+                return None
 
         @property
         def bck(self):
@@ -4206,40 +4229,57 @@ class GlibcHeap:
             size_c = Color.colorify_hex(self.get_chunk_size(), Config.get_gef_setting("theme.heap_chunk_size"))
             base_c = Color.colorify_hex(self.chunk_base_address, Config.get_gef_setting("theme.heap_chunk_address_freed"))
             addr_c = Color.colorify_hex(self.address, Config.get_gef_setting("theme.heap_chunk_address_freed"))
+            corrupted_msg_color = Config.get_gef_setting("theme.heap_corrupted_msg")
             flags = self.flags_as_string()
 
             # large bins
             if arena.is_chunk_in_largebins(self):
                 fd = ProcessMap.lookup_address(self.fd)
                 bk = ProcessMap.lookup_address(self.bk)
+                if not fd.valid or not bk.valid:
+                    err = ", {:s}".format(Color.colorify("corrupted", corrupted_msg_color))
+                else:
+                    err = ""
                 if is_valid_addr(self.fd_nextsize) or is_valid_addr(self.bk_nextsize):
                     # largebin and valid (fd|bk)_nextsize
                     fd_nextsize = ProcessMap.lookup_address(self.fd_nextsize)
                     bk_nextsize = ProcessMap.lookup_address(self.bk_nextsize)
-                    fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s}, fd_nextsize={!s}, bk_nextsize={!s})"
-                    msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk, fd_nextsize, bk_nextsize)
+                    fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s}, fd_nextsize={!s}, bk_nextsize={!s}{:s})"
+                    msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk, fd_nextsize, bk_nextsize, err)
                 else:
-                    fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
-                    msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk)
+                    fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s}{:s})"
+                    msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk, err)
 
             # small bins / unsorted bin
             elif arena.is_chunk_in_smallbins(self) or arena.is_chunk_in_unsortedbin(self):
                 fd = ProcessMap.lookup_address(self.fd)
                 bk = ProcessMap.lookup_address(self.bk)
-                fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s})"
-                msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk)
+                if not fd.valid or not bk.valid:
+                    err = ", {:s}".format(Color.colorify("corrupted", corrupted_msg_color))
+                else:
+                    err = ""
+                fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s}{:s})"
+                msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk, err)
 
             # tcache / fastbins
             elif arena.is_chunk_in_fastbins(self) or arena.is_chunk_in_tcache(self):
                 fd = self.get_fwd_ptr(sll=False)
                 if get_libc_version() < (2, 32):
                     fd = ProcessMap.lookup_address(fd)
-                    fmt = "{:s}(base={:s}. addr={:s}, size={:s}, flags={:s}, fd={!s})"
-                    msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd)
+                    if fd.value != 0 and not fd.valid:
+                        err = ", {:s}".format(Color.colorify("corrupted", corrupted_msg_color))
+                    else:
+                        err = ""
+                    fmt = "{:s}(base={:s}. addr={:s}, size={:s}, flags={:s}, fd={!s}{:s})"
+                    msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, err)
                 else:
                     decoded_fd = ProcessMap.lookup_address(self.get_fwd_ptr(sll=True))
-                    fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={:#x}(={!s}))"
-                    msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, decoded_fd)
+                    if decoded_fd.value != 0 and not decoded_fd.valid:
+                        err = ", {:s}".format(Color.colorify("corrupted", corrupted_msg_color))
+                    else:
+                        err = ""
+                    fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={:#x}(={!s}){:s})"
+                    msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, decoded_fd, err)
 
             # top
             elif arena.top == self.chunk_base_address:
@@ -20291,38 +20331,73 @@ class GlibcHeapBinsCommand(GenericCommand):
         else:
             size_str = "any"
 
-        m = []
-        bins_addr = ProcessMap.lookup_address(bins_addr)
-        fw_ = ProcessMap.lookup_address(fw)
-        bk_ = ProcessMap.lookup_address(bk)
-        m.append("{:s}[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}".format(
-            bin_name, index, size_str, bins_addr, fw_, bk_,
-        ))
         corrupted_msg_color = Config.get_gef_setting("theme.heap_corrupted_msg")
+        corrupted = False
 
-        seen = []
+        # follow the link backward
+        mb = []
+        seen_bk = []
         nb_chunk = 0
-        while fw != head:
-            chunk = GlibcHeap.GlibcChunk(fw, from_base=True)
-            if chunk.address in seen:
-                m.append(Color.colorify(
+        while bk != head:
+            chunk = GlibcHeap.GlibcChunk(bk, from_base=True)
+            if chunk.address in seen_bk:
+                mb.append(Color.colorify(
                     "{:s}{:#x} [loop detected]".format(RIGHT_ARROW, chunk.chunk_base_address),
                     corrupted_msg_color,
                 ))
+                corrupted = True
                 break
-            seen.append(chunk.address)
+            seen_bk.append(chunk.address)
             try:
-                m.append("{:s}{:s}".format(RIGHT_ARROW, chunk.to_str(arena)))
+                mb.append("{:s}{:s}".format(RIGHT_ARROW, chunk.to_str(arena)))
             except gdb.MemoryError:
-                m.append(Color.colorify(
+                mb.append(Color.colorify(
                     "{:s}{:#x} [Corrupted chunk]".format(RIGHT_ARROW, chunk.chunk_base_address),
                     corrupted_msg_color,
                 ))
+                corrupted = True
                 break
-            fw = chunk.fwd
+            bk = chunk.bck
             nb_chunk += 1
-        if m:
-            gef_print("\n".join(m))
+
+        if corrupted:
+            # follow the link forward
+            mf = []
+            seen_fw = []
+            while fw != head:
+                chunk = GlibcHeap.GlibcChunk(fw, from_base=True)
+                if chunk.address in seen_bk:
+                    break
+                if chunk.address in seen_fw:
+                    mf.append(Color.colorify(
+                        "{:s}{:#x} [loop detected]".format(RIGHT_ARROW, chunk.chunk_base_address),
+                        corrupted_msg_color,
+                    ))
+                    break
+                seen_fw.append(chunk.address)
+                try:
+                    mf.append("{:s}{:s}".format(RIGHT_ARROW, chunk.to_str(arena)))
+                except gdb.MemoryError:
+                    mf.append(Color.colorify(
+                        "{:s}{:#x} [Corrupted chunk]".format(RIGHT_ARROW, chunk.chunk_base_address),
+                        corrupted_msg_color,
+                    ))
+                    break
+                fw = chunk.fwd
+
+        # concat
+        m = []
+        m.append("{:s}[idx={:d}, size={:s}, @{!s}]: fd={!s}, bk={!s}".format(
+            bin_name, index, size_str,
+            ProcessMap.lookup_address(bins_addr),
+            ProcessMap.lookup_address(fw),
+            ProcessMap.lookup_address(bk),
+        ))
+        if corrupted and mf:
+            m += mf
+        m += mb[::-1]
+
+        gef_print("\n".join(m))
         return nb_chunk
 
     @parse_args
@@ -74823,15 +74898,16 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
             self.bins_info["large_bins"][i] = seen
 
         # make table
+        # dict[address] = ["bins info1", "bins info2", ...]
         self.bins_dict_for_address = {}
         for fastbin_idx, fastbin_list in self.bins_info["fastbins"].items():
-            for address in set(fastbin_list):
+            for address in fastbin_list:
                 pos = ",".join([str(i + 1) for i, x in enumerate(fastbin_list) if x == address])
                 sz = self.fast_size_table[fastbin_idx][is_32bit()]
                 m = "fastbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(fastbin_idx, sz, pos, len(fastbin_list))
                 self.bins_dict_for_address[address] = self.bins_dict_for_address.get(address, []) + [m]
         for smallbin_idx, smallbin_list in self.bins_info["small_bins"].items():
-            for address in set(smallbin_list):
+            for address in smallbin_list:
                 pos = ",".join([str(i + 1) for i, x in enumerate(smallbin_list) if x == address])
                 if smallbin_idx == 0:
                     m = "unsortedbins[{:s}/{:d}]".format(pos, len(smallbin_list))
@@ -74844,7 +74920,7 @@ class UclibcNgVisualHeapCommand(UclibcNgHeapDumpCommand):
                     m = "smallbins[idx={:d},sz={:s}][{:s}/{:d}]".format(smallbin_idx, sz, pos, len(smallbin_list))
                 self.bins_dict_for_address[address] = self.bins_dict_for_address.get(address, []) + [m]
         for largebin_idx, largebin_list in self.bins_info["large_bins"].items():
-            for address in set(largebin_list):
+            for address in largebin_list:
                 pos = ",".join([str(i + 1) for i, x in enumerate(largebin_list) if x == address])
                 size = self.size_table[self.NSMALLBINS + largebin_idx][is_32bit()]
                 if isinstance(size, tuple):
