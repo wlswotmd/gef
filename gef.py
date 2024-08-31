@@ -25737,13 +25737,12 @@ class EntryBreakBreakpoint(gdb.Breakpoint):
     def stop(self):
         EventHandler.__gef_check_disabled_bp__ = True
         self.enabled = False
-
         Cache.reset_gef_caches()
         return True
 
 
 @register_command
-class EntryPointBreakCommand(GenericCommand):
+class EntryBreakCommand(GenericCommand):
     """Try to find best entry point and set a temporary breakpoint on it."""
 
     _cmdline_ = "entry-break"
@@ -25768,6 +25767,32 @@ class EntryPointBreakCommand(GenericCommand):
             ]),
             "Possible symbols for entry points",
         )
+        return
+
+    @staticmethod
+    def stop_callback(_):
+        # unhook
+        EventHooking.gef_on_new_unhook(EntryBreakCommand.stop_callback)
+        ContextCommand.unhide_context()
+
+        # get section
+        fpath = Path.get_filepath()
+        executable_section = ProcessMap.process_lookup_path(fpath, perm_mask=Permission.EXECUTE)
+
+        if executable_section.page_start <= current_arch.pc < executable_section.page_end:
+            # already stopped around entry point.
+            # However, it automatically resumes execution, so we need a breakpoint.
+            next_insn = get_insn_next(current_arch.pc)
+            info("Breaking at: {:#x}".format(next_insn.address))
+            EntryBreakBreakpoint("*{:#x}".format(next_insn.address))
+        else:
+            # stopped in ld, so continue to entry-point.
+            base_address = ProcessMap.process_lookup_path(fpath).page_start
+            entry_address = base_address + Elf.get_elf().e_entry
+            info("Breaking at entry-point: {:#x}".format(entry_address))
+            EntryBreakBreakpoint("*{:#x}".format(entry_address))
+
+        # automatically continue
         return
 
     # Need not @parse_args because argparse can't stop interpreting argument for start.
@@ -25818,50 +25843,23 @@ class EntryPointBreakCommand(GenericCommand):
         # instead of `set stop-on-solib-events 1` because shared object are never loaded.
         # At least gdb 10.1 (Ubuntu 18.04) supports gdb.events.new_objfile.
         ContextCommand.hide_context()
-        EventHooking.gef_on_new_hook(EntryPointBreakCommand.stop_callback)
+        EventHooking.gef_on_new_hook(EntryBreakCommand.stop_callback)
         gdb.execute("run {}".format(" ".join(argv)))
         return
 
-    @staticmethod
-    def stop_callback(_):
-        # unhook
-        EventHooking.gef_on_new_unhook(EntryPointBreakCommand.stop_callback)
-        ContextCommand.unhide_context()
 
-        # get section
-        fpath = Path.get_filepath()
-        executable_section = ProcessMap.process_lookup_path(fpath, perm_mask=Permission.EXECUTE)
-
-        if executable_section.page_start <= current_arch.pc < executable_section.page_end:
-            # already stopped around entry point.
-            # However, it automatically resumes execution, so we need a breakpoint.
-            next_insn = get_insn_next(current_arch.pc)
-            info("Breaking at: {:#x}".format(next_insn.address))
-            EntryBreakBreakpoint("*{:#x}".format(next_insn.address))
-        else:
-            # stopped in ld, so continue to entry-point.
-            base_address = ProcessMap.process_lookup_path(fpath).page_start
-            entry_address = base_address + Elf.get_elf().e_entry
-            info("Breaking at entry-point: {:#x}".format(entry_address))
-            EntryBreakBreakpoint("*{:#x}".format(entry_address))
-
-        # automatically continue
-        return
-
-
-class NamedBreakpoint(gdb.Breakpoint):
+class NamedBreakBreakpoint(gdb.Breakpoint):
     """Breakpoint which shows a specified name."""
 
-    def __init__(self, location, name):
-        super().__init__(location, gdb.BP_BREAKPOINT, internal=False, temporary=False)
+    def __init__(self, loc, name):
+        super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False, temporary=False)
         self.name = name
-        self.loc = location
-
+        self.loc = loc
         return
 
     def stop(self):
         Cache.reset_gef_caches()
-        msg = "Hit breakpoint {} ({})".format(self.loc, Color.colorify(self.name, "bold red"))
+        msg = "Hit breakpoint *{:#x} ({})".format(self.loc, Color.colorify(self.name, "bold red"))
         ContextCommand.push_context_message("info", msg)
         return True
 
@@ -25883,20 +25881,18 @@ class NamedBreakCommand(GenericCommand):
 
     @parse_args
     def do_invoke(self, args):
-        if args.location is not None:
-            location = "*{:#x}".format(args.location)
-        else:
-            location = "*{:#x}".format(current_arch.pc)
-        NamedBreakpoint(location, args.name)
+        location = args.location
+        if location is None:
+            location = current_arch.pc
+        NamedBreakBreakpoint(location, args.name)
         return
 
 
-class CommandBreakpoint(gdb.Breakpoint):
+class CommandBreakBreakpoint(gdb.Breakpoint):
     """Breakpoint which executes user defined command silently and continue."""
 
     def __init__(self, loc, cmd):
         super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False, temporary=False)
-        self.loc = loc
         self.cmd = cmd
         return
 
@@ -25926,7 +25922,7 @@ class CommandBreakCommand(GenericCommand):
         location = args.location
         if location is None:
             location = current_arch.pc
-        CommandBreakpoint(location, args.command)
+        CommandBreakBreakpoint(location, args.command)
         return
 
 
