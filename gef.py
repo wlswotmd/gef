@@ -25926,6 +25926,63 @@ class CommandBreakCommand(GenericCommand):
         return
 
 
+class RegisterDumpBreakBreakpoint(gdb.Breakpoint):
+    """Breakpoint which dump registers silently and continue."""
+
+    def __init__(self, loc, tag, regs):
+        super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=False, temporary=False)
+        self.loc = loc
+        self.tag = tag
+        self.regs = regs
+        return
+
+    def stop(self):
+        Cache.reset_gef_caches()
+        out = []
+        for r in self.regs:
+            try:
+                v = get_register(r)
+            except gdb.error:
+                continue
+            out.append("{:s}={:#x}".format(r, v))
+
+        colored_addr = Color.colorify_hex(self.loc, "bold yellow")
+        tag = ""
+        if self.tag:
+            tag = "{:s}: ".format(self.tag)
+        gef_print("{:s}: {:s}{:s}".format(colored_addr, tag, ", ".join(out)))
+        return False
+
+
+@register_command
+class RegisterDumpBreakCommand(GenericCommand):
+    """Set a breakpoint which dumps registers silently and continue, if hit."""
+
+    _cmdline_ = "regdump-break"
+    _category_ = "01-b. Debugging Support - Breakpoint"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("location", metavar="LOCATION", nargs="?", type=AddressUtil.parse_address,
+                        help="the address to set breakpoint. (default: current_arch.pc)")
+    parser.add_argument("-t", "--tag", help="the tag if breakpoint is hit.")
+    parser.add_argument("-r", "--regs", action="append", help="the register name dumped if breakpoint is hit.")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0x55555555aab9 -r rax\n".format(_cmdline_)
+    _example_ += '{:s} 0x55555555aab9 -t "state changed" -r rax'.format(_cmdline_)
+
+    @parse_args
+    def do_invoke(self, args):
+        if not args.regs:
+            self.usage()
+            return
+        location = args.location
+        if location is None:
+            location = current_arch.pc
+        RegisterDumpBreakBreakpoint(location, args.tag, args.regs)
+        return
+
+
 class TakenOrNotBreakpoint(gdb.Breakpoint):
     """Breakpoint which only branch is taken or not."""
 
