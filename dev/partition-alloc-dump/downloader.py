@@ -108,7 +108,7 @@ def memo():
     print("  [term3 (for renderer process)]")
     print("""    gdb -q -p $(ps -ef | grep -- "--[t]ype=renderer" | awk '{print $2}')""")
     print("  [term3 (for browser process)]")
-    print("""    gdb -q -p $(ps -ef | grep "\./[c]hrome" | grep -v type | grep -v sudo | awk '{print $2}')""")
+    print("""    gdb -q -p $(ps -ef | grep "\\./[c]hrome" | grep -v type | grep -v sudo | awk '{print $2}')""")
     return
 
 

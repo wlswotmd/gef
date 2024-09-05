@@ -73238,8 +73238,6 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
         https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/src/partition_alloc/partition_root.h
         struct base::PartitionRoot {
             struct alignas(internal::kPartitionCachelineSize) Settings {
-                QuarantineMode quarantine_mode = QuarantineMode::kAlwaysDisabled; // uint8_t
-                ScanMode scan_mode = ScanMode::kDisabled; // uint8_t
                 BucketDistribution bucket_distribution = BucketDistribution::kNeutral; // uint8_t
                 bool with_thread_cache = false;
                 bool use_cookie = false;
@@ -73250,6 +73248,7 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
                 bool zapping_by_free_flags = false;
                 bool scheduler_loop_quarantine = false;
                 bool memory_tagging_enabled_ = false;
+                bool use_random_memory_tagging_enabled_ = false;
                 TagViolationReportingMode memory_tagging_reporting_mode_ = TagViolationReportingMode::kUndefined;
                 ThreadIsolationOption thread_isolation;
                 bool use_pool_offset_freelists = false;
@@ -73276,12 +73275,14 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
             uintptr_t next_super_page = 0;
             uintptr_t next_partition_page = 0;
             uintptr_t next_partition_page_end = 0;
-            SuperPageExtentEntry* current_extent = nullptr;
-            SuperPageExtentEntry* first_extent = nullptr;
-            DirectMapExtent* direct_map_list PA_GUARDED_BY(internal::PartitionRootLock(this)) = nullptr;
+            ReadOnlySuperPageExtentEntry* current_extent = nullptr;
+            ReadOnlySuperPageExtentEntry* first_extent = nullptr;
+            ReadOnlyDirectMapExtent* direct_map_list PA_GUARDED_BY(internal::PartitionRootLock(this)) = nullptr;
             SlotSpanMetadata* global_empty_slot_span_ring[internal::kMaxFreeableSpans] PA_GUARDED_BY(internal::PartitionRootLock(this)) = {};
             int16_t global_empty_slot_span_ring_index PA_GUARDED_BY(internal::PartitionRootLock(this)) = 0;
             int16_t global_empty_slot_span_ring_size PA_GUARDED_BY(internal::PartitionRootLock(this)) = internal::kDefaultEmptySlotSpanRingSize;
+            uint16_t purge_generation PA_GUARDED_BY(internal::PartitionRootLock(this)) = 0;
+            uint16_t purge_next_bucket_index PA_GUARDED_BY(internal::PartitionRootLock(this)) = 0;
             uintptr_t inverted_self = 0;
             std::atomic<int> thread_caches_being_constructed_{0};
             bool quarantine_always_for_testing = false;
@@ -73369,7 +73370,11 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
         _root["global_empty_slot_span_ring_index"] = u16(read_memory(current, 2))
         current += 2
         _root["global_empty_slot_span_ring_size"] = u16(read_memory(current, 2))
-        current += ptrsize - 2 # with pad
+        current += 2
+        _root["purge_generation"] = u16(read_memory(current, 2))
+        current += 2
+        _root["purge_next_bucket_index"] = u16(read_memory(current, 2))
+        current += ptrsize - 6 # with pad
         _root["inverted_self"] = read_int_from_memory(current)
         current += ptrsize
         _root["thread_caches_being_constructed_"] = u32(read_memory(current, 4))
@@ -73501,15 +73506,13 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
           PartitionFreelistEntry* freelist_head = nullptr;
           SlotSpanMetadata* next_slot_span = nullptr;
           PartitionBucket* const bucket = nullptr;
+          uint32_t num_allocated_slots : kMaxSlotsPerSlotSpanBits; // 15 bits
+          uint32_t num_unprovisioned_slots : kMaxSlotsPerSlotSpanBits; // 15 bits
           uint32_t marked_full : 1
-          uint32_t num_allocated_slots : kMaxSlotsPerSlotSpanBits; // 13 bits
-          uint32_t num_unprovisioned_slots : kMaxSlotsPerSlotSpanBits; // 13 bits
           const uint32_t can_store_raw_size_ : 1;
-          uint32_t freelist_is_sorted_ : 1;
-          uint32_t unused1_ : (32 - 1 - 2 * kMaxSlotsPerSlotSpanBits - 1 - 1); // 3 bits
+          uint16_t freelist_is_sorted_ : 1;
           uint16_t in_empty_cache_ : 1;
-          uint16_t empty_cache_index_ : kMaxEmptyCacheIndexBits; // 7 bits
-          uint16_t unused2_ : (16 - 1 - kMaxEmptyCacheIndexBits); // 8 bits
+          uint16_t empty_cache_index_ : kMaxEmptyCacheIndexBits; // 10 bits
         };
         """
         _slot_span["freelist_head"] = read_int_from_memory(current)
@@ -73520,17 +73523,16 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
         current += ptrsize
         x = u32(read_memory(current, 4))
         current += 4
-        _slot_span["marked_full"] = (x >> 0) & 1
-        _slot_span["num_allocated_slots"] = (x >> 1) & 0x1fff
-        _slot_span["num_unprovisioned_slots"] = (x >> 14) & 0x1fff
-        _slot_span["can_store_raw_size_"] = (x >> 27) & 1
-        _slot_span["freelist_is_sorted_"] = (x >> 28) & 1
-        _slot_span["unused1_"] = (x >> 29) & 0x7
+        _slot_span["num_allocated_slots"] = (x >> 0) & 0x7fff
+        _slot_span["num_unprovisioned_slots"] = (x >> 15) & 0x7fff
+        _slot_span["marked_full"] = (x >> 30) & 1
+        _slot_span["can_store_raw_size_"] = (x >> 31) & 1
+
         x = u16(read_memory(current, 2))
         current += 2
-        _slot_span["in_empty_cache_"] = (x >> 0) & 1
-        _slot_span["empty_cache_index_"] = (x >> 1) & 0x7f
-        _slot_span["unused2_"] = (x >> 8) & 0xff
+        _slot_span["freelist_is_sorted_"] = (x >> 0) & 1
+        _slot_span["in_empty_cache_"] = (x >> 1) & 1
+        _slot_span["empty_cache_index_"] = (x >> 2) & 0x3ff
 
         SlotSpan = collections.namedtuple("SlotSpan", _slot_span.keys())
         slot_span = SlotSpan(*_slot_span.values())
@@ -73582,11 +73584,11 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
         self.out.append("uintptr_t next_super_page:                             {:s}".format(self.P(root.next_super_page)))
         self.out.append("uintptr_t next_partition_page:                         {:s}".format(self.P(root.next_partition_page)))
         self.out.append("uintptr_t next_partition_page_end:                     {:s}".format(self.P(root.next_partition_page_end)))
-        self.out.append("SuperPageExtentEntry* current_extent:                  {:s}".format(self.C(root.current_extent)))
+        self.out.append("ReadOnlySuperPageExtentEntry* current_extent:          {:s}".format(self.C(root.current_extent)))
         self.dump_extent_list(root.current_extent)
-        self.out.append("SuperPageExtentEntry* first_extent:                    {:s}".format(self.C(root.first_extent)))
+        self.out.append("ReadOnlySuperPageExtentEntry* first_extent:            {:s}".format(self.C(root.first_extent)))
         self.dump_extent_list(root.first_extent)
-        self.out.append("DirectMapExtent* direct_map_list:                      {:s}".format(self.C(root.direct_map_list)))
+        self.out.append("ReadOnlyDirectMapExtent* direct_map_list:              {:s}".format(self.C(root.direct_map_list)))
         self.dump_direct_map_list(root.direct_map_list, root)
         ring_len = len(root.global_empty_slot_span_ring)
         if self.verbose:
@@ -73598,6 +73600,8 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
             self.out.append("SlotSpan* global_empty_slot_span_ring[{:3d}]:             ...".format(ring_len))
         self.out.append("int16_t global_empty_slot_span_ring_index:             {:#x}".format(root.global_empty_slot_span_ring_index))
         self.out.append("int16_t global_empty_slot_span_ring_size:              {:#x}".format(root.global_empty_slot_span_ring_size))
+        self.out.append("uint16_t purge_generation:                             {:#x}".format(root.purge_generation))
+        self.out.append("uint16_t purge_next_bucket_index:                      {:#x}".format(root.purge_next_bucket_index))
         inv_inv = root.inverted_self ^ ((1 << (current_arch.ptrsize * 8)) - 1)
         inv_inv = str(ProcessMap.lookup_address(inv_inv))
         self.out.append("uintptr_t inverted_self:                               {:#x} (=~{:s})".format(root.inverted_self, inv_inv))
