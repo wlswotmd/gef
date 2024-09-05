@@ -8461,7 +8461,7 @@ class SH4(Architecture):
             b"\x13\xc3", # trapa #19
 
             b"\x83\x60", # mov r8, r0
-            b"\x93\x63", # mov r9,  r3
+            b"\x93\x63", # mov r9, r3
             b"\xa3\x64", # mov r10, r4
             b"\xb3\x65", # mov r11, r5
             b"\xc3\x66", # mov r12, r6
@@ -10014,19 +10014,19 @@ class XTENSA(Architecture):
             fmt = "0b{:04b}_0010_1010_{:04b}_{:08b}"
             val = fmt.format(reg, (imm >> 8) & 0xf, imm & 0xff)
             val = int(val, 2)
-            return bytes([(val >> 16) & 0xff, (val >> 8) & 0xff,  val & 0xff])
+            return bytes([(val >> 16) & 0xff, (val >> 8) & 0xff, val & 0xff])
 
         def slli(reg1, reg2, imm):
             fmt = "0b{:04b}_0000_{:04b}_{:04b}_000{:01b}_0001"
             val = fmt.format((32 - imm) & 0xf, reg1, reg2, ((32 - imm) >> 4) & 1)
             val = int(val, 2)
-            return bytes([(val >> 16) & 0xff, (val >> 8) & 0xff,  val & 0xff])
+            return bytes([(val >> 16) & 0xff, (val >> 8) & 0xff, val & 0xff])
 
         def orr(reg1, reg2, reg3):
             fmt = "0b{:04b}_0000_{:04b}_{:04b}_0010_0000"
             val = fmt.format(reg3, reg1, reg2)
             val = int(val, 2)
-            return bytes([(val >> 16) & 0xff, (val >> 8) & 0xff,  val & 0xff])
+            return bytes([(val >> 16) & 0xff, (val >> 8) & 0xff, val & 0xff])
 
         insns = [
             movi(2, (addr >> 21) & 0x7ff), # mov a2, addr[31:21]
@@ -14131,8 +14131,7 @@ class ResetCacheCommand(GenericCommand):
     _category_ = "99. GEF Maintenance Command"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("--hard", action="store_true",
-                        help="also delete under {:s}.".format(GEF_TEMP_DIR))
+    parser.add_argument("--hard", action="store_true", help="also delete under {:s}.".format(GEF_TEMP_DIR))
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -14160,8 +14159,7 @@ class ResetBreakpointsCommand(GenericCommand):
     _category_ = "99. GEF Maintenance Command"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-c", "--commit", action="store_true",
-                        help="actually perform delete.")
+    parser.add_argument("-c", "--commit", action="store_true", help="actually perform delete.")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -15119,7 +15117,7 @@ class DisplayTypeCommand(GenericCommand, BufferingOutput):
     def do_invoke(self, args):
         # lookup type
         tp = GefUtil.cached_lookup_type(args.type)
-        if not args.type.startswith(("struct", "union",  "enum")):
+        if not args.type.startswith(("struct", "union", "enum")):
             if tp is None:
                 tp = GefUtil.cached_lookup_type("struct {:s}".format(args.type))
             if tp is None:
@@ -22728,7 +22726,7 @@ class ChecksecCommand(GenericCommand):
         if sec["PIE"]:
             gef_print("{:<40s}: {:s}".format("PIE", self.get_colored_msg(sec["PIE"])))
         else:
-            vaddr = min([p.p_vaddr for p in elf.phdrs if p.p_type==Elf.Phdr.PT_LOAD])
+            vaddr = min([p.p_vaddr for p in elf.phdrs if p.p_type == Elf.Phdr.PT_LOAD])
             gef_print("{:<40s}: {:s} ({:#x})".format("PIE", self.get_colored_msg(sec["PIE"]), vaddr))
 
         # RELRO
@@ -31760,7 +31758,7 @@ class GotCommand(GenericCommand):
             else:
                 fmt = "{:<{:d}s} {:s} {:{:d}s} {:s} {:{:d}s} {:s} {:{:d}}"
                 legend = [
-                    "Name", name_width,  VERTICAL_LINE,
+                    "Name", name_width, VERTICAL_LINE,
                     "PLT", width, VERTICAL_LINE,
                     "GOT", width, VERTICAL_LINE, "GOT value", width,
                 ]
