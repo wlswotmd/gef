@@ -2701,7 +2701,7 @@ class Instruction:
                 if r:
                     additional_1 = last_operands
                     operands = operands[:-1]
-            elif is_arm32():
+            elif is_arm32() or is_arm32_cortex_m():
                 r = self.RE_SPLIT_LAST_OPERAND_ARM32.match(last_operands) # r";.+$"
                 if r:
                     additional_1 = last_operands
@@ -5018,7 +5018,7 @@ class Disasm:
 
             location = Symbol.get_symbol_string(address, nosymbol_string=" <NO_SYMBOL>")
 
-            if is_arm32() and insn["addr"] & 1:
+            if (is_arm32() or is_arm32_cortex_m()) and insn["addr"] & 1:
                 opcodes = read_memory(insn["addr"] - 1, insn["length"])
             else:
                 opcodes = read_memory(insn["addr"], insn["length"])
@@ -5139,7 +5139,7 @@ class Disasm:
         read_size = gef_getpagesize() - (location & gef_getpagesize_mask_low())
 
         # fix for arm thumb2 mode
-        if is_arm32() and read_addr & 1:
+        if (is_arm32() or is_arm32_cortex_m()) and read_addr & 1:
             read_addr -= 1
             read_size += 1
 
@@ -5982,26 +5982,76 @@ class ARM(Architecture):
         "ARMV7",
     ]
 
-    all_registers = [
-        "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
-        "$r8", "$r9", "$r10", "$r11", "$r12", "$sp", "$lr", "$pc",
-        "$cpsr",
-    ]
+    __mode = None
+
+    def is_cortex_m(self):
+        if self.__mode == "Cortex-A":
+            return False
+        if self.__mode == "Cortex-M":
+            return True
+
+        if self.__mode is None:
+            # is_alive and get_register are not yet defined here and cannot be used.
+            try:
+                gdb.execute("info registers cpsr", to_string=True)
+                self.__mode = "Cortex-A"
+                return False
+            except gdb.error:
+                pass
+            try:
+                gdb.execute("info registers xpsr", to_string=True)
+                self.__mode = "Cortex-M"
+                return True
+            except gdb.error:
+                pass
+        # default is Cortex-A
+        return False
+
+    @property
+    def all_registers(self):
+        if self.is_cortex_m():
+            return [
+                "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
+                "$r8", "$r9", "$r10", "$r11", "$r12", "$sp", "$lr", "$pc",
+                "$xpsr",
+                "$msp", "$psp", "$primask", "$basepri", "$faultmask", "$control",
+            ]
+        else:
+            return [
+                "$r0", "$r1", "$r2", "$r3", "$r4", "$r5", "$r6", "$r7",
+                "$r8", "$r9", "$r10", "$r11", "$r12", "$sp", "$lr", "$pc",
+                "$cpsr",
+            ]
+
+    @property
+    def flag_register(self):
+        if self.is_cortex_m():
+            return "$xpsr"
+        else:
+            return "$cpsr"
+
+    @property
+    def thumb_bit(self):
+        if self.is_cortex_m():
+            return 24
+        else:
+            return 5
+
+    @property
+    def flags_table(self):
+        return {
+            31: "negative",
+            30: "zero",
+            29: "carry",
+            28: "overflow",
+            7: "interrupt",
+            6: "fast",
+            self.thumb_bit: "thumb",
+        }
+
     alias_registers = {
         "$r11": "$fp", "$r12": "$ip",
         "$sp": "$r13", "$lr": "$r14", "$pc": "$r15",
-    }
-    flag_register = "$cpsr"
-    thumb_bit = 5
-
-    flags_table = {
-        31: "negative",
-        30: "zero",
-        29: "carry",
-        28: "overflow",
-        7: "interrupt",
-        6: "fast",
-        thumb_bit: "thumb",
     }
     return_register = "$r0"
     function_parameters = ["$r0", "$r1", "$r2", "$r3"]
@@ -6237,6 +6287,9 @@ class ARM(Architecture):
         if val is None:
             reg = self.flag_register
             val = get_register(reg) & 0xffffffff
+
+        if self.is_cortex_m():
+            return Architecture.flags_to_human(val, self.flags_table)
 
         key = val & 0b11111
         CurrentMode, CurrentPL = self.__mode_dic[key]
@@ -11863,8 +11916,9 @@ def only_if_specific_arch(arch=()):
                 "x86_32": is_x86_32,
                 "x86_64": is_x86_64,
                 "x86_16": is_x86_16,
-                "ARM64": is_arm64,
                 "ARM32": is_arm32,
+                "ARM32M": is_arm32_cortex_m,
+                "ARM64": is_arm64,
                 "MIPS32": is_mips32,
                 "MIPS64": is_mips64,
                 "MIPSN32": is_mipsn32,
@@ -11912,8 +11966,9 @@ def exclude_specific_arch(arch=()):
                 "x86_32": is_x86_32,
                 "x86_64": is_x86_64,
                 "x86_16": is_x86_16,
-                "ARM64": is_arm64,
                 "ARM32": is_arm32,
+                "ARM32M": is_arm32_cortex_m,
+                "ARM64": is_arm64,
                 "MIPS32": is_mips32,
                 "MIPS64": is_mips64,
                 "MIPSN32": is_mipsn32,
@@ -13230,6 +13285,8 @@ class UnicornKeystoneCapstone:
             arch = current_arch.arch
             mode = current_arch.mode
             endian = Endian.is_big_endian()
+        if arch is None:
+            arch = current_arch.arch
         if (arch, mode) == ("RISCV", "32"):
             mode = "RISCV32"
         elif (arch, mode) == ("RISCV", "64"):
@@ -13261,6 +13318,8 @@ class UnicornKeystoneCapstone:
             arch = current_arch.arch
             mode = current_arch.mode
             endian = Endian.is_big_endian()
+        if arch is None:
+            arch = current_arch.arch
         # hacky patch for applying to capstone's mode
         if (arch, mode) == ("RISCV", "32"):
             mode = ("RISCV32", "RISCVC")
@@ -13289,6 +13348,8 @@ class UnicornKeystoneCapstone:
             arch = current_arch.arch
             mode = current_arch.mode
             endian = Endian.is_big_endian()
+        if arch is None:
+            arch = current_arch.arch
         # hacky patch for applying to capstone's mode
         if arch == "ARM64":
             mode = None
@@ -13440,8 +13501,13 @@ def is_x86():
 
 
 def is_arm32():
-    """Architecture determination function for ARM 32 bit."""
-    return current_arch and current_arch.arch == "ARM"
+    """Architecture determination function for ARM 32 bit (Cortex-A)."""
+    return current_arch and current_arch.arch == "ARM" and not current_arch.is_cortex_m()
+
+
+def is_arm32_cortex_m():
+    """Architecture determination function for ARM 32 bit (Cortex-M)."""
+    return current_arch and current_arch.arch == "ARM" and current_arch.is_cortex_m()
 
 
 def is_arm64():
@@ -21793,6 +21859,8 @@ class ArchInfoCommand(GenericCommand):
         gef_print(titlify("GEF architecture information"))
         gef_print("{:30s} {:s} {!s}".format("current_arch.arch", RIGHT_ARROW, current_arch.arch))
         gef_print("{:30s} {:s} {!s}".format("current_arch.mode", RIGHT_ARROW, current_arch.mode))
+        if is_arm32() or is_arm32_cortex_m():
+            gef_print("{:30s} {:s} {!s}".format("current_arch.__mode", RIGHT_ARROW, current_arch._ARM__mode))
         gef_print("{:30s} {:s} {!s}".format("current_arch.ptrsize", RIGHT_ARROW, current_arch.ptrsize))
 
         if current_arch.instruction_length is None:
@@ -26592,7 +26660,7 @@ class ContextCommand(GenericCommand):
     RE_MATCH_REG3 = re.compile(r"[xw]\d+")
 
     def context_memory_access(self):
-        if not (is_x86() or is_arm32() or is_arm64()):
+        if not (is_x86() or is_arm32() or is_arm32_cortex_m() or is_arm64()):
             return
 
         inst_iter = Disasm.gef_disassemble(current_arch.pc, 2)
@@ -26630,7 +26698,7 @@ class ContextCommand(GenericCommand):
                 # $rip/$eip points next instruction
                 code_orig, code = code, code.replace("$rip", "$rip+{:#x}".format(codesize))
 
-            elif is_arm32():
+            elif is_arm32() or is_arm32_cortex_m():
                 # add "$" to resiter
                 code = code.replace(" ", "")
                 code = code.replace("#", "")
@@ -28261,7 +28329,7 @@ class PatchNopCommand(PatchCommand):
             info("Not patching since num_bytes == 0")
             return
 
-        if is_arm32() and current_arch.is_thumb() and addr & 1:
+        if (is_arm32() or is_arm32_cortex_m()) and current_arch.is_thumb() and addr & 1:
             addr -= 1
 
         nop_op_len = len(current_arch.nop_insn)
@@ -28350,7 +28418,7 @@ class PatchInfloopCommand(PatchCommand):
         return
 
     def patch_infloop(self, addr):
-        if is_arm32() and current_arch.is_thumb() and addr & 1:
+        if (is_arm32() or is_arm32_cortex_m()) and current_arch.is_thumb() and addr & 1:
             addr -= 1
 
         if Endian.is_big_endian():
@@ -28422,7 +28490,7 @@ class PatchTrapCommand(PatchCommand):
         return
 
     def patch_trap(self, addr):
-        if is_arm32() and current_arch.is_thumb() and addr & 1:
+        if (is_arm32() or is_arm32_cortex_m()) and current_arch.is_thumb() and addr & 1:
             addr -= 1
 
         if Endian.is_big_endian():
@@ -28490,7 +28558,7 @@ class PatchRetCommand(PatchCommand):
         return
 
     def patch_ret(self, addr):
-        if is_arm32() and current_arch.is_thumb() and addr & 1:
+        if (is_arm32() or is_arm32_cortex_m()) and current_arch.is_thumb() and addr & 1:
             addr -= 1
 
         if Endian.is_big_endian():
@@ -28558,7 +28626,7 @@ class PatchSyscallCommand(PatchCommand):
         return
 
     def patch_syscall(self, addr):
-        if is_arm32() and current_arch.is_thumb() and addr & 1:
+        if (is_arm32() or is_arm32_cortex_m()) and current_arch.is_thumb() and addr & 1:
             addr -= 1
 
         if Endian.is_big_endian():
@@ -29342,6 +29410,7 @@ class VMMapCommand(GenericCommand, BufferingOutput):
     @parse_args
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("kgdb",))
+    @exclude_specific_arch(arch=("ARM32M",))
     def do_invoke(self, args):
         if is_qemu_system() or is_vmware():
             info("Redirect to pagewalk (args are ignored)")
@@ -56339,6 +56408,7 @@ class KernelModuleLoadCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         kversion = Kernel.kernel_version()
@@ -61310,7 +61380,7 @@ class ExecAsm:
         # pc
         # This value is used to point to the code location. It is not used to restore registers.
         d["pc"] = current_arch.pc
-        if is_arm32():
+        if is_arm32() or is_arm32_cortex_m():
             if current_arch.is_thumb():
                 d["pc"] -= 1
 
