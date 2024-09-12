@@ -28867,6 +28867,8 @@ class DereferenceCommand(GenericCommand):
             regvalue = get_register(regname)
             if regvalue is None:
                 continue
+            if regvalue == 0: # too noisy, so skip
+                continue
             regs.append((regname, regvalue))
         return regs
 
