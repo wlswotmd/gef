@@ -46977,7 +46977,7 @@ class SeccompCommand(GenericCommand):
 
 @register_command
 class SysregCommand(GenericCommand):
-    """Pretty-print system registers (not general parpose) from `info register`."""
+    """Pretty-print system registers (not general purpose) from `info register`."""
 
     _cmdline_ = "sysreg"
     _category_ = "04-a. Register - View"
