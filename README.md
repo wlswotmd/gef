@@ -20,8 +20,7 @@
 * [FAQ](#faq)
 
 ## What is this?
-This is a fork of [GEF](https://github.com/hugsy/gef).
-However, there are 3 major improvements.
+This is a fork of [GEF](https://github.com/hugsy/gef) with 3 major improvements.
 
 1. Added many heuristic commands for kernel debugging __WITHOUT symboled vmlinux__ (for qemu-system; linux kernel 3.x ~ 6.10.x).
 2. Added support for [many architectures](https://github.com/bata24/gef/blob/dev/docs/QEMU-USER-SUPPORTED-ARCH.md) (for qemu-user).
@@ -68,7 +67,7 @@ See [install.sh](https://github.com/bata24/gef/blob/dev/install.sh) or
 ### Supported mode
 * Normal debugging
 * Attach to the process
-* Attach to the process in another mnt namespace (e.g. attaching from outside of `docker`)
+* Attach to the process in another namespace (e.g. attaching from outside of `docker`)
 * Connect to `gdbserver`
 * Connect to the gdb stub of `qemu-system`
 * Connect to the gdb stub of `qemu-user`
