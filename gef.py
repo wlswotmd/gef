@@ -2308,72 +2308,93 @@ class Elf:
 
     class Phdr:
         # p_type
-        PT_NULL          = 0
-        PT_LOAD          = 1
-        PT_DYNAMIC       = 2
-        PT_INTERP        = 3
-        PT_NOTE          = 4
-        PT_SHLIB         = 5
-        PT_PHDR          = 6
-        PT_TLS           = 7
-        #PT_LOOS          = 0x60000000
-        PT_GNU_EH_FRAME  = 0x6474e550
-        PT_GNU_STACK     = 0x6474e551
-        PT_GNU_RELRO     = 0x6474e552
-        PT_GNU_PROPERTY  = 0x6474e553
-        #PT_LOSUNW        = 0x6ffffffa
-        PT_SUNWBSS       = 0x6ffffffa
-        PT_SUNWSTACK     = 0x6ffffffb
-        #PT_HISUNW        = 0x6fffffff
-        #PT_HIOS          = 0x6fffffff
-        #PT_LOPROC        = 0x70000000
-        #PT_HIPROC        = 0x7fffffff
-        # arch specific values
-        PT_MIPS_REGINFO  = 0x70000000
-        PT_MIPS_RTPROC   = 0x70000001
-        PT_MIPS_OPTIONS  = 0x70000002
-        PT_MIPS_ABIFLAGS = 0x70000003
-        PT_IA_64_UNWIND  = 0x70000001 # noqa: F841
-        PT_HP_TLS        = 0x60000000 # noqa: F841
-        PT_HP_CORE_NONE  = 0x60000001 # noqa: F841
-        PT_HP_CORE_VERSION = 0x60000002 # noqa: F841
-        PT_HP_CORE_KERNEL = 0x60000003 # noqa: F841
-        PT_HP_CORE_COMM  = 0x60000004 # noqa: F841
-        PT_HP_CORE_PROC  = 0x60000005 # noqa: F841
-        PT_HP_CORE_LOADABLE = 0x60000006 # noqa: F841
-        PT_HP_CORE_STACK = 0x60000007 # noqa: F841
-        PT_HP_CORE_SHM   = 0x60000008 # noqa: F841
-        PT_HP_CORE_MMF   = 0x60000009 # noqa: F841
-        PT_HP_PARALLEL   = 0x6000000a # noqa: F841
-        PT_HP_FASTBIND   = 0x6000000b # noqa: F841
-        PT_HP_OPT_ANNOT  = 0x6000000c # noqa: F841
-        PT_HP_HSL_ANNOT  = 0x6000000d # noqa: F841
-        PT_HP_STACK      = 0x6000000ea # noqa: F841
-        PT_PARISC_ARCHEXT = 0x70000000 # noqa: F841
-        PT_PARISC_UNWIND = 0x70000001 # noqa: F841
+        PT_NULL               = 0
+        PT_LOAD               = 1
+        PT_DYNAMIC            = 2
+        PT_INTERP             = 3
+        PT_NOTE               = 4
+        PT_SHLIB              = 5
+        PT_PHDR               = 6
+        PT_TLS                = 7
+        #PT_LOOS              = 0x60000000
+        PT_GNU_EH_FRAME       = 0x6474e550
+        PT_GNU_STACK          = 0x6474e551
+        PT_GNU_RELRO          = 0x6474e552
+        PT_GNU_PROPERTY       = 0x6474e553
+        PT_GNU_SFRAME         = 0x6474e554
+        #PT_GNU_MBIND_LO      = 0x6474e555
+        #PT_GNU_MBIND_HI      = 0x6474f554
+        #PT_LOSUNW            = 0x6ffffffa
+        PT_SUNWBSS            = 0x6ffffffa
+        PT_SUNWSTACK          = 0x6ffffffb
+        #PT_HISUNW            = 0x6fffffff
+        #PT_HIOS              = 0x6fffffff
+        #PT_LOPROC            = 0x70000000
+        #PT_HIPROC            = 0x7fffffff
+        PT_AARCH64_ARCHEXT    = 0x70000000 # noqa: F841
+        PT_AARCH64_MEMTAG_MTE = 0x70000002 # noqa: F841
+        PT_ARM_ARCHEXT        = 0x70000000 # noqa: F841
+        PT_ARM_EXIDX          = 0x70000001 # noqa: F841
+        PT_HP_TLS             = 0x60000000 # noqa: F841
+        PT_HP_CORE_NONE       = 0x60000001 # noqa: F841
+        PT_HP_CORE_VERSION    = 0x60000002 # noqa: F841
+        PT_HP_CORE_KERNEL     = 0x60000003 # noqa: F841
+        PT_HP_CORE_COMM       = 0x60000004 # noqa: F841
+        PT_HP_CORE_PROC       = 0x60000005 # noqa: F841
+        PT_HP_CORE_LOADABLE   = 0x60000006 # noqa: F841
+        PT_HP_CORE_STACK      = 0x60000007 # noqa: F841
+        PT_HP_CORE_SHM        = 0x60000008 # noqa: F841
+        PT_HP_CORE_MMF        = 0x60000009 # noqa: F841
+        PT_HP_PARALLEL        = 0x60000010 # noqa: F841
+        PT_HP_FASTBIND        = 0x60000011 # noqa: F841
+        PT_HP_OPT_ANNOT       = 0x60000012 # noqa: F841
+        PT_HP_HSL_ANNOT       = 0x60000013 # noqa: F841
+        PT_HP_STACK           = 0x60000014 # noqa: F841
+        PT_HP_CORE_UTSNAME    = 0x60000015 # noqa: F841
+        PT_IA_64_HP_OPT_ANOT  = 0x60000012 # noqa: F841
+        PT_IA_64_HP_HSL_ANOT  = 0x60000013 # noqa: F841
+        PT_IA_64_HP_STACK     = 0x60000014 # noqa: F841
+        PT_IA_64_ARCHEXT      = 0x70000000 # noqa: F841
+        PT_IA_64_UNWIND       = 0x70000001 # noqa: F841
+        PT_MIPS_REGINFO       = 0x70000000 # noqa: F841
+        PT_MIPS_RTPROC        = 0x70000001 # noqa: F841
+        PT_MIPS_OPTIONS       = 0x70000002 # noqa: F841
+        PT_MIPS_ABIFLAGS      = 0x70000003 # noqa: F841
+        PT_PARISC_ARCHEXT     = 0x70000000 # noqa: F841
+        PT_PARISC_UNWIND      = 0x70000001 # noqa: F841
+        PT_PARISC_WEAKORDER   = 0x70000002 # noqa: F841
+        PT_RISCV_ATTRIBUTES   = 0x70000003 # noqa: F841
+        PT_S390_PGSTE         = 0x70000000 # noqa: F841
 
         # p_flags
-        PF_X             = 1
-        PF_W             = 2
-        PF_R             = 4
-        # arch specific values
-        PF_HP_PAGE_SIZE  = 0x00100000 # noqa: F841
-        PF_HP_FAR_SHARED = 0x00200000 # noqa: F841
-        PF_HP_NEAR_SHARED = 0x00400000 # noqa: F841
-        PF_HP_CODE       = 0x01000000 # noqa: F841
-        PF_HP_MODIFY     = 0x02000000 # noqa: F841
-        PF_HP_LAZYSWAP   = 0x04000000 # noqa: F841
-        PF_HP_SBP        = 0x08000000 # noqa: F841
-        PF_PARISC_SBP    = 0x08000000 # noqa: F841
+        PF_X                = 1
+        PF_W                = 2
+        PF_R                = 4
+        PF_ARM_SB           = 0x10000000 # noqa: F841
+        PF_ARM_PI           = 0x20000000 # noqa: F841
+        PF_ARM_ABS          = 0x40000000 # noqa: F841
+        PF_HP_CODE          = 0x00040000 # noqa: F841
+        PF_HP_MODIFY        = 0x00080000 # noqa: F841
+        PF_HP_PAGE_SIZE     = 0x00100000 # noqa: F841
+        PF_HP_FAR_SHARED    = 0x00200000 # noqa: F841
+        PF_HP_NEAR_SHARED   = 0x00400000 # noqa: F841
+        PF_HP_LAZYSWAP      = 0x00800000 # noqa: F841
+        PF_HP_CODE_DEPR     = 0x01000000 # noqa: F841
+        PF_HP_MODIFY_DEPR   = 0x02000000 # noqa: F841
+        PF_HP_LAZYSWAP_DEPR = 0x04000000 # noqa: F841
+        PF_HP_SBP           = 0x08000000 # noqa: F841
+        PF_IA_64_NORECOV    = 0x80000000 # noqa: F841
+        PF_OVERRAY          = 0x08000000 # noqa: F841
+        PF_PARISC_SBP       = 0x08000000 # noqa: F841
 
-        p_type           = None
-        p_flags          = None
-        p_offset         = None
-        p_vaddr          = None
-        p_paddr          = None
-        p_filesz         = None
-        p_memsz          = None
-        p_align          = None
+        p_type   = None
+        p_flags  = None
+        p_offset = None
+        p_vaddr  = None
+        p_paddr  = None
+        p_filesz = None
+        p_memsz  = None
+        p_align  = None
 
         def __init__(self, elf, off):
             if elf is None:
@@ -2402,84 +2423,160 @@ class Elf:
 
     class Shdr:
         # sh_type
-        SHT_NULL             = 0
-        SHT_PROGBITS         = 1
-        SHT_SYMTAB           = 2
-        SHT_STRTAB           = 3
-        SHT_RELA             = 4
-        SHT_HASH             = 5
-        SHT_DYNAMIC          = 6
-        SHT_NOTE             = 7
-        SHT_NOBITS           = 8
-        SHT_REL              = 9
-        SHT_SHLIB            = 10
-        SHT_DYNSYM           = 11
-        SHT_INIT_ARRAY       = 14
-        SHT_FINI_ARRAY       = 15
-        SHT_PREINIT_ARRAY    = 16
-        SHT_GROUP            = 17
-        SHT_SYMTAB_SHNDX     = 18
-        SHT_RELR             = 19
-        #SHT_LOOS             = 0x60000000
-        SHT_GNU_ATTRIBUTES   = 0x6ffffff5
-        SHT_GNU_HASH         = 0x6ffffff6
-        SHT_GNU_LIBLIST      = 0x6ffffff7
-        SHT_CHECKSUM         = 0x6ffffff8
-        #SHT_LOSUNW           = 0x6ffffffa
-        SHT_SUNW_move        = 0x6ffffffa
-        SHT_SUNW_COMDAT      = 0x6ffffffb
-        SHT_SUNW_syminfo     = 0x6ffffffc
-        SHT_GNU_verdef       = 0x6ffffffd
-        SHT_GNU_verneed      = 0x6ffffffe
-        SHT_GNU_versym       = 0x6fffffff
-        #SHT_HISUNW           = 0x6fffffff
-        #SHT_HIOS             = 0x6fffffff
-        #SHT_LOPROC           = 0x70000000
-        #SHT_HIPROC           = 0x7fffffff
-        #SHT_LOUSER           = 0x80000000
-        #SHT_HIUSER           = 0x8fffffff
-        # arch specific values
-        SHT_PARISC_EXT       = 0x70000000 # noqa: F841
-        SHT_PARISC_UNWIND    = 0x70000001 # noqa: F841
-        SHT_PARISC_DOC       = 0x70000002 # noqa: F841
-        SHT_MIPS_LIST        = 0x70000000 # noqa: F841
-        SHT_MIPS_CONFLICT    = 0x70000002 # noqa: F841
-        SHT_MIPS_GPTAB       = 0x70000003 # noqa: F841
-        SHT_MIPS_UCODE       = 0x70000004 # noqa: F841
-        SHT_MIPS_DEBUG       = 0x70000005 # noqa: F841
-        SHT_MIPS_REGINFO     = 0x70000006 # noqa: F841
-        SHT_MIPS_PACKAGE     = 0x70000007 # noqa: F841
-        SHT_MIPS_PACKSYM     = 0x70000008 # noqa: F841
-        SHT_MIPS_RELD        = 0x70000009 # noqa: F841
-        SHT_MIPS_IFACE       = 0x7000000b # noqa: F841
-        SHT_MIPS_CONTENT     = 0x7000000c # noqa: F841
-        SHT_MIPS_OPTIONS     = 0x7000000d # noqa: F841
-        SHT_MIPS_SHDR        = 0x70000010 # noqa: F841
-        SHT_MIPS_FDESC       = 0x70000011 # noqa: F841
-        SHT_MIPS_EXTSYM      = 0x70000012 # noqa: F841
-        SHT_MIPS_DENSE       = 0x70000013 # noqa: F841
-        SHT_MIPS_PDESC       = 0x70000014 # noqa: F841
-        SHT_MIPS_LOCSYM      = 0x70000015 # noqa: F841
-        SHT_MIPS_AUXSYM      = 0x70000016 # noqa: F841
-        SHT_MIPS_OPTSYM      = 0x70000017 # noqa: F841
-        SHT_MIPS_LOCSTR      = 0x70000018 # noqa: F841
-        SHT_MIPS_LINE        = 0x70000019 # noqa: F841
-        SHT_MIPS_RFDESC      = 0x7000001a # noqa: F841
-        SHT_MIPS_DELTASYM    = 0x7000001b # noqa: F841
-        SHT_MIPS_DELTAINST   = 0x7000001c # noqa: F841
-        SHT_MIPS_DELTACLASS  = 0x7000001d # noqa: F841
-        SHT_MIPS_DWARF       = 0x7000001e # noqa: F841
-        SHT_MIPS_DELTADECL   = 0x7000001f # noqa: F841
-        SHT_MIPS_SYMBOL_LIB  = 0x70000020 # noqa: F841
-        SHT_MIPS_EVENTS      = 0x70000021 # noqa: F841
-        SHT_MIPS_TRANSLATE   = 0x70000022 # noqa: F841
-        SHT_MIPS_PIXIE       = 0x70000023 # noqa: F841
-        SHT_MIPS_XLATE       = 0x70000024 # noqa: F841
-        SHT_MIPS_XLATE_DEBUG = 0x70000025 # noqa: F841
-        SHT_MIPS_WHIRL       = 0x70000026 # noqa: F841
-        SHT_MIPS_EH_REGION   = 0x70000027 # noqa: F841
-        SHT_MIPS_XLATE_OLD   = 0x70000028 # noqa: F841
-        SHT_MIPS_PDR_EXCEPTION = 0x70000029 # noqa: F841
+        SHT_NULL                           = 0
+        SHT_PROGBITS                       = 1
+        SHT_SYMTAB                         = 2
+        SHT_STRTAB                         = 3
+        SHT_RELA                           = 4
+        SHT_HASH                           = 5
+        SHT_DYNAMIC                        = 6
+        SHT_NOTE                           = 7
+        SHT_NOBITS                         = 8
+        SHT_REL                            = 9
+        SHT_SHLIB                          = 10
+        SHT_DYNSYM                         = 11
+        SHT_INIT_ARRAY                     = 14
+        SHT_FINI_ARRAY                     = 15
+        SHT_PREINIT_ARRAY                  = 16
+        SHT_GROUP                          = 17
+        SHT_SYMTAB_SHNDX                   = 18
+        SHT_RELR                           = 19
+        #SHT_LOOS                          = 0x60000000
+        SHT_ANDROID_REL                    = 0x60000001
+        SHT_ANDROID_RELA                   = 0x60000002
+        SHT_HP_OVLBITS                     = 0x60000000 # noqa: F841
+        SHT_HP_DLKM                        = 0x60000001 # noqa: F841
+        SHT_HP_COMDAT                      = 0x60000002 # noqa: F841
+        SHT_HP_OBJDICT                     = 0x60000003 # noqa: F841
+        SHT_HP_ANNOT                       = 0x60000004 # noqa: F841
+        SHT_IA_64_VMS_TRACE                = 0x60000000 # noqa: F841
+        SHT_IA_64_VMS_TIE_SIGNATURES       = 0x60000001 # noqa: F841
+        SHT_IA_64_VMS_DEBUG                = 0x60000002 # noqa: F841
+        SHT_IA_64_VMS_DEBUG_STR            = 0x60000003 # noqa: F841
+        SHT_IA_64_VMS_LINKAGES             = 0x60000004 # noqa: F841
+        SHT_IA_64_VMS_SYMBOL_VECTOR        = 0x60000005 # noqa: F841
+        SHT_IA_64_VMS_FIXUP                = 0x60000006 # noqa: F841
+        SHT_IA_64_VMS_DISPLAY_NAME_INFO    = 0x60000007 # noqa: F841
+        SHT_GNU_INCREMENTAL_INPUTS         = 0x6fff4700
+        SHT_LLVM_ODRTAB                    = 0x6fff4c00
+        SHT_LLVM_LINKER_OPTIONS            = 0x6fff4c01
+        SHT_LLVM_CALL_GRAPH_PROFILE        = 0x6fff4c02
+        SHT_LLVM_ADDRSIG                   = 0x6fff4c03
+        SHT_LLVM_DEPENDENT_LIBRARIES       = 0x6fff4c04
+        SHT_LLVM_SYMPART                   = 0x6fff4c05
+        SHT_LLVM_PART_EHDR                 = 0x6fff4c06
+        SHT_LLVM_PART_PHDR                 = 0x6fff4c07
+        SHT_LLVM_BB_ADDR_MAP_V0            = 0x6fff4c08
+        SHT_LLVM_CALL_GRAPH_PROFILE        = 0x6fff4c09
+        SHT_LLVM_BB_ADDR_MAP               = 0x6fff4c0a
+        SHT_LLVM_OFFLOADING                = 0x6fff4c0b
+        SHT_LLVM_LTO                       = 0x6fff4c0c
+        SHT_ANDROID_RELR                   = 0x6fffff00
+        SHT_GNU_ATTRIBUTES                 = 0x6ffffff5
+        SHT_GNU_HASH                       = 0x6ffffff6
+        SHT_GNU_LIBLIST                    = 0x6ffffff7
+        SHT_CHECKSUM                       = 0x6ffffff8
+        #SHT_LOSUNW                        = 0x6ffffffa
+        SHT_SUNW_move                      = 0x6ffffffa
+        SHT_SUNW_COMDAT                    = 0x6ffffffb
+        SHT_SUNW_syminfo                   = 0x6ffffffc
+        SHT_GNU_verdef                     = 0x6ffffffd
+        SHT_GNU_verneed                    = 0x6ffffffe
+        SHT_GNU_versym                     = 0x6fffffff
+        #SHT_HISUNW                        = 0x6fffffff
+        #SHT_HIOS                          = 0x6fffffff
+        #SHT_LOPROC                        = 0x70000000
+        SHT_AARCH64_ATTRIBUTES             = 0x70000003 # noqa: F841
+        SHT_AARCH64_AUTH_RELR              = 0x70000004 # noqa: F841
+        SHT_AARCH64_MEMTAG_GLOBALS_STATIC  = 0x70000007 # noqa: F841
+        SHT_AARCH64_MEMTAG_GLOBALS_DYNAMIC = 0x70000008 # noqa: F841
+        SHT_ALPHA_DEBUG                    = 0x70000001 # noqa: F841
+        SHT_ALPHA_REGINFO                  = 0x70000002 # noqa: F841
+        SHT_ARC_ATTRIBUTES                 = 0x70000001 # noqa: F841
+        SHT_ARM_EXIDX                      = 0x70000001 # noqa: F841
+        SHT_ARM_PREEMPTMAP                 = 0x70000002 # noqa: F841
+        SHT_ARM_ATTRIBUTES                 = 0x70000003 # noqa: F841
+        SHT_ARM_DEBUGOVERLAY               = 0x70000004 # noqa: F841
+        SHT_ARM_OVERLAYSECTION             = 0x70000005 # noqa: F841
+        SHT_C6000_UNWIND                   = 0x70000001 # noqa: F841
+        SHT_C6000_PREEMPTMAP               = 0x70000002 # noqa: F841
+        SHT_C6000_ATTRIBUTES               = 0x70000003 # noqa: F841
+        SHT_CSKY_ATTRIBUTES                = 0x70000001 # noqa: F841
+        SHT_IA_64_EXT                      = 0x70000000 # noqa: F841
+        SHT_IA_64_UNWIND                   = 0x70000001 # noqa: F841
+        SHT_IA_64_LOPSREG                  = 0x78000000 # noqa: F841
+        SHT_IA_64_HIPSREG                  = 0x78ffffff # noqa: F841
+        SHT_IA_64_PRIORITY_INIT            = 0x79000000 # noqa: F841
+        SHT_MIPS_LIBLIST                   = 0x70000000 # noqa: F841
+        SHT_MIPS_MSYM                      = 0x70000001 # noqa: F841
+        SHT_MIPS_CONFLICT                  = 0x70000002 # noqa: F841
+        SHT_MIPS_GPTAB                     = 0x70000003 # noqa: F841
+        SHT_MIPS_UCODE                     = 0x70000004 # noqa: F841
+        SHT_MIPS_DEBUG                     = 0x70000005 # noqa: F841
+        SHT_MIPS_REGINFO                   = 0x70000006 # noqa: F841
+        SHT_MIPS_PACKAGE                   = 0x70000007 # noqa: F841
+        SHT_MIPS_PACKSYM                   = 0x70000008 # noqa: F841
+        SHT_MIPS_RELD                      = 0x70000009 # noqa: F841
+        SHT_MIPS_IFACE                     = 0x7000000b # noqa: F841
+        SHT_MIPS_CONTENT                   = 0x7000000c # noqa: F841
+        SHT_MIPS_OPTIONS                   = 0x7000000d # noqa: F841
+        SHT_MIPS_SHDR                      = 0x70000010 # noqa: F841
+        SHT_MIPS_FDESC                     = 0x70000011 # noqa: F841
+        SHT_MIPS_EXTSYM                    = 0x70000012 # noqa: F841
+        SHT_MIPS_DENSE                     = 0x70000013 # noqa: F841
+        SHT_MIPS_PDESC                     = 0x70000014 # noqa: F841
+        SHT_MIPS_LOCSYM                    = 0x70000015 # noqa: F841
+        SHT_MIPS_AUXSYM                    = 0x70000016 # noqa: F841
+        SHT_MIPS_OPTSYM                    = 0x70000017 # noqa: F841
+        SHT_MIPS_LOCSTR                    = 0x70000018 # noqa: F841
+        SHT_MIPS_LINE                      = 0x70000019 # noqa: F841
+        SHT_MIPS_RFDESC                    = 0x7000001a # noqa: F841
+        SHT_MIPS_DELTASYM                  = 0x7000001b # noqa: F841
+        SHT_MIPS_DELTAINST                 = 0x7000001c # noqa: F841
+        SHT_MIPS_DELTACLASS                = 0x7000001d # noqa: F841
+        SHT_MIPS_DWARF                     = 0x7000001e # noqa: F841
+        SHT_MIPS_DELTADECL                 = 0x7000001f # noqa: F841
+        SHT_MIPS_SYMBOL_LIB                = 0x70000020 # noqa: F841
+        SHT_MIPS_EVENTS                    = 0x70000021 # noqa: F841
+        SHT_MIPS_TRANSLATE                 = 0x70000022 # noqa: F841
+        SHT_MIPS_PIXIE                     = 0x70000023 # noqa: F841
+        SHT_MIPS_XLATE                     = 0x70000024 # noqa: F841
+        SHT_MIPS_XLATE_DEBUG               = 0x70000025 # noqa: F841
+        SHT_MIPS_WHIRL                     = 0x70000026 # noqa: F841
+        SHT_MIPS_EH_REGION                 = 0x70000027 # noqa: F841
+        SHT_MIPS_XLATE_OLD                 = 0x70000028 # noqa: F841
+        SHT_MIPS_PDR_EXCEPTION             = 0x70000029 # noqa: F841
+        SHT_MIPS_ABIFLAGS                  = 0x7000002a # noqa: F841
+        SHT_MIPS_XHASH                     = 0x7000002b # noqa: F841
+        SHT_MSP430_ATTRIBUTES              = 0x70000003 # noqa: F841
+        SHT_MSP430_SEC_FLAGS               = 0x70000005 # noqa: F841
+        SHT_MSP430_SYM_ALIASES             = 0x70000006 # noqa: F841
+        SHT_NFP_MECONFIG                   = 0x70000001 # noqa: F841
+        SHT_NFP_INITREG                    = 0x70000002 # noqa: F841
+        SHT_PARISC_EXT                     = 0x70000000 # noqa: F841
+        SHT_PARISC_UNWIND                  = 0x70000001 # noqa: F841
+        SHT_PARISC_DOC                     = 0x70000002 # noqa: F841
+        SHT_PARISC_ANNOT                   = 0x70000003 # noqa: F841
+        SHT_PARISC_DLKM                    = 0x70000004 # noqa: F841
+        SHT_PARISC_SYMEXTN                 = 0x70000008 # noqa: F841
+        SHT_PARISC_STUBS                   = 0x70000009 # noqa: F841
+        SHT_RISCV_ATTRIBUTES               = 0x70000003 # noqa: F841
+        SHT_V850_SCOMMON                   = 0x70000000 # noqa: F841
+        SHT_V850_TCOMMON                   = 0x70000001 # noqa: F841
+        SHT_V850_ZCOMMON                   = 0x70000002 # noqa: F841
+        SHT_X86_64_UNWIND                  = 0x70000001 # noqa: F841
+        SHT_TI_ICODE                       = 0x7F000000 # noqa: F841
+        SHT_TI_XREF                        = 0x7F000001 # noqa: F841
+        SHT_TI_HANDLER                     = 0x7F000002 # noqa: F841
+        SHT_TI_INITINFO                    = 0x7F000003 # noqa: F841
+        SHT_TI_PHATTRS                     = 0x7F000004 # noqa: F841
+        SHT_ORDERED                        = 0x7fffffff # noqa: F841
+        #SHT_HIPROC                        = 0x7fffffff
+        #SHT_LOUSER                        = 0x80000000
+        SHT_NFP_UDEBUG                     = 0x80000000 # noqa: F841
+        SHT_RENESAS_IOP                    = 0x80000000 # noqa: F841
+        #SHT_HIUSER                        = 0x8fffffff
+        SHT_RENESAS_INFO                   = 0xa0000000 # noqa: F841
 
         # sh_flags
         SHF_WRITE            = 1
@@ -2497,7 +2594,6 @@ class Elf:
         SHF_RO_AFTER_INIT    = 0x00200000 # noqa: F841
         SHF_ORDERED          = 0x40000000 # noqa: F841
         SHF_EXCLUDE          = 0x80000000
-        # arch specific values
         SHF_MIPS_NODUPES     = 0x01000000 # noqa: F841
         SHF_MIPS_NAMES       = 0x02000000 # noqa: F841
         SHF_MIPS_LOCAL       = 0x04000000 # noqa: F841
@@ -22231,12 +22327,9 @@ class ElfInfoCommand(GenericCommand):
         Elf.Phdr.PT_GNU_STACK     : "GNU_STACK",
         Elf.Phdr.PT_GNU_RELRO     : "GNU_RELRO",
         Elf.Phdr.PT_GNU_PROPERTY  : "GNU_PROPERTY",
+        Elf.Phdr.PT_GNU_SFRAME    : "SFRAME",
         Elf.Phdr.PT_SUNWBSS       : "SUNWBSS",
         Elf.Phdr.PT_SUNWSTACK     : "SUNWSTACK",
-        Elf.Phdr.PT_MIPS_REGINFO  : "REGINFO",
-        Elf.Phdr.PT_MIPS_RTPROC   : "RTPROC",
-        Elf.Phdr.PT_MIPS_OPTIONS  : "OPTIONS",
-        Elf.Phdr.PT_MIPS_ABIFLAGS : "ABIFLAGS",
     }
 
     pflags = {
@@ -22251,34 +22344,51 @@ class ElfInfoCommand(GenericCommand):
     }
 
     stype = {
-        Elf.Shdr.SHT_NULL           : "NULL",
-        Elf.Shdr.SHT_PROGBITS       : "PROGBITS",
-        Elf.Shdr.SHT_SYMTAB         : "SYMTAB",
-        Elf.Shdr.SHT_STRTAB         : "STRTAB",
-        Elf.Shdr.SHT_RELA           : "RELA",
-        Elf.Shdr.SHT_HASH           : "HASH",
-        Elf.Shdr.SHT_DYNAMIC        : "DYNAMIC",
-        Elf.Shdr.SHT_NOTE           : "NOTE",
-        Elf.Shdr.SHT_NOBITS         : "NOBITS",
-        Elf.Shdr.SHT_REL            : "REL",
-        Elf.Shdr.SHT_SHLIB          : "SHLIB",
-        Elf.Shdr.SHT_DYNSYM         : "DYNSYM",
-        Elf.Shdr.SHT_INIT_ARRAY     : "INIT_ARRAY",
-        Elf.Shdr.SHT_FINI_ARRAY     : "FINI_ARRAY",
-        Elf.Shdr.SHT_PREINIT_ARRAY  : "PREINIT_ARRAY",
-        Elf.Shdr.SHT_GROUP          : "GROUP",
-        Elf.Shdr.SHT_SYMTAB_SHNDX   : "SYMTAB_SHNDX",
-        Elf.Shdr.SHT_RELR           : "RELR",
-        Elf.Shdr.SHT_GNU_ATTRIBUTES : "GNU_ATTRIBUTES",
-        Elf.Shdr.SHT_GNU_HASH       : "GNU_HASH",
-        Elf.Shdr.SHT_GNU_LIBLIST    : "GNU_LIBLIST",
-        Elf.Shdr.SHT_CHECKSUM       : "CHECKSUM",
-        Elf.Shdr.SHT_SUNW_move      : "SUNW_move",
-        Elf.Shdr.SHT_SUNW_COMDAT    : "SUNW_COMDAT",
-        Elf.Shdr.SHT_SUNW_syminfo   : "SUNW_syminfo",
-        Elf.Shdr.SHT_GNU_verdef     : "GNU_verdef",
-        Elf.Shdr.SHT_GNU_verneed    : "GNU_verneed",
-        Elf.Shdr.SHT_GNU_versym     : "GNU_versym",
+        Elf.Shdr.SHT_NULL                     : "NULL",
+        Elf.Shdr.SHT_PROGBITS                 : "PROGBITS",
+        Elf.Shdr.SHT_SYMTAB                   : "SYMTAB",
+        Elf.Shdr.SHT_STRTAB                   : "STRTAB",
+        Elf.Shdr.SHT_RELA                     : "RELA",
+        Elf.Shdr.SHT_HASH                     : "HASH",
+        Elf.Shdr.SHT_DYNAMIC                  : "DYNAMIC",
+        Elf.Shdr.SHT_NOTE                     : "NOTE",
+        Elf.Shdr.SHT_NOBITS                   : "NOBITS",
+        Elf.Shdr.SHT_REL                      : "REL",
+        Elf.Shdr.SHT_SHLIB                    : "SHLIB",
+        Elf.Shdr.SHT_DYNSYM                   : "DYNSYM",
+        Elf.Shdr.SHT_INIT_ARRAY               : "INIT_ARRAY",
+        Elf.Shdr.SHT_FINI_ARRAY               : "FINI_ARRAY",
+        Elf.Shdr.SHT_PREINIT_ARRAY            : "PREINIT_ARRAY",
+        Elf.Shdr.SHT_GROUP                    : "GROUP",
+        Elf.Shdr.SHT_SYMTAB_SHNDX             : "SYMTAB_SHNDX",
+        Elf.Shdr.SHT_RELR                     : "RELR",
+        Elf.Shdr.SHT_ANDROID_REL              : "ANDROID_REL",
+        Elf.Shdr.SHT_ANDROID_RELA             : "ANDROID_RELA",
+        Elf.Shdr.SHT_GNU_INCREMENTAL_INPUTS   : "GNU_INCREMENTAL_INPUTS",
+        Elf.Shdr.SHT_LLVM_ODRTAB              : "LLVM_ODRTAB",
+        Elf.Shdr.SHT_LLVM_LINKER_OPTIONS      : "LLVM_LINKER_OPTIONS",
+        Elf.Shdr.SHT_LLVM_CALL_GRAPH_PROFILE  : "LLVM_CALL_GRAPH_PROFILE",
+        Elf.Shdr.SHT_LLVM_ADDRSIG             : "LLVM_ADDRSIG",
+        Elf.Shdr.SHT_LLVM_DEPENDENT_LIBRARIES : "LLVM_DEPENDENT_LIBRARIES",
+        Elf.Shdr.SHT_LLVM_SYMPART             : "LLVM_SYMPART",
+        Elf.Shdr.SHT_LLVM_PART_EHDR           : "LLVM_PART_EHDR",
+        Elf.Shdr.SHT_LLVM_PART_PHDR           : "LLVM_PART_PHDR",
+        Elf.Shdr.SHT_LLVM_BB_ADDR_MAP_V0      : "LLVM_BB_ADDR_MAP_V0",
+        Elf.Shdr.SHT_LLVM_CALL_GRAPH_PROFILE  : "LLVM_CALL_GRAPH_PROFILE",
+        Elf.Shdr.SHT_LLVM_BB_ADDR_MAP         : "LLVM_BB_ADDR_MAP",
+        Elf.Shdr.SHT_LLVM_OFFLOADING          : "LLVM_OFFLOADING",
+        Elf.Shdr.SHT_LLVM_LTO                 : "LLVM_LTO",
+        Elf.Shdr.SHT_ANDROID_RELR             : "ANDROID_RELR",
+        Elf.Shdr.SHT_GNU_ATTRIBUTES           : "GNU_ATTRIBUTES",
+        Elf.Shdr.SHT_GNU_HASH                 : "GNU_HASH",
+        Elf.Shdr.SHT_GNU_LIBLIST              : "GNU_LIBLIST",
+        Elf.Shdr.SHT_CHECKSUM                 : "CHECKSUM",
+        Elf.Shdr.SHT_SUNW_move                : "SUNW_move",
+        Elf.Shdr.SHT_SUNW_COMDAT              : "SUNW_COMDAT",
+        Elf.Shdr.SHT_SUNW_syminfo             : "SUNW_syminfo",
+        Elf.Shdr.SHT_GNU_verdef               : "GNU_verdef",
+        Elf.Shdr.SHT_GNU_verneed              : "GNU_verneed",
+        Elf.Shdr.SHT_GNU_versym               : "GNU_versym",
     }
 
     def elf_info(self, elf, orig_filepath=None):
