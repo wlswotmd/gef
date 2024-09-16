@@ -12387,6 +12387,11 @@ def is_in_kernel():
         if cpsr is None:
             return False
         return ((cpsr >> 2) & 0b11) == 1
+    elif is_riscv64() or is_riscv32():
+        priv = get_register("priv")
+        if priv is None:
+            return False
+        return priv == 1
     # All other architectures are considered userland.
     return False
 
@@ -47098,7 +47103,10 @@ class SysregCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     def get_non_generic_regs(self):
-        res = gdb.execute("info registers", to_string=True)
+        if is_riscv64() or is_riscv32():
+            res = gdb.execute("info registers system", to_string=True)
+        else:
+            res = gdb.execute("info registers", to_string=True)
         res = res.strip()
         regs = {}
         for line in res.splitlines():
@@ -52339,6 +52347,16 @@ class Kernel:
                 perm = line[6][4:7] # EL1/xxx
                 maps.append([vaddr, size, perm])
 
+        elif is_riscv64() or is_riscv32():
+            for line in res:
+                line = line.split()
+                if line[6] != "KERN]":
+                    continue
+                vaddr = int(line[0].split("-")[0], 16)
+                size = int(line[2], 16)
+                perm = line[5][1:] # [xxx
+                maps.append([vaddr, size, perm])
+
         if maps == []:
             if is_x86():
                 warn("Make sure you are in ring0 (=kernel mode)")
@@ -52348,6 +52366,8 @@ class Kernel:
             elif is_arm64():
                 warn("Make sure you are in EL1 (=kernel mode)")
                 warn("Make sure qemu 3.x or higher")
+            elif is_riscv64() or is_riscv32():
+                warn("Make sure you are in S-mode (=kernel mode)")
             return None
         else:
             return maps
@@ -52414,6 +52434,23 @@ class Kernel:
             if vbar and is_valid_addr(vbar):
                 for i, (vaddr, size, _perm) in enumerate(dic["maps"]):
                     if vaddr <= vbar < vaddr + size:
+                        dic["text_base"] = vaddr
+                        dic["text_size"] = size
+                        dic["text_end"] = vaddr + size
+                        text_base_map_index = i
+                        break
+
+        elif is_riscv64() or is_riscv32():
+            # `stvec` register has interrupt vector address
+            res = gdb.execute("sysreg --exact stvec", to_string=True)
+            res = Color.remove_color(res)
+            r = re.search(r"stvec\s+=\s+(0x\S+)", res)
+            stvec = int(r.group(1), 16)
+            stvec &= gef_getpagesize_mask_high()
+
+            if stvec and is_valid_addr(stvec):
+                for i, (vaddr, size, _perm) in enumerate(dic["maps"]):
+                    if vaddr <= stvec < vaddr + size:
                         dic["text_base"] = vaddr
                         dic["text_size"] = size
                         dic["text_end"] = vaddr + size
@@ -52719,7 +52756,7 @@ class KernelbaseCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64", "RISCV32", "RISCV64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         if args.reparse:
@@ -52763,7 +52800,7 @@ class KernelVersionCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64", "RISCV32", "RISCV64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
         if args.reparse:
@@ -71710,7 +71747,7 @@ class KsymaddrRemoteCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64", "RISCV32", "RISCV64"))
     def do_invoke(self, args):
         self.verbose = args.verbose
         self.reparse = args.reparse
@@ -75510,7 +75547,7 @@ class XphysAddrCommand(GenericCommand):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware", "kgdb"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64", "RISCV32", "RISCV64"))
     def do_invoke(self, args):
         # arg parse
         m = re.search(r"/(\d*)([xibhwg]*)", args.format)
@@ -78070,6 +78107,7 @@ class PagewalkCommand(GenericCommand, BufferingOutput):
     subparsers.add_parser("x86")
     subparsers.add_parser("arm")
     subparsers.add_parser("arm64")
+    subparsers.add_parser("riscv")
     _syntax_ = parser.format_help()
 
     def __init__(self, *args, **kwargs):
@@ -78376,7 +78414,7 @@ class PagewalkCommand(GenericCommand, BufferingOutput):
     # Need not @parse_args because argparse can't stop interpreting options for pagewalk sub-command.
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "x86_16", "ARM32", "ARM64"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "x86_16", "ARM32", "ARM64", "RISCV32", "RISCV64"))
     def do_invoke(self, argv):
         if is_x86_32() or is_x86_16():
             gdb.execute("pagewalk x86 {}".format(" ".join(argv)))
@@ -78386,6 +78424,571 @@ class PagewalkCommand(GenericCommand, BufferingOutput):
             gdb.execute("pagewalk arm {}".format(" ".join(argv)))
         elif is_arm64():
             gdb.execute("pagewalk arm64 {}".format(" ".join(argv)))
+        elif is_riscv64() or is_riscv32():
+            gdb.execute("pagewalk riscv {}".format(" ".join(argv)))
+        return
+
+
+@register_command
+class PagewalkRiscvCommand(PagewalkCommand):
+    """Dump pagetable for riscv64/32 using qemu-monitor."""
+
+    _cmdline_ = "pagewalk riscv"
+    _category_ = "08-a. Qemu-system Cooperation - General"
+    _aliases_ = ["pagewalk riscv32", "pagewalk riscv64"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("--print-each-level", action="store_true", help="show all level pagetables.")
+    parser.add_argument("--no-merge", action="store_true",
+                        help="do not merge similar/consecutive address.")
+    parser.add_argument("--sort-by-phys", action="store_true",
+                        help="sort by physical address.")
+    parser.add_argument("--simple", action="store_true",
+                        help="merge with ignoring physical address consecutivness.")
+    parser.add_argument("--filter", metavar="REGEX", type=re.compile, default=[], action="append",
+                        help="filter by REGEX pattern.")
+    parser.add_argument("--vrange", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
+                        help="filter by map included specified virtual address.")
+    parser.add_argument("--prange", metavar="PADDR", default=[], action="append", type=lambda x: int(x, 16),
+                        help="filter by map included specified physical address.")
+    parser.add_argument("--trace", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
+                        help="show all level pagetables only associated specified address.")
+    parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
+    _syntax_ = parser.format_help()
+
+    def __init__(self):
+        super().__init__(prefix=False)
+        self.mappings = None
+        return
+
+    def format_flags(self, flag_info):
+        flag_info_key = tuple(flag_info)
+        x = self.flags_strings_cache.get(flag_info_key, None)
+        if x is not None:
+            return x
+
+        flags = []
+
+        perm = ""
+        perm += ["-", "R"]["R" in flag_info]
+        perm += ["-", "W"]["W" in flag_info]
+        perm += ["-", "X"]["X" in flag_info]
+        if perm in ["R--", "RW-", "--X", "R-X", "RWX"]:
+            flags.append(perm)
+        else:
+            flags.append("???")
+
+        if "U" in flag_info:
+            if self.sstatus_sum:
+                flags.append("USER+KERN")
+            else:
+                flags.append("USER")
+        else:
+            flags.append("KERN")
+
+        if not self.simple:
+            if "A" in flag_info:
+                flags.append("ACCESSED")
+            if "D" in flag_info:
+                flags.append("DIRTY")
+            if "G" in flag_info:
+                flags.append("GLOBAL")
+
+        flag_string = " ".join(flags)
+        self.flags_strings_cache[flag_info_key] = flag_string
+        return flag_string
+
+    def pagewalk_L5(self):
+        self.quiet_add_out(titlify("Level 5 Entry"))
+        L5E = []
+        PTE = []
+        COUNT = 0
+        for va_base, table_base, parent_flags in self.TABLES:
+            entries = self.read_physmem_cache(table_base, 2 ** self.bits["L5_BITS"] * self.bits["ENTRY_SIZE"])
+            entries = slice_unpack(entries, self.bits["ENTRY_SIZE"])
+            COUNT += len(entries)
+            for i, entry in enumerate(entries):
+                # valid flag
+                if (entry & 1) == 0:
+                    continue
+
+                # calc virtual address
+                b = self.bits["L4_BITS"] + self.bits["L3_BITS"] + self.bits["L2_BITS"] + self.bits["L1_BITS"] + self.bits["OFFSET"]
+                sign_ext = 0xfe00000000000000 if ((i >> (self.bits["L5_BITS"] - 1)) & 1) else 0
+                new_va = va_base + (sign_ext | (i << b))
+                new_va_end = new_va + (1 << b)
+
+                # calc ppn
+                ppn = (entry >> 10) & 0xfffffffffff # 44 bit
+
+                # calc flags
+                flags = parent_flags.copy()
+                if ((entry >> 1) & 1) == 1:
+                    flags.append("R")
+                if ((entry >> 2) & 1) == 1:
+                    flags.append("W")
+                if ((entry >> 3) & 1) == 1:
+                    flags.append("X")
+                if ((entry >> 4) & 1) == 1:
+                    flags.append("U")
+                if ((entry >> 5) & 1) == 1:
+                    flags.append("G")
+                if ((entry >> 6) & 1) == 1:
+                    flags.append("A")
+                if ((entry >> 7) & 1) == 1:
+                    flags.append("D")
+
+                if ((entry >> 1) & 0b111) == 0:
+                    # calc next table
+                    next_level_entry = ppn * gef_getpagesize()
+                    L5E.append([new_va, next_level_entry, flags])
+                    entry_type = "TABLE"
+                else:
+                    # make entry
+                    virt_addr = new_va
+                    phys_addr = ppn * gef_getpagesize()
+                    page_size = 256 * 1024 * 1024 * 1024 * 1024
+                    page_count = 1
+                    PTE.append([virt_addr, phys_addr, page_size, page_count, self.format_flags(flags)])
+                    entry_type = "256TB-PAGE"
+
+                # dump
+                if self.print_each_level:
+                    if self.is_not_trace_target(new_va, new_va_end):
+                        continue
+                    addr = table_base + i * self.bits["ENTRY_SIZE"]
+                    fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
+                    line = fmt.format(addr, entry, new_va, new_va_end, entry_type, " ".join(flags))
+                    if self.is_not_filter_target(line):
+                        continue
+                    self.add_out(line)
+
+        self.quiet_info("Number of entries: {:d}".format(COUNT))
+        self.quiet_info("L5 Entry (256TB): {:d}".format(len(L5E)))
+        self.quiet_info("Invalid entries: {:d}".format(COUNT - len(L5E)))
+        self.TABLES = L5E
+        self.PTE += PTE
+        return
+
+    def pagewalk_L4(self):
+        self.quiet_add_out(titlify("Level 4 Entry"))
+        L4E = []
+        PTE = []
+        COUNT = 0
+        for va_base, table_base, parent_flags in self.TABLES:
+            entries = self.read_physmem_cache(table_base, 2 ** self.bits["L4_BITS"] * self.bits["ENTRY_SIZE"])
+            entries = slice_unpack(entries, self.bits["ENTRY_SIZE"])
+            COUNT += len(entries)
+            for i, entry in enumerate(entries):
+                # valid flag
+                if (entry & 1) == 0:
+                    continue
+
+                # calc virtual address
+                b = self.bits["L3_BITS"] + self.bits["L2_BITS"] + self.bits["L1_BITS"] + self.bits["OFFSET"]
+                if "L5_BITS" in self.bits:
+                    new_va = va_base + (i << b)
+                    new_va_end = new_va + (1 << b)
+                else:
+                    sign_ext = 0xffff000000000000 if ((i >> (self.bits["L4_BITS"] - 1)) & 1) else 0
+                    new_va = va_base + (sign_ext | (i << b))
+                    new_va_end = new_va + (1 << b)
+
+                # calc ppn
+                ppn = (entry >> 10) & 0xfffffffffff # 44 bit
+
+                # calc flags
+                flags = parent_flags.copy()
+                if ((entry >> 1) & 1) == 1:
+                    flags.append("R")
+                if ((entry >> 2) & 1) == 1:
+                    flags.append("W")
+                if ((entry >> 3) & 1) == 1:
+                    flags.append("X")
+                if ((entry >> 4) & 1) == 1:
+                    flags.append("U")
+                if ((entry >> 5) & 1) == 1:
+                    flags.append("G")
+                if ((entry >> 6) & 1) == 1:
+                    flags.append("A")
+                if ((entry >> 7) & 1) == 1:
+                    flags.append("D")
+
+                if ((entry >> 1) & 0b111) == 0:
+                    # calc next table
+                    next_level_entry = ppn * gef_getpagesize()
+                    L4E.append([new_va, next_level_entry, flags])
+                    entry_type = "TABLE"
+                else:
+                    # make entry
+                    virt_addr = new_va
+                    phys_addr = ppn * gef_getpagesize()
+                    page_size = 512 * 1024 * 1024 * 1024
+                    page_count = 1
+                    PTE.append([virt_addr, phys_addr, page_size, page_count, self.format_flags(flags)])
+                    entry_type = "512GB-PAGE"
+
+                # dump
+                if self.print_each_level:
+                    if self.is_not_trace_target(new_va, new_va_end):
+                        continue
+                    addr = table_base + i * self.bits["ENTRY_SIZE"]
+                    fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
+                    line = fmt.format(addr, entry, new_va, new_va_end, entry_type, " ".join(flags))
+                    if self.is_not_filter_target(line):
+                        continue
+                    self.add_out(line)
+
+        self.quiet_info("Number of entries: {:d}".format(COUNT))
+        self.quiet_info("L4 Entry (512GB): {:d}".format(len(L4E)))
+        self.quiet_info("Invalid entries: {:d}".format(COUNT - len(L4E)))
+        self.TABLES = L4E
+        self.PTE += PTE
+        return
+
+    def pagewalk_L3(self):
+        self.quiet_add_out(titlify("Level 3 Entry"))
+        L3E = []
+        PTE = []
+        COUNT = 0
+        for va_base, table_base, parent_flags in self.TABLES:
+            entries = self.read_physmem_cache(table_base, 2 ** self.bits["L3_BITS"] * self.bits["ENTRY_SIZE"])
+            entries = slice_unpack(entries, self.bits["ENTRY_SIZE"])
+            COUNT += len(entries)
+            for i, entry in enumerate(entries):
+                # valid flag
+                if (entry & 1) == 0:
+                    continue
+
+                # calc virtual address
+                b = self.bits["L2_BITS"] + self.bits["L1_BITS"] + self.bits["OFFSET"]
+                if "L4_BITS" in self.bits:
+                    new_va = va_base + (i << b)
+                    new_va_end = new_va + (1 << b)
+                else:
+                    sign_ext = 0xffffff8000000000 if ((i >> (self.bits["L3_BITS"] - 1)) & 1) else 0
+                    new_va = va_base + (sign_ext | (i << b))
+                    new_va_end = new_va + (1 << b)
+
+                # calc ppn
+                ppn = (entry >> 10) & 0xfffffffffff # 44 bit
+
+                # calc flags
+                flags = parent_flags.copy()
+                if ((entry >> 1) & 1) == 1:
+                    flags.append("R")
+                if ((entry >> 2) & 1) == 1:
+                    flags.append("W")
+                if ((entry >> 3) & 1) == 1:
+                    flags.append("X")
+                if ((entry >> 4) & 1) == 1:
+                    flags.append("U")
+                if ((entry >> 5) & 1) == 1:
+                    flags.append("G")
+                if ((entry >> 6) & 1) == 1:
+                    flags.append("A")
+                if ((entry >> 7) & 1) == 1:
+                    flags.append("D")
+
+                if ((entry >> 1) & 0b111) == 0:
+                    # calc next table
+                    next_level_entry = ppn * gef_getpagesize()
+                    L3E.append([new_va, next_level_entry, flags])
+                    entry_type = "TABLE"
+                else:
+                    # make entry
+                    virt_addr = new_va
+                    phys_addr = ppn * gef_getpagesize()
+                    page_size = 1 * 1024 * 1024 * 1024
+                    page_count = 1
+                    PTE.append([virt_addr, phys_addr, page_size, page_count, self.format_flags(flags)])
+                    entry_type = "1GB-PAGE"
+
+                # dump
+                if self.print_each_level:
+                    if self.is_not_trace_target(new_va, new_va_end):
+                        continue
+                    addr = table_base + i * self.bits["ENTRY_SIZE"]
+                    fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
+                    line = fmt.format(addr, entry, new_va, new_va_end, entry_type, " ".join(flags))
+                    if self.is_not_filter_target(line):
+                        continue
+                    self.add_out(line)
+
+        self.quiet_info("Number of entries: {:d}".format(COUNT))
+        self.quiet_info("L3 Entry (1GB): {:d}".format(len(L3E)))
+        self.quiet_info("Invalid entries: {:d}".format(COUNT - len(L3E)))
+        self.TABLES = L3E
+        self.PTE += PTE
+        return
+
+    def pagewalk_L2(self):
+        self.quiet_add_out(titlify("Level 2 Entry"))
+        L2E = []
+        PTE = []
+        COUNT = 0
+        for va_base, table_base, parent_flags in self.TABLES:
+            entries = self.read_physmem_cache(table_base, 2 ** self.bits["L2_BITS"] * self.bits["ENTRY_SIZE"])
+            entries = slice_unpack(entries, self.bits["ENTRY_SIZE"])
+            COUNT += len(entries)
+            for i, entry in enumerate(entries):
+                # valid flag
+                if (entry & 1) == 0:
+                    continue
+
+                # calc virtual address
+                b = self.bits["L1_BITS"] + self.bits["OFFSET"]
+                new_va = va_base + (i << b)
+                new_va_end = new_va + (1 << b)
+
+                # calc ppn
+                if is_riscv64():
+                    ppn = (entry >> 10) & 0xfffffffffff # 44 bit
+                else:
+                    ppn = (entry >> 10) & 0x3fffff # 22 bit
+
+                # calc flags
+                flags = parent_flags.copy()
+                if ((entry >> 1) & 1) == 1:
+                    flags.append("R")
+                if ((entry >> 2) & 1) == 1:
+                    flags.append("W")
+                if ((entry >> 3) & 1) == 1:
+                    flags.append("X")
+                if ((entry >> 4) & 1) == 1:
+                    flags.append("U")
+                if ((entry >> 5) & 1) == 1:
+                    flags.append("G")
+                if ((entry >> 6) & 1) == 1:
+                    flags.append("A")
+                if ((entry >> 7) & 1) == 1:
+                    flags.append("D")
+
+                if ((entry >> 1) & 0b111) == 0:
+                    # calc next table
+                    next_level_entry = ppn * gef_getpagesize()
+                    L2E.append([new_va, next_level_entry, flags])
+                    entry_type = "TABLE"
+                else:
+                    # make entry
+                    virt_addr = new_va
+                    phys_addr = ppn * gef_getpagesize()
+                    page_size = 2 * 1024 * 1024
+                    page_count = 1
+                    PTE.append([virt_addr, phys_addr, page_size, page_count, self.format_flags(flags)])
+                    entry_type = "2MB-PAGE"
+
+                # dump
+                if self.print_each_level:
+                    if self.is_not_trace_target(new_va, new_va_end):
+                        continue
+                    addr = table_base + i * self.bits["ENTRY_SIZE"]
+                    fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
+                    line = fmt.format(addr, entry, new_va, new_va_end, entry_type, " ".join(flags))
+                    if self.is_not_filter_target(line):
+                        continue
+                    self.add_out(line)
+
+        self.quiet_info("Number of entries: {:d}".format(COUNT))
+        self.quiet_info("L2 Entry (2MB): {:d}".format(len(L2E)))
+        self.quiet_info("Invalid entries: {:d}".format(COUNT - len(L2E)))
+        self.TABLES = L2E
+        self.PTE += PTE
+        return
+
+    def pagewalk_L1(self):
+        self.quiet_add_out(titlify("Level 1 Entry"))
+        PTE = []
+        COUNT = 0
+        for va_base, table_base, parent_flags in self.TABLES:
+            entries = self.read_physmem_cache(table_base, 2 ** self.bits["L1_BITS"] * self.bits["ENTRY_SIZE"])
+            entries = slice_unpack(entries, self.bits["ENTRY_SIZE"])
+            COUNT += len(entries)
+            for i, entry in enumerate(entries):
+                # valid flag
+                if (entry & 1) == 0:
+                    continue
+
+                # calc virtual address
+                b = self.bits["OFFSET"]
+                new_va = va_base + (i << b)
+                new_va_end = new_va + (1 << b)
+
+                # calc ppn
+                if is_riscv64():
+                    ppn = (entry >> 10) & 0xfffffffffff # 44 bit
+                else:
+                    ppn = (entry >> 10) & 0x3fffff # 22 bit
+
+                # calc flags
+                flags = parent_flags.copy()
+                if ((entry >> 1) & 1) == 1:
+                    flags.append("R")
+                if ((entry >> 2) & 1) == 1:
+                    flags.append("W")
+                if ((entry >> 3) & 1) == 1:
+                    flags.append("X")
+                if ((entry >> 4) & 1) == 1:
+                    flags.append("U")
+                if ((entry >> 5) & 1) == 1:
+                    flags.append("G")
+                if ((entry >> 6) & 1) == 1:
+                    flags.append("A")
+                if ((entry >> 7) & 1) == 1:
+                    flags.append("D")
+
+                # make entry
+                virt_addr = new_va
+                phys_addr = ppn * gef_getpagesize()
+                page_size = 4 * 1024
+                page_count = 1
+                PTE.append([virt_addr, phys_addr, page_size, page_count, self.format_flags(flags)])
+                entry_type = "4KB-PAGE"
+
+                # dump
+                if self.print_each_level:
+                    if self.is_not_trace_target(new_va, new_va_end):
+                        continue
+                    addr = table_base + i * self.bits["ENTRY_SIZE"]
+                    fmt = "{:#018x}: {:#018x} (virt:{:#018x}-{:#018x},type:{:s}) {:s}"
+                    line = fmt.format(addr, entry, new_va, new_va_end, entry_type, " ".join(flags))
+                    if self.is_not_filter_target(line):
+                        continue
+                    self.add_out(line)
+
+        self.quiet_info("Number of entries: {:d}".format(COUNT))
+        self.quiet_info("L1 Entry (4KB): {:d}".format(len(PTE)))
+        self.quiet_info("Invalid entries: {:d}".format(COUNT - len(PTE)))
+        self.PTE += PTE
+
+        self.quiet_add_out(titlify("Total"))
+        self.quiet_info("PT Entry (Total): {:d}".format(len(self.PTE)))
+        self.mappings = self.PTE
+        return
+
+    def pagewalk(self):
+        satp = get_register("satp")
+        if satp is None:
+            self.err("Failed to read $satp")
+            return
+        self.quiet_info("satp: {:#018x}".format(satp))
+
+        sstatus = get_register("sstatus")
+        if sstatus is None:
+            self.err("Failed to read $sstatus")
+            return
+        self.quiet_info("sstatus: {:#018x}".format(sstatus))
+
+        if is_riscv64():
+            mode = (satp >> 60) & 0b1111 # upper 4 bit
+            pagewalk_base = (satp & 0xFFFFFFFFFFF) * gef_getpagesize() # lower 44 bit
+        else:
+            mode = (satp >> 31) & 0b1 # upper 1 bit
+            pagewalk_base = (satp & 0x3FFFFF) * gef_getpagesize() # lower 22 bit
+        self.sstatus_sum = (sstatus >> 18) & 1
+
+        # virtual address base
+        va_base = 0
+        flags = []
+
+        # do pagewalk
+        self.PTE = []
+        self.TABLES = [(va_base, pagewalk_base, flags)]
+        self.flags_strings_cache = {}
+
+        if is_riscv64():
+            if mode == 0:
+                self.err("RV64 bare page table is unsupported")
+            elif mode == 11: # Sv64 is unsuppported
+                self.err("RV64 Sv64 page table is unsupported")
+            elif mode == 10: # Sv57
+                self.quiet_info("RV64 Sv57 page table")
+                self.bits = {
+                    "ENTRY_SIZE": 8,
+                    "L5_BITS": 9, "L4_BITS": 9, "L3_BITS": 9, "L2_BITS": 9, "L1_BITS": 9, "OFFSET": 12,
+                }
+                if not self.use_cache or not self.mappings:
+                    self.mappings = None
+                    self.pagewalk_L5()
+                    self.pagewalk_L4()
+                    self.pagewalk_L3()
+                    self.pagewalk_L2()
+                    self.pagewalk_L1()
+                    self.merging()
+            elif mode == 9: # Sv48
+                self.quiet_info("RV64 Sv48 page table")
+                self.bits = {
+                    "ENTRY_SIZE": 8,
+                    "L4_BITS": 9, "L3_BITS": 9, "L2_BITS": 9, "L1_BITS": 9, "OFFSET": 12,
+                }
+                if not self.use_cache or not self.mappings:
+                    self.mappings = None
+                    self.pagewalk_L4()
+                    self.pagewalk_L3()
+                    self.pagewalk_L2()
+                    self.pagewalk_L1()
+                    self.merging()
+            elif mode == 8: # Sv39
+                self.quiet_info("RV64 Sv39 page table")
+                self.bits = {
+                    "ENTRY_SIZE": 8,
+                    "L3_BITS": 9, "L2_BITS": 9, "L1_BITS": 9, "OFFSET": 12,
+                }
+                if not self.use_cache or not self.mappings:
+                    self.mappings = None
+                    self.pagewalk_L3()
+                    self.pagewalk_L2()
+                    self.pagewalk_L1()
+                    self.merging()
+            else:
+                self.err("RV64 unknown mode")
+        else:
+            if mode == 0:
+                self.err("RV32 bare page table is unsupported")
+            elif mode == 1: # Sv32
+                self.quiet_info("RV32 Sv32 page table")
+                self.bits = {
+                    "ENTRY_SIZE": 4,
+                    "L2_BITS": 10, "L1_BITS": 10, "OFFSET": 12,
+                }
+                if not self.use_cache or not self.mappings:
+                    self.mappings = None
+                    self.pagewalk_L2()
+                    self.pagewalk_L1()
+                    self.merging()
+
+        self.flags_strings_cache = {}
+        self.make_out(self.mappings)
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("RISCV32", "RISCV64"))
+    def do_invoke(self, args):
+        self.quiet = args.quiet
+        self.print_each_level = args.print_each_level
+        self.no_merge = args.no_merge
+        self.sort_by_phys = args.sort_by_phys
+        self.simple = args.simple
+        self.filter = args.filter
+        self.vrange = args.vrange.copy()
+        self.prange = args.prange.copy()
+        self.trace = args.trace.copy()
+        self.use_cache = args.use_cache
+
+        if self.trace:
+            self.vrange.extend(self.trace) # also set --vrange
+            self.print_each_level = True # overwrite
+            self.use_cache = False # overwrite
+
+        self.out = []
+        self.cache = {}
+        self.pagewalk()
+        self.cache = {}
+        self.print_output(args)
         return
 
 
