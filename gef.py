@@ -78274,7 +78274,7 @@ class PagewalkCommand(GenericCommand, BufferingOutput):
         return
 
     def make_out(self, mappings):
-        if len(mappings) == 0:
+        if mappings is None or len(mappings) == 0:
             self.warn("No virtual mappings found")
             return
 
