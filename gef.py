@@ -47102,7 +47102,7 @@ class SysregCommand(GenericCommand):
         res = res.strip()
         regs = {}
         for line in res.splitlines():
-            m = re.match(r"(\S+)\s*(0x\S+)\s+(0x\S+|\[.+\])", line)
+            m = re.match(r"^(\S+)\s*(0x\S+)", line)
             if not m:
                 continue
             regname, regvalue = m.group(1), m.group(2)
@@ -47131,10 +47131,7 @@ class SysregCommand(GenericCommand):
             out = []
             for j in range(COLUMN):
                 if len(regs) > i + j * length_of_each_bank:
-                    if is_32bit():
-                        msg = "{:16s} = {:#18x}".format(*regs[i + j * length_of_each_bank])
-                    else:
-                        msg = "{:25s} = {:#18x}".format(*regs[i + j * length_of_each_bank])
+                    msg = "{:25s} = {:#18x}".format(*regs[i + j * length_of_each_bank])
                     if regs[i + j * length_of_each_bank][1] > 0:
                         msg = Color.boldify(msg)
                     out.append(msg)
