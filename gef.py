@@ -61129,32 +61129,24 @@ class StringsCommand(GenericCommand):
                         help="the end location to search from. (default: 64)")
     parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP include filter.")
     parser.add_argument("-e", "--exclude", action="append", type=re.compile, default=[], help="REGEXP exclude filter.")
-    parser.add_argument("-d", "--depth", default=3, type=int, help="recursive depth. (default: %(default)s)")
+    parser.add_argument("-d", "--depth", default=0, type=int, help="recursive depth. (default: %(default)s)")
     parser.add_argument("-r", "--range", default=0x40, type=lambda x: int(x, 16),
                         help="search range for recursively. (default: %(default)s)")
     parser.add_argument("-m", "--minlen", default=8, type=int, help="minimum string length (default: %(default)s)")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} 0x00007ffffffde000 0x00007ffffffff000              # detect all\n".format(_cmdline_)
-    _example_ += "{:s} --minlen 10 0x00007ffffffde000 0x00007ffffffff000  # filter by length\n".format(_cmdline_)
-    _example_ += '{:s} -f "GLIBC" 0x00007ffffffde000 0x00007ffffffff000   # filter by keywords (-f, -e). need double-escape'.format(_cmdline_)
+    _example_ = "{:s} 0x00007ffffffde000 0x00007ffffffff000             # detect all\n".format(_cmdline_)
+    _example_ += "{:s} -m 10 0x00007ffffffde000 0x00007ffffffff000       # filter by length\n".format(_cmdline_)
+    _example_ += "{:s} -d 1 0x00007ffffffde000 0x00007ffffffff000        # if an address is found, it will be followed up\n".format(_cmdline_)
+    _example_ += '{:s} -f "GLIBC" 0x00007ffffffde000 0x00007ffffffff000  # filter by keywords (-f, -e). need double-escape'.format(_cmdline_)
 
     def strings(self, data, len_threshold):
-        string_printable = bytes(range(0x20, 0x7f))
         strings_result = []
-        current_str = ""
-        i = 0
-        while i < len(data):
-            if data[i] in string_printable:
-                current_str += chr(data[i])
-            else:
-                if len(current_str) >= len_threshold:
-                    strings_result.append((i - len(current_str), current_str))
-                current_str = ""
-            i += 1
-        if len(current_str) >= len_threshold:
-            strings_result.append((i - len(current_str), current_str))
+        for m in re.finditer(b"[\x20-\x7E]+\x00", data):
+            s = m.group(0).rstrip(b"\0")
+            if len(s) >= len_threshold:
+                strings_result.append((m.span(0)[0], String.bytes2str(s)))
         return strings_result
 
     def search_ascii(self, queue):
