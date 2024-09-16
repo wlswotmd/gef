@@ -52376,7 +52376,7 @@ class Kernel:
             dic["has_none"] = None in dic.values()
             return Kinfo(*dic.values())
 
-        # 1. search kernel base exact way for x86, arm64
+        # 1a. search kernel base exact way
         if is_x86():
             div0_handler = None
 
@@ -52404,6 +52404,7 @@ class Kernel:
                         break
 
         elif is_arm64():
+            # `VBAR` register has interrupt vector address
             res = gdb.execute("sysreg --exact VBAR", to_string=True)
             res = Color.remove_color(res)
             r = re.search(r"VBAR\s+=\s+(0x\S+)", res)
@@ -52446,18 +52447,23 @@ class Kernel:
                     dic["has_none"] = None in dic.values()
                     return Kinfo(*dic.values())
 
-        # 2. search kernel RO base
+        # 2a. search kernel RO base
         # If -enable-kvm option of qemu-system is not set, there may be multiple `r-- non-.rodata` between .text and .rodata.
+        #   [  .text    ]
+        #   [  .text    ]
+        #   [ ??? (r--) ]
+        #   [ ??? (r--) ]
+        #   [ ??? (r--) ]
+        #   [ .rodata   ] <- near the top of this area has "Linux version"
+        #   [ .rodata   ]
         # In other words, .rodata may not exist immediately after .text. I have seen this on qemu with debian11 x86_64 installed.
         # Therefore, detecting by location will not return correct results.
-        # Detecting by size seems well, but this algorithm sometimes failed. This is due to the difficulty of determining the threshold.
         # So I decided to also detect by the existence "Linux version" near the top of the .rodata page.
-        RO_REGION_MIN_SIZE = 0x100000
         for i, (vaddr, size, perm) in enumerate(dic["maps"][text_base_map_index + 1:]):
             if perm == "R--":
                 if dic["ro_base"] is None:
                     data = read_memory(vaddr, gef_getpagesize())
-                    if size >= RO_REGION_MIN_SIZE or b"Linux version" in data:
+                    if b"Linux version" in data:
                         dic["ro_base"] = vaddr
                         dic["ro_size"] = size
                         dic["ro_end"] = vaddr + size
@@ -52471,19 +52477,48 @@ class Kernel:
                 else:
                     break
 
-        # 2b. search kernel RO base for old kernel
+        # 2b. search kernel RO base by region size
+        # Some kernels do not have the string "Linux version" at the beginning of the .rodata.
+        #   [  .text    ]
+        #   [  .text    ]
+        #   [ ??? (r--) ]
+        #   [ ??? (r--) ]
+        #   [ ??? (r--) ]
+        #   [ .rodata   ] <- There is no "Linux Version" near the top of this area.
+        #   [ .rodata   ] <- but these .rodata total is large enough to determine .rodata.
+        #   [ .rodata   ]
+        if dic["ro_base"] is None:
+            RO_REGION_MIN_SIZE = 0x100000
+            for i, (vaddr, size, perm) in enumerate(dic["maps"][text_base_map_index + 1:]):
+                if perm == "R--":
+                    if dic["ro_base"] is None:
+                        if size >= RO_REGION_MIN_SIZE:
+                            dic["ro_base"] = vaddr
+                            dic["ro_size"] = size
+                            dic["ro_end"] = vaddr + size
+                            ro_base_map_index = text_base_map_index + i
+                    elif dic["ro_end"] == vaddr:
+                        # merge contiguous region.
+                        # This is important because .rodata may be split into areas for GLOBAL and non-GLOBAL attributes
+                        dic["ro_size"] += size
+                        dic["ro_end"] += size
+                        ro_base_map_index = text_base_map_index + i
+                    else:
+                        break
+
+        # 2c. search kernel RO base for old kernel
+        # If it can not detect .rodata, maybe it is an old kernel (32-bit?).
+        # Old kernel is no-NX, so .rodata is RWX.
+        # Detected .text range includes .rodata, so use heuristic search and split.
+        #   [  .text  ] <- maybe .text is larger than 0x8000 (it fails in certain cases if 0x7000)
+        #   [  .text  ]
+        #   [  .text  ]
+        #   [  .text  ] <- end of this area has [0x00, 0x00, 0x00, ...]
+        #   [ .rodata ] <- near the top of this area has "Linux version"
+        #   [ .rodata ]
+        #   [ .rodata ]
         if dic["ro_base"] is None:
             dic["rwx"] = True
-            # If it can not detect .rodata, maybe it is an old kernel (32-bit?).
-            # Old kernel is no-NX, so .rodata is RWX.
-            # Detected .text range includes .rodata, so use heuristic search and split.
-            #   [  .text  ] <- maybe .text is larger than 0x8000 (it fails in certain cases if 0x7000)
-            #   [  .text  ]
-            #   [  .text  ]
-            #   [  .text  ] <- end of this area has [0x00, 0x00, 0x00, ...]
-            #   [ .rodata ] <- near the top of this area has "Linux version"
-            #   [ .rodata ]
-            #   [ .rodata ]
             start = dic["text_base"] + gef_getpagesize() * 8
             end = dic["text_base"] + dic["text_size"]
             block_size = 0x20
