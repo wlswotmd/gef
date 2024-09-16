@@ -52882,6 +52882,7 @@ class KernelCurrentCommand(GenericCommand):
 
     def dump_current_arm(self):
         orig_thread = gdb.selected_thread()
+        orig_frame = gdb.selected_frame()
         threads = gdb.selected_inferior().threads()
         threads = sorted(threads, key=lambda th: th.num)
         for thread in threads:
@@ -52891,6 +52892,7 @@ class KernelCurrentCommand(GenericCommand):
                 cpu_num = thread.num - 1 # ?
                 gef_print("current (cpu{:d}): {:#x} {:s}".format(cpu_num, task, self.get_comm_str(task)))
         orig_thread.switch() # revert thread
+        orig_frame.select()
         return
 
     def dump_current_x86(self):
