@@ -77773,7 +77773,6 @@ class QemuRegistersCommand(GenericCommand, BufferingOutput):
     @parse_args
     @only_if_gdb_running
     @only_if_specific_gdb_mode(mode=("qemu-system",))
-    @only_if_specific_arch(arch=("x86_32", "x86_64", "x86_16"))
     def do_invoke(self, args):
         self.add_info = args.verbose
         self.out = []
