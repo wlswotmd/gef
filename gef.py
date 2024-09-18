@@ -52404,15 +52404,19 @@ class Kernel:
                 # 0   #DE: Divide-by-zero 0x00000000ffffffffbd008e0000100870 0xe 0x0 0x0 0x1 0x0010:0xffffffffbd000870 <NO_SYMBOL>
                 res = gdb.execute("idtinfo --verbose", to_string=True)
                 r = re.search(r"Divide-by-zero.+\S+:(\S+)\s+<", res)
-                div0_handler = int(r.group(1), 16)
+                if r:
+                    div0_handler = int(r.group(1), 16)
+
             elif is_vmware():
                 res = gdb.execute("monitor r idtr", to_string=True)
                 r = re.search(r"idtr base=(\S+) limit=(\S+)", res)
-                base = int(r.group(1), 16)
-                limit = int(r.group(2), 16)
-                idtinfo = slice_unpack(read_memory(base, limit + 1), current_arch.ptrsize * 2)
-                idt0 = IdtInfoCommand.idt_unpack(idtinfo[0])
-                div0_handler = idt0.offset
+                if r:
+                    base = int(r.group(1), 16)
+                    limit = int(r.group(2), 16)
+                    idt_data = read_memory(base, min(limit + 1, current_arch.ptrsize * 2 * 256))
+                    entries = slice_unpack(idt_data, current_arch.ptrsize * 2)
+                    idt0 = IdtInfoCommand.idt_unpack(entries[0])
+                    div0_handler = idt0.offset
 
             if div0_handler and is_valid_addr(div0_handler):
                 for i, (vaddr, size, _perm) in enumerate(dic["maps"]):
@@ -62281,23 +62285,33 @@ class GdtInfoCommand(GenericCommand):
         # parse real value
         if is_qemu_system():
             res = gdb.execute("monitor info registers", to_string=True)
-            gdtr = re.search(r"GDT\s*=\s*(\S+) (\S+)", res)
-            base, limit = [int(gdtr.group(i), 16) for i in range(1, 3)]
-
+            r = re.search(r"GDT\s*=\s*(\S+) (\S+)", res)
         elif is_vmware():
             res = gdb.execute("monitor r gdtr", to_string=True)
             r = re.search(r"gdtr base=(\S+) limit=(\S+)", res)
-            base, limit = int(r.group(1), 16), int(r.group(2), 16)
+
+        if not r:
+            err("Not found GDTR")
+            return
+
+        base = int(r.group(1), 16)
+        limit = int(r.group(2), 16)
 
         # print title
-        gef_print(titlify("GDT Entry: {:#x}".format(base)))
+        gef_print(titlify("GDT Entry: base:{:#x} / limit:{:#x}".format(base, limit)))
 
         # check initialized or not
         if (base == 0x0 and limit == 0xffff) or limit == 0x0:
             err("GDT is uninitialized")
             return
 
-        entries = slice_unpack(read_memory(base, limit + 1), 8)
+        try:
+            gdt_data = read_memory(base, limit + 1)
+        except gdb.MemoryError:
+            err("Memory read error")
+            return
+        entries = slice_unpack(gdt_data, 8)
+
         if is_x86_64():
             segm_desc = self.SEGMENT_DESCRIPTION_64
         else:
@@ -62309,23 +62323,33 @@ class GdtInfoCommand(GenericCommand):
         # parse real value
         if is_qemu_system():
             res = gdb.execute("monitor info registers", to_string=True)
-            ldtr = re.search(r"LDT=\S+ (\S+) (\S+)", res)
-            base, limit = [int(ldtr.group(i), 16) for i in range(1, 3)]
-
+            r = re.search(r"LDT=\S+ (\S+) (\S+)", res)
         elif is_vmware():
             res = gdb.execute("monitor r ldtr", to_string=True)
             r = re.search(r"ldtr base=(\S+) limit=(\S+)", res)
-            base, limit = int(r.group(1), 16), int(r.group(2), 16)
+
+        if not r:
+            err("Not found LDTR")
+            return
+
+        base = int(r.group(1), 16)
+        limit = int(r.group(2), 16)
 
         # print title
-        gef_print(titlify("LDT Entry: {:#x}".format(base)))
+        gef_print(titlify("LDT Entry: base:{:#x} / limit:{:#x}".format(base, limit)))
 
         # check initialized or not
-        if (base == 0x0 and limit == 0xffff) or limit == 0x0:
+        if (base == 0x0 and limit == 0xffffffff) or limit == 0x0:
             err("LDT is uninitialized")
             return
 
-        entries = slice_unpack(read_memory(base, limit + 1), 8)
+        try:
+            ldt_data = read_memory(base, limit + 1)
+        except gdb.MemoryError:
+            err("Memory read error")
+            return
+        entries = slice_unpack(ldt_data, 8)
+
         self.print_entries(entries, skip_null=True)
         return
 
@@ -62594,15 +62618,20 @@ class IdtInfoCommand(GenericCommand):
         # parse real value
         if is_qemu_system():
             res = gdb.execute("monitor info registers", to_string=True)
-            idtr = re.search(r"IDT\s*=\s*(\S+) (\S+)", res)
-            base, limit = [int(idtr.group(i), 16) for i in range(1, 3)]
+            r = re.search(r"IDT\s*=\s*(\S+) (\S+)", res)
         elif is_vmware():
             res = gdb.execute("monitor r idtr", to_string=True)
             r = re.search(r"idtr base=(\S+) limit=(\S+)", res)
-            base, limit = int(r.group(1), 16), int(r.group(2), 16)
+
+        if not r:
+            err("Not found IDTR")
+            return
+
+        base = int(r.group(1), 16)
+        limit = int(r.group(2), 16)
 
         # print title
-        gef_print(titlify("IDT Entry"))
+        gef_print(titlify("IDT Entry: base:{:#x} / limit:{:#x}".format(base, limit)))
 
         # print legend
         gef_print(Color.colorify(self.idtval2str_legend(), Config.get_gef_setting("theme.table_heading")))
@@ -62612,10 +62641,15 @@ class IdtInfoCommand(GenericCommand):
             err("IDT is uninitialized")
             return
 
-        idtinfo = slice_unpack(read_memory(base, limit + 1), max(current_arch.ptrsize * 2, 4))
+        try:
+            idt_data = read_memory(base, min(limit + 1, current_arch.ptrsize * 2 * 256))
+        except gdb.MemoryError:
+            err("Memory read error")
+            return
+        entries = slice_unpack(idt_data, current_arch.ptrsize * 2)
 
         # print entry
-        for i, b in enumerate(idtinfo):
+        for i, b in enumerate(entries):
             int_name = self.INTERRUPT_DESCRIPTION.get(i, "User defined Interrupt {:#x}".format(i))
             valstr = self.idtval2str(b)
             sym = Symbol.get_symbol_string(self.idt_unpack(b).offset, nosymbol_string=" <NO_SYMBOL>")
