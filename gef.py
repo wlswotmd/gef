@@ -24570,7 +24570,7 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                     # parse ptr_size, segment_size
                     segment_size = 0
                     if version >= 4:
-                        new_pos, ptr_size = self.raed_1ubyte(data, pos)
+                        new_pos, ptr_size = self.read_1ubyte(data, pos)
                         entries.append([pos, data[pos:new_pos], "ptr_size", ptr_size, ""])
                         pos = new_pos
                         new_pos, segment_size = self.read_1ubyte(data, pos)
