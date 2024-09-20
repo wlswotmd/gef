@@ -60802,6 +60802,7 @@ class KernelDmesgCommand(GenericCommand):
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("-c", "--use-cache", action="store_true", help="use previous result.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
@@ -61131,6 +61132,10 @@ class KernelDmesgCommand(GenericCommand):
     def do_invoke(self, args):
         if not args.quiet:
             info("Wait for memory scan")
+
+        if args.use_cache and hasattr(self, "out") and self.out:
+            gef_print("\n".join(self.out), less=not args.no_pager)
+            return
 
         self.quiet = args.quiet
         self.out = []
@@ -78487,7 +78492,7 @@ class PagewalkRiscvCommand(PagewalkCommand):
                         help="filter by map included specified physical address.")
     parser.add_argument("--trace", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
                         help="show all level pagetables only associated specified address.")
-    parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
+    parser.add_argument("-c", "--use-cache", action="store_true", help="use previous result.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     _syntax_ = parser.format_help()
@@ -79057,7 +79062,7 @@ class PagewalkX64Command(PagewalkCommand):
     parser.add_argument("--cr3", type=AddressUtil.parse_address, help="use specified value as cr3.")
     parser.add_argument("--cr4", type=AddressUtil.parse_address, help="use specified value as cr4.")
     parser.add_argument("--ept", action="store_true", help="parse cr3 as EPT (Extended Page Table).")
-    parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
+    parser.add_argument("-c", "--use-cache", action="store_true", help="use previous result.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     _syntax_ = parser.format_help()
@@ -79700,7 +79705,7 @@ class PagewalkArmCommand(PagewalkCommand):
                         help="filter by map included specified physical address.")
     parser.add_argument("--trace", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
                         help="show all level pagetables only associated specified address.")
-    parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
+    parser.add_argument("-c", "--use-cache", action="store_true", help="use previous result.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     _syntax_ = parser.format_help()
@@ -80709,7 +80714,7 @@ class PagewalkArm64Command(PagewalkCommand):
     parser.add_argument("--trace", metavar="VADDR", default=[], action="append", type=lambda x: int(x, 16),
                         help="show all level pagetables only associated specified address.")
     parser.add_argument("--optee", action="store_true", help="show the secure world memory maps if used OP-TEE.")
-    parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
+    parser.add_argument("-c", "--use-cache", action="store_true", help="use previous result.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
     _syntax_ = parser.format_help()
