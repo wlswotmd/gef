@@ -38,7 +38,7 @@ I also list the tools I used in my Ubuntu 24.04 environment.
     * qemu: `qemu-mipsn32{,el}` via apt.
     * gdb: `gdb-multiarch` via apt.
 * sparc32
-    * toolchain: `sparcv8--uclibc--stable-2022.08-2` from https://toolchains.bootlin.com/
+    * toolchain: `sparcv8--uclibc--stable-2024.05-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-sparc` via apt.
     * gdb: `gdb-multiarch` via apt.
 * sparc32plus
@@ -48,12 +48,12 @@ I also list the tools I used in my Ubuntu 24.04 environment.
     * gdb: `gdb-multiarch` via apt.
 * sparc64
     * toolchain: `gcc-sparc64-linux-gnu` via apt.
-    * toolchain (Ubuntu 23.04 or before): `sparc64--glibc--bleeding-edge-2024.02-1` from https://toolchains.bootlin.com/
+    * toolchain (Ubuntu 23.04 or before): `sparc64--glibc--bleeding-edge-2024.05-1` from https://toolchains.bootlin.com/
         * Because the toolchain obtained with apt seems to be broken since the built ELF always SIGSEGV.
     * qemu: `qemu-sparc64` via apt.
     * gdb: `gdb-multiarch` via apt.
 * riscv32
-    * toolchain: `riscv32-ilp32d--glibc--bleeding-edge-2024.02-1` from https://toolchains.bootlin.com/
+    * toolchain: `riscv32-ilp32d--glibc--bleeding-edge-2024.05-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-riscv32` via apt.
     * gdb: `gdb-multiarch` via apt.
 * riscv64
@@ -66,7 +66,7 @@ I also list the tools I used in my Ubuntu 24.04 environment.
     * gdb: `gdb-multiarch` via apt.
 * sh4
     * toolchain: `gcc-sh4-linux-gnu` via apt.
-    * toolchain (Ubuntu 23.04 or before): `sh-sh4--uclibc--bleeding-edge-2024.02-1` from https://toolchains.bootlin.com/
+    * toolchain (Ubuntu 23.04 or before): `sh-sh4--uclibc--bleeding-edge-2024.05-1` from https://toolchains.bootlin.com/
         * Because the toolchain obtained with apt seems to be broken since static build is failed.
         * glibc version is broken too. Use uclibc version.
     * qemu: `qemu-sh4` via apt.
@@ -84,20 +84,19 @@ I also list the tools I used in my Ubuntu 24.04 environment.
     * qemu: `qemu-hppa` via apt.
     * gdb: `gdb-multiarch` via apt.
 * or1k (OpenRISC 1000)
-    * toolchain: `openrisc--glibc--bleeding-edge-2024.02-1` from https://toolchains.bootlin.com/
+    * toolchain: `openrisc--glibc--bleeding-edge-2024.05-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-or1k` via apt.
     * gdb: build from latest. See [docs/FAQ](https://github.com/bata24/gef/blob/dev/docs/FAQ.md#gdb-will-not-load-gef).
 * nios2
-    * toolchain: `nios2--glibc--bleeding-edge-2024.02-1` from https://toolchains.bootlin.com/
+    * toolchain: `nios2--glibc--bleeding-edge-2024.05-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-nios2` via apt.
     * gdb: build from latest. See [docs/FAQ](https://github.com/bata24/gef/blob/dev/docs/FAQ.md#gdb-will-not-load-gef).
 * microblaze
-    * toolchain: `microblazebe--glibc--stable-2024.02-1` from https://toolchains.bootlin.com/
-        * bleeding edge version is broken.
+    * toolchain: `microblazebe--glibc--bleeding-edge-2024.05-1` from https://toolchains.bootlin.com/
     * qemu: `qemu-microblaze` via apt.
     * gdb: build from latest. See [docs/FAQ](https://github.com/bata24/gef/blob/dev/docs/FAQ.md#gdb-will-not-load-gef).
 * xtensa (lx60)
-    * toolchain: `xtensa-lx60--uclibc--bleeding-edge-2024.02-1` from https://toolchains.bootlin.com/
+    * toolchain: `xtensa-lx60--uclibc--bleeding-edge-2024.05-1` from https://toolchains.bootlin.com/
         * Because the toolchain obtained with apt seems to be broken since the C header is unavailable.
     * qemu: `qemu-xtensa` via apt.
     * gdb: `xtensa-lx60--uclibc--bleeding-edge-2023.08-1` from https://toolchains.bootlin.com/
@@ -124,7 +123,7 @@ I also list the tools I used in my Ubuntu 24.04 environment.
     * gdb: build from latest. See [docs/FAQ](https://github.com/bata24/gef/blob/dev/docs/FAQ.md#gdb-will-not-load-gef).
 * arc32 (HS38; ARCv2)
     * toolchain: `gcc-arc-linux-gnu` via apt.
-    * toolchain (Ubuntu 23.04 or before): `arcle-hs38--glibc--bleeding-edge-2024.02-1` from https://toolchains.bootlin.com/
+    * toolchain (Ubuntu 23.04 or before): `arcle-hs38--glibc--bleeding-edge-2024.05-1` from https://toolchains.bootlin.com/
     * qemu: https://github.com/foss-for-synopsys-dwc-arc-processors/qemu
         * `export CXXFLAGS="-Wno-error=enum-int-mismatch"`
         * `export CFLAGS="-Wno-error=enum-int-mismatch"`
