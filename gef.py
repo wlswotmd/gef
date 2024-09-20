@@ -64023,17 +64023,18 @@ class SlubDumpCommand(GenericCommand):
     parser.add_argument("--offset-node", type=lambda x: int(x, 16),
                         help="specified offsetof(kmem_cache, node) when `kmem_cache.node` is falsely detected.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
-    parser.add_argument("-v", "--verbose", "--partial", action="store_true",
-                        help="dump partial pages.")
+    parser.add_argument("-v", "--verbose", "--partial", action="store_true", help="dump with partial pages.")
     parser.add_argument("-vv", "--vverbose", "--node", action="store_true",
-                        help="dump partial pages and node pages.")
+                        help="dump with partial pages and node pages.")
+    parser.add_argument("--only-partial", action="store_true", help="dump only partial pages.")
+    parser.add_argument("--only-node", action="store_true", help="dump only node pages.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} kmalloc-256             # dump kmalloc-256 from all cpus\n".format(_cmdline_)
     _example_ += "{:s} kmalloc-256 --cpu 1     # dump kmalloc-256 from cpu 1\n".format(_cmdline_)
-    _example_ += "{:s} kmalloc-256 --partial   # show partial pages\n".format(_cmdline_)
-    _example_ += "{:s} kmalloc-256 --node      # show partial pages and node pages\n".format(_cmdline_)
+    _example_ += "{:s} kmalloc-256 --partial   # show active pages and partial pages\n".format(_cmdline_)
+    _example_ += "{:s} kmalloc-256 --node      # show active pages, partial pages and node pages\n".format(_cmdline_)
     _example_ += "{:s} --list                  # list up slub cache names".format(_cmdline_)
 
     _note_ = "Simplified SLUB structure:\n"
@@ -64976,12 +64977,13 @@ class SlubDumpCommand(GenericCommand):
                 self.out.append("    kmem_cache_cpu (cpu{:d}): {:#x}".format(cpu, kmem_cache["kmem_cache_cpu"][cpu]["address"]))
 
                 # dump active
-                active_page = kmem_cache["kmem_cache_cpu"][cpu]["active_page"]
-                freelist_fastpath = kmem_cache["kmem_cache_cpu"][cpu]["freelist"]
-                self.dump_page(active_page, kmem_cache, "active", freelist_fastpath)
+                if not self.args.only_partial and not self.args.only_node:
+                    active_page = kmem_cache["kmem_cache_cpu"][cpu]["active_page"]
+                    freelist_fastpath = kmem_cache["kmem_cache_cpu"][cpu]["freelist"]
+                    self.dump_page(active_page, kmem_cache, "active", freelist_fastpath)
 
                 # dump partial
-                if self.args.verbose or self.args.vverbose:
+                if (self.args.verbose or self.args.vverbose) and not self.args.only_node:
                     printed_count = 0
                     for partial_page in kmem_cache["kmem_cache_cpu"][cpu]["partial_pages"]:
                         self.dump_page(partial_page, kmem_cache, "partial")
@@ -64990,7 +64992,7 @@ class SlubDumpCommand(GenericCommand):
                         self.out.append("        (end of the list)")
 
             # dump nodes
-            if self.args.vverbose and "nodes" in kmem_cache:
+            if (self.args.vverbose and not self.args.only_partial) and "nodes" in kmem_cache:
                 for node_index, node_page_list in enumerate(kmem_cache["nodes"]):
                     node_addr = read_int_from_memory(kmem_cache["address"] + self.kmem_cache_offset_node + current_arch.ptrsize * node_index)
                     self.out.append("    kmem_cache_node[{:d}]: {:#x}".format(node_index, node_addr))
@@ -65070,6 +65072,12 @@ class SlubDumpCommand(GenericCommand):
             self.swap = None
         else:
             self.swap = not args.no_byte_swap
+
+        if args.only_partial:
+            args.verbose = True
+        if args.only_node:
+            args.verbose = True
+            args.vverbose = True
 
         self.args = args
         self.maps = None
