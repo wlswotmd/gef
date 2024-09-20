@@ -79056,6 +79056,7 @@ class PagewalkX64Command(PagewalkCommand):
                         help="print userland pagetables (for KPTI, only x64, in kernel context).")
     parser.add_argument("--cr3", type=AddressUtil.parse_address, help="use specified value as cr3.")
     parser.add_argument("--cr4", type=AddressUtil.parse_address, help="use specified value as cr4.")
+    parser.add_argument("--ept", action="store_true", help="parse cr3 as EPT (Extended Page Table).")
     parser.add_argument("-c", "--use-cache", action="store_true", help="use before result.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="show result only.")
@@ -79073,20 +79074,27 @@ class PagewalkX64Command(PagewalkCommand):
             return x
 
         flags = []
-        if "NO_RW" in flag_info:
-            if "XD" in flag_info:
-                flags += ["R--"]
-            else:
-                flags += ["R-X"]
+        if self.ept:
+            perm = ""
+            perm += ["R", "-"]["NO_R" in flag_info]
+            perm += ["W", "-"]["NO_W" in flag_info]
+            perm += ["X", "-"]["NO_X" in flag_info]
+            flags += [perm]
         else:
-            if "XD" in flag_info:
-                flags += ["RW-"]
+            if "NO_RW" in flag_info:
+                if "XD" in flag_info:
+                    flags += ["R--"]
+                else:
+                    flags += ["R-X"]
             else:
-                flags += ["RWX"]
-        if "NO_US" in flag_info:
-            flags += ["KERN"]
-        else:
-            flags += ["USER"]
+                if "XD" in flag_info:
+                    flags += ["RW-"]
+                else:
+                    flags += ["RWX"]
+            if "NO_US" in flag_info:
+                flags += ["KERN"]
+            else:
+                flags += ["USER"]
 
         if not self.simple:
             if "A" in flag_info:
@@ -79121,14 +79129,24 @@ class PagewalkX64Command(PagewalkCommand):
 
                 # calc flags
                 flags = parent_flags.copy()
-                if ((entry >> 1) & 1) == 0:
-                    flags.append("NO_RW")
-                if ((entry >> 2) & 1) == 0:
-                    flags.append("NO_US")
-                if ((entry >> 5) & 1) == 1:
-                    flags.append("A")
-                if ((entry >> 63) & 1) == 1:
-                    flags.append("XD")
+                if self.ept:
+                    if ((entry >> 0) & 1) == 0:
+                        flags.append("NO_R")
+                    if ((entry >> 1) & 1) == 0:
+                        flags.append("NO_W")
+                    if ((entry >> 2) & 1) == 0:
+                        flags.append("NO_X")
+                    if ((entry >> 8) & 1) == 1:
+                        flags.append("A")
+                else:
+                    if ((entry >> 1) & 1) == 0:
+                        flags.append("NO_RW")
+                    if ((entry >> 2) & 1) == 0:
+                        flags.append("NO_US")
+                    if ((entry >> 5) & 1) == 1:
+                        flags.append("A")
+                    if ((entry >> 63) & 1) == 1:
+                        flags.append("XD")
 
                 # calc next table (drop the flag bits)
                 next_level_table = entry & 0x000ffffffffff000
@@ -79179,14 +79197,24 @@ class PagewalkX64Command(PagewalkCommand):
 
                 # calc flags
                 flags = parent_flags.copy()
-                if ((entry >> 1) & 1) == 0:
-                    flags.append("NO_RW")
-                if ((entry >> 2) & 1) == 0:
-                    flags.append("NO_US")
-                if ((entry >> 5) & 1) == 1:
-                    flags.append("A")
-                if ((entry >> 63) & 1) == 1:
-                    flags.append("XD")
+                if self.ept:
+                    if ((entry >> 0) & 1) == 0:
+                        flags.append("NO_R")
+                    if ((entry >> 1) & 1) == 0:
+                        flags.append("NO_W")
+                    if ((entry >> 2) & 1) == 0:
+                        flags.append("NO_X")
+                    if ((entry >> 8) & 1) == 1:
+                        flags.append("A")
+                else:
+                    if ((entry >> 1) & 1) == 0:
+                        flags.append("NO_RW")
+                    if ((entry >> 2) & 1) == 0:
+                        flags.append("NO_US")
+                    if ((entry >> 5) & 1) == 1:
+                        flags.append("A")
+                    if ((entry >> 63) & 1) == 1:
+                        flags.append("XD")
 
                 # calc next table (drop the flag bits)
                 next_level_table = entry & 0x000ffffffffff000
@@ -79237,18 +79265,30 @@ class PagewalkX64Command(PagewalkCommand):
                 # calc flags
                 flags = parent_flags.copy()
                 if is_x86_64():
-                    if ((entry >> 1) & 1) == 0:
-                        flags.append("NO_RW")
-                    if ((entry >> 2) & 1) == 0:
-                        flags.append("NO_US")
-                    if ((entry >> 5) & 1) == 1:
-                        flags.append("A")
-                    if is_set_PS(entry) and ((entry >> 6) & 1) == 1:
-                        flags.append("D")
-                    if is_set_PS(entry) and ((entry >> 8) & 1) == 1:
-                        flags.append("G")
-                    if ((entry >> 63) & 1) == 1:
-                        flags.append("XD")
+                    if self.ept:
+                        if ((entry >> 0) & 1) == 0:
+                            flags.append("NO_R")
+                        if ((entry >> 1) & 1) == 0:
+                            flags.append("NO_W")
+                        if ((entry >> 2) & 1) == 0:
+                            flags.append("NO_X")
+                        if ((entry >> 8) & 1) == 1:
+                            flags.append("A")
+                        if is_set_PS(entry) and ((entry >> 9) & 1) == 1:
+                            flags.append("D")
+                    else:
+                        if ((entry >> 1) & 1) == 0:
+                            flags.append("NO_RW")
+                        if ((entry >> 2) & 1) == 0:
+                            flags.append("NO_US")
+                        if ((entry >> 5) & 1) == 1:
+                            flags.append("A")
+                        if is_set_PS(entry) and ((entry >> 6) & 1) == 1:
+                            flags.append("D")
+                        if is_set_PS(entry) and ((entry >> 8) & 1) == 1:
+                            flags.append("G")
+                        if ((entry >> 63) & 1) == 1:
+                            flags.append("XD")
                 else: # x86_32 and PAE
                     pass
 
@@ -79318,18 +79358,30 @@ class PagewalkX64Command(PagewalkCommand):
 
                 # calc flags
                 flags = parent_flags.copy()
-                if ((entry >> 1) & 1) == 0:
-                    flags.append("NO_RW")
-                if ((entry >> 2) & 1) == 0:
-                    flags.append("NO_US")
-                if ((entry >> 5) & 1) == 1:
-                    flags.append("A")
-                if is_set_PS(entry) and ((entry >> 6) & 1) == 1:
-                    flags.append("D")
-                if is_set_PS(entry) and ((entry >> 8) & 1) == 1:
-                    flags.append("G")
-                if self.PAE and ((entry >> 63) & 1) == 1:
-                    flags.append("XD")
+                if self.ept:
+                    if ((entry >> 0) & 1) == 0:
+                        flags.append("NO_R")
+                    if ((entry >> 1) & 1) == 0:
+                        flags.append("NO_W")
+                    if ((entry >> 2) & 1) == 0:
+                        flags.append("NO_X")
+                    if ((entry >> 8) & 1) == 1:
+                        flags.append("A")
+                    if is_set_PS(entry) and ((entry >> 9) & 1) == 1:
+                        flags.append("D")
+                else:
+                    if ((entry >> 1) & 1) == 0:
+                        flags.append("NO_RW")
+                    if ((entry >> 2) & 1) == 0:
+                        flags.append("NO_US")
+                    if ((entry >> 5) & 1) == 1:
+                        flags.append("A")
+                    if is_set_PS(entry) and ((entry >> 6) & 1) == 1:
+                        flags.append("D")
+                    if is_set_PS(entry) and ((entry >> 8) & 1) == 1:
+                        flags.append("G")
+                    if self.PAE and ((entry >> 63) & 1) == 1:
+                        flags.append("XD")
 
                 # calc next table (drop the flag bits)
                 if is_x86_64() and is_set_PS(entry):
@@ -79403,27 +79455,39 @@ class PagewalkX64Command(PagewalkCommand):
 
                 # calc flags
                 flags = parent_flags.copy()
-                # This route passes many times, so make a memo
-                entry_flags_key = entry & 0x8000000000000166
-                x = flag_cache.get(entry_flags_key, None)
-                if x is not None:
-                    flags.extend(x)
-                else:
-                    _flags = []
+                if self.ept:
+                    if ((entry >> 0) & 1) == 0:
+                        flags.append("NO_R")
                     if ((entry >> 1) & 1) == 0:
-                        _flags.append("NO_RW")
+                        flags.append("NO_W")
                     if ((entry >> 2) & 1) == 0:
-                        _flags.append("NO_US")
-                    if ((entry >> 5) & 1) == 1:
-                        _flags.append("A")
-                    if ((entry >> 6) & 1) == 1:
-                        _flags.append("D")
+                        flags.append("NO_X")
                     if ((entry >> 8) & 1) == 1:
-                        _flags.append("G")
-                    if self.PAE and ((entry >> 63) & 1) == 1:
-                        _flags.append("XD")
-                    flag_cache[entry_flags_key] = _flags
-                    flags.extend(_flags)
+                        flags.append("A")
+                    if ((entry >> 9) & 1) == 1:
+                        flags.append("D")
+                else:
+                    # This route passes many times, so make a memo
+                    entry_flags_key = entry & 0x8000000000000166
+                    x = flag_cache.get(entry_flags_key, None)
+                    if x is not None:
+                        flags.extend(x)
+                    else:
+                        _flags = []
+                        if ((entry >> 1) & 1) == 0:
+                            _flags.append("NO_RW")
+                        if ((entry >> 2) & 1) == 0:
+                            _flags.append("NO_US")
+                        if ((entry >> 5) & 1) == 1:
+                            _flags.append("A")
+                        if ((entry >> 6) & 1) == 1:
+                            _flags.append("D")
+                        if ((entry >> 8) & 1) == 1:
+                            _flags.append("G")
+                        if self.PAE and ((entry >> 63) & 1) == 1:
+                            _flags.append("XD")
+                        flag_cache[entry_flags_key] = _flags
+                        flags.extend(_flags)
 
                 # calc physical addr (drop the flag bits)
                 phys_addr = entry & 0x000ffffffffff000
@@ -79594,6 +79658,15 @@ class PagewalkX64Command(PagewalkCommand):
             self.vrange.extend(self.trace) # also set --vrange
             self.print_each_level = True # overwrite
             self.use_cache = False # overwrite
+
+        if args.ept:
+            if self.user_specified_cr3:
+                self.ept = args.ept
+            else:
+                err("Unsupported --ept option without --cr3 option.")
+                return
+        else:
+            self.ept = False
 
         self.out = []
         self.cache = {}
