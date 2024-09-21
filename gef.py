@@ -33301,6 +33301,7 @@ asmlinkage long sys_lsm_get_self_attr(unsigned int attr, struct lsm_ctx __user *
 asmlinkage long sys_lsm_set_self_attr(unsigned int attr, struct lsm_ctx __user *ctx, u32 size, u32 flags);
 asmlinkage long sys_lsm_list_modules(u64 __user *ids, u32 __user *size, u32 flags);
 asmlinkage long sys_ioperm(unsigned long from, unsigned long num, int on);
+asmlinkage long sys_uretprobe(void);
 asmlinkage long sys_pciconfig_read(unsigned long bus, unsigned long dfn, unsigned long off, unsigned long len, void __user *buf);
 asmlinkage long sys_pciconfig_write(unsigned long bus, unsigned long dfn, unsigned long off, unsigned long len, void __user *buf);
 asmlinkage long sys_pciconfig_iobase(long which, unsigned long bus, unsigned long devfn);
@@ -33861,6 +33862,7 @@ x64_syscall_tbl = """
 332     common  statx                   sys_statx
 333     common  io_pgetevents           sys_io_pgetevents
 334     common  rseq                    sys_rseq
+335     common  uretprobe               sys_uretprobe
 # don't use numbers 387 through 423, add new calls after the last
 # 'common' entry
 424     common  pidfd_send_signal       sys_pidfd_send_signal
