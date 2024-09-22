@@ -53423,11 +53423,21 @@ class KernelTaskCommand(GenericCommand):
             };
             """
             ptregs_size = current_arch.ptrsize * 21
-            kversion = Kernel.kernel_version()
-            if kversion < "6.10":
-                bottom_offset = 0
+
+            # Sometimes register values are stored a short distance away from the bottom of the kstack.
+            # I'm not sure if this depends on the kernel version.
+            # In 6.10.11 it was at offset 0, and in 6.10.0-rc2 it was at offset 16.
+            # For this reason I decided to do it dynamically.
+            # TODO: Perhaps dynamic detection is also necessary for x86, ARM, and ARM64.
+            for i in range(8):
+                init_process_kstack = read_int_from_memory(task_addrs[1] + offset_stack)
+                init_process_kstack_end = init_process_kstack + kstack_size
+                v = read_int_from_memory(init_process_kstack_end - current_arch.ptrsize * (i + 1))
+                if v == 0x2b: # ss segment default value
+                    bottom_offset = current_arch.ptrsize * i
+                    break
             else:
-                bottom_offset = current_arch.ptrsize * 2 # ?
+                bottom_offset = 0
         elif is_x86_32():
             """
             struct pt_regs {
