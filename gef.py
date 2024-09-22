@@ -70803,14 +70803,18 @@ class KsymaddrRemoteCommand(GenericCommand):
         version_number = r.group(1).decode("ascii")
         major = int(version_number.split(".")[0])
         minor = int(version_number.split(".")[1])
-        self.kernel_version = (major, minor)
-        self.may_use_big_symbol = (major, minor) >= (6, 1)
+        if len(version_number.split(".")) == 2:
+            patch = 0
+        else:
+            patch = int(version_number.split(".")[2])
+        self.kernel_version = (major, minor, patch)
+        self.may_use_big_symbol = (major, minor, patch) >= (6, 1, 0)
         return True
 
     def get_cfg_name(self):
         h = hashlib.sha256(String.str2bytes(self.version_string)).hexdigest()[-16:]
-        major, minor = self.kernel_version
-        cfg_file_name = os.path.join(GEF_TEMP_DIR, "ksymaddr-remote-{:d}.{:d}-{:s}.cfg".format(major, minor, h))
+        major, minor, patch = self.kernel_version
+        cfg_file_name = os.path.join(GEF_TEMP_DIR, "ksymaddr-remote-{:d}.{:d}.{:d}-{:s}.cfg".format(major, minor, patch, h))
         return cfg_file_name
 
     def save_config(self, param_name):
@@ -71015,14 +71019,14 @@ class KsymaddrRemoteCommand(GenericCommand):
 
     def find_kallsyms_markers(self):
         # determines the size of table elements depended on kernel version.
-        if self.kernel_version < (4, 20):
+        if self.kernel_version < (4, 20, 0):
             # kallsyms_markers is unsigned long[]
             self.kallsyms_markers_table_element_size = current_arch.ptrsize
         else:
             # kallsyms_markers is unsigned int[]
             self.kallsyms_markers_table_element_size = 4
 
-        if self.kernel_version >= (6, 2) and self.kernel_version < (6, 9):
+        if self.kernel_version >= (6, 1, 42) and self.kernel_version < (6, 9, 0):
             ret = self.get_saved_config([
                 "offset_kallsyms_token_markers",
                 "offset_kallsyms_seqs_of_names",
@@ -71042,20 +71046,20 @@ class KsymaddrRemoteCommand(GenericCommand):
         """
         [Search policy]
         - From kallsyms_token_table, search backwards for 0x00000000.
-        - For kernel 6.2~6.8, there is kallsyms_seqs_of_names between kallsyms_markers and kallsyms_token_table,
+        - For kernel 6.1.42~6.8, there is kallsyms_seqs_of_names between kallsyms_markers and kallsyms_token_table,
           so this should be skipped.
 
         [Positional relationship]
         ...
         - kallsyms_markers
-        - kallsyms_seqs_of_names (6.2~6.8)
+        - kallsyms_seqs_of_names (6.1.42~6.8)
         - kallsyms_token_table
         - kallsyms_token_index
         ...
         - kallsyms_seqs_of_names (6.9~)
         ...
 
-        [Sample values for 64bit ~6.2]
+        [Sample values for 64bit ~6.1.41]
         gef> hexdump -n dword kallsyms_markers
         0xffffffff8b2b4b48:    0x00000000 0x00000ab0 0x000016d3 0x00002316    |  .............#..  | <- kallsyms_markers
         0xffffffff8b2b4b58:    0x00002f38 0x00003cf8 0x00004c4c 0x000059c8    |  8/...<..LL...Y..  |
@@ -71067,7 +71071,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         0xffffffff8b2b51a0:    0x00144e55 0x001458d8 0x00146338 0x00000000    |  UN...X..8c......  |
         0xffffffff8b2b51b0:    0x77007565 0x6461005f 0x5f640064 0x6e75665f    |  eu.w_.add.d__fun  | <- kallsyms_token_table
 
-        [Sample values for 64bit 6.2~]
+        [Sample values for 64bit 6.1.42~]
         gef> hexdump -n dword kallsyms_markers
         0xffffffff8d5fcde0:    0x00000000 0x00000b55 0x000017bb 0x000024c3    |  ....U........$..  | <- kallsyms_markers
         0xffffffff8d5fcdf0:    0x000030c1 0x00003dca 0x00004983 0x000058aa    |  .0...=...I...X..  |
@@ -71079,7 +71083,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         0xffffffff8d5fd7b0:    0xa400291c 0x10a50024 0x0154a500 0xaa0116aa    |  .)..$.....T.....  |
         0xffffffff8d5fd7c0:    0x87610214 0x01274902 0xb201cbaf 0xbbbc01c9    |  ..a..I'.........  |
 
-        [Sample values for 32bit 6.2~]
+        [Sample values for 32bit 6.1.42~]
         gef> hexdump -n dword kallsyms_markers
         0xc6e0dc98:    0x00000000 0x00000c61 0x0000188f 0x00002641    |  ....a.......A&..  | <- kallsyms_markers
         0xc6e0dca8:    0x00003492 0x000041a7 0x00004e6b 0x00005ace    |  .4...A..kN...Z..  |
@@ -71114,9 +71118,9 @@ class KsymaddrRemoteCommand(GenericCommand):
                 break
             position = needle + self.kallsyms_markers_table_element_size - align_diff
 
-        # kallsyms_seqs_of_names is introduced from kernel 6.2
+        # kallsyms_seqs_of_names is introduced from kernel 6.1.42
         # in this case, it finds kallsyms_seqs_of_names instead of kallsyms_markers, so search back through memory again.
-        if self.kernel_version >= (6, 2) and self.kernel_version < (6, 9):
+        if self.kernel_version >= (6, 1, 42) and self.kernel_version < (6, 9, 0):
             if u32(self.kernel_img[needle + 4:needle + 8]) & 0xfff00000: # false positive, search again
                 position = needle
                 # aligned search from memory
@@ -71136,7 +71140,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         self.verbose_info("kallsyms_markers: {:#x}".format(self.ro_base + self.offset_kallsyms_markers))
 
         # find kallsyms_seqs_of_names
-        if self.kernel_version >= (6, 2) and self.kernel_version < (6, 9):
+        if self.kernel_version >= (6, 1, 42) and self.kernel_version < (6, 9, 0):
             # locate kallsyms_seqs_of_names to get the table size of kallsyms_markers (used after).
             position = self.offset_kallsyms_markers + 4
             while self.kernel_img[position + 3] == 0:
@@ -71165,7 +71169,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         ...
         - kallsyms_names
         - kallsyms_markers
-        - kallsyms_seqs_of_names (6.2~6.8)
+        - kallsyms_seqs_of_names (6.1.42~6.8)
         - kallsyms_token_table
         - kallsyms_token_index
         ...
@@ -71198,7 +71202,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         """
 
         # take the last element of kallsyms_marker
-        if hasattr(self, "offset_kallsyms_seqs_of_names"): # maybe 6.2~6.8
+        if hasattr(self, "offset_kallsyms_seqs_of_names"): # maybe 6.1.42~6.8
             kallsyms_markers_end = self.offset_kallsyms_seqs_of_names
         else:
             kallsyms_markers_end = self.offset_kallsyms_token_table
@@ -71243,7 +71247,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         - kallsyms_num_syms
         - kallsyms_names
         - kallsyms_markers
-        - kallsyms_seqs_of_names (6.2~6.8)
+        - kallsyms_seqs_of_names (6.1.42~6.8)
         - kallsyms_token_table
         - kallsyms_token_index
         ...
@@ -71435,7 +71439,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         - kallsyms_num_syms
         - kallsyms_names
         - kallsyms_markers
-        - kallsyms_seqs_of_names (6.2~6.8)
+        - kallsyms_seqs_of_names (6.1.42~6.8)
         - kallsyms_token_table
         - kallsyms_token_index
         - kallsyms_offsets (6.4~, CONFIG_KALLSYMS_BASE_RELATIVE=y)
@@ -71508,7 +71512,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         address_byte_size = current_arch.ptrsize
 
         # get relative_base_address
-        if self.kernel_version < (6, 4):
+        if self.kernel_version < (6, 4, 0):
             # ignore the 0 immediately above offset_kallsyms_num_syms.
             position = self.offset_kallsyms_num_syms
             while True:
@@ -71543,7 +71547,8 @@ class KsymaddrRemoteCommand(GenericCommand):
 
         else: # kernel_version >= (6, 4):
             position = self.offset_kallsyms_token_index + 0x200
-            position_relative_base = AddressUtil.align_address_to_size(position + self.num_symbols * offset_byte_size, 8) # TODO: 0x8? 0x10? ptrsize?
+            # TODO: align size is 0x8? 0x10? ptrsize?
+            position_relative_base = AddressUtil.align_address_to_size(position + self.num_symbols * offset_byte_size, 8)
             relative_base_address_data = self.kernel_img[position_relative_base:position_relative_base + address_byte_size]
             relative_base_address = int.from_bytes(relative_base_address_data, endian_str)
             if not (relative_base_address and (relative_base_address & gef_getpagesize_mask_low()) == 0):
@@ -71598,7 +71603,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         - kallsyms_num_syms
         - kallsyms_names
         - kallsyms_markers
-        - kallsyms_seqs_of_names (6.2~6.8)
+        - kallsyms_seqs_of_names (6.1.42~6.8)
         - kallsyms_token_table
         - kallsyms_token_index
         - kallsyms_addresses (6.4~?, CONFIG_KALLSYMS_BASE_RELATIVE=n) # unimplemented yet because I have never seen this pattern.
@@ -71722,8 +71727,12 @@ class KsymaddrRemoteCommand(GenericCommand):
                 version_number = r.group(1).decode("ascii")
                 major = int(version_number.split(".")[0])
                 minor = int(version_number.split(".")[1])
-                self.kernel_version = (major, minor)
-                self.may_use_big_symbol = (major, minor) >= (6, 1)
+                if len(version_number.split(".")) == 2:
+                    patch = 0
+                else:
+                    patch = int(version_number.split(".")[2])
+                self.kernel_version = (major, minor, patch)
+                self.may_use_big_symbol = (major, minor, patch) >= (6, 1, 0)
                 break
             current += step_size
 
