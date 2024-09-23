@@ -52746,6 +52746,14 @@ class Kernel:
             return int(r.group(1), 16)
         return None
 
+    @staticmethod
+    def page2virt(page):
+        ret = gdb.execute("page2virt {:#x}".format(page), to_string=True)
+        r = re.search(r"Virt: (\S+)", ret)
+        if r:
+            return int(r.group(1), 16)
+        return None
+
 
 @register_command
 class KernelbaseCommand(GenericCommand):
@@ -64581,10 +64589,9 @@ class SlubDumpCommand(GenericCommand):
 
     def page2virt(self, page, kmem_cache, freelist_fastpath=()):
         if not self.args.skip_page2virt:
-            ret = gdb.execute("page2virt {:#x}".format(page["address"]), to_string=True)
-            r = re.search(r"Virt: (\S+)", ret)
-            if r:
-                return int(r.group(1), 16)
+            r = Kernel.page2virt(page["address"])
+            if r is not None:
+                return r
 
         # setup for heuristic search from freelist
         freelist = list(freelist_fastpath) + page["freelist"]
@@ -67613,13 +67620,6 @@ class BuddyDumpCommand(GenericCommand):
         self.initialized = True
         return True
 
-    def page2virt_wrapper(self, page):
-        ret = gdb.execute("page2virt {:#x}".format(page), to_string=True)
-        r = re.search(r"Virt: (\S+)", ret)
-        if r:
-            return int(r.group(1), 16)
-        return None
-
     # for per_cpu_pageset
     def dump_list(self, list_i, i, is_highmem):
         heap_page_color = Config.get_gef_setting("theme.heap_page_address")
@@ -67661,7 +67661,7 @@ class BuddyDumpCommand(GenericCommand):
             phys_str = "???"
 
             if not is_highmem:
-                virt = self.page2virt_wrapper(page)
+                virt = Kernel.page2virt(page)
                 phys = None
                 if virt:
                     phys = PageMap.v2p_from_map(virt, self.maps)
@@ -67724,7 +67724,7 @@ class BuddyDumpCommand(GenericCommand):
             phys_str = "???"
 
             if not is_highmem:
-                virt = self.page2virt_wrapper(page)
+                virt = Kernel.page2virt(page)
                 phys = None
                 if virt:
                     phys = PageMap.v2p_from_map(virt, self.maps)
@@ -67843,7 +67843,7 @@ class BuddyDumpCommand(GenericCommand):
                 # sort_verbose
                 if prev_virt is None:
                     # first entry
-                    virt = self.page2virt_wrapper(page)
+                    virt = Kernel.page2virt(page)
                     if virt is not None:
                         phys = PageMap.v2p_from_map(virt, self.maps)
                         if phys is not None:
@@ -67853,7 +67853,7 @@ class BuddyDumpCommand(GenericCommand):
                     prev_size = size
                     continue
                 # second or after entries
-                virt = self.page2virt_wrapper(page)
+                virt = Kernel.page2virt(page)
                 if prev_virt + prev_size != virt:
                     diff = virt - (prev_virt + prev_size)
                     out.append("    used:{:{:d}s}  size:{:#08x}".format("", align, diff))
@@ -68167,13 +68167,6 @@ class KernelPipeCommand(GenericCommand):
             info("sizeof(pipe_buffer): {:#x}".format(self.sizeof_pipe_buffer))
         return pipe_files
 
-    def page2virt_wrapper(self, page):
-        ret = gdb.execute("page2virt {:#x}".format(page), to_string=True)
-        r = re.search(r"Virt: (\S+)", ret)
-        if r:
-            return int(r.group(1), 16)
-        return None
-
     def get_flags_str(self, flags_value):
         _flags = {
             "PIPE_BUF_FLAG_LRU":       0x01,
@@ -68242,7 +68235,7 @@ class KernelPipeCommand(GenericCommand):
                 offset = u32(read_memory(base + self.offset_offset, 4))
                 len_ = u32(read_memory(base + self.offset_len, 4))
                 flags = u32(read_memory(base + self.offset_flags, 4))
-                virt = self.page2virt_wrapper(page)
+                virt = Kernel.page2virt(page)
 
                 if idx in used_range:
                     status = Color.colorify("used", used_address_color)
