@@ -70726,7 +70726,7 @@ class KsymaddrRemoteCommand(GenericCommand):
             position += 1
 
             # check if big symbol (6.1~)
-            if self.may_use_big_symbol:
+            if self.kernel_version >= (6, 1, 0):
                 if length & 0x80:
                     low = length & 0x7f
                     high = self.kernel_img[position]
@@ -70765,6 +70765,27 @@ class KsymaddrRemoteCommand(GenericCommand):
                 "__ksymtab_",
                 "__kcrctab_",
                 "__tpstrtab_", # tracepoint
+                "__initcall__",
+                "__traceiter_",
+                "__tracepoint_",
+                "__probestub_",
+                "__already_done.",
+                "__flags.",
+                "__func__.",
+                "__key.",
+                "__mkey.",
+                "__msg.",
+                "__print_once.",
+                "__quirk.",
+                "__warned.",
+                "__wkey.",
+                "___done.",
+                "___once_key.",
+                "___tp_str.",
+                "__compound_literal.",
+                "__SCT__tp_func_",
+                "__SCK__tp_func_",
+                "__TRACE_SYSTEM_",
             )
             kallsyms = [entry for entry in kallsyms if not entry[1].startswith(ignore_list)]
 
@@ -70787,6 +70808,15 @@ class KsymaddrRemoteCommand(GenericCommand):
                         break
         return
 
+    def get_kernel_version_triplet(self, version_number):
+        major = int(version_number.split(".")[0])
+        minor = int(version_number.split(".")[1])
+        if len(version_number.split(".")) == 2:
+            patch = 0
+        else:
+            patch = int(version_number.split(".")[2])
+        return (major, minor, patch)
+
     def get_kernel_version(self):
         # don't use Kernel.kernel_version, since it refers ksymaddr-remote
         r = re.search(rb"Linux version (\d+\.[\d.]*\d)[ -~]+", self.kernel_img)
@@ -70797,14 +70827,7 @@ class KsymaddrRemoteCommand(GenericCommand):
         self.version_string_offset = r.span()[0]
         self.verbose_info("linux_banner: {:#x}".format(self.ro_base + self.version_string_offset))
         version_number = r.group(1).decode("ascii")
-        major = int(version_number.split(".")[0])
-        minor = int(version_number.split(".")[1])
-        if len(version_number.split(".")) == 2:
-            patch = 0
-        else:
-            patch = int(version_number.split(".")[2])
-        self.kernel_version = (major, minor, patch)
-        self.may_use_big_symbol = (major, minor, patch) >= (6, 1, 0)
+        self.kernel_version = self.get_kernel_version_triplet(version_number)
         return True
 
     def get_cfg_name(self):
@@ -71339,7 +71362,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 is_big_symbol = False # default
 
                 # check if big symbol (6.1~)
-                if self.may_use_big_symbol:
+                if self.kernel_version >= (6, 1, 0):
                     if symbol_size & 0x80:
                         low = symbol_size & 0x7f
                         high = self.kernel_img[pos + 1]
@@ -71721,14 +71744,7 @@ class KsymaddrRemoteCommand(GenericCommand):
                 version_string_address = current + r.span()[0]
                 self.version_string = r.group(0)[:-2]
                 version_number = r.group(1).decode("ascii")
-                major = int(version_number.split(".")[0])
-                minor = int(version_number.split(".")[1])
-                if len(version_number.split(".")) == 2:
-                    patch = 0
-                else:
-                    patch = int(version_number.split(".")[2])
-                self.kernel_version = (major, minor, patch)
-                self.may_use_big_symbol = (major, minor, patch) >= (6, 1, 0)
+                self.kernel_version = self.get_kernel_version_triplet(version_number)
                 break
             current += step_size
 
