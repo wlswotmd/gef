@@ -24880,7 +24880,11 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                         new_pos, op2 = self.get_uleb128(data, new_pos)
                         regname = self.get_register_name(op1)
                         off = op2 * data_align
-                        entries.append([pos, data[pos:new_pos], indent + "offset_extended r{:d} ({:s}) at cfa{:+#x}".format(op1, regname, off), None, ""])
+                        entries.append([
+                            pos, data[pos:new_pos],
+                            indent + "offset_extended r{:d} ({:s}) at cfa{:+#x}".format(op1, regname, off),
+                            None, "",
+                        ])
                     elif opcode == self.DW_CFA_restore_extended:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         regname = self.get_register_name(op1)
@@ -24898,7 +24902,11 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                         new_pos, op2 = self.get_uleb128(data, new_pos)
                         regname1 = self.get_register_name(op1)
                         regname2 = self.get_register_name(op2)
-                        entries.append([pos, data[pos:new_pos], indent + "register r{:d} ({:s}) in r{:d} ({:s})".format(op1, regname1, op2, regname2), None, ""])
+                        entries.append([
+                            pos, data[pos:new_pos],
+                            indent + "register r{:d} ({:s}) in r{:d} ({:s})".format(op1, regname1, op2, regname2),
+                            None, "",
+                        ])
                     elif opcode == self.DW_CFA_remember_state:
                         entries.append([pos, data[pos:new_pos], indent + "remember_state", None, ""])
                     elif opcode == self.DW_CFA_restore_state:
@@ -24907,7 +24915,11 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         new_pos, op2 = self.get_uleb128(data, new_pos)
                         regname = self.get_register_name(op1)
-                        entries.append([pos, data[pos:new_pos], indent + "def_cfa r{:d} ({:s}) at offset {:#x}".format(op1, regname, op2), None, ""])
+                        entries.append([
+                            pos, data[pos:new_pos],
+                            indent + "def_cfa r{:d} ({:s}) at offset {:#x}".format(op1, regname, op2),
+                            None, "",
+                        ])
                     elif opcode == self.DW_CFA_def_cfa_register:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         regname = self.get_register_name(op1)
@@ -24932,13 +24944,21 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                         new_pos, op2 = self.get_uleb128(data, new_pos)
                         regname = self.get_register_name(op1)
                         off = op2 * data_align
-                        entries.append([pos, data[pos:new_pos], indent + "offset_extended_sf r{:d} ({:s}) at cfa{:+#x}".format(op1, regname, off), None, ""])
+                        entries.append([
+                            pos, data[pos:new_pos],
+                            indent + "offset_extended_sf r{:d} ({:s}) at cfa{:+#x}".format(op1, regname, off),
+                            None, "",
+                        ])
                     elif opcode == self.DW_CFA_def_cfa_sf:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         new_pos, op2 = self.get_uleb128(data, new_pos)
                         regname = self.get_register_name(op1)
                         off = op2 * data_align
-                        entries.append([pos, data[pos:new_pos], indent + "def_cfa_sf r{:d} ({:s}) at offset {:#x}".format(op1, regname, off), None, ""])
+                        entries.append([
+                            pos, data[pos:new_pos],
+                            indent + "def_cfa_sf r{:d} ({:s}) at offset {:#x}".format(op1, regname, off),
+                            None, "",
+                        ])
                     elif opcode == self.DW_CFA_def_cfa_offset_sf:
                         new_pos, op1 = self.get_uleb128(data, new_pos)
                         entries.append([pos, data[pos:new_pos], indent + "def_cfa_offset_sf {:#x}".format(op1 * data_align), None, ""])
@@ -25642,7 +25662,10 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                 # parse lpstart_encoding
                 new_pos, lpstart_encoding = self.read_1ubyte(data, pos)
                 encoding_str = self.get_encoding_str(lpstart_encoding)
-                entries.append([pos, data[pos:new_pos], "landing_pad_start_encoding", lpstart_encoding, "encoding: {:s}".format(encoding_str)])
+                entries.append([
+                    pos, data[pos:new_pos],
+                    "landing_pad_start_encoding", lpstart_encoding, "encoding: {:s}".format(encoding_str),
+                ])
                 pos = new_pos
 
                 # parse lpstart
@@ -25654,7 +25677,10 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                 # parse ttype_encoding
                 new_pos, ttype_encoding = self.read_1ubyte(data, pos)
                 encoding_str = self.get_encoding_str(ttype_encoding)
-                entries.append([pos, data[pos:new_pos], "ttype_encoding", ttype_encoding, "encoding: {:s}".format(encoding_str)])
+                entries.append([
+                    pos, data[pos:new_pos],
+                    "ttype_encoding", ttype_encoding, "encoding: {:s}".format(encoding_str),
+                ])
                 pos = new_pos
 
                 # parse ttype_base_offset
@@ -25662,13 +25688,19 @@ class DwarfExceptionHandlerInfoCommand(GenericCommand):
                 if ttype_encoding != self.DW_EH_PE_omit:
                     new_pos, ttype_base_offset = self.get_uleb128(data, pos)
                     ttype_base = new_pos + ttype_base_offset
-                    entries.append([pos, data[pos:new_pos], "ttype_base_offset", ttype_base_offset, "ttype_base: {:#x}".format(ttype_base)])
+                    entries.append([
+                        pos, data[pos:new_pos],
+                        "ttype_base_offset", ttype_base_offset, "ttype_base: {:#x}".format(ttype_base),
+                    ])
                     pos = new_pos
 
                 # parse call_site_encoding
                 new_pos, call_site_encoding = self.read_1ubyte(data, pos)
                 encoding_str = self.get_encoding_str(call_site_encoding)
-                entries.append([pos, data[pos:new_pos], "call_site_encoding", call_site_encoding, "encoding: {:s}".format(encoding_str)])
+                entries.append([
+                    pos, data[pos:new_pos],
+                    "call_site_encoding", call_site_encoding, "encoding: {:s}".format(encoding_str),
+                ])
                 pos = new_pos
 
                 # parse call_site_table_len
@@ -73900,10 +73932,18 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
         self.out.append("size_t max_size_of_allocated_bytes:                    {:#x}".format(root.max_size_of_allocated_bytes))
         self.out.append("std::atomic<uint64_t> syscall_count:                   {:#x}".format(root.syscall_count))
         self.out.append("std::atomic<uint64_t> syscall_total_time_ns:           {:#x}".format(root.syscall_total_time_ns))
-        self.out.append("std::atomic<size_t> total_size_of_brp_quarantined_bytes: {:#x}".format(root.total_size_of_brp_quarantined_bytes))
-        self.out.append("std::atomic<size_t> total_count_of_brp_quarantined_slots: {:#x}".format(root.total_count_of_brp_quarantined_slots))
-        self.out.append("std::atomic<size_t> cumulative_size_of_brp_quarantined_bytes: {:#x}".format(root.cumulative_size_of_brp_quarantined_bytes))
-        self.out.append("std::atomic<size_t> cumulative_count_of_brp_quarantined_slots: {:#x}".format(root.cumulative_count_of_brp_quarantined_slots))
+        self.out.append("std::atomic<size_t> total_size_of_brp_quarantined_bytes: {:#x}".format(
+            root.total_size_of_brp_quarantined_bytes,
+        ))
+        self.out.append("std::atomic<size_t> total_count_of_brp_quarantined_slots: {:#x}".format(
+            root.total_count_of_brp_quarantined_slots,
+        ))
+        self.out.append("std::atomic<size_t> cumulative_size_of_brp_quarantined_bytes: {:#x}".format(
+            root.cumulative_size_of_brp_quarantined_bytes,
+        ))
+        self.out.append("std::atomic<size_t> cumulative_count_of_brp_quarantined_slots: {:#x}".format(
+            root.cumulative_count_of_brp_quarantined_slots,
+        ))
         self.out.append("size_t empty_slot_spans_dirty_bytes:                   {:#x}".format(root.empty_slot_spans_dirty_bytes))
         self.out.append("int max_empty_slot_spans_dirty_bytes_shift:            {:#x}".format(root.max_empty_slot_spans_dirty_bytes_shift))
         self.out.append("uintptr_t next_super_page:                             {:s}".format(self.P(root.next_super_page)))
@@ -73932,8 +73972,12 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
         self.out.append("uintptr_t inverted_self:                               {:#x} (=~{:s})".format(root.inverted_self, inv_inv))
         self.out.append("std::atomic<int> thread_caches_being_constructed_:     {:#x}".format(root.thread_caches_being_constructed_))
         self.out.append("bool quarantine_always_for_testing:                    {:#x}".format(root.quarantine_always_for_testing))
-        self.out.append("size_t scheduler_loop_quarantine_branch_capacity_in_bytes: {:#x}".format(root.scheduler_loop_quarantine_branch_capacity_in_bytes))
-        self.out.append("internal::LightweightQuarantineRoot scheduler_loop_quarantine_root: {:#x}".format(root.scheduler_loop_quarantine_root))
+        self.out.append("size_t scheduler_loop_quarantine_branch_capacity_in_bytes: {:#x}".format(
+            root.scheduler_loop_quarantine_branch_capacity_in_bytes,
+        ))
+        self.out.append("internal::LightweightQuarantineRoot scheduler_loop_quarantine_root: {:#x}".format(
+            root.scheduler_loop_quarantine_root,
+        ))
         self.out.append("NoDestructor<...> scheduler_loop_quarantine:           {:#x}".format(root.scheduler_loop_quarantine))
         return
 
@@ -77704,7 +77748,7 @@ class QemuRegistersCommand(GenericCommand, BufferingOutput):
 
         # CR4
         self.out.append(titlify("CR4 (Control Register 4)"))
-        desc = "It contains flags that enable some architectural extensions, and indicate OS or executive support for specific processor capabilities"
+        desc = "It contains flags that architectural extensions, indicate OS or executive support"
         bit_info = [
             [25, "UINTR", "Enable user-mode inter-processor interrupts", "If 1, enable User-Interrupt Delivery"],
             [24, "PKS", "Enable protection keys for supervisor-mode pages", "If 1, enable PKS"],
@@ -86315,7 +86359,10 @@ class KmallocAllocatedByCommand(GenericCommand):
                 sring_sz = params[16] + params[0] * 4    # sq_off.array + sq_entries * sizeof(uint)
                 cring_sz = params[25] + params[1] * 0x10 # cq_off.cqes + cq_entries * sizeof(struct io_uring_cqe)
                 sring_sz = max(sring_sz, cring_sz)
-                yield ("mmap(0, sring_sz, RW-, MAP_SHARED|MAP_POPULATE, ring_fd, IORING_OFF_SQ_RING)", "mmap", [0, sring_sz, 3, 0x1 | 0x8000, ring_fd, 0])
+                yield (
+                    "mmap(0, sring_sz, RW-, MAP_SHARED|MAP_POPULATE, ring_fd, IORING_OFF_SQ_RING)",
+                    "mmap", [0, sring_sz, 3, 0x1 | 0x8000, ring_fd, 0],
+                )
                 if u2i(ret_history[-1]) >= 0:
                     sq_ptr = ret_history[-1]
                     yield ("io_uring_enter(ring_fd, 0, 0, 0, NULL, 8)", "io_uring_enter", [ring_fd, 0, 0, 0, 0, 8])
