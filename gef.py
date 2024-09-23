@@ -67621,7 +67621,7 @@ class BuddyDumpCommand(GenericCommand):
         return True
 
     # for per_cpu_pageset
-    def dump_list(self, list_i, i, is_highmem):
+    def dump_list(self, list_i, i, cpu_num, is_highmem):
         heap_page_color = Config.get_gef_setting("theme.heap_page_address")
         chunk_size_color = Config.get_gef_setting("theme.heap_chunk_size")
         freed_address_color = Config.get_gef_setting("theme.heap_chunk_address_freed")
@@ -67671,13 +67671,16 @@ class BuddyDumpCommand(GenericCommand):
                 if phys is not None:
                     phys_str = "{:#0{:d}x}-{:#0{:d}x}".format(phys, align, phys + size, align)
 
-            # create msg
-            msg = "    page:{:s}  size:{:s}  virt:{:s}  phys:{:s} (pcp)".format(page_str, size_str, virt_str, phys_str)
-
             # add msg
             if self.sort:
+                msg = "    page:{:s}  size:{:s}  virt:{:s}  phys:{:s} (pcp, cpu={:d})".format(
+                    page_str, size_str, virt_str, phys_str, cpu_num,
+                )
                 self.out.append([page, size, msg])
             else:
+                msg = "    page:{:s}  size:{:s}  virt:{:s}  phys:{:s} (pcp)".format(
+                    page_str, size_str, virt_str, phys_str,
+                )
                 self.out.append(msg)
 
             # get next
@@ -67696,7 +67699,7 @@ class BuddyDumpCommand(GenericCommand):
             self.add_msg("cpu: {:d}".format(cpu_num))
             for i in range(self.NR_PCP_LISTS):
                 lists_i = pcp + self.offset_lists + sizeof_list_head * i
-                self.dump_list(lists_i, i, is_highmem)
+                self.dump_list(lists_i, i, cpu_num, is_highmem)
         return
 
     def dump_free_list(self, free_list, mtype, size, is_highmem):
