@@ -28949,17 +28949,17 @@ class DereferenceCommand(GenericCommand):
                         help="the memory address to dump. (default: current_arch.sp)")
     parser.add_argument("nb_lines", metavar="NB_LINES", nargs="?", type=lambda x: int(x, 0),
                         help="the count of lines.")
+    parser.add_argument("-a", "--is-addr", action="store_true", help="display only valid address.")
+    parser.add_argument("-A", "--is-not-addr", action="store_true", help="display only invalid address.")
+    parser.add_argument("-d", "--depth", default=1, type=int, help="depth of recursive. (default: %(default)s)")
+    parser.add_argument("-r", "--reverse", action="store_true", help="display in reverse order line by line.")
+    parser.add_argument("-t", "--tag", nargs=2, action="append", metavar=("IDX", "TAG"), help="display with tag.")
+    parser.add_argument("-u", "--uniq", action="store_true", help="display with uniq.")
+    parser.add_argument("-l", "--list-head", action="store_true", help="display list_head or not.")
+    parser.add_argument("-p", "--phys", action="store_true", help="treat ADDRESS as a physical address.")
     parser.add_argument("-s", "--slab-contains", action="store_true", help="display slab_cache name if available.")
     parser.add_argument("-S", "--slab-contains-unaligned", action="store_true",
                         help="display slab_cache name (allow unaligned) if available.")
-    parser.add_argument("-l", "--list-head", action="store_true", help="display list_head or not.")
-    parser.add_argument("-p", "--phys", action="store_true", help="treat ADDRESS as a physical address.")
-    parser.add_argument("-u", "--uniq", action="store_true", help="display with uniq.")
-    parser.add_argument("-a", "--is-addr", action="store_true", help="display only valid address.")
-    parser.add_argument("-A", "--is-not-addr", action="store_true", help="display only invalid address.")
-    parser.add_argument("-t", "--tag", nargs=2, action="append", metavar=("IDX", "TAG"), help="display with tag.")
-    parser.add_argument("-d", "--depth", default=1, type=int, help="depth of reference. (default: %(default)s)")
-    parser.add_argument("-r", "--reverse", action="store_true", help="display in reverse order line by line.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
@@ -29220,7 +29220,7 @@ class DereferenceCommand(GenericCommand):
                     cmd = "dereference --depth {:d} --no-pager {:#x} {:#x}".format(args.depth - 1, v, nb_lines)
                     ret = gdb.execute(cmd, to_string=True)
                     for line in ret.splitlines():
-                        out.append("    " + line)
+                        out.append("      " + line)
 
         if args.reverse:
             out.reverse()
