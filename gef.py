@@ -19553,10 +19553,18 @@ class UnicornEmulateCommand(GenericCommand):
         content += "def code_hook(emu, address, size, user_data):\n"
         content += "    global count\n"
         content += "    if not quiet:\n"
-        # min() is the workaround since unicorn passes 0xf1f1f1f1 as size if opcode is unsupported.
-        # The execution will be failed, but the information of the error message increases.
-        content += "        code = emu.mem_read(address, min(size, 0x10))\n"
-        content += "        insn = disassemble(code, address)\n"
+        # unicorn passes 0xf1f1f1f1 as size if opcode is unsupported.
+        # this causes memory read error, so we need to fix the size.
+        content += "        if size >= 0x40:\n"
+        content += "            size = 0x10\n"
+        # from unicorn 2.1.0, size as 4 if opcode is unsupported.
+        content += "        for i in range(10):\n"
+        content += "            code = emu.mem_read(address, size + i)\n"
+        content += "            insn = disassemble(code, address)\n"
+        content += "            if insn:\n"
+        content += "                break\n"
+        content += "        else:\n"
+        content += "            raise\n"
         content += "        code_hex = code[:insn.size].hex()\n"
         content += "        if verbose:\n"
         content += "            print_regs(emu, registers)\n"
