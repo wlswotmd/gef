@@ -32,13 +32,17 @@ Many other commands have been added and improved. Enjoy!
 
 ### Supported environment
 - Tested on ubuntu 24.04.
-- It may work under ubuntu 20.04 - 23.10, debian 10.x or after.
+- It may work on ubuntu 22.04 - 23.10.
+- It might work on ubuntu 20.04 - 21.10, but not recommended.
 
 ### Install
 ```bash
 # Ubuntu 23.04 or later restrict global installation of python packages with pip3.
 # So you need --break-system-packages option.
 wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sed -e 's/pip3 install/pip3 install --break-system-packages/g' | sh
+
+# Ubuntu 22.10 or before
+wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sh
 ```
 
 * Note
@@ -285,7 +289,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
         * Supported on x64/x86, based on uClibc-ng v1.0.42 malloc-standard.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uclibc-ng-heap-dump.png)
         * How to test (x64):
-            * Download and extract `x86-64--uclibc--stable-2022.08-1.tar.bz2` from https://toolchains.bootlin.com/
+            * Download and extract `x86-64--uclibc--stable-2024.05-1.tar.bz2` from https://toolchains.bootlin.com/
             * Add `/PATH/TO/x86_64-buildroot-linux-uclibc/bin` to `$PATH`, then build as `x86_64-linux-gcc test.c`.
             * Fix interpreter by `patchelf --set-interpreter /PATH/TO/x86_64-buildroot-linux-uclibc/sysroot/lib/ld64-uClibc.so.0 a.out`.
     * `uclibc-ng-visual-heap`: is colorized heap viewer for uClibc-ng.

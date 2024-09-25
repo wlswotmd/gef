@@ -25,7 +25,9 @@ fi
 echo "[+] install rp++"
 if [ "x$(uname -m)" = "xx86_64" ]; then
     if [ "x$(which rp-lin)" = "x" ] && [ ! -e /usr/local/bin/rp-lin ]; then
-        wget -q https://github.com/0vercl0k/rp/releases/download/v2.1.3/rp-lin-clang.zip -P /tmp
+        # v2.1.3 will cause an error on Ubuntu 22.10 or earlier.
+        # The only difference between 2.1.2 and 2.1.3 is for OpenBSD compatibility and can be ignored.
+        wget -q https://github.com/0vercl0k/rp/releases/download/v2.1.2/rp-lin-clang.zip -P /tmp
         unzip /tmp/rp-lin-clang.zip -d /usr/local/bin/
         chmod +x /usr/local/bin/rp-lin
         rm /tmp/rp-lin-clang.zip
