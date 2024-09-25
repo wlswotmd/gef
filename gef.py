@@ -67320,7 +67320,7 @@ class BuddyDumpCommand(GenericCommand):
 
     _cmdline_ = "buddy-dump"
     _category_ = "08-e. Qemu-system Cooperation - Linux Allocator"
-    _aliases_ = ["zone-dump"]
+    _aliases_ = ["zone-dump", "pcplist"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-z", "--zone", action="append", choices=["DMA", "DMA32", "Normal", "HighMem", "Movable", "Device"],
