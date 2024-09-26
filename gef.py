@@ -13286,7 +13286,7 @@ class EventHandler:
 
         # If the silent command is specified for a breakpoint, skip `context` command.
         context_flag = True
-        if type(event) == gdb.BreakpointEvent:
+        if isinstance(event, gdb.BreakpointEvent):
             if event.breakpoint.is_valid() and event.breakpoint.enabled:
                 if event.breakpoint.commands:
                     if event.breakpoint.commands.startswith("silent"):
@@ -88596,7 +88596,7 @@ class GefConfigCommand(GenericCommand):
             return
 
         try:
-            if _type == bool:
+            if _type is bool:
                 if config_value.upper() in ("TRUE", "T", "1"):
                     _newval = True
                 else:
@@ -88746,7 +88746,7 @@ class GefRestoreCommand(GenericCommand):
                 _type = Config.__gef_config__.get(key)[1]
                 new_value = cfg.get(section, optname)
                 try:
-                    if _type == bool:
+                    if _type is bool:
                         if new_value == "True":
                             new_value = True
                         elif new_value == "False":
@@ -88995,48 +88995,48 @@ class GefPyObjListCommand(GenericCommand):
         read_write_mems = []
         others = []
 
-        for mod in dir(sys.modules["__main__"]): # for global object
+        for gobj in dir(sys.modules["__main__"]): # for global object
             # skip specific
-            if mod in skip_name_list:
+            if gobj in skip_name_list:
                 continue
 
-            # skip specific type
-            obj = getattr(sys.modules["__main__"], mod)
-            if type(obj) in skip_type_list:
-                continue
-
+            obj = getattr(sys.modules["__main__"], gobj)
             t = type(obj)
 
+            # skip specific type
+            if t in skip_type_list:
+                continue
+
             # classify
-            if mod.startswith("__") and t != function_type:
-                global_configs.append("{!s} {!s}".format(t, mod))
-            elif mod in ["current_arch"]:
-                global_configs.append("{!s} {!s}".format(t, mod))
-            elif mod.upper() == mod and type(obj) != class_type:
-                global_configs.append("{!s} {!s}".format(t, mod))
-            elif type(obj) == class_type:
-                if mod.endswith("Command"):
-                    command_classes.append("{!s} {!s}".format(t, mod))
-                elif mod.endswith("Breakpoint") or mod.endswith("Watchpoint"):
-                    bp_classes.append("{!s} {!s}".format(t, mod))
+            if gobj.startswith("__") and t is not function_type:
+                global_configs.append("{!s} {!s}".format(t, gobj))
+            elif gobj in ["current_arch"]:
+                global_configs.append("{!s} {!s}".format(t, gobj))
+            elif gobj.upper() == gobj and t is not class_type:
+                global_configs.append("{!s} {!s}".format(t, gobj))
+            elif t is class_type:
+                if gobj.endswith("Command"):
+                    command_classes.append("{!s} {!s}".format(t, gobj))
+                elif gobj.endswith("Breakpoint") or gobj.endswith("Watchpoint"):
+                    bp_classes.append("{!s} {!s}".format(t, gobj))
                 elif obj in arch_list:
-                    arch_classes.append("{!s} {!s}".format(t, mod))
+                    arch_classes.append("{!s} {!s}".format(t, gobj))
                 else:
-                    classes.append("{!s} {!s}".format(t, mod))
+                    classes.append("{!s} {!s}".format(t, gobj))
             elif obj.__doc__ and obj.__doc__.startswith("Architecture determination function"):
-                arch_determinations.append("{!s} {!s}".format(t, mod))
+                arch_determinations.append("{!s} {!s}".format(t, gobj))
             elif obj.__doc__ and obj.__doc__.startswith("GDB mode determination function"):
-                gdb_mode_determinations.append("{!s} {!s}".format(t, mod))
+                gdb_mode_determinations.append("{!s} {!s}".format(t, gobj))
             elif obj.__doc__ and obj.__doc__.startswith("Decorator"):
-                decorators.append("{!s} {!s}".format(t, mod))
-            elif mod.endswith(("syscall_tbl", "syscall_list")) or mod.startswith("syscall_defs"):
-                syscall_defines.append("{!s} {!s}".format(t, mod))
+                decorators.append("{!s} {!s}".format(t, gobj))
+            elif gobj.endswith(("syscall_tbl", "syscall_list")) or gobj.startswith("syscall_defs"):
+                syscall_defines.append("{!s} {!s}".format(t, gobj))
             elif obj.__doc__ and obj.__doc__.startswith("The wrapper of gef_print"):
-                gef_print_wrappers.append("{!s} {!s}".format(t, mod))
-            elif re.match(r"(read|write)_.*(memory|physmem).*", mod):
-                read_write_mems.append("{!s} {!s}".format(t, mod))
+                gef_print_wrappers.append("{!s} {!s}".format(t, gobj))
+            elif re.match(r"(read|write)_.*(memory|physmem).*", gobj):
+                read_write_mems.append("{!s} {!s}".format(t, gobj))
             else:
-                others.append("{!s} {!s}".format(t, mod))
+                others.append("{!s} {!s}".format(t, gobj))
 
         # print
         output = []
