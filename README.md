@@ -271,7 +271,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 
 ### Heap dump features
 * Glibc heap commands are improved.
-    * It changes the color.
+    * It changes the color and print symbol if exists.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-bins.png)
     * They print bins information if the chunk is in free-list.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-if-in-freelist.png)

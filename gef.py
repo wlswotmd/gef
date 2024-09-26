@@ -4321,73 +4321,89 @@ class GlibcHeap:
             return "|".join(flags)
 
         def to_str(self, arena):
+            def get_sym(addr):
+                a = ProcessMap.lookup_address(addr)
+                b = Symbol.get_symbol_string(addr)
+                return a, b
+
+            def get_sym_chunk(addr):
+                a = ProcessMap.lookup_address(addr)
+                b1 = Color.colorify_hex(addr, Config.get_gef_setting("theme.heap_chunk_address_freed"))
+                b2 = Color.colorify_hex(addr, Config.get_gef_setting("theme.heap_chunk_address_used"))
+                c = Symbol.get_symbol_string(addr)
+                return a, (b1, b2), c
+
+            def get_err(addrs, sll=False):
+                for a in addrs:
+                    if not a.valid:
+                        if sll and a.value == 0:
+                            # single link-list && 0: ok
+                            continue
+                        return ", {:s}".format(Color.colorify("corrupted",  Config.get_gef_setting("theme.heap_corrupted_msg")))
+                return ""
+
             chunk_c = Color.colorify("Chunk", Config.get_gef_setting("theme.heap_chunk_label"))
             size_c = Color.colorify_hex(self.get_chunk_size(), Config.get_gef_setting("theme.heap_chunk_size"))
-            base_c = Color.colorify_hex(self.chunk_base_address, Config.get_gef_setting("theme.heap_chunk_address_freed"))
-            addr_c = Color.colorify_hex(self.address, Config.get_gef_setting("theme.heap_chunk_address_freed"))
-            corrupted_msg_color = Config.get_gef_setting("theme.heap_corrupted_msg")
+            base, (base_c_f, base_c_u), base_sym = get_sym_chunk(self.chunk_base_address)
+            addr, (addr_c_f, addr_c_u), addr_sym = get_sym_chunk(self.address)
             flags = self.flags_as_string()
 
             # large bins
             if arena.is_chunk_in_largebins(self):
-                fd = ProcessMap.lookup_address(self.fd)
-                bk = ProcessMap.lookup_address(self.bk)
-                if not fd.valid or not bk.valid:
-                    err = ", {:s}".format(Color.colorify("corrupted", corrupted_msg_color))
-                else:
-                    err = ""
+                fd, fd_sym = get_sym(self.fd)
+                bk, bk_sym = get_sym(self.bk)
+                err = get_err([fd, bk])
                 if is_valid_addr(self.fd_nextsize) or is_valid_addr(self.bk_nextsize):
                     # largebin and valid (fd|bk)_nextsize
-                    fd_nextsize = ProcessMap.lookup_address(self.fd_nextsize)
-                    bk_nextsize = ProcessMap.lookup_address(self.bk_nextsize)
-                    fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s}, fd_nextsize={!s}, bk_nextsize={!s}{:s})"
-                    msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk, fd_nextsize, bk_nextsize, err)
+                    fdn, fdn_sym = get_sym(self.fd_nextsize)
+                    bkn, bkn_sym = get_sym(self.bk_nextsize)
+                    fmt = "{:s}(base={:s}{:s}, addr={:s}{:s}, size={:s}, flags={:s}, fd={!s}{:s}, bk={!s}{:s}, "
+                    fmt += "fd_nextsize={!s}{:s}, bk_nextsize={!s}{:s})"
+                    msg = fmt.format(
+                        chunk_c, base_c_f, base_sym, addr_c_f, addr_sym, size_c, flags,
+                        fd, fd_sym, bk, bk_sym, fdn, fdn_sym, bkn, bkn_sym, err,
+                    )
                 else:
-                    fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s}{:s})"
-                    msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk, err)
+                    msg = "{:s}(base={:s}{:s}, addr={:s}{:s}, size={:s}, flags={:s}, fd={!s}{:s}, bk={!s}{:s}{:s})".format(
+                        chunk_c, base_c_f, base_sym, addr_c_f, addr_sym, size_c, flags, fd, fd_sym, bk, bk_sym, err,
+                    )
 
             # small bins / unsorted bin
             elif arena.is_chunk_in_smallbins(self) or arena.is_chunk_in_unsortedbin(self):
-                fd = ProcessMap.lookup_address(self.fd)
-                bk = ProcessMap.lookup_address(self.bk)
-                if not fd.valid or not bk.valid:
-                    err = ", {:s}".format(Color.colorify("corrupted", corrupted_msg_color))
-                else:
-                    err = ""
-                fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={!s}, bk={!s}{:s})"
-                msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, bk, err)
+                fd, fd_sym = get_sym(self.fd)
+                bk, bk_sym = get_sym(self.bk)
+                err = get_err([fd, bk])
+                msg = "{:s}(base={:s}{:s}, addr={:s}{:s}, size={:s}, flags={:s}, fd={!s}{:s}, bk={!s}{:s}{:s})".format(
+                    chunk_c, base_c_f, base_sym, addr_c_f, addr_sym, size_c, flags, fd, fd_sym, bk, bk_sym, err,
+                )
 
             # tcache / fastbins
             elif arena.is_chunk_in_fastbins(self) or arena.is_chunk_in_tcache(self):
-                fd = self.get_fwd_ptr(sll=False)
                 if get_libc_version() < (2, 32):
-                    fd = ProcessMap.lookup_address(fd)
-                    if fd.value != 0 and not fd.valid:
-                        err = ", {:s}".format(Color.colorify("corrupted", corrupted_msg_color))
-                    else:
-                        err = ""
-                    fmt = "{:s}(base={:s}. addr={:s}, size={:s}, flags={:s}, fd={!s}{:s})"
-                    msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, err)
+                    fd, fd_sym = get_sym(self.get_fwd_ptr(sll=False))
+                    err = get_err([fd], sll=True)
+                    msg = "{:s}(base={:s}{:s}. addr={:s}{:s}, size={:s}, flags={:s}, fd={!s}{:s}{:s})".format(
+                        chunk_c, base_c_f, base_sym, addr_c_f, addr_sym, size_c, flags, fd, fd_sym, err,
+                    )
                 else:
-                    decoded_fd = ProcessMap.lookup_address(self.get_fwd_ptr(sll=True))
-                    if decoded_fd.value != 0 and not decoded_fd.valid:
-                        err = ", {:s}".format(Color.colorify("corrupted", corrupted_msg_color))
-                    else:
-                        err = ""
-                    fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s}, fd={:#x}(={!s}){:s})"
-                    msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags, fd, decoded_fd, err)
+                    fd, fd_sym = get_sym(self.get_fwd_ptr(sll=False))
+                    decoded_fd, decoded_fd_sym = get_sym(self.get_fwd_ptr(sll=True))
+                    err = get_err([decoded_fd], sll=True)
+                    msg = "{:s}(base={:s}{:s}, addr={:s}{:s}, size={:s}, flags={:s}, fd={!s}{:s}(={!s}{:s}){:s})".format(
+                        chunk_c, base_c_f, base_sym, addr_c_f, addr_sym, size_c, flags, fd, fd_sym, decoded_fd, decoded_fd_sym, err,
+                    )
 
             # top
             elif arena.top == self.chunk_base_address:
-                fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s})"
-                msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags)
+                msg = "{:s}(base={:s}{:s}, addr={:s}{:s}, size={:s}, flags={:s})".format(
+                    chunk_c, base_c_f, base_sym, addr_c_f, addr_sym, size_c, flags,
+                )
 
             # used chunk
             else:
-                base_c = Color.colorify_hex(self.chunk_base_address, Config.get_gef_setting("theme.heap_chunk_address_used"))
-                addr_c = Color.colorify_hex(self.address, Config.get_gef_setting("theme.heap_chunk_address_used"))
-                fmt = "{:s}(base={:s}, addr={:s}, size={:s}, flags={:s})"
-                msg = fmt.format(chunk_c, base_c, addr_c, size_c, flags)
+                msg = "{:s}(base={:s}{:s}, addr={:s}{:s}, size={:s}, flags={:s})".format(
+                    chunk_c, base_c_u, base_sym, addr_c_u, addr_sym, size_c, flags,
+                )
             return msg
 
         def psprint(self, arena):
@@ -20540,7 +20556,7 @@ class GlibcHeapBinsCommand(GenericCommand):
                 mb.append("{:s}{:s}".format(RIGHT_ARROW, chunk.to_str(arena)))
             except gdb.MemoryError:
                 mb.append(Color.colorify(
-                    "{:s}{:#x} [Corrupted chunk]".format(RIGHT_ARROW, chunk.chunk_base_address),
+                    "{:s}{:#x} [corrupted chunk]".format(RIGHT_ARROW, chunk.chunk_base_address),
                     corrupted_msg_color,
                 ))
                 corrupted = True
@@ -20567,7 +20583,7 @@ class GlibcHeapBinsCommand(GenericCommand):
                     mf.append("{:s}{:s}".format(RIGHT_ARROW, chunk.to_str(arena)))
                 except gdb.MemoryError:
                     mf.append(Color.colorify(
-                        "{:s}{:#x} [Corrupted chunk]".format(RIGHT_ARROW, chunk.chunk_base_address),
+                        "{:s}{:#x} [corrupted chunk]".format(RIGHT_ARROW, chunk.chunk_base_address),
                         corrupted_msg_color,
                     ))
                     break
@@ -20621,7 +20637,7 @@ class GlibcHeapBinsCommand(GenericCommand):
             # unsorted bin
             gef_print(titlify("Unsorted Bin for arena '{:s}'".format(arena.name)))
             nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, 0, "unsorted_bin", args.verbose)
-            info("Found {:d} valid chunks in unsorted bin.".format(nb_chunk))
+            info("Found {:d} valid chunks in unsorted bin (when traced from `bk`).".format(nb_chunk))
 
             # small bins
             gef_print(titlify("Small Bins for arena '{:s}'".format(arena.name)))
@@ -20632,7 +20648,7 @@ class GlibcHeapBinsCommand(GenericCommand):
                     break
                 if nb_chunk > 0:
                     bins[i] = nb_chunk
-            info("Found {:d} valid chunks in {:d} small bins.".format(sum(bins.values()), len(bins)))
+            info("Found {:d} valid chunks in {:d} small bins (when traced from `bk`).".format(sum(bins.values()), len(bins)))
 
             # large bins
             gef_print(titlify("Large Bins for arena '{:s}'".format(arena.name)))
@@ -20643,7 +20659,7 @@ class GlibcHeapBinsCommand(GenericCommand):
                     break
                 if nb_chunk > 0:
                     bins[i] = nb_chunk
-            info("Found {:d} valid chunks in {:d} large bins.".format(sum(bins.values()), len(bins)))
+            info("Found {:d} valid chunks in {:d} large bins (when traced from `bk`).".format(sum(bins.values()), len(bins)))
         return
 
 
@@ -20706,7 +20722,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
                     chunk = GlibcHeap.GlibcChunk(next_chunk)
                 except gdb.MemoryError:
                     m.append(Color.colorify(
-                        "{:s}{:#x} [Corrupted chunk]".format(RIGHT_ARROW, chunk.address),
+                        "{:s}{:#x} [corrupted chunk]".format(RIGHT_ARROW, chunk.address),
                         corrupted_msg_color,
                     ))
                     break
@@ -20823,7 +20839,7 @@ class GlibcHeapFastbinsYCommand(GenericCommand):
                     chunk = GlibcHeap.GlibcChunk(next_chunk, from_base=True)
                 except gdb.MemoryError:
                     m.append(Color.colorify(
-                        "{:s}{:#x} [Corrupted chunk]".format(RIGHT_ARROW, chunk.chunk_base_address),
+                        "{:s}{:#x} [corrupted chunk]".format(RIGHT_ARROW, chunk.chunk_base_address),
                         corrupted_msg_color,
                     ))
                     break
@@ -20914,7 +20930,7 @@ class GlibcHeapUnsortedBinsCommand(GenericCommand):
             arena.reset_bins_info()
             gef_print(titlify("Unsorted Bin for arena '{:s}'".format(arena.name)))
             nb_chunk = GlibcHeapBinsCommand.pprint_bin(arena, 0, "unsorted_bin", args.verbose)
-            info("Found {:d} valid chunks in unsorted bin.".format(nb_chunk))
+            info("Found {:d} valid chunks in unsorted bin (when traced from `bk`).".format(nb_chunk))
         return
 
 
@@ -20968,7 +20984,9 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
                     break
                 if nb_chunk > 0:
                     bins[i] = nb_chunk
-            info("Found {:d} valid chunks in {:d} small bins.".format(sum(bins.values()), len(bins)))
+            info("Found {:d} valid chunks in {:d} small bins (when traced from `bk`).".format(
+                sum(bins.values()), len(bins),
+            ))
         return
 
 
@@ -21022,7 +21040,9 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
                     break
                 if nb_chunk > 0:
                     bins[i] = nb_chunk
-            info("Found {:d} valid chunks in {:d} large bins.".format(sum(bins.values()), len(bins)))
+            info("Found {:d} valid chunks in {:d} large bins (when traced from `bk`).".format(
+                sum(bins.values()), len(bins),
+            ))
         return
 
 
