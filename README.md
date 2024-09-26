@@ -277,6 +277,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-if-in-freelist.png)
     * Thread arena is supported for all `heap` commands.
         * Use `-a` option.
+    * It supports simple bins view.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-bins-simple.png)
     * It supports new modes `heap arenas` and `heap top`.
     * `find-fake-fast`: searches for a memory with a size-like value that can be linked to the fastbin free-list.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/find-fake-fast.png)
