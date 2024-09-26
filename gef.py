@@ -3902,21 +3902,24 @@ class GlibcHeap:
                 try:
                     chunk = self.tcachebin(i)
                 except gdb.MemoryError:
-                    err("tcache[{:d}] is corrupted.".format(i))
+                    sz = GlibcHeap.get_binsize_table()["tcache"][i]["size"]
+                    err("tcache[idx={:d}, sz={:#x}] is corrupted.".format(i, sz))
                     continue
                 chunks = []
                 while True:
                     if chunk is None:
                         break
                     if chunk.address in chunks:
-                        err("tcache[{:d}] has a loop.".format(i))
+                        sz = GlibcHeap.get_binsize_table()["tcache"][i]["size"]
+                        err("tcache[idx={:d}, sz={:#x}] has a loop.".format(i, sz))
                         break # loop detected
                     chunks.append(chunk.address)
                     next_chunk = chunk.get_fwd_ptr(True)
                     if next_chunk == 0:
                         break
                     if next_chunk is None:
-                        err("tcache[{:d}] is corrupted.".format(i))
+                        sz = GlibcHeap.get_binsize_table()["tcache"][i]["size"]
+                        err("tcache[idx={:d}, sz={:#x}] is corrupted.".format(i, sz))
                         break
                     chunk = GlibcHeap.GlibcChunk(next_chunk)
                 chunks_all[i] = chunks
@@ -3934,21 +3937,24 @@ class GlibcHeap:
                 try:
                     chunk = self.fastbin(i)
                 except gdb.MemoryError:
-                    err("fastbins[{:d}] is corrupted.".format(i))
+                    sz = GlibcHeap.get_binsize_table()["fastbins"][i]["size"]
+                    err("fastbins[idx={:d}, sz={:#x}] is corrupted.".format(i, sz))
                     continue
                 chunks = []
                 while True:
                     if chunk is None:
                         break
                     if chunk.address in chunks:
-                        err("fastbins[{:d}] has a loop.".format(i))
+                        sz = GlibcHeap.get_binsize_table()["fastbins"][i]["size"]
+                        err("fastbins[idx={:d}, sz={:#x}] has a loop.".format(i, sz))
                         break # loop detected
                     chunks.append(chunk.address)
                     next_chunk = chunk.get_fwd_ptr(True)
                     if next_chunk == 0:
                         break
                     if next_chunk is None:
-                        err("fastbins[{:d}] is corrupted.".format(i))
+                        sz = GlibcHeap.get_binsize_table()["fastbins"][i]["size"]
+                        err("fastbins[idx={:d}, sz={:#x}] is corrupted.".format(i, sz))
                         break
                     chunk = GlibcHeap.GlibcChunk(next_chunk, from_base=True)
                 chunks_all[i] = chunks
@@ -3961,7 +3967,7 @@ class GlibcHeap:
                 return [] # invalid
             if bk == 0x00 and fw == 0x00:
                 return [] # invalid
-            head = GlibcHeap.GlibcChunk(bk, from_base=True).fwd
+            head = self.bins_addr(index) - current_arch.ptrsize * 2
             if fw == head:
                 return [] # no entry
 
@@ -3970,13 +3976,29 @@ class GlibcHeap:
             while bk != head:
                 chunk = GlibcHeap.GlibcChunk(bk, from_base=True)
                 if chunk.chunk_base_address in chunks_bk:
-                    err("bins[{:d}] has a loop.".format(index))
+                    if index == 0:
+                        err("unsortedbin has a loop.")
+                    elif index in GlibcHeap.get_binsize_table()["small_bins"]:
+                        sz = GlibcHeap.get_binsize_table()["small_bins"][index]["size"]
+                        err("small_bins[idx={:d}, sz={:#x}] has a loop.".format(index, sz))
+                    elif index in GlibcHeap.get_binsize_table()["large_bins"]:
+                        sz_min = GlibcHeap.get_binsize_table()["large_bins"][index]["size_min"]
+                        sz_max = GlibcHeap.get_binsize_table()["large_bins"][index]["size_max"]
+                        err("large_bins[idx={:d}, sz={:#x}-{:#x}] has a loop.".format(index, sz_min, sz_max))
                     corrupted = True
                     break
                 chunks_bk.append(chunk.chunk_base_address)
-                bk= chunk.bck
+                bk = chunk.bck
                 if bk is None:
-                    err("bins[{:d}] is corrupted.".format(index))
+                    if index == 0:
+                        err("unsortedbin is corrupted.")
+                    elif index in GlibcHeap.get_binsize_table()["small_bins"]:
+                        sz = GlibcHeap.get_binsize_table()["small_bins"][index]["size"]
+                        err("small_bins[idx={:d}, sz={:#x}] is corrupted.".format(index, sz))
+                    elif index in GlibcHeap.get_binsize_table()["large_bins"]:
+                        sz_min = GlibcHeap.get_binsize_table()["large_bins"][index]["size_min"]
+                        sz_max = GlibcHeap.get_binsize_table()["large_bins"][index]["size_max"]
+                        err("large_bins[idx={:d}, sz={:#x}-{:#x}] is corrupted.".format(index, sz_min, sz_max))
                     corrupted = True
                     break
             chunks = chunks_bk[::-1]
