@@ -48206,6 +48206,36 @@ class ExtractHeapAddrCommand(GenericCommand):
 
 
 @register_command
+class CalcProtectedFdCommand(GenericCommand):
+    """Calculate a valid value as protected `fd` pointer of single linked-list (introduced from glibc 2.32)."""
+
+    _cmdline_ = "calc-protected-fd"
+    _category_ = "06-a. Heap - Glibc"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("fd", type=lambda x: int(x, 0), help="the fd value.")
+    parser.add_argument("location", metavar="LOCATION", type=AddressUtil.parse_address,
+                        help="the address to interpret as a chunk.")
+    parser.add_argument("-b", "--as-base", action="store_true",
+                        help="use LOCATION as chunk base address (chunk_base_address = chunk_address - ptrsize * 2).")
+    _syntax_ = parser.format_help()
+
+    _example_ = "{:s} 0 0x5555555594e0\n".format(_cmdline_)
+    _example_ += "{:s} 0 0x5555555594e0 -b".format(_cmdline_)
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
+    def do_invoke(self, args):
+        loc = args.location
+        if args.as_base:
+            loc -= current_arch.ptrsize * 2
+        ptr = (loc >> 12) ^ args.fd
+        gef_print("Protected fd pointer: {:#x}".format(ptr))
+        return
+
+
+@register_command
 class FindFakeFastCommand(GenericCommand, BufferingOutput):
     """Find candidate fake fast chunks from RW memory."""
 

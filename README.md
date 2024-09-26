@@ -286,6 +286,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/visual-heap.png)
     * `extract-heap-addr`: analyzes tcache-protected-fd introduced from glibc-2.32.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/extract-heap-addr.png)
+    * `calc-protected-fd`: calculates a valid value as protected fd.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/calc-protected-fd.png)
 * uClibc heap commands are added.
     * `uclibc-ng-heap-dump`: dumps uClibc-ng heap chunks.
         * Supported on x64/x86, based on uClibc-ng v1.0.42 malloc-standard.
