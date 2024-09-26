@@ -20351,7 +20351,21 @@ class GlibcHeapChunksCommand(GenericCommand, BufferingOutput):
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}\n".format(_cmdline_)
-    _example_ += "{:s} -a 0x7ffff0000020".format(_cmdline_)
+    _example_ += "{:s} -a 0x7ffff0000020\n".format(_cmdline_)
+    _example_ += "{:s} -a 1".format(_cmdline_)
+
+    _note_ = "about the annotation:\n"
+    _note_ += '  - "tcache[idx=7,sz=0x90][1/2]"\n'
+    _note_ += "    - idx: 0-origin index.\n"
+    _note_ += "    - sz : the size of the chunk including metadata.\n"
+    _note_ += "    - 1/ : a posision in the free-list.\n"
+    _note_ += "    -  /2: parsed free-list length including corrupted chunks.\n"
+    _note_ += "           NOT the value of tcache_perthread_struct.count[idx], be careful!\n"
+    _note_ += '  - "largebins[idx=98,sz=0x1000-0x1200][8/8]"\n'
+    _note_ += "    - idx: 0-origin index that `i-th idx` means `bins[i*2 : (i+1)*2]`.\n"
+    _note_ += "    - sz : the size range of the chunk including metadata.\n"
+    _note_ += "    - 8/ : a posision in the free-list. largebins are FIFO, so the last chunk will be used first.\n"
+    _note_ += "    -  /8: parsed free-list length including corrupted chunks."
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -20473,7 +20487,8 @@ class GlibcHeapBinsCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}\n".format(_cmdline_)
-    _example_ += "{:s} -a 0x7ffff0000020 -v".format(_cmdline_)
+    _example_ += "{:s} -a 0x7ffff0000020 -v\n".format(_cmdline_)
+    _example_ += "{:s} -a 1 -v".format(_cmdline_)
 
     def __init__(self):
         super().__init__(prefix=True)
