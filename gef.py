@@ -31922,6 +31922,249 @@ class DestructorDumpCommand(GenericCommand):
             os.unlink(tmp_filepath)
         return
 
+@register_command
+class StandardIoCommand(GenericCommand, BufferingOutput):
+    """Dump members of stdin/stdout/stderr."""
+
+    _cmdline_ = "stdio-dump"
+    _category_ = "02-e. Process Information - Complex Structure Information"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("address", nargs="*", type=AddressUtil.parse_address,
+                        help="the elf address to parse (default: stdin, stdout, stderr).")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+    _syntax_ = parser.format_help()
+
+    def get_offset(self, member_name, member_defines):
+        sizes, names = zip(*member_defines)
+        member_idx = names.index(member_name)
+        member_offset = sum(sizes[:member_idx])
+        return member_offset
+
+    def get_size(self, member_name, member_defines):
+        sizes, names = zip(*member_defines)
+        member_idx = names.index(member_name)
+        member_size = sizes[member_idx]
+        return member_size
+
+    def process_member(self, member_name, member_defines, struct_array):
+        # member name
+        if not member_name:
+            return
+        elif member_name == "__addr__":
+            member_offset = 0
+            member_size = current_arch.ptrsize
+            msg = "{:>5s} | {:16s}: ".format("off", "member")
+        else:
+            member_offset = self.get_offset(member_name, member_defines)
+            member_size = self.get_size(member_name, member_defines)
+            msg = "{:+#05x} | {:16s}: ".format(member_offset, member_name)
+
+        # member of each struct
+        for struct in struct_array:
+            member_addr = struct + member_offset
+            if member_name == "__addr__":
+                address_obj = ProcessMap.lookup_address(struct)
+                sym = Symbol.get_symbol_string(struct)
+                msg += "{:s}{:24s} ".format(address_obj.long_fmt(), sym)
+            elif not is_valid_addr(member_addr):
+                msg += "{:{:d}s}{:24s} ".format("", [10, 18][is_64bit()], "")
+            elif member_size == current_arch.ptrsize:
+                val = read_int_from_memory(member_addr)
+                address_obj = ProcessMap.lookup_address(val)
+                sym = Symbol.get_symbol_string(val)
+                msg += "{:s}{:24s} ".format(address_obj.long_fmt(), sym)
+            elif member_size == 8:
+                val = u64(read_memory(member_addr, 8))
+                val_s = "{:#018x}".format(val)
+                msg += "{:s}{:{:d}s} ".format(val_s, "", [16, 24][is_64bit()])
+            elif member_size == 4:
+                val = u32(read_memory(member_addr, 4))
+                val_s = "{:#010x}".format(val)
+                msg += "{:{:d}s}{:24s} ".format(val_s, [10, 18][is_64bit()], "")
+            elif member_size == 2:
+                val = u16(read_memory(member_addr, 2))
+                val_s = "{:#06x}".format(val)
+                msg += "{:{:d}s}{:24s} ".format(val_s, [10, 18][is_64bit()], "")
+            elif member_size == 1:
+                val = u8(read_memory(member_addr, 1))
+                val_s = "{:#04x}".format(val)
+                msg += "{:{:d}s}{:24s} ".format(val_s, [10, 18][is_64bit()], "")
+            else:
+                msg += "{:{:d}s}{:24s} ".format("...", [10, 18][is_64bit()], "")
+
+        self.out.append(msg.rstrip())
+        return
+
+    def stdio_dump(self, struct_io_file_array):
+        self.process_member("__addr__", None, struct_io_file_array)
+
+        # _IO_FILE
+        self.out.append(titlify("FILE"))
+        struct_io_file_member = [
+            [4,                    "_flags"],
+            [[0, 4][is_64bit()],   ""],
+            [current_arch.ptrsize, "_IO_read_ptr"],
+            [current_arch.ptrsize, "_IO_read_end"],
+            [current_arch.ptrsize, "_IO_read_base"],
+            [current_arch.ptrsize, "_IO_write_base"],
+            [current_arch.ptrsize, "_IO_write_ptr"],
+            [current_arch.ptrsize, "_IO_write_end"],
+            [current_arch.ptrsize, "_IO_buf_base"],
+            [current_arch.ptrsize, "_IO_buf_end"],
+            [current_arch.ptrsize, "_IO_save_base"],
+            [current_arch.ptrsize, "_IO_backup_base"],
+            [current_arch.ptrsize, "_IO_save_end"],
+            [current_arch.ptrsize, "_markers"],
+            [current_arch.ptrsize, "_chain"],
+            [4,                    "_fileno"],
+            [4,                    "_flags2"],
+            [current_arch.ptrsize, "_old_offset"],
+            [2,                    "_cur_column"],
+            [1,                    "_vtable_offset"],
+            [1,                    "_shortbuf"],
+            [[0, 4][is_64bit()],   ""],
+            [current_arch.ptrsize, "_lock"],
+            [8,                    "_offset"],
+            [current_arch.ptrsize, "_codecvt"],
+            [current_arch.ptrsize, "_wide_data"],
+            [current_arch.ptrsize, "_freeres_list"],
+            [current_arch.ptrsize, "_freeres_buf"],
+            [current_arch.ptrsize, "__pad5"],
+            [4,                    "_mode"],
+            [[40, 20][is_64bit()], "_unused2"],
+            [current_arch.ptrsize, "vtable"],
+        ]
+        for _, m in struct_io_file_member:
+            self.process_member(m, struct_io_file_member, struct_io_file_array)
+
+        # vtable
+        self.out.append(titlify("FILE->vtable"))
+        vtable_offset = self.get_offset("vtable", struct_io_file_member)
+        struct_io_jump_t_array = []
+        for x in struct_io_file_array:
+            vtable_addr = x + vtable_offset
+            if not is_valid_addr(vtable_addr):
+                struct_io_jump_t_array.append(0)
+            else:
+                vtable = read_int_from_memory(vtable_addr)
+                if not is_valid_addr(vtable):
+                    struct_io_jump_t_array.append(0)
+                else:
+                    struct_io_jump_t_array.append(vtable)
+        struct_io_jump_t_member = [
+            [current_arch.ptrsize, "__dummy"],
+            [current_arch.ptrsize, "__dummy2"],
+            [current_arch.ptrsize, "__finish"],
+            [current_arch.ptrsize, "__overflow"],
+            [current_arch.ptrsize, "__underflow"],
+            [current_arch.ptrsize, "__uflow"],
+            [current_arch.ptrsize, "__pbackfail"],
+            [current_arch.ptrsize, "__xsputn"],
+            [current_arch.ptrsize, "__xsgetn"],
+            [current_arch.ptrsize, "__seekoff"],
+            [current_arch.ptrsize, "__seekpos"],
+            [current_arch.ptrsize, "__setbuf"],
+            [current_arch.ptrsize, "__sync"],
+            [current_arch.ptrsize, "__doallocate"],
+            [current_arch.ptrsize, "__read"],
+            [current_arch.ptrsize, "__write"],
+            [current_arch.ptrsize, "__seek"],
+            [current_arch.ptrsize, "__close"],
+            [current_arch.ptrsize, "__stat"],
+            [current_arch.ptrsize, "__showmanyc"],
+            [current_arch.ptrsize, "__imbue"],
+        ]
+        for _, m in struct_io_jump_t_member:
+            self.process_member(m, struct_io_jump_t_member, struct_io_jump_t_array)
+
+        # wide_data
+        self.out.append(titlify("FILE->_wide_data"))
+        wide_data_offset = self.get_offset("_wide_data", struct_io_file_member)
+        struct_io_wide_data_array = []
+        for x in struct_io_file_array:
+            wide_data_addr = x + wide_data_offset
+            if not is_valid_addr(wide_data_addr):
+                struct_io_wide_data_array.append(0)
+            else:
+                wide_data = read_int_from_memory(wide_data_addr)
+                if not is_valid_addr(wide_data):
+                    struct_io_wide_data_array.append(0)
+                else:
+                    struct_io_wide_data_array.append(wide_data)
+        struct_io_wide_data_member = [
+            [current_arch.ptrsize,     "_IO_read_ptr"],
+            [current_arch.ptrsize,     "_IO_read_end"],
+            [current_arch.ptrsize,     "_IO_read_base"],
+            [current_arch.ptrsize,     "_IO_write_base"],
+            [current_arch.ptrsize,     "_IO_write_ptr"],
+            [current_arch.ptrsize,     "_IO_write_end"],
+            [current_arch.ptrsize,     "_IO_buf_base"],
+            [current_arch.ptrsize,     "_IO_buf_end"],
+            [current_arch.ptrsize,     "_IO_save_base"],
+            [current_arch.ptrsize,     "_IO_backup_base"],
+            [current_arch.ptrsize,     "_IO_save_end"],
+            [8,                        "_IO_state"],
+            [8,                        "_IO_last_state"],
+            [[0x48, 0x70][is_64bit()], "_codecvt"],
+            [4,                        "_shortbuf"],
+            [[0, 4][is_64bit()],       ""],
+            [current_arch.ptrsize,     "_wide_vtable"],
+        ]
+        for _, m in struct_io_wide_data_member:
+            self.process_member(m, struct_io_wide_data_member, struct_io_wide_data_array)
+
+        # wide_data vtable
+        self.out.append(titlify("FILE->_wide_data->_wide_vtable"))
+        wide_data_vtable_offset = self.get_offset("_wide_vtable", struct_io_wide_data_member)
+        struct_io_wide_data_jump_t_array = []
+        for x in struct_io_wide_data_array:
+            wide_data_vtable_addr = x + wide_data_vtable_offset
+            if not is_valid_addr(wide_data_vtable_addr):
+                struct_io_wide_data_jump_t_array.append(0)
+            else:
+                wide_data_vtable = read_int_from_memory(wide_data_vtable_addr)
+                if not is_valid_addr(wide_data_vtable):
+                    struct_io_wide_data_jump_t_array.append(0)
+                else:
+                    struct_io_wide_data_jump_t_array.append(wide_data_vtable)
+        for _, m in struct_io_jump_t_member:
+            self.process_member(m, struct_io_jump_t_member, struct_io_wide_data_jump_t_array)
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
+    def do_invoke(self, args):
+        if args.address:
+            struct_io_file_array = []
+            for x in args.address:
+                if not is_valid_addr(x):
+                    err("Read memory error")
+                    return
+                struct_io_file_array.append(x)
+        else:
+            stdin = AddressUtil.parse_address("stdin")
+            if stdin is None or not is_valid_addr(stdin):
+                err("Not found stdin")
+                return
+
+            stdout = AddressUtil.parse_address("stdout")
+            if stdout is None or not is_valid_addr(stdout):
+                err("Not found stdout")
+                return
+
+            stderr = AddressUtil.parse_address("stderr")
+            if stderr is None or not is_valid_addr(stderr):
+                err("Not found stderr")
+                return
+            struct_io_file_array = [stdin, stdout, stderr]
+
+        self.out = []
+        self.stdio_dump(struct_io_file_array)
+        self.print_output(args, term=True)
+        return
+
 
 @register_command
 class GotCommand(GenericCommand):
