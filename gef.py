@@ -55954,6 +55954,35 @@ class KernelNamespacesCommand(GenericCommand):
 
 
 @register_command
+class KernelLoadCommand(GenericCommand):
+    """Load vmlinux without loaded address."""
+
+    _cmdline_ = "kload"
+    _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("path", metavar="VMLINUX_PATH", type=str, help="path of the vmlinux.")
+    _syntax_ = parser.format_help()
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    def do_invoke(self, args):
+        if not os.path.exists(args.path):
+            err("Invalid path")
+            return
+
+        info("Wait for memory scan")
+        kinfo = Kernel.get_kernel_base()
+        if kinfo.text_base is None:
+            err("kernel base is unknown")
+            return
+
+        gdb.execute("add-symbol-file {!r} {:#x}".format(args.path, kinfo.text_base))
+        return
+
+
+@register_command
 class KernelModuleCommand(GenericCommand):
     """Display kernel module list."""
 

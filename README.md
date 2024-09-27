@@ -213,7 +213,9 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmod.png)
     * It also displays each module symbols.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmod-syms.png)
-* `kmod-load`: loads kernel module without loaded address.
+* `kload`: loads vmlinux without loaded address.
+    * It is useful if you have a vmlinux with debuginfo at hand.
+* `kmod-load`: loads the kernel module without loaded address.
     * It is useful if you have a kernel module with debuginfo at hand.
 * `kops`: displays each operations member.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kops.png)
