@@ -123,10 +123,12 @@ However, for some reason `debuginfod` does not display the `glibc` source code, 
 I don't really understand the reason for this.
 
 * Get `glibc` source
-    * `sed -i -e "s/^# deb-src/deb-src/g" /etc/apt/sources.list`
-        * This is invalid on ubuntu 24.04. See [here](https://askubuntu.com/questions/1512042/).
+    * Ubuntu 24.04 or later
+        * `sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources`
+    * Ubuntu 23.10 or before
+        * `sed -i -e 's/^# deb-src/deb-src/g' /etc/apt/sources.list`
     * `cd /usr/lib/debug && apt update && apt source libc6`
-    * `echo "directory /usr/lib/debug/glibc-2.38" >> ~/.gdbinit`
+    * `echo "directory /usr/lib/debug/glibc-2.39" >> ~/.gdbinit`
         * Need to fix version for your environment.
 
 * Also add `glibc` symbols
