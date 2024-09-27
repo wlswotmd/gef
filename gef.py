@@ -55961,7 +55961,6 @@ class KernelModuleCommand(GenericCommand):
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     group = parser.add_mutually_exclusive_group(required=False)
     group.add_argument("-s", "--resolve-symbol", action="store_true", help="try to resolve symbols.")
     group.add_argument("-a", "--apply-symbol", action="store_true",
@@ -55969,6 +55968,7 @@ class KernelModuleCommand(GenericCommand):
     parser.add_argument("--symbol-unsort", action="store_true",
                         help="print resolved symbols without sorting by address.")
     parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP filter.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
 
@@ -56100,7 +56100,7 @@ class KernelModuleCommand(GenericCommand):
             unsigned int num_exentries;
             struct exception_table_entry *extable;
             int (*init)(void);
-            struct module_memory mem[MOD_MEM_NUM_TYPES] __module_memory_align;
+            struct module_memory mem[MOD_MEM_NUM_TYPES] __module_memory_align;    <-- here
             struct mod_arch_specific arch;
             unsigned long taints;
         #ifdef CONFIG_GENERIC_BUG
@@ -56139,24 +56139,25 @@ class KernelModuleCommand(GenericCommand):
                 valid = True
                 for module in module_addrs:
                     for mem_type in (MOD_TEXT, MOD_DATA, MOD_RODATA):
+                        mem_ptr = module + offset_mem + mem_type * sizeof_module_memory
                         # memory access check
-                        if not is_valid_addr(module + offset_mem + mem_type * sizeof_module_memory):
+                        if not is_valid_addr(mem_ptr):
                             valid = False
                             break
                         # base align check
-                        cand_base = read_int_from_memory(module + offset_mem + mem_type * sizeof_module_memory)
+                        cand_base = read_int_from_memory(mem_ptr)
                         if cand_base == 0 or cand_base & 0xfff:
                             valid = False
                             break
                         # size check
-                        cand_size = u32(read_memory(module + offset_mem + mem_type * sizeof_module_memory + current_arch.ptrsize + 4 * 0, 4))
+                        cand_size = u32(read_memory(mem_ptr + current_arch.ptrsize, 4))
                         if cand_size == 0 or cand_size > 0x100000:
                             valid = False
                             break
                 if valid:
                     if not self.quiet:
-                        info(f"offsetof(module, mem): {offset_mem:#x}")
-                        info(f"sizeof(module_memory): {sizeof_module_memory:#x}")
+                        info("offsetof(module, mem): {:#x}".format(offset_mem))
+                        info("sizeof(module_memory): {:#x}".format(sizeof_module_memory))
                     return offset_mem
         if not self.quiet:
             err("Not found module->mem")
@@ -56199,7 +56200,7 @@ class KernelModuleCommand(GenericCommand):
             struct exception_table_entry *extable;
             int (*init)(void);
             struct module_layout core_layout __module_layout_align;
-            struct module_layout init_layout;
+            struct module_layout init_layout;                                     <-- here
         #ifdef CONFIG_ARCH_WANTS_MODULES_DATA_IN_VMALLOC
             struct module_layout data_layout;
         #endif
@@ -56256,42 +56257,43 @@ class KernelModuleCommand(GenericCommand):
             0xbf22b184:     0x00008000      0x00005000      0x00006000      0x00006000
         """
         for i in range(300):
-            offset_layout = i * current_arch.ptrsize
+            offset_init_layout = i * current_arch.ptrsize
             valid = True
             for module in module_addrs:
                 # memory access check
-                if not is_valid_addr(module + offset_layout):
+                init_layout_ptr = module + offset_init_layout
+                if not is_valid_addr(init_layout_ptr):
                     valid = False
                     break
                 # base align check
-                cand_base = read_int_from_memory(module + offset_layout)
+                cand_base = read_int_from_memory(init_layout_ptr)
                 if cand_base == 0 or cand_base & 0xfff:
                     valid = False
                     break
                 # size check
-                cand_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4 * 0, 4))
+                cand_size = u32(read_memory(init_layout_ptr + current_arch.ptrsize, 4))
                 if cand_size == 0 or cand_size > 0x200000:
                     valid = False
                     break
                 # text_size check
-                cand_text_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4 * 1, 4))
+                cand_text_size = u32(read_memory(init_layout_ptr + current_arch.ptrsize + 4 * 1, 4))
                 if cand_text_size == 0 or cand_text_size > 0x200000:
                     valid = False
                     break
                 # ro_size check
-                cand_ro_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4 * 2, 4))
+                cand_ro_size = u32(read_memory(init_layout_ptr + current_arch.ptrsize + 4 * 2, 4))
                 if cand_ro_size == 0 or cand_ro_size > 0x200000:
                     valid = False
                     break
                 # ro_after_init_size check
-                cand_ro_after_init_size = u32(read_memory(module + offset_layout + current_arch.ptrsize + 4 * 3, 4))
+                cand_ro_after_init_size = u32(read_memory(init_layout_ptr + current_arch.ptrsize + 4 * 3, 4))
                 if cand_ro_after_init_size == 0 or cand_ro_after_init_size > 0x200000:
                     valid = False
                     break
             if valid:
                 if not self.quiet:
-                    info("offsetof(module, init_layout): {:#x}".format(offset_layout))
-                return offset_layout
+                    info("offsetof(module, init_layout): {:#x}".format(offset_init_layout))
+                return offset_init_layout
 
         if not self.quiet:
             err("Not found module->init_layout")
@@ -56339,7 +56341,7 @@ class KernelModuleCommand(GenericCommand):
             int (*init)(void);
             void *module_init ____cacheline_aligned;
             /* Here is the actual code + data, vfree'd on unload. */
-            void *module_core;
+            void *module_core;                                                    <-- here
             /* Here are the sizes of the init and core sections */
             unsigned int init_size, core_size;
             /* The size of the executable code in each section. */
@@ -56357,7 +56359,7 @@ class KernelModuleCommand(GenericCommand):
             struct bug_entry *bug_table;
         #endif
         #ifdef CONFIG_KALLSYMS
-            struct mod_kallsyms *kallsyms;
+            struct mod_kallsyms *kallsyms;                                        <-- here
             struct mod_kallsyms core_kallsyms;
             struct module_sect_attrs *sect_attrs;
             struct module_notes_attrs *notes_attrs;
@@ -56369,32 +56371,33 @@ class KernelModuleCommand(GenericCommand):
             offset_module_core = i * current_arch.ptrsize
             valid = True
             for module in module_addrs:
+                module_core_ptr = module + offset_module_core
                 # memory access check
-                if not is_valid_addr(module + offset_module_core):
+                if not is_valid_addr(module_core_ptr):
                     valid = False
                     break
                 # module_core align check
-                cand_module_core = read_int_from_memory(module + offset_module_core)
+                cand_module_core = read_int_from_memory(module_core_ptr)
                 if cand_module_core == 0 or cand_module_core & 0xfff:
                     valid = False
                     break
                 # init_size check
-                cand_init_size = u32(read_memory(module + offset_module_core + current_arch.ptrsize + 4 * 0, 4))
+                cand_init_size = u32(read_memory(module_core_ptr + current_arch.ptrsize, 4))
                 if cand_init_size > 0x100000:
                     valid = False
                     break
                 # core_size check
-                cand_core_size = u32(read_memory(module + offset_module_core + current_arch.ptrsize + 4 * 1, 4))
+                cand_core_size = u32(read_memory(module_core_ptr + current_arch.ptrsize + 4 * 1, 4))
                 if cand_core_size == 0 or cand_core_size > 0x100000:
                     valid = False
                     break
                 # init_text_size check
-                cand_init_text_size = u32(read_memory(module + offset_module_core + current_arch.ptrsize + 4 * 2, 4))
+                cand_init_text_size = u32(read_memory(module_core_ptr + current_arch.ptrsize + 4 * 2, 4))
                 if cand_init_text_size > 0x100000:
                     valid = False
                     break
                 # core_text_size check
-                cand_core_text_size = u32(read_memory(module + offset_module_core + current_arch.ptrsize + 4 * 3, 4))
+                cand_core_text_size = u32(read_memory(module_core_ptr + current_arch.ptrsize + 4 * 3, 4))
                 if cand_core_text_size == 0 or cand_core_text_size > 0x100000:
                     valid = False
                     break
@@ -56421,12 +56424,13 @@ class KernelModuleCommand(GenericCommand):
             offset_kallsyms = i * current_arch.ptrsize
             valid = True
             for module in module_addrs:
+                kallsyms_ptr = module + offset_kallsyms
                 # access check
-                if not is_valid_addr(module + offset_kallsyms):
+                if not is_valid_addr(kallsyms_ptr):
                     valid = False
                     break
                 # kallsyms access check
-                cand_kallsyms = read_int_from_memory(module + offset_kallsyms)
+                cand_kallsyms = read_int_from_memory(kallsyms_ptr)
                 if not is_valid_addr(cand_kallsyms):
                     valid = False
                     break
