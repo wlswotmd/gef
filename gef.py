@@ -88164,6 +88164,292 @@ class PeekPointersCommand(GenericCommand):
 
 
 @register_command
+class PeekPageFrameCommand(GenericCommand):
+    """Read page frame data from a single address or an address range"""
+
+    _cmdline_ = "peek-pageframe"
+    _category_ = "03-f. Memory - Investigation"
+    _aliases_ = ["ppf"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("address", metavar="ADDRESS", nargs="?", type=AddressUtil.parse_address, help="address for which the pfn is read")
+    parser.add_argument("-f", "--from-addr", type=AddressUtil.parse_address, help="start of range")
+    parser.add_argument("-t", "--to-addr", type=AddressUtil.parse_address, help="end of range")
+    parser.add_argument("-i", "--ignore-non-present", action="store_true", help="ignores pages which are not present in the output")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+
+    _syntax_ = parser.format_help()
+
+    _example_ = f"{_cmdline_:s} 0x555555555060          # read pagemap of single address\n"
+    _example_ += f"{_cmdline_:s} -f 0x00007ffffffdd000 -t 0x00007ffffffff000     # read pagemap of an address range"
+
+    ENTRY_SIZE = 8
+
+    def get_bit(self, x, bit):
+        return (x >> bit) & 1
+
+    def get_pfn(self, x):
+        return x & 0x7FFFFFFFFFFFFF
+
+    def append_pfn_zero_warn(self):
+        warn_messages = [
+            Color.yellowify("Pages are present but the PFN field is zeroed out"),
+            Color.yellowify("Since kernel 4.0 only users with the CAP_SYS_ADMIN capability can get PFNs"),
+            Color.yellowify("In kernel versions 4.2+ the PFN field is zeroed if the user does not have CAP_SYS_ADMIN"),
+            Color.yellowify("Consider running gdb as root/sudo or adding the CAP_SYS_ADMIN capability to gdb via setcap\n"),
+        ]
+
+        self.out = warn_messages + self.out
+
+    def read_pagemap_with_virt_address(self, address, pid):
+        page_size = gef_getpagesize()
+        file_offset = (address // page_size) * self.ENTRY_SIZE
+        path = f"/proc/{pid}/pagemap"
+
+        try:
+            with open(path, "rb") as file:
+                file.seek(file_offset)
+                return file.read(8)
+        except FileNotFoundError:
+            err(f"Opening {path} failed! Could not find file")
+        except OSError as e:
+            if e.errno == 1: # 1 = EPERM
+                err("No permission to open the pagemap file")
+                err("Only users with the CAP_SYS_ADMIN capability can get PFNs")
+                err("In kernel versions 4.0 and 4.1 unprivileged opens fail with -EPERM")
+            else:
+                err(f"Opening {path} failed!")
+
+    def get_pagemap_entry(self, address, pid):
+        entry_bytes = self.read_pagemap_with_virt_address(address, pid)
+
+        if entry_bytes is None or len(entry_bytes) < 8:
+            err(f"Reading pagemap entry for address 0x{address:x} wasn't successful")
+            return None
+
+        entry = struct.unpack("Q", entry_bytes)[0]
+        pfn = self.get_pfn(entry)
+
+        data = {
+            "address": address,
+            "pfn": pfn,
+            "entry": entry,
+            "present": self.get_bit(entry, 63),
+            "swapped": self.get_bit(entry, 62),
+            "file_mapped": self.get_bit(entry, 61),
+            "uffd_wp": self.get_bit(entry, 57),
+            "exclusive": self.get_bit(entry, 56),
+            "soft_dirty": self.get_bit(entry, 55),
+        }
+
+        return data
+
+    def handle_address(self, address, pid):
+        data = self.get_pagemap_entry(address, pid)
+        if data is None:
+            return
+
+        present = data["present"]
+        swapped = data["swapped"]
+        file_mapped = data["file_mapped"]
+        uffd_wp = data["uffd_wp"]
+        exclusive = data["exclusive"]
+        soft_dirty = data["soft_dirty"]
+
+        if self.ignore_non_present and not present:
+            self.out.append("Non-present page is ignored")
+            return
+
+        pfn = data["pfn"]
+        if pfn == 0 and present:
+            # Show the warning message only once
+            if not getattr(self, "pfn_zero_warned", False):
+                self.append_pfn_zero_warn()
+                self.pfn_zero_warned = True
+
+        green_yes = Color.greenify("yes")
+        red_no = Color.redify("no")
+
+        self.out.append(f"present:            {green_yes if present else red_no}")
+        self.out.append(f"swapped:            {green_yes if swapped else red_no}")
+        self.out.append(f"file-mapped:        {green_yes if file_mapped else red_no}")
+        self.out.append(f"soft-dirty:         {green_yes if soft_dirty else red_no}")
+        self.out.append(f"exclusively-mapped: {green_yes if exclusive else red_no}")
+        self.out.append(f"uffd-wp:            {green_yes if uffd_wp else red_no}")
+
+        if present:
+            self.out.append(Color.boldify(f"PFN:                0x{pfn:x}"))
+
+    def handle_address_range(self, from_addr, to_addr, pid):
+        page_size = gef_getpagesize()
+        start_page = from_addr // page_size
+        end_page = to_addr // page_size
+
+        for page_num in range(start_page, end_page + 1):
+            address = page_num * page_size
+            data = self.get_pagemap_entry(address, pid)
+
+            if data is None:
+                continue
+
+            if self.ignore_non_present and not data["present"]:
+                continue
+
+            pfn = data["pfn"]
+            if pfn == 0 and data["present"]:
+                # Show the warning message only once
+                if not getattr(self, "pfn_zero_warned", False):
+                    self.append_pfn_zero_warn()
+                    self.pfn_zero_warned = True
+
+            flags = []
+            flags.append("P" if data["present"] else "-")
+            flags.append("S" if data["swapped"] else "-")
+            flags.append("F" if data["file_mapped"] else "-")
+            flags.append("D" if data["soft_dirty"] else "-")
+            flags.append("E" if data["exclusive"] else "-")
+            flags.append("U" if data["uffd_wp"] else "-")
+            flags_str = "".join(flags)
+
+            pfn_str = f"0x{data["pfn"]:x}" if data["pfn"] != 0 else "0x0"
+            self.out.append(f"0x{data["address"]:016x} {pfn_str:>8} {flags_str}")
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
+    def do_invoke(self, args):
+        pid = Pid.get_pid()
+        if pid is None:
+            err("Failed to read pid")
+
+        self.ignore_non_present = args.ignore_non_present
+
+        self.out = []
+        if args.address:
+            self.handle_address(args.address, pid)
+        elif args.from_addr and args.to_addr:
+            self.handle_address_range(args.from_addr, args.to_addr, pid)
+        else:
+            err("You must provide either a single address or both --from-addr and --to-addr")
+
+        gef_print("\n".join(self.out), less=not args.no_pager)
+
+
+@register_command
+class PeekPageFlagsCommand(GenericCommand):
+    """Read the page flags of a page frame (needs root)"""
+
+    _cmdline_ = "peek-pageflags"
+    _category_ = "03-f. Memory - Investigation"
+    _aliases_ = ["ppfl"]
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("pfn", metavar="PFN", type=AddressUtil.parse_address, help="pfn of which to read flags")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
+
+    _syntax_ = parser.format_help()
+
+    _example_ = f"{_cmdline_:s} 0x6b2ae3"
+
+    class KPageFlags:
+        FLAGS = {
+            "LOCKED":        1 << 0,
+            "ERROR":         1 << 1,
+            "REFERENCED":    1 << 2,
+            "UPTODATE":      1 << 3,
+            "DIRTY":         1 << 4,
+            "LRU":           1 << 5,
+            "ACTIVE":        1 << 6,
+            "SLAB":          1 << 7,
+            "WRITEBACK":     1 << 8,
+            "RECLAIM":       1 << 9,
+            "BUDDY":         1 << 10,
+            "MMAP":          1 << 11,
+            "ANON":          1 << 12,
+            "SWAPCACHE":     1 << 13,
+            "SWAPBACKED":    1 << 14,
+            "COMPOUND_HEAD": 1 << 15,
+            "COMPOUND_TAIL": 1 << 16,
+            "HUGE":          1 << 17,
+            "UNEVICTABLE":   1 << 18,
+            "HWPOISON":      1 << 19,
+            "NOPAGE":        1 << 20,
+            "KSM":           1 << 21,
+            "THP":           1 << 22,
+            "OFFLINE":       1 << 23,
+            "ZERO_PAGE":     1 << 24,
+            "IDLE":          1 << 25,
+            "PGTABLE":       1 << 26,
+        }
+
+        def __init__(self, value):
+            self.value = value
+
+        def get_flag(self):
+            return self.value
+
+        def get_set_flags(self):
+            return [flag for flag, bit in self.FLAGS.items() if self.value & bit]
+
+    def read_file(self, path, pfn):
+        try:
+            with open(path, "rb") as f:
+                f.seek(pfn * 8)
+                data = f.read(8)
+                if len(data) == 8:
+                    return struct.unpack("Q", data)[0]
+                else:
+                    raise ValueError(f"Could not read kpagecount for PFN {hex(pfn)}")
+        except FileNotFoundError:
+            err(f"Could not open {path}")
+        except PermissionError:
+            err(f"No permissions to read {path}")
+            err(f"Only the owner of {path} (root) is able to read it, rerun gdb with proper permissions")
+        except Exception as e:
+            err(f"Error reading kpagecount: {e}")
+
+        return None
+
+    def read_kpagecount(self, pfn):
+        path = "/proc/kpagecount"
+        return self.read_file(path, pfn)
+
+    def read_kpageflags(self, pfn):
+        path = "/proc/kpageflags"
+        return self.read_file(path, pfn)
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
+    def do_invoke(self, args):
+        if args.pfn is None:
+            err("You must provide a PFN")
+            return
+
+        pfn = args.pfn
+
+        count = self.read_kpagecount(pfn)
+        if count is None:
+            return
+
+        flags_value = self.read_kpageflags(pfn)
+        if flags_value is None:
+            return
+
+        flags = self.KPageFlags(flags_value)
+        set_flags = flags.get_set_flags()
+
+        output = []
+        output.append(f"/proc/kpagecount: {count}")
+        output.append(f"Pageflags: {hex(flags.get_flag())}")
+        output.append("Flags:")
+        for flag in set_flags:
+            output.append(f"  {flag}")
+
+        gef_print("\n".join(output), less=not args.no_pager)
+
+
+@register_command
 class StackFrameCommand(GenericCommand):
     """Display the entire stack of the current frame."""
 
