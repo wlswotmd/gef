@@ -2946,7 +2946,7 @@ class GlibcHeap:
                 MALLOC_ALIGNMENT = 0x8
             self.MALLOC_ALIGN_MASK = MALLOC_ALIGNMENT - 1
 
-            self.char_t = GefUtil.cached_lookup_type("char")
+            self.char_t = GefUtil.cached_lookup_type("unsigned char")
             self.size_t = GefUtil.cached_lookup_type("size_t")
             if not self.size_t:
                 ptr_type = "unsigned long" if current_arch.ptrsize == 8 else "unsigned int"
@@ -3049,9 +3049,9 @@ class GlibcHeap:
         def __init__(self, addr):
             self.__addr = addr
 
-            self.char_t = GefUtil.cached_lookup_type("char")
-            self.int_t = GefUtil.cached_lookup_type("int")
-            self.long_t = GefUtil.cached_lookup_type("long")
+            self.char_t = GefUtil.cached_lookup_type("unsigned char")
+            self.int_t = GefUtil.cached_lookup_type("unsigned int")
+            self.long_t = GefUtil.cached_lookup_type("unsigned long")
             self.size_t = GefUtil.cached_lookup_type("size_t")
             if not self.size_t:
                 ptr_type = "unsigned long" if current_arch.ptrsize == 8 else "unsigned int"
@@ -3362,7 +3362,7 @@ class GlibcHeap:
             self.num_binmap = 4
             self.__addr = addr
 
-            self.int_t = GefUtil.cached_lookup_type("int")
+            self.int_t = GefUtil.cached_lookup_type("unsigned int")
             self.size_t = GefUtil.cached_lookup_type("size_t")
             if not self.size_t:
                 ptr_type = "unsigned long" if current_arch.ptrsize == 8 else "unsigned int"
@@ -3688,7 +3688,10 @@ class GlibcHeap:
             return self.__arena[item]
 
         def __getattr__(self, item):
-            return self.__arena[item]
+            try:
+                return self.__arena[item]
+            except RuntimeError:
+                raise AttributeError
 
         def __int__(self):
             return self.__addr
