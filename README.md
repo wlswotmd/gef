@@ -22,7 +22,7 @@
 ## What is this?
 This is a fork of [GEF](https://github.com/hugsy/gef) with 3 major improvements.
 
-1. Added many heuristic commands for kernel debugging __WITHOUT symboled vmlinux__ (for qemu-system; linux kernel 3.x ~ 6.10.x).
+1. Added many heuristic commands for kernel debugging __WITHOUT symboled vmlinux__ (for qemu-system; linux kernel 3.x ~ 6.11.x).
 2. Added support for [many architectures](https://github.com/bata24/gef/blob/dev/docs/QEMU-USER-SUPPORTED-ARCH.md) (for qemu-user).
 3. Added some heap dump commands for various allocators.
 
@@ -144,7 +144,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * `kcurrent`: displays current task address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kbase-kversion-kcmdline-kcurrent.png)
 * `ksymaddr-remote`: displays kallsyms information from scanning kernel memory.
-    * Supported kernel versions: 3.x to 6.10.x.
+    * Supported kernel versions: 3.x to 6.11.x.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote.png)
 * `ksymaddr-remote-apply`/`vmlinux-to-elf-apply`: applies kallsyms information obtained by `ksymaddr-remote` or `vmlinux-to-elf` to gdb.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksymaddr-remote-apply.png)
@@ -277,11 +277,12 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-bins.png)
     * They print bins information if the chunk is in free-list.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-if-in-freelist.png)
+    * It supports new modes `heap arenas`, `heap top` and `heap bins-simple`.
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-arenas.png)
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-top.png)
+        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-bins-simple.png)
     * Thread arena is supported for all `heap` commands.
         * Use `-a` option.
-    * It supports simple bins view.
-        * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/heap-bins-simple.png)
-    * It supports new modes `heap arenas` and `heap top`.
     * `find-fake-fast`: searches for a memory with a size-like value that can be linked to the fastbin free-list.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/find-fake-fast.png)
     * `visual-heap`: is colorized heap viewer.
@@ -669,7 +670,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * `peek-pointers`, `current-stack-frame`, `xref-telescope`, `bytearray`, and `bincompare`.
     * This is because a single file is more attractive than ease of maintenance.
 * The system-call table used by `syscall-args` is moved from gef-extras.
-    * It was updated up to linux kernel 6.10.0 for each architecture.
+    * It was updated up to linux kernel 6.11.0 for each architecture.
 * Removed some features I don't use.
     * `$`, `ida-interact`, `gef-remote`, `pie`, `pcustom`, `ksymaddr`, `trace-run`, `bufferize`, `output redirect` and `shellcode`.
 * Many bugs fix / formatting / made it easy for me to use.

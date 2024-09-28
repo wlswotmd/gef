@@ -2,6 +2,7 @@
 
 ## Table of Contents
 * [About GEF's file or directory](#about-gefs-file-or-directory)
+* [About the install](#about-the-install)
 * [About the host environment](#about-the-host-environment)
 * [About the guest (debugged) environment](#about-the-guest-debugged-environment)
 * [About GEF settings](#about-gef-settings)
@@ -17,11 +18,6 @@
 
 ## Where is `gef.py`?
 GEF (`gef.py`) is placed in `/root/.gdbinit-gef.py` by default. GEF is one file.
-
-## How to change the location of GEF?
-Move `/root/.gdbinit-gef.py` and edit `/root/.gdbinit`.
-
-If you want to use GEF as a user other than root, add `source /path/to/.gdbinit-gef.py` to that user's `$HOME/.gdbinit`.
 
 ## What is `~/.gef.rc`?
 This is the GEF config file. Not present by default.
@@ -43,40 +39,25 @@ This is an installer for running GEF in limited environments where required pack
 * If you do not need some features (used in a limited environment), use `install-minimal.sh`. It should work at least except some commands.
 
 
-# About the host environment
+# About the install
 
-## Does GEF work properly on OS other than Ubuntu?
-Yes, it probably works fine for regular Linux.
+## How to change the location of GEF?
+Move `/root/.gdbinit-gef.py` and edit `/root/.gdbinit`.
 
-I have used it on debian. Also it seems to be working fine on WSL2 (ubuntu) so far.
-Some users are running it on Arch Linux.
-However, I have not confirmed that all commands work correctly.
+If you want to use GEF as a user other than root, add `source /path/to/.gdbinit-gef.py` to that user's `$HOME/.gdbinit`.
 
-## Will this GEF work as a plugin for `hugsy/gef`?
-No, it doesn't work. It replaces `hugsy/gef`.
+## How can I install GEF offline?
+Please refer to [`install.sh`](https://github.com/bata24/gef/blob/dev/install.sh) or [`install-minimal.sh`](https://github.com/bata24/gef/blob/dev/install-minimal.sh), and set it up manually.
 
-The compatibility with `hugsy/gef` has already been lost. Of course, `hugsy/gef-extras` too.
-Think of it as a completely different product.
+Note: GEF is designed to have as few dependencies as possible.
+Many commands should work with just `gef.py` without any additional external tools.
+If you do not install external tools, the features you will not be able to use are described in bellow.
 
-## GDB will not load GEF.
-This is probably because gdb does not support cooperation with python3.
-
-Consider building gdb from latest tarball or git.
-
-* from latest tarball
-    * Download latest tarball from https://ftp.gnu.org/gnu/gdb/
-    ```
-    tar xf gdb-14.2.tar.xz && cd gdb-14.2
-    ./configure --enable-targets=all --with-python=/usr/bin/python3
-    make && make install
-    ```
-* from git
-    ```
-    apt install -y libdebuginfod-dev libreadline-dev
-    git clone --depth 1 https://github.com/bminor/binutils-gdb && cd binutils-gdb
-    ./configure --disable-{binutils,ld,gold,gas,sim,gprof,gprofng} --enable-targets=all --with-python=/usr/bin/python3 --with-debuginfod --with-system-{zlib,readline}
-    make && make install
-    ```
+## I don't want to specify the `--break-system-packages` option during installation.
+You have some options:
+* Install inside docker to prevent impact on the host environment.
+* Use `install-minimal.sh` to skip installing with `pip`.
+* Use `venv` or `pyenv` to manage Python modules individually.
 
 ## If I use `install-minimal.sh`, which commands will no longer be available?
 Following are the breakdown. It may not be comprehensive.
@@ -109,8 +90,41 @@ If you install with `install-minimal.sh`, you will not be able to use these comm
 |`ktask -S`|`ruby-dev`|-|`seccomp-tools`|
 |`rp`|-|-|`rp++`|
 
-## How can I install GEF offline?
-Please refer to [`install.sh`](https://github.com/bata24/gef/blob/dev/install.sh) or [`install-minimal.sh`](https://github.com/bata24/gef/blob/dev/install-minimal.sh), and set it up manually.
+
+# About the host environment
+
+## Does GEF work properly on OS other than Ubuntu?
+Yes, it probably works fine for regular Linux.
+
+I have used it on debian. Some users are running it on Arch Linux.
+Also it seems to be working fine on WSL2 (ubuntu) so far.
+However, I have not confirmed that all commands work correctly.
+
+## Will this GEF work as a plugin for `hugsy/gef`?
+No, it doesn't work. It replaces `hugsy/gef`.
+
+The compatibility with `hugsy/gef` has already been lost. Of course, `hugsy/gef-extras` too.
+Think of it as a completely different product.
+
+## GDB will not load GEF.
+This is probably because gdb does not support cooperation with python3.
+
+Consider building gdb from latest tarball or git.
+
+* from latest tarball
+    * Download latest tarball from https://ftp.gnu.org/gnu/gdb/
+    ```
+    tar xf gdb-14.2.tar.xz && cd gdb-14.2
+    ./configure --enable-targets=all --with-python=/usr/bin/python3
+    make && make install
+    ```
+* from git
+    ```
+    apt install -y libdebuginfod-dev libreadline-dev
+    git clone --depth 1 https://github.com/bminor/binutils-gdb && cd binutils-gdb
+    ./configure --disable-{binutils,ld,gold,gas,sim,gprof,gprofng} --enable-targets=all --with-python=/usr/bin/python3 --with-debuginfod --with-system-{zlib,readline}
+    make && make install
+    ```
 
 ## When debugging with gdb, how can I display the source code of preinstalled libraries and commands?
 Although it is limited to Ubuntu 22.10 or later, it is recommended to use `debuginfod`.
@@ -139,7 +153,7 @@ I don't really understand the reason for this.
 # About the guest (debugged) environment
 
 ## What Linux kernel versions does GEF support as guests in qemu-system?
-I have confirmed that most commands work on versions 3.x ~ 6.10.x.
+I have confirmed that most commands work on versions 3.x ~ 6.11.x.
 
 However, I have not verified every kernel version.
 For example, certain symbols in some versions may not be supported by heuristic symbol detection.
@@ -272,6 +286,11 @@ Please update `vmlinux-to-elf` to the latest version.
 
 If the problem persists, try using the `ks-apply` command. The logic is different a little, so it might work.
 If it still doesn't work, please report it on the issue page.
+
+## If I have `vmlinux` with debuginfo, how can I use `ks-apply`?
+Run `add-symbol-file <vmlinux_path> <kernel_base>`.
+
+No need to use `ks-apply` and `vmlinux-to-elf-apply`, because `vmlinux` with debuginfo provides more information.
 
 ## `got` command does not display PLT address well.
 This problem is probably caused by an outdated version of `binutils`.
