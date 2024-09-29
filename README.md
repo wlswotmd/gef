@@ -664,6 +664,10 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/filetype-memory.png)
 * `stdio-dump`: dumps members of stdin/stdout/stderr.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/stdio-dump.png)
+* `peek-pageframe`: reads page frame data.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/peek-pageframe.png)
+* `peek-pageflags`: reads page flags of a page frame.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/peek-pageflags.png)
 
 ### Other
 * The category is introduced in `gef help`.

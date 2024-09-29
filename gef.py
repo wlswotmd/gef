@@ -88165,23 +88165,24 @@ class PeekPointersCommand(GenericCommand):
 
 @register_command
 class PeekPageFrameCommand(GenericCommand):
-    """Read page frame data from a single address or an address range"""
+    """Read page frame data from a single address or an address range."""
 
     _cmdline_ = "peek-pageframe"
     _category_ = "03-f. Memory - Investigation"
     _aliases_ = ["ppf"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("address", metavar="ADDRESS", nargs="?", type=AddressUtil.parse_address, help="address for which the pfn is read")
-    parser.add_argument("-f", "--from-addr", type=AddressUtil.parse_address, help="start of range")
-    parser.add_argument("-t", "--to-addr", type=AddressUtil.parse_address, help="end of range")
-    parser.add_argument("-i", "--ignore-non-present", action="store_true", help="ignores pages which are not present in the output")
+    parser.add_argument("address", metavar="ADDRESS", nargs="?", type=AddressUtil.parse_address,
+                        help="address for which the pfn is read.")
+    parser.add_argument("-f", "--from-addr", type=AddressUtil.parse_address, help="start of range.")
+    parser.add_argument("-t", "--to-addr", type=AddressUtil.parse_address, help="end of range.")
+    parser.add_argument("-i", "--ignore-non-present", action="store_true",
+                        help="ignores pages which are not present in the output.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
-
     _syntax_ = parser.format_help()
 
-    _example_ = f"{_cmdline_:s} 0x555555555060          # read pagemap of single address\n"
-    _example_ += f"{_cmdline_:s} -f 0x00007ffffffdd000 -t 0x00007ffffffff000     # read pagemap of an address range"
+    _example_ = f"{_cmdline_:s} 0x555555555060                        # read pagemap of single address\n"
+    _example_ += f"{_cmdline_:s} -f 0x7ffffffdd000 -t 0x7ffffffff000   # read pagemap of an address range"
 
     ENTRY_SIZE = 8
 
@@ -88198,8 +88199,8 @@ class PeekPageFrameCommand(GenericCommand):
             Color.yellowify("In kernel versions 4.2+ the PFN field is zeroed if the user does not have CAP_SYS_ADMIN"),
             Color.yellowify("Consider running gdb as root/sudo or adding the CAP_SYS_ADMIN capability to gdb via setcap\n"),
         ]
-
         self.out = warn_messages + self.out
+        return
 
     def read_pagemap_with_virt_address(self, address, pid):
         page_size = gef_getpagesize()
@@ -88219,6 +88220,7 @@ class PeekPageFrameCommand(GenericCommand):
                 err("In kernel versions 4.0 and 4.1 unprivileged opens fail with -EPERM")
             else:
                 err(f"Opening {path} failed!")
+        return None
 
     def get_pagemap_entry(self, address, pid):
         entry_bytes = self.read_pagemap_with_virt_address(address, pid)
@@ -88241,7 +88243,6 @@ class PeekPageFrameCommand(GenericCommand):
             "exclusive": self.get_bit(entry, 56),
             "soft_dirty": self.get_bit(entry, 55),
         }
-
         return data
 
     def handle_address(self, address, pid):
@@ -88279,6 +88280,7 @@ class PeekPageFrameCommand(GenericCommand):
 
         if present:
             self.out.append(Color.boldify(f"PFN:                0x{pfn:x}"))
+        return
 
     def handle_address_range(self, from_addr, to_addr, pid):
         page_size = gef_getpagesize()
@@ -88313,6 +88315,7 @@ class PeekPageFrameCommand(GenericCommand):
 
             pfn_str = f"0x{data["pfn"]:x}" if data["pfn"] != 0 else "0x0"
             self.out.append(f"0x{data["address"]:016x} {pfn_str:>8} {flags_str}")
+        return
 
     @parse_args
     @only_if_gdb_running
@@ -88321,32 +88324,35 @@ class PeekPageFrameCommand(GenericCommand):
         pid = Pid.get_pid()
         if pid is None:
             err("Failed to read pid")
+            return
 
         self.ignore_non_present = args.ignore_non_present
 
         self.out = []
-        if args.address:
+        if args.address is not None:
             self.handle_address(args.address, pid)
-        elif args.from_addr and args.to_addr:
+        elif args.from_addr is not None and args.to_addr is not None:
             self.handle_address_range(args.from_addr, args.to_addr, pid)
         else:
             err("You must provide either a single address or both --from-addr and --to-addr")
+            return
 
         gef_print("\n".join(self.out), less=not args.no_pager)
+        return
 
 
 @register_command
 class PeekPageFlagsCommand(GenericCommand):
-    """Read the page flags of a page frame (needs root)"""
+    """Read the page flags of a page frame (needs root)."""
 
     _cmdline_ = "peek-pageflags"
     _category_ = "03-f. Memory - Investigation"
     _aliases_ = ["ppfl"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("pfn", metavar="PFN", type=AddressUtil.parse_address, help="pfn of which to read flags")
+    parser.add_argument("pfn", metavar="PFN", type=AddressUtil.parse_address,
+                        help="pfn of which to read flags")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
-
     _syntax_ = parser.format_help()
 
     _example_ = f"{_cmdline_:s} 0x6b2ae3"
@@ -88407,7 +88413,6 @@ class PeekPageFlagsCommand(GenericCommand):
             err(f"Only the owner of {path} (root) is able to read it, rerun gdb with proper permissions")
         except Exception as e:
             err(f"Error reading kpagecount: {e}")
-
         return None
 
     def read_kpagecount(self, pfn):
@@ -88447,6 +88452,7 @@ class PeekPageFlagsCommand(GenericCommand):
             output.append(f"  {flag}")
 
         gef_print("\n".join(output), less=not args.no_pager)
+        return
 
 
 @register_command
