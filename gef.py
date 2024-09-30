@@ -14940,9 +14940,7 @@ class SecondBreakpoint(gdb.Breakpoint):
 
 @register_command
 class NiCommand(GenericCommand):
-    """`ni` wrapper for specific arch.
-    or1k: branch operations don't work well, so use breakpoints to simulate.
-    cris: si/ni commands don't work well. so use breakpoints to simulate."""
+    """`ni` wrapper for specific arch (or1k, cris)."""
 
     _cmdline_ = "nexti-for-qemu-user"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
@@ -14953,7 +14951,11 @@ class NiCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     _note_ = "Only when qemu-user with specific arch, the `ni` command is redirected to `nexti-for-qemu-user`.\n"
-    _note_ += "This setting is done only once, when hook_stop_handler is called for the first time."
+    _note_ += "This setting is done only once, when hook_stop_handler is called for the first time.\n"
+    _note_ += "\n"
+    _note_ += "Target architecture:\n"
+    _note_ += "  or1k: branch operations don't work well, so use breakpoints to simulate.\n"
+    _note_ += "  cris: si/ni commands don't work well. so use breakpoints to simulate."
 
     def ni_set_bp_for_branch(self):
         target = None
@@ -15024,9 +15026,7 @@ class NiCommand(GenericCommand):
 
 @register_command
 class SiCommand(GenericCommand):
-    """`si` wrapper for specific arch.
-    or1k: branch operations don't work well, so use breakpoints to simulate.
-    cris: si/ni commands don't work well. so use breakpoints to simulate."""
+    """`si` wrapper for specific arch (or1k, cris)."""
 
     _cmdline_ = "stepi-for-qemu-user"
     _category_ = "01-c. Debugging Support - Basic Command Extension"
@@ -15037,7 +15037,11 @@ class SiCommand(GenericCommand):
     _syntax_ = parser.format_help()
 
     _note_ = "Only when qemu-user with specific arch, the `si` command is redirected to `stepi-for-qemu-user`.\n"
-    _note_ += "This setting is done only once, when hook_stop_handler is called for the first time."
+    _note_ += "This setting is done only once, when hook_stop_handler is called for the first time.\n"
+    _note_ += "\n"
+    _note_ += "Target architecture:\n"
+    _note_ += "  or1k: branch operations don't work well, so use breakpoints to simulate.\n"
+    _note_ += "  cris: si/ni commands don't work well. so use breakpoints to simulate."
 
     def si_set_bp_for_branch(self):
         target = None
@@ -20515,7 +20519,7 @@ class GlibcHeapChunksCommand(GenericCommand, BufferingOutput):
 
 @register_command
 class GlibcHeapBinsSimpleCommand(GenericCommand):
-    """Simple display information on the bins on an arena (default: main_arena)."""
+    """Simple display information on the bins on an arena."""
 
     _cmdline_ = "heap bins-simple"
     _category_ = "06-a. Heap - Glibc"
@@ -20601,7 +20605,7 @@ class GlibcHeapBinsSimpleCommand(GenericCommand):
 
 @register_command
 class GlibcHeapBinsCommand(GenericCommand):
-    """Display information on the bins on an arena (default: main_arena)."""
+    """Display information on the bins on an arena."""
 
     _cmdline_ = "heap bins"
     _category_ = "06-a. Heap - Glibc"
@@ -84423,7 +84427,7 @@ class QemuDeviceInfoCommand(GenericCommand):
 
 @register_command
 class XUntilCommand(GenericCommand):
-    """Execute until specified address. It is slightly easier to use than the original until command."""
+    """Execute until specified address easily."""
 
     _cmdline_ = "xuntil"
     _category_ = "01-d. Debugging Support - Execution"
@@ -84442,7 +84446,8 @@ class XUntilCommand(GenericCommand):
             stop_addr = Disasm.gef_instruction_n(current_arch.pc, 1).address
         else:
             stop_addr = args.address
-        # `until` command has a bug(?) because sometimes fail, so we should use `tbreak` and `continue` instead of `until`.
+        # `until` command has a bug(?) because sometimes fail,
+        # so we should use `tbreak` and `continue` instead of `until`.
         SimpleInternalTemporaryBreakpoint(loc=stop_addr)
         gdb.execute("c") # use c wrapper
         return
