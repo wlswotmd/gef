@@ -88183,8 +88183,8 @@ class PeekPageFrameCommand(GenericCommand):
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
-    _example_ = f"{_cmdline_:s} 0x555555555060                        # read pagemap of single address\n"
-    _example_ += f"{_cmdline_:s} -f 0x7ffffffdd000 -t 0x7ffffffff000   # read pagemap of an address range"
+    _example_ = "{:s} 0x555555555060                        # read pagemap of single address\n".format(_cmdline_)
+    _example_ += "{:s} -f 0x7ffffffdd000 -t 0x7ffffffff000   # read pagemap of an address range".format(_cmdline_)
 
     ENTRY_SIZE = 8
 
@@ -88207,28 +88207,28 @@ class PeekPageFrameCommand(GenericCommand):
     def read_pagemap_with_virt_address(self, address, pid):
         page_size = gef_getpagesize()
         file_offset = (address // page_size) * self.ENTRY_SIZE
-        path = f"/proc/{pid}/pagemap"
+        path = "/proc/{:d}/pagemap".format(pid)
 
         try:
             with open(path, "rb") as file:
                 file.seek(file_offset)
                 return file.read(8)
         except FileNotFoundError:
-            err(f"Opening {path} failed! Could not find file")
+            err("Opening {:s} failed! Could not find file".format(path))
         except OSError as e:
             if e.errno == 1: # 1 = EPERM
                 err("No permission to open the pagemap file")
                 err("Only users with the CAP_SYS_ADMIN capability can get PFNs")
                 err("In kernel versions 4.0 and 4.1 unprivileged opens fail with -EPERM")
             else:
-                err(f"Opening {path} failed!")
+                err("Opening {:s} failed!".format(path))
         return None
 
     def get_pagemap_entry(self, address, pid):
         entry_bytes = self.read_pagemap_with_virt_address(address, pid)
 
         if entry_bytes is None or len(entry_bytes) < 8:
-            err(f"Reading pagemap entry for address 0x{address:x} wasn't successful")
+            err("Reading pagemap entry for address {:#x} wasn't successful".format(address))
             return None
 
         entry = struct.unpack("Q", entry_bytes)[0]
@@ -88273,15 +88273,15 @@ class PeekPageFrameCommand(GenericCommand):
         green_yes = Color.greenify("yes")
         red_no = Color.redify("no")
 
-        self.out.append(f"present:            {green_yes if present else red_no}")
-        self.out.append(f"swapped:            {green_yes if swapped else red_no}")
-        self.out.append(f"file-mapped:        {green_yes if file_mapped else red_no}")
-        self.out.append(f"soft-dirty:         {green_yes if soft_dirty else red_no}")
-        self.out.append(f"exclusively-mapped: {green_yes if exclusive else red_no}")
-        self.out.append(f"uffd-wp:            {green_yes if uffd_wp else red_no}")
+        self.out.append("present:            {:s}".format(green_yes if present else red_no))
+        self.out.append("swapped:            {:s}".format(green_yes if swapped else red_no))
+        self.out.append("file-mapped:        {:s}".format(green_yes if file_mapped else red_no))
+        self.out.append("soft-dirty:         {:s}".format(green_yes if soft_dirty else red_no))
+        self.out.append("exclusively-mapped: {:s}".format(green_yes if exclusive else red_no))
+        self.out.append("uffd-wp:            {:s}".format(green_yes if uffd_wp else red_no))
 
         if present:
-            self.out.append(Color.boldify(f"PFN:                0x{pfn:x}"))
+            self.out.append(Color.boldify("PFN:                {:#x}").format(pfn))
         return
 
     def handle_address_range(self, from_addr, to_addr, pid):
@@ -88315,8 +88315,11 @@ class PeekPageFrameCommand(GenericCommand):
             flags.append("U" if data["uffd_wp"] else "-")
             flags_str = "".join(flags)
 
-            pfn_str = f"0x{data["pfn"]:x}" if data["pfn"] != 0 else "0x0"
-            self.out.append(f"0x{data["address"]:016x} {pfn_str:>8} {flags_str}")
+            if data["pfn"] != 0:
+                pfn_str = "{:#x}".format(data["pfn"])
+            else:
+                pfn_str = "0x0"
+            self.out.append("{:#018x} {:>8} {:s}".format(data["address"], pfn_str, flags_str))
         return
 
     @parse_args
@@ -88357,7 +88360,7 @@ class PeekPageFlagsCommand(GenericCommand):
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
-    _example_ = f"{_cmdline_:s} 0x6b2ae3"
+    _example_ = "{:s} 0x6b2ae3".format(_cmdline_)
 
     class KPageFlags:
         FLAGS = {
@@ -88407,14 +88410,14 @@ class PeekPageFlagsCommand(GenericCommand):
                 if len(data) == 8:
                     return struct.unpack("Q", data)[0]
                 else:
-                    raise ValueError(f"Could not read kpagecount for PFN {hex(pfn)}")
+                    raise ValueError("Could not read kpagecount for PFN {:#x}".format(pfn))
         except FileNotFoundError:
-            err(f"Could not open {path}")
+            err("Could not open {:s}".format(path))
         except PermissionError:
-            err(f"No permissions to read {path}")
-            err(f"Only the owner of {path} (root) is able to read it, rerun gdb with proper permissions")
+            err("No permissions to read {:s}".format(path))
+            err("Only the owner of {:s} (root) is able to read it, rerun gdb with proper permissions".format(path))
         except Exception as e:
-            err(f"Error reading kpagecount: {e}")
+            err("Error reading kpagecount: {}".format(e))
         return None
 
     def read_kpagecount(self, pfn):
@@ -88447,11 +88450,11 @@ class PeekPageFlagsCommand(GenericCommand):
         set_flags = flags.get_set_flags()
 
         output = []
-        output.append(f"/proc/kpagecount: {count}")
-        output.append(f"Pageflags: {hex(flags.get_flag())}")
+        output.append("/proc/kpagecount: {:d}".format(count))
+        output.append("Pageflags: {:#x}".format(flags.get_flag()))
         output.append("Flags:")
         for flag in set_flags:
-            output.append(f"  {flag}")
+            output.append("  {:s}".format(flag))
 
         gef_print("\n".join(output), less=not args.no_pager)
         return
