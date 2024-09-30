@@ -1742,7 +1742,7 @@ class Elf:
     EM_CLOUDSHIELD           = 192 # CloudShield architecture family
     EM_COREA_1ST             = 193 # KIPO-KAIST Core-A 1st generation processor family
     EM_COREA_2ND             = 194 # KIPO-KAIST Core-A 2nd generation processor family
-    EM_ARCV2                 = 195 # Synopsys ARCompact V2
+    EM_ARCV2                 = 195 # Synopsys ARCompact V2 # codespell:ignore
     EM_OPEN8                 = 196 # Open8 8-bit RISC soft processor core
     EM_RL78                  = 197 # Renesas RL78 family
     EM_VIDEOCORE5            = 198 # Broadcom VideoCore V processor
@@ -1783,9 +1783,9 @@ class Elf:
     EM_NFP                   = 250 # Netronome Flow Processor
     EM_VE                    = 251 # NEC Vector Engine
     EM_CSKY                  = 252 # C-SKY processor family
-    EM_ARC_COMPACT3_64       = 253 # Synopsys ARCv2.3 64-bit
+    EM_ARC_COMPACT3_64       = 253 # Synopsys ARCv2.3 64-bit # codespell:ignore
     EM_MCS6502               = 254 # MOS Technology MCS 6502 processor
-    EM_ARC_COMPACT3          = 255 # Synopsys ARCv2.3 32-bit
+    EM_ARC_COMPACT3          = 255 # Synopsys ARCv2.3 32-bit # codespell:ignore
     EM_KVX                   = 256 # Kalray VLIW core of the MPPA processor family
     EM_65816                 = 257 # WDC 65816/65C816
     EM_LOONGARCH             = 258 # LoongArch
@@ -3691,7 +3691,7 @@ class GlibcHeap:
             try:
                 return self.__arena[item]
             except RuntimeError:
-                raise AttributeError
+                raise AttributeError from None
 
         def __int__(self):
             return self.__addr
@@ -8753,7 +8753,7 @@ class M68K(Architecture):
         conditions = [
             "ne", "eq", "ge", "lt", "gt", "le", "f", "t",
             "gl", "gle", "nge", "ngl", "ngle", "ngt", "nle", "nlt",
-            "oge", "ogl", "ogt", "ole", "olt", "or",
+            "oge", "ogl", "ogt", "ole", "olt", "or", # codespell:ignore
             "seq", "sf", "sne", "st", "ueq", "uge", "ugt", "ule", "ult", "un",
         ]
         for cc in conditions:
@@ -22385,7 +22385,7 @@ class ElfInfoCommand(GenericCommand):
         Elf.EM_CLOUDSHIELD           : "CloudShield architecture family",
         Elf.EM_COREA_1ST             : "KIPO-KAIST Core-A 1st generation processor family",
         Elf.EM_COREA_2ND             : "KIPO-KAIST Core-A 2nd generation processor family",
-        Elf.EM_ARCV2                 : "Synopsys ARCompact V2",
+        Elf.EM_ARCV2                 : "Synopsys ARCompact V2", # codespell:ignore
         Elf.EM_OPEN8                 : "Open8 8-bit RISC soft processor core",
         Elf.EM_RL78                  : "Renesas RL78 family",
         Elf.EM_VIDEOCORE5            : "Broadcom VideoCore V processor",
@@ -22425,9 +22425,9 @@ class ElfInfoCommand(GenericCommand):
         Elf.EM_NFP                   : "Netronome Flow Processor",
         Elf.EM_VE                    : "NEC Vector Engine",
         Elf.EM_CSKY                  : "C-SKY processor family",
-        Elf.EM_ARC_COMPACT3_64       : "Synopsys ARCv2.3 64-bit",
+        Elf.EM_ARC_COMPACT3_64       : "Synopsys ARCv2.3 64-bit", # codespell:ignore
         Elf.EM_MCS6502               : "MOS Technology MCS 6502 processor",
-        Elf.EM_ARC_COMPACT3          : "Synopsys ARCv2.3 32-bit",
+        Elf.EM_ARC_COMPACT3          : "Synopsys ARCv2.3 32-bit", # codespell:ignore
         Elf.EM_KVX                   : "Kalray VLIW core of the MPPA processor family",
         Elf.EM_65816                 : "WDC 65816/65C816",
         Elf.EM_LOONGARCH             : "LoongArch",
@@ -31961,11 +31961,11 @@ class StandardIoCommand(GenericCommand, BufferingOutput):
             msg = "{:+#05x} | {:16s}: ".format(member_offset, member_name)
 
         # member of each struct
-        for struct in struct_array:
-            member_addr = struct + member_offset
+        for st in struct_array:
+            member_addr = st + member_offset
             if member_name == "__addr__":
-                address_obj = ProcessMap.lookup_address(struct)
-                sym = Symbol.get_symbol_string(struct)
+                address_obj = ProcessMap.lookup_address(st)
+                sym = Symbol.get_symbol_string(st)
                 msg += "{:s}{:24s} ".format(address_obj.long_fmt(), sym)
             elif not is_valid_addr(member_addr):
                 msg += "{:{:d}s}{:24s} ".format("", [10, 18][is_64bit()], "")
@@ -33841,8 +33841,8 @@ asmlinkage long sys_ni_posix_timers(void);
 syscall_defs_compat = """
 asmlinkage long compat_sys_io_setup(unsigned nr_reqs, u32 __user *ctx32p);
 asmlinkage long compat_sys_io_submit(compat_aio_context_t ctx_id, int nr, u32 __user *iocb);
-asmlinkage long compat_sys_io_pgetevents(compat_aio_context_t ctx_id, compat_long_t min_nr, compat_long_t nr, struct io_event __user *events, struct old_timespec32 __user *timeout, const struct __compat_aio_sigset __user *usig);
-asmlinkage long compat_sys_io_pgetevents_time64(compat_aio_context_t ctx_id, compat_long_t min_nr, compat_long_t nr, struct io_event __user *events, struct __kernel_timespec __user *timeout, const struct __compat_aio_sigset __user *usig);
+asmlinkage long compat_sys_io_pgetevents(compat_aio_context_t ctx_id, compat_long_t min_nr, compat_long_t nr, struct io_event __user *events, struct old_timespec32 __user *timeout, const struct __compat_aio_sigset __user *usig); # codespell:ignore
+asmlinkage long compat_sys_io_pgetevents_time64(compat_aio_context_t ctx_id, compat_long_t min_nr, compat_long_t nr, struct io_event __user *events, struct __kernel_timespec __user *timeout, const struct __compat_aio_sigset __user *usig); # codespell:ignore
 asmlinkage long compat_sys_epoll_pwait(int epfd, struct epoll_event __user *events, int maxevents, int timeout, const compat_sigset_t __user *sigmask, compat_size_t sigsetsize);
 asmlinkage long compat_sys_epoll_pwait2(int epfd, struct epoll_event __user *events, int maxevents, const struct __kernel_timespec __user *timeout, const compat_sigset_t __user *sigmask, compat_size_t sigsetsize);
 asmlinkage long compat_sys_fcntl(unsigned int fd, unsigned int cmd, compat_ulong_t arg);
@@ -47800,7 +47800,7 @@ class SseCommand(GenericCommand):
             [7, "IM", "Invalid Operation Exception Mask"],
             [6, "DAZ", "Use as 0.0 if input data is denormalized"],
             [5, "PE", "Precision Exception"],
-            [4, "UE", "Underflow Exception"],
+            [4, "UE", "Underflow Exception"], # codespell:ignore
             [3, "OE", "Overflow Exception"],
             [2, "ZE", "Zero Divide Exception"],
             [1, "DE", "Denormalized Operand Exception"],
@@ -48151,7 +48151,7 @@ class FpuCommand(GenericCommand):
             [7, "ES", "Exception Summary Status"],
             [6, "SF", "Stack Fault"],
             [5, "PE", "Precision Exception"],
-            [4, "UE", "Underflow Exception"],
+            [4, "UE", "Underflow Exception"], # codespell:ignore
             [3, "OE", "Overflow Exception"],
             [2, "ZE", "Zero Divide Exception"],
             [1, "DE", "Denormalized Operand Exception"],
@@ -57642,7 +57642,7 @@ class KernelCharacterDevicesCommand(GenericCommand):
             (10, 160): "/dev/nwflash",
             (10, 161): "/dev/userdma",
             (10, 162): "/dev/smbus",
-            (10, 163): "/dev/lik",
+            (10, 163): "/dev/lik", # codespell:ignore
             (10, 164): "/dev/ipmo",
             (10, 165): "/dev/vmmon",
             (10, 166): "/dev/i2o/ctl",
@@ -63026,7 +63026,7 @@ class IdtInfoCommand(GenericCommand):
         _idt["offset"] = _idt["offset"] | ((val >> 32) & (0xffff0000))
         _idt["offset"] = ((val >> 32) & (0xffffffff00000000)) | _idt["offset"]
         _idt["segment"] = (val >> 16) & 0xffff
-        _idt["ist"] = (val >> 32) & 0b111
+        _idt["ist"] = (val >> 32) & 0b111 # codespell:ignore
         _idt["gate_type"] = (val >> 40) & (0b1111)
         _idt["dpl"] = (val >> 45) & (0b11)
         _idt["present"] = (val >> 47) & (0b1)
@@ -63046,7 +63046,7 @@ class IdtInfoCommand(GenericCommand):
         out = ""
         out += "{:#0{:d}x} ".format(idt.value, val_width)
         out += "{:#03x} ".format(idt.gate_type)
-        out += "{:#03x} ".format(idt.ist)
+        out += "{:#03x} ".format(idt.ist) # codespell:ignore
         out += "{:#03x} ".format(idt.dpl)
         out += "{:#03x} ".format(idt.present)
         out += "{:#06x}:{:#0{:d}x}".format(idt.segment, idt.offset, ofs_width)
@@ -63056,8 +63056,10 @@ class IdtInfoCommand(GenericCommand):
     def idtval2str_legend():
         val_width = current_arch.ptrsize * 4 + 2
         ofs_width = current_arch.ptrsize * 2 + 2
-        fmt = "{:3s} {:36s} {:{:d}s} {:3s} {:3s} {:3s} {:3s} {:6s}:{:{:d}s}"
-        return fmt.format("#", "name", "value", val_width, "typ", "ist", "dpl", "p", "segm", "offset", ofs_width)
+        return "{:3s} {:36s} {:{:d}s} {:3s} {:3s} {:3s} {:3s} {:6s}:{:{:d}s}".format(
+            "#", "name", "value", val_width, "typ",
+            "ist", "dpl", "p", "segm", "offset", ofs_width, # codespell:ignore
+        )
 
     def print_idt_example(self):
         # print title
@@ -63184,13 +63186,13 @@ class IdtInfoCommand(GenericCommand):
         gef_print("------------------------------------------------------------------------")
         gef_print("|                            OFFSET2 63:32                             | 8byte")
         gef_print("------------------------------------------------------------------------")
-        gef_print("|         OFFSET1 31:16            | P | DPL | 0 | Type | 00000 | IST  | 4byte")
+        gef_print("|         OFFSET1 31:16            | P | DPL | 0 | Type | 00000 | IST  | 4byte") # codespell:ignore
         gef_print("------------------------------------------------------------------------")
         gef_print("|         Segment Selector         |           OFFSET0 15:0            | 0byte")
         gef_print("------------------------------------------------------------------------")
         gef_print(" * segment selector : Segment selector for destination code segment")
         gef_print(" * offset           : Offset to handler procedure entry point")
-        gef_print(" * ist              : Interrupt stack table")
+        gef_print(" * ist              : Interrupt stack table") # codespell:ignore
         gef_print(" * type             : One of following")
         gef_print("                        0x5: Task gate")
         gef_print("                        0xC: Call gate")
@@ -71405,11 +71407,11 @@ class KsymaddrRemoteCommand(GenericCommand):
         gef> hexdump -n byte kallsyms_token_table
         0xc6e58efc:    54 52 41 43 45 5f 53 59 53 00 41 43 45 5f 53 59    |  TRACE_SYS.ACE_SY  |
         0xc6e58f0c:    53 00 5f 53 59 53 00 54 45 4d 00 41 43 45 00 69    |  S._SYS.TEM.ACE.i  |
-        0xc6e58f1c:    67 00 70 6f 69 6e 74 5f 00 62 75 00 75 74 5f 00    |  g.point_.bu.ut_.  |
+        0xc6e58f1c:    67 00 70 6f 69 6e 74 5f 00 62 75 00 75 74 5f 00    |  g.point_.bu.ut_.  | # codespell:ignore
         0xc6e58f2c:    5f 53 59 00 54 52 00 5f 73 79 00 72 65 61 64 00    |  _SY.TR._sy.read.  |
         0xc6e58f3c:    66 5f 00 75 6c 00 62 6c 00 61 6c 6c 6f 63 00 74    |  f_.ul.bl.alloc.t  |
         0xc6e58f4c:    6c 00 63 6c 00 65 79 00 61 74 61 00 70 63 00 5f    |  l.cl.ey.ata.pc._  |
-        0xc6e58f5c:    65 6e 00 76 65 72 00 54 45 00 64 74 72 61 63 65    |  en.ver.TE.dtrace  |
+        0xc6e58f5c:    65 6e 00 76 65 72 00 54 45 00 64 74 72 61 63 65    |  en.ver.TE.dtrace  | # codespell:ignore
         0xc6e58f6c:    5f 65 76 65 6e 74 5f 00 61 70 00 61 74 65 00 74    |  _event_.ap.ate.t  |
         0xc6e58f7c:    6e 00 41 43 00 6d 73 00 72 61 77 5f 00 5f 63 6f    |  n.AC.ms.raw_._co  |
         0xc6e58f8c:    00 73 74 72 00 6d 6f 00 67 69 73 74 65 72 00 69    |  .str.mo.gister.i  |
@@ -72520,7 +72522,7 @@ class TcmallocDumpCommand(GenericCommand):
 
         # google-perftools-2.9.1/src/thread_cache.h
         """
-        00000000 ThreadCache     struc ; (sizeof=0x1040, align=0x8)
+        00000000 ThreadCache     struc ; (sizeof=0x1040, align=0x8) # codespell:ignore
         00000000 list_           FreeList 128 dup(?) # kClassSizesMax
         00001000 size_           dd ?
         00001004 max_size_       dd ?
@@ -72538,7 +72540,7 @@ class TcmallocDumpCommand(GenericCommand):
         self.ThreadCache_freelist_slot_count = kClassSizesMax
         # google-perftools-2.9.1/src/thread_cache.h
         """
-        00000000 FreeList        struc ; (sizeof=0x20, align=0x8)
+        00000000 FreeList        struc ; (sizeof=0x20, align=0x8) # codespell:ignore
         00000000 list_           dq ?
         00000008 length_         dd ?
         0000000C lowater_        dd ?
@@ -80557,7 +80559,7 @@ class PagewalkArmCommand(PagewalkCommand):
                     flags.append("XN")
                 flags.append("domain={:#x}".format((entry >> 5) & 0b1111))
                 ap = (((entry >> 15) & 1) << 2) + ((entry >> 10) & 0b11)
-                if self.AFE: # AP[2:1] access permissions model
+                if self.AFE: # AP[2:1] access permissions model # codespell:ignore
                     flags.append("AP={:02b}".format(ap >> 1))
                 else: # AP[2:0] access permissions model
                     flags.append("AP={:03b}".format(ap))
@@ -80578,7 +80580,7 @@ class PagewalkArmCommand(PagewalkCommand):
                 if ((entry >> 4) & 1) == 1:
                     flags.append("XN")
                 ap = (((entry >> 15) & 1) << 2) + ((entry >> 10) & 0b11)
-                if self.AFE: # AP[2:1] access permissions model
+                if self.AFE: # AP[2:1] access permissions model # codespell:ignore
                     flags.append("AP={:02b}".format(ap >> 1))
                 else: # AP[2:0] access permissions model
                     flags.append("AP={:03b}".format(ap))
@@ -80667,7 +80669,7 @@ class PagewalkArmCommand(PagewalkCommand):
                     if ((entry >> 3) & 1) == 1:
                         flags.append("C")
                     ap = (((entry >> 9) & 1) << 2) + ((entry >> 4) & 0b11)
-                    if self.AFE: # AP[2:1] access permissions model
+                    if self.AFE: # AP[2:1] access permissions model # codespell:ignore
                         flags.append("AP={:02b}".format(ap >> 1))
                     else: # AP[2:0] access permissions model
                         flags.append("AP={:03b}".format(ap))
@@ -80686,7 +80688,7 @@ class PagewalkArmCommand(PagewalkCommand):
                     if ((entry >> 3) & 1) == 1:
                         flags.append("C")
                     ap = (((entry >> 9) & 1) << 2) + ((entry >> 4) & 0b11)
-                    if self.AFE: # AP[2:1] access permissions model
+                    if self.AFE: # AP[2:1] access permissions model # codespell:ignore
                         flags.append("AP={:02b}".format(ap >> 1))
                     else: # AP[2:0] access permissions model
                         flags.append("AP={:03b}".format(ap))
@@ -81160,14 +81162,14 @@ class PagewalkArmCommand(PagewalkCommand):
                 self.SECURE = False
             self.suffix = ""
 
-        # check XP, AFE
+        # check XP, AFE # codespell:ignore
         SCTLR = get_register("$SCTLR{}".format(self.suffix))
         if SCTLR is not None:
             self.XP = ((SCTLR >> 23) & 0x1) == 1
-            self.AFE = ((SCTLR >> 29) & 0x1) == 1
+            self.AFE = ((SCTLR >> 29) & 0x1) == 1 # codespell:ignore
         else:
             self.XP = False
-            self.AFE = False
+            self.AFE = False # codespell:ignore
 
         if not self.XP:
             self.quiet_info("VMSAv6 subpages is enabled")
@@ -88362,7 +88364,7 @@ class PeekPageFlagsCommand(GenericCommand):
             "LOCKED":        1 << 0,
             "ERROR":         1 << 1,
             "REFERENCED":    1 << 2,
-            "UPTODATE":      1 << 3,
+            "UPTODATE":      1 << 3, # codespell:ignore
             "DIRTY":         1 << 4,
             "LRU":           1 << 5,
             "ACTIVE":        1 << 6,

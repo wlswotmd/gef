@@ -46,20 +46,20 @@ Move `/root/.gdbinit-gef.py` and edit `/root/.gdbinit`.
 
 If you want to use GEF as a user other than root, add `source /path/to/.gdbinit-gef.py` to that user's `$HOME/.gdbinit`.
 
-## How can I install GEF offline?
-Please refer to [`install.sh`](https://github.com/bata24/gef/blob/dev/install.sh) or [`install-minimal.sh`](https://github.com/bata24/gef/blob/dev/install-minimal.sh), and set it up manually.
-
-Note: GEF is designed to have as few dependencies as possible.
-Many commands should work with just `gef.py` without any additional external tools.
-If you do not install external tools, the features you will not be able to use are described in bellow.
-
 ## I don't want to specify the `--break-system-packages` option during installation.
 You have some options:
 * Install inside docker to prevent impact on the host environment.
 * Use `install-minimal.sh` to skip installing with `pip`.
 * Use `venv` or `pyenv` to manage Python modules individually.
 
-## If I use `install-minimal.sh`, which commands will no longer be available?
+## How can I install GEF offline?
+Please refer to [`install.sh`](https://github.com/bata24/gef/blob/dev/install.sh) or [`install-minimal.sh`](https://github.com/bata24/gef/blob/dev/install-minimal.sh), and set it up manually.
+
+Note: GEF is designed to have as few dependencies as possible.
+Many commands should work with just `gef.py` without any additional external tools.
+If you do not install external tools, the features that are not available are listed below.
+
+## If I do not install external tools, which commands will no longer be available?
 Following are the breakdown. It may not be comprehensive.
 
 If you install with `install-minimal.sh`, you will not be able to use these commands unless you install the required packages and tools.
