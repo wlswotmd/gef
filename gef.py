@@ -32274,7 +32274,7 @@ class StandardIoCommand(GenericCommand, BufferingOutput):
 
 
 @register_command
-class GotCommand(GenericCommand):
+class GotCommand(GenericCommand, BufferingOutput):
     """Display current status of the got/plt inside the process."""
 
     _cmdline_ = "got"
@@ -32318,13 +32318,13 @@ class GotCommand(GenericCommand):
         reloc_count = 0
         for line in lines:
             # get section
-            r = re.findall("'(.+?)' at offset", line) # considered LANG environment
+            r = re.findall("'(.+?)' at offset", line)
             if r:
                 section_name = r[0]
                 continue
 
             # GOT entry pattern 1
-            if "JUMP_SLOT" in line:
+            if "JUMP_SLOT" in line or "JMP_SLOT" in line:
                 type = "JUMP_SLOT"
                 address, _, _, _, name = line.split()[:5]
                 address = int(address, 16)
@@ -32373,6 +32373,46 @@ class GotCommand(GenericCommand):
         c = output.get("GLOB_DAT", [])
         return a + b + c
 
+    def get_jmp_slots_arch_specific(self):
+        try:
+            readelf = GefUtil.which("readelf")
+            cmd = [readelf, "--arch-specific", "--wide", self.filename]
+            lines = GefUtil.gef_execute_external(cmd, as_list=True)
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            return []
+
+        elf = Elf.get_elf(self.filename)
+
+        output = []
+        section_name = ".got"
+        ncol = -1
+        for line in lines:
+            r = re.search(r"^\s+Address\s+.*\s+Initial\s+", line)
+            if r:
+                ncol = len(line.split())
+                continue
+
+            r = re.search(r"^\s+[0-9a-f]+", line)
+            if not r:
+                continue
+
+            ls = line.split()
+
+            address = int(ls[0], 16)
+            # fix address
+            if elf.is_pie():
+                address += self.base_address
+
+            if ncol == 3:
+                name = ""
+            elif ncol == 4:
+                name = " ".join(ls[3:])
+            else:
+                name = ls[-1]
+
+            output.append([address, name, ".got", "???", None])
+        return output
+
     def get_plt_addresses(self):
         try:
             objdump = GefUtil.which("objdump")
@@ -32402,10 +32442,52 @@ class GotCommand(GenericCommand):
             output[func_name] = array + [address]
         return output
 
+    def get_plt_addresses_arch_specific(self):
+        try:
+            readelf = GefUtil.which("readelf")
+            cmd = [readelf, "--arch-specific", "--wide", self.filename]
+            lines = GefUtil.gef_execute_external(cmd, as_list=True)
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            return []
+
+        elf = Elf.get_elf(self.filename)
+
+        output = {}
+        ncol = -1
+        for line in lines:
+            r = re.search(r"^\s+Address\s+.*\s+Initial\s+", line)
+            if r:
+                initial_idx = line.split().index("Initial")
+                ncol = len(line.split())
+                continue
+
+            r = re.search(r"^\s+[0-9a-f]+", line)
+            if not r:
+                continue
+
+            ls = line.split()
+
+            plt_address = int(ls[initial_idx], 16)
+            # fix address
+            if elf.is_pie():
+                plt_address += self.base_address
+            if not is_valid_addr(plt_address):
+                plt_address = 0
+
+            if ncol == 3:
+                name = ""
+            elif ncol == 4:
+                name = " ".join(ls[3:])
+            else:
+                name = ls[-1]
+
+            output[name] = [plt_address]
+        return output
+
     def get_plt_range(self):
         # The PLT range is required to determine whether the information in the GOT is resolved or not.
         elf = Elf.get_elf(self.filename)
-        sections = [x for x in elf.shdrs if x.sh_name in [".plt", ".plt.got", ".plt.sec"]]
+        sections = [x for x in elf.shdrs if x.sh_name in [".plt", ".plt.got", ".plt.sec", ".MIPS.stubs"]]
         if len(sections) == 0:
             return 0, 0
         plt_begin = min([x.sh_addr for x in sections])
@@ -32455,9 +32537,16 @@ class GotCommand(GenericCommand):
 
         # retrieve jump slots using readelf
         jmpslots = self.get_jmp_slots()
+        if jmpslots == []:
+            # On some architectures, such as mips, the GOT detection fails.
+            # Some information will be lost, but detection will still be performed in such cases.
+            jmpslots = self.get_jmp_slots_arch_specific()
 
         # retrieve plt address using objdump
         plts = self.get_plt_addresses()
+        if plts == {}:
+            # On some architectures, such as mips, the PLT detection fails.
+            plts = self.get_plt_addresses_arch_specific()
 
         # retrieve the end of plt from elf parsing
         plt_begin, plt_end = self.get_plt_range()
@@ -32471,7 +32560,7 @@ class GotCommand(GenericCommand):
         # print legend
         if not self.quiet:
             if self.verbose:
-                fmt = "{:<{:d}} {:s} {:9s} {:s} {:{:d}s} @ {:12s} {:>8s} {:>9s} {:s} {:{:d}s} @ {:12s} {:>8s} {:s} {:{:d}}"
+                fmt = "{:<{:d}} {:s} {:9s} {:s} {:{:d}s} @ {:15s} {:>8s} {:>9s} {:s} {:{:d}s} @ {:12s} {:>8s} {:s} {:{:d}}"
                 legend = [
                     "Name", name_width, VERTICAL_LINE,
                     "Type", VERTICAL_LINE,
@@ -32550,9 +32639,9 @@ class GotCommand(GenericCommand):
                 if plt_address:
                     plt_section = self.get_section_name(plt_address) + self.perm(plt_address)
                     plt_address = ProcessMap.lookup_address(plt_address)
-                    plt_info = "{!s} @{:13s} {:#8x} {:9s}".format(plt_address, plt_section, plt_offset, reloc_arg_info)
+                    plt_info = "{!s} @{:16s} {:#8x} {:9s}".format(plt_address, plt_section, plt_offset, reloc_arg_info)
                 else:
-                    plt_info = "{:{:d}s}  {:13s} {:>8s} {:9s}".format("Not found", width, "", "", reloc_arg_info)
+                    plt_info = "{:{:d}s}  {:16s} {:>8s} {:9s}".format("Not found", width, "", "", reloc_arg_info)
             else:
                 if plt_address:
                     plt_address = ProcessMap.lookup_address(plt_address)
@@ -32626,7 +32715,6 @@ class GotCommand(GenericCommand):
         # It should be removed later.
         tmp_filepath = None
 
-        self.out = []
         if args.remote:
             if not is_remote_debug():
                 if not args.quiet:
@@ -32676,6 +32764,7 @@ class GotCommand(GenericCommand):
                 err("{:s} does not exist".format(local_filepath))
             return
 
+        self.out = []
         if not args.quiet:
             if remote_filepath:
                 print_filename = "{:s} (remote: {:s})".format(local_filepath, remote_filepath)
@@ -32735,10 +32824,7 @@ class GotCommand(GenericCommand):
 
         # doit
         self.parse_plt_got()
-        if len(self.out) > GefUtil.get_terminal_size()[0]:
-            gef_print("\n".join(self.out), less=not args.no_pager)
-        else:
-            gef_print("\n".join(self.out), less=False)
+        self.print_output(args, term=True)
 
         # clean up
         if tmp_filepath and os.path.exists(tmp_filepath):
@@ -90814,11 +90900,16 @@ class GefUtil:
     @staticmethod
     def gef_execute_external(command, as_list=False, *args, **kwargs):
         """Execute an external command and return the result."""
-        res = subprocess.check_output(command, stderr=subprocess.STDOUT, shell=kwargs.get("shell", False))
+        env = os.environ.copy()
+        env["LANG"] = "C"
+
+        res = subprocess.check_output(
+            command, stderr=subprocess.STDOUT, env=env,
+            shell=kwargs.get("shell", False),
+        )
         if as_list:
             return [String.gef_pystring(x) for x in res.splitlines()]
-        else:
-            return String.gef_pystring(res)
+        return String.gef_pystring(res)
 
 
 class Gef:
