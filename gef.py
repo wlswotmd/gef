@@ -21758,28 +21758,40 @@ class AsmListCommand(GenericCommand):
     _note_ += "- 8F (XOP prefix) is ignored\n"
     _note_ += "- 62 (EVEX prefix) is ignored"
 
+    cache = None
+
     def listup_x86(self, arch, mode):
+        if self.cache:
+            return self.cache
+
         DISP64 = "1122334455667788"
         DISP32 = "11223344"
         DISP16 = "1122"
         DISP8 = "11"
 
+        @Cache.cache_this_session
         def get_typical_bytecodes_modrm(_reg):
+            _mod = range(4)
+            assert 0 <= _reg <= 7
+            _reg = [_reg]
+            _rm = [0, 0b100] # The correct value is range(8), but it is reduced for speed.
+            _sib = [0, 0b01001001] # The correct value is range(256), but it is reduced for speed.
+
             bytecodes = []
-            for (mod, reg, rm) in itertools.product([0b00, 0b01, 0b10, 0b11], _reg, [0b000]):
+            for mod, reg, rm in itertools.product(_mod, _reg, _rm):
                 modrm = "{:02X}".format((mod << 6) | (reg << 3) | rm)
                 if mod == 0b00:
                     if rm == 0b101: # special case; [REG + disp32]
                         bytecode = modrm + DISP32
                     elif rm == 0b100: # use sib; [INDEX * SCALE + BASE]
-                        for sib in filter(lambda x: x & 0b111 != 0b101, range(256)):
+                        for sib in _sib:
                             bytecode = modrm + "{:02X}".format(sib)
                     else: # [REG]
                         bytecode = modrm
                 elif mod == 0b01:
                     if rm == 0b100: # use sib; [INDEX * SCALE + BASE + disp8]
                         bytecode = []
-                        for sib in filter(lambda x: x & 0b111 != 0b101, range(256)):
+                        for sib in _sib:
                             b = modrm + "{:02X}".format(sib) + DISP8
                             bytecode.append(b)
                     else: # [REG + disp8]
@@ -21787,14 +21799,17 @@ class AsmListCommand(GenericCommand):
                 elif mod == 0b10:
                     if rm == 0b100: # use sib; [INDEX * SCALE + BASE + disp32]
                         bytecode = []
-                        for sib in filter(lambda x: x & 0b111 != 0b101, range(256)):
+                        for sib in _sib:
                             b = modrm + "{:02X}".format(sib) + DISP32
                             bytecode.append(b)
                     else: # [REG + disp32]
                         bytecode = modrm + DISP32
                 elif mod == 0b11: # REG
                     bytecode = modrm
-                bytecodes.append(bytecode)
+                if isinstance(bytecode, list):
+                    bytecodes.extend(bytecode)
+                else:
+                    bytecodes.append(bytecode)
             return bytecodes
 
         def get_typical_bytecodes(opcodes):
@@ -21809,9 +21824,9 @@ class AsmListCommand(GenericCommand):
                 elif operand in ["iq"]:
                     bytecode = [DISP64]
                 elif operand in ["/0", "/1", "/2", "/3", "/4", "/5", "/6", "/7"]:
-                    bytecode = get_typical_bytecodes_modrm(tuple([int(operand[1])]))
+                    bytecode = get_typical_bytecodes_modrm(int(operand[1]))
                 elif operand == "/r":
-                    bytecode = get_typical_bytecodes_modrm(tuple([0]))
+                    bytecode = get_typical_bytecodes_modrm(0)
                 elif operand.endswith(("+r", "+i")):
                     b = int(operand.split("+")[0], 16)
                     bytecode = ["{:02X}".format(b + x) for x in range(8)]
@@ -21819,6 +21834,22 @@ class AsmListCommand(GenericCommand):
                     bytecode = [operand]
                 bytecodes.append(bytecode)
             return ["".join(b) for b in itertools.product(*bytecodes)]
+
+        def load_x86_json():
+            x86data_js = os.path.join(GEF_TEMP_DIR, "x86data.js")
+            if os.path.exists(x86data_js) and os.path.getsize(x86data_js) > 0:
+                x86 = open(x86data_js, "rb").read()
+            else:
+                url = "https://raw.githubusercontent.com/bata24/gef/dev/asmdb/x86data.js"
+                x86 = http_get(url)
+                if x86 is None:
+                    err("Connection timed out: {:s}".format(url))
+                    return None
+                open(x86data_js, "wb").write(x86)
+
+            x86 = x86.split(b"// ${JSON:BEGIN}")[1].split(b"// ${JSON:END}")[0]
+            import json
+            return json.loads(x86)
 
         # load capstone
         capstone = sys.modules["capstone"]
@@ -21828,16 +21859,8 @@ class AsmListCommand(GenericCommand):
             err("CsError")
             return None
 
-        # download defines
-        url = "https://raw.githubusercontent.com/bata24/gef/dev/asmdb/x86data.js"
-        x86 = http_get(url)
-        if x86 is None:
-            err("Connection timed out: {:s}".format(url))
-            return None
-        x86 = x86.split(b"// ${JSON:BEGIN}")[1].split(b"// ${JSON:END}")[0]
-        import json
-        x86 = json.loads(x86)
-
+        # default instruction set
+        x86 = load_x86_json()
         # manually added
         x86_insns = x86["instructions"]
         # [opcode_str, unused, unused, opcodes, attr]
@@ -21887,6 +21910,8 @@ class AsmListCommand(GenericCommand):
                 # add
                 valid_patterns.append([hex_code, opstr, opcodes, attr])
                 seen_patterns.append(hex_code)
+
+        self.cache = valid_patterns
         return valid_patterns
 
     @parse_args
@@ -21916,7 +21941,9 @@ class AsmListCommand(GenericCommand):
             return
         else:
             try:
-                arch, mode = UnicornKeystoneCapstone.get_capstone_arch(arch=args.arch, mode=args.mode, endian=args.big_endian)
+                arch, mode = UnicornKeystoneCapstone.get_capstone_arch(
+                    arch=args.arch, mode=args.mode, endian=args.big_endian,
+                )
                 arch_mode_s = ":".join([args.arch, args.mode])
                 endian_s = "big" if args.big_endian else "little"
             except AttributeError:
@@ -21939,7 +21966,7 @@ class AsmListCommand(GenericCommand):
 
         # filter and print
         self.out = []
-        fmt = "{:22s} {:60s} {:22s} {}\n"
+        fmt = "{:22s} {:70s} {:22s} {}"
         legend = ["Hex code", "Assembly code", "Opcode", "Attributes"]
         text = Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading"))
         self.out.append(text)
@@ -21949,7 +21976,7 @@ class AsmListCommand(GenericCommand):
                 continue
 
             # keyword filter
-            line = "{:22s} {:60s} {:22s} {}".format(hex_code, opstr, opcodes, ",".join(attr))
+            line = "{:22s} {:70s} {:22s} {}".format(hex_code, opstr, opcodes, ",".join(attr))
             if args.include and any(f not in line for f in args.include):
                 continue
             if args.exclude and any(f in line for f in args.exclude):
