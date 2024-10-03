@@ -47025,13 +47025,30 @@ class LibcCommand(GenericCommand):
         self.add_setting("assume_version", "()", "The default libc version")
         return
 
+    @staticmethod
+    def is_same_filename(a, b):
+        # If the file names match, they are considered to be the same file.
+        if os.path.basename(a) == os.path.basename(b):
+            return True
+
+        # If `a` is the destination of a symbolic link, compare whether resolving `b` results in `a`.
+        a_dir = os.path.join(os.path.dirname(a))
+        b_file = os.path.basename(b)
+        ab_path = os.path.join(a_dir, b_file)
+        while os.path.islink(ab_path):
+            ab_path = os.path.normpath(os.path.join(os.path.dirname(ab_path), os.readlink(ab_path)))
+        return os.path.basename(a) == os.path.basename(ab_path)
+
     @parse_args
     @only_if_gdb_running
     @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
     def do_invoke(self, args):
         Cache.reset_gef_caches(all=True) # get_process_maps may be caching old information
 
-        libc_targets = ("libc-2.", "libc.so.6", "libuClibc-")
+        libc_targets = (
+            "libc-2.", "libc.so.6", # glibc
+            "libuClibc-", "/libc.so.0", # uClibc
+        )
 
         libc = ProcessMap.get_section_base_address_by_list(libc_targets)
         if libc is None:
@@ -47058,9 +47075,7 @@ class LibcCommand(GenericCommand):
             if is_qemu_user():
                 data = None
                 for maps in ProcessMap.get_process_maps(outer=True):
-                    if os.path.basename(maps.path) != os.path.basename(libc.path):
-                        continue
-                    if maps.size != libc.size:
+                    if not LibcCommand.is_same_filename(maps.path, libc.path):
                         continue
                     real_libc_path = maps.path
                     data = open(real_libc_path, "rb").read()
@@ -47105,7 +47120,10 @@ class LdCommand(GenericCommand):
     def do_invoke(self, args):
         Cache.reset_gef_caches(all=True) # get_process_maps may be caching old information
 
-        ld_targets = ("ld-2.", "ld-linux-", "ld-linux.", "ld64-uClibc-", "ld-uClibc-")
+        ld_targets = (
+            "ld-2.", "ld-linux-", "ld-linux.", # glibc
+            "ld64-uClibc-", "ld-uClibc-", "ld64-uClibc.", "ld-uClibc.", # uClibc
+        )
 
         ld = ProcessMap.get_section_base_address_by_list(ld_targets)
         if ld is None:
@@ -47132,9 +47150,7 @@ class LdCommand(GenericCommand):
             if is_qemu_user():
                 data = None
                 for maps in ProcessMap.get_process_maps(outer=True):
-                    if os.path.basename(maps.path) != os.path.basename(ld.path):
-                        continue
-                    if maps.size != ld.size:
+                    if not LibcCommand.is_same_filename(maps.path, ld.path):
                         continue
                     real_ld_path = maps.path
                     data = open(real_ld_path, "rb").read()
