@@ -35,7 +35,7 @@
 # To start: in gdb, type `source /path/to/gef.py`
 #
 #######################################################################################
-# gef is distributed under the MIT License (MIT)
+# GEF is distributed under the MIT License.
 #
 # Copyright (c) 2021-2024 bata24 (@bata_24)
 #
@@ -64,25 +64,27 @@
 # SOFTWARE.
 #
 #######################################################################################
-# Use this command when check by vulture
+# Use this command when check by `vulture`.
 # vulture gef.py --ignore-names="*Command"
 #
 #######################################################################################
-# Use this command when check by ruff
-# ruff check gef.py --select B,C4,E,F --ignore C409,E402,E501,E731
+# Use this command when check by `ruff`.
+# ruff check gef.py --select B,C4,E,F --ignore E402,E501,E731
 #
-# C409: Unnecessary `list` literal passed to `tuple()`
-#   -> If the argument type is str or int, it must be list before.
 # E402: module level import not at top of file
-#   -> For faster startup speed, debug modules are loaded when needed.
+#   -> For faster startup, less frequently used modules should be loaded on demand.
 # E501: line too long (> 79 characters)
-#   -> I consider this rule to be nonsense in modern environment.
+#   -> I think this rule is nonsense in the modern environment.
 # E731: do not assign a lambda expression, use a def
 #   -> It can be written more cleanly using lambdas.
 #
 #######################################################################################
-# Use this command when check by codespell
+# Use this command when check by `codespell`.
 # codespell gef.py
+#
+#######################################################################################
+# Use this command to measure the time it takes GEF to load modules at startup.
+# PYTHONPROFILEIMPORTTIME=1 gdb
 #
 
 
