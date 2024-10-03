@@ -13223,7 +13223,7 @@ class ProcessMap:
             err("Process is not running")
             return None
         if isinstance(names, str):
-            names = tuple([names]) # make tuple to iterate
+            names = (names,) # make tuple to iterate
         for sect in ProcessMap.get_process_maps():
             for name in names:
                 if name in sect.path and sect.permission.value & perm_mask:
@@ -21693,7 +21693,9 @@ class DisassembleCommand(GenericCommand):
             return
         else:
             try:
-                arch, mode = UnicornKeystoneCapstone.get_capstone_arch(arch=args.arch, mode=args.mode, endian=args.big_endian)
+                arch, mode = UnicornKeystoneCapstone.get_capstone_arch(
+                    arch=args.arch, mode=args.mode, endian=args.big_endian,
+                )
                 arch_mode_s = ":".join([args.arch, args.mode])
                 endian_s = "big" if args.big_endian else "little"
             except AttributeError:
