@@ -30769,7 +30769,7 @@ class Ret2dlHintCommand(GenericCommand):
 
 
 @register_command
-class LinkMapCommand(GenericCommand):
+class LinkMapCommand(GenericCommand, BufferingOutput):
     """Dump useful members of link_map with iterating."""
 
     _cmdline_ = "link-map"
@@ -30812,32 +30812,14 @@ class LinkMapCommand(GenericCommand):
             else:
                 DT_NUM = 35
             # Note that the number of elements in an array varies depending on the architecture.
-            if is_arm64():
-                DT_THISPROCNUM = 6
-                ARCH_SPECIFIC_TABLE = DynamicCommand.DT_TABLE["arm64"]
-            elif is_alpha():
-                DT_THISPROCNUM = 1
-                ARCH_SPECIFIC_TABLE = DynamicCommand.DT_TABLE["alpha"]
-            elif is_mips32() or is_mips64() or is_mipsn32():
-                DT_THISPROCNUM = 0x37
-                ARCH_SPECIFIC_TABLE = DynamicCommand.DT_TABLE["mips"]
-            elif is_ppc32():
-                DT_THISPROCNUM = 2
-                ARCH_SPECIFIC_TABLE = DynamicCommand.DT_TABLE["ppc32"]
-            elif is_ppc64():
-                DT_THISPROCNUM = 4
-                ARCH_SPECIFIC_TABLE = DynamicCommand.DT_TABLE["ppc64"]
-            elif is_sparc32() or is_sparc32plus() or is_sparc64():
-                DT_THISPROCNUM = 2
-                ARCH_SPECIFIC_TABLE = DynamicCommand.DT_TABLE["sparc"]
-            else:
-                DT_THISPROCNUM = 0
-                ARCH_SPECIFIC_TABLE = {}
+            DT_THISPROCNUM, ARCH_SPECIFIC_DT_TABLE = DynamicCommand.get_ARCH_SPECIFIC_DT_TABLE()
             # These values do not change between versions or architectures.
             DT_VERSIONTAGNUM = 16
             DT_EXTRANUM = 3
             DT_VALNUM = 12
             DT_ADDRNUM = 11
+
+            DT_TABLE = DynamicCommand.get_DT_TABLE()
 
             # include/link.h
             l_info_length = DT_NUM + DT_THISPROCNUM + DT_VERSIONTAGNUM + DT_EXTRANUM + DT_VALNUM + DT_ADDRNUM
@@ -30848,22 +30830,22 @@ class LinkMapCommand(GenericCommand):
                 mb = "l_info[{:d}]".format(i)
                 if i < DT_NUM:
                     tag = i
-                    mb += "(={:s})".format(DynamicCommand.DT_TABLE.get(tag, "???"))
+                    mb += "(={:s})".format(DT_TABLE.get(tag, "???"))
                 elif i < DT_NUM + DT_THISPROCNUM:
                     tag = 0x70000000 + (i - DT_NUM)
-                    mb += "(={:s})".format(ARCH_SPECIFIC_TABLE.get(tag, "???"))
+                    mb += "(={:s})".format(DT_TABLE.get(tag, "???"))
                 elif i < DT_NUM + DT_THISPROCNUM + DT_VERSIONTAGNUM:
                     tag = 0x6fffffff - (i - (DT_NUM + DT_THISPROCNUM))
-                    mb += "(={:s})".format(DynamicCommand.DT_TABLE.get(tag, "???"))
+                    mb += "(={:s})".format(DT_TABLE.get(tag, "???"))
                 elif i < DT_NUM + DT_THISPROCNUM + DT_VERSIONTAGNUM + DT_EXTRANUM:
                     tag = 0x7fffffff - (i - (DT_NUM + DT_THISPROCNUM + DT_VERSIONTAGNUM))
-                    mb += "(={:s})".format(DynamicCommand.DT_TABLE.get(tag, "???"))
+                    mb += "(={:s})".format(DT_TABLE.get(tag, "???"))
                 elif i < DT_NUM + DT_THISPROCNUM + DT_VERSIONTAGNUM + DT_EXTRANUM + DT_VALNUM:
                     tag = 0x6ffffdff - (i - (DT_NUM + DT_THISPROCNUM + DT_VERSIONTAGNUM + DT_EXTRANUM))
-                    mb += "(={:s})".format(DynamicCommand.DT_TABLE.get(tag, "???"))
+                    mb += "(={:s})".format(DT_TABLE.get(tag, "???"))
                 elif i < DT_NUM + DT_THISPROCNUM + DT_VERSIONTAGNUM + DT_EXTRANUM + DT_VALNUM + DT_ADDRNUM:
                     tag = 0x6ffffeff - (i - (DT_NUM + DT_THISPROCNUM + DT_VERSIONTAGNUM + DT_EXTRANUM + DT_VALNUM))
-                    mb += "(={:s})".format(DynamicCommand.DT_TABLE.get(tag, "???"))
+                    mb += "(={:s})".format(DT_TABLE.get(tag, "???"))
                 members.append(mb)
             members += ["l_phdr", "l_entry", "l_ldnum || l_phnum"]
 
@@ -30894,17 +30876,19 @@ class LinkMapCommand(GenericCommand):
     @staticmethod
     def get_link_map(filename_or_addr, silent=False):
         dynamic = DynamicCommand.get_dynamic(filename_or_addr, silent)
+        DT_TABLE = DynamicCommand.get_DT_TABLE()
+
         current = dynamic.value
         while True:
             tag = read_int_from_memory(current)
             current += current_arch.ptrsize
             val = ProcessMap.lookup_address(read_int_from_memory(current))
             current += current_arch.ptrsize
-            if tag not in DynamicCommand.DT_TABLE:
+            if tag not in DT_TABLE:
                 if not silent:
                     info("Not found link_map")
                 return None
-            if DynamicCommand.DT_TABLE[tag] == "DT_DEBUG":
+            if DT_TABLE[tag] == "DT_DEBUG":
                 dt_debug = val
                 val_addr = ProcessMap.lookup_address(current - current_arch.ptrsize)
                 val_addr_offset = val_addr.value - dynamic.value
@@ -30925,7 +30909,11 @@ class LinkMapCommand(GenericCommand):
     def do_invoke(self, args):
         Cache.reset_gef_caches(all=True)
 
-        self.verbose = args.verbose
+        self.verbose = False
+        if args.verbose:
+            res = gdb.execute("libc", to_string=True)
+            if "GNU C Library" in res:
+                self.verbose = True
 
         if args.link_map_address:
             link_map = ProcessMap.lookup_address(args.link_map_address)
@@ -30963,13 +30951,12 @@ class LinkMapCommand(GenericCommand):
             err("Failed to parse link_map.")
             return
 
-        if self.out:
-            gef_print("\n".join(self.out), less=not args.no_pager)
+        self.print_output(args, term=True)
         return
 
 
 @register_command
-class DynamicCommand(GenericCommand):
+class DynamicCommand(GenericCommand, BufferingOutput):
     """Display current status of the _DYNAMIC area."""
 
     _cmdline_ = "dynamic"
@@ -30984,6 +30971,7 @@ class DynamicCommand(GenericCommand):
                        help="the dynamic address to parse.")
     parser.add_argument("--size", dest="dynamic_size", type=AddressUtil.parse_address,
                         help="use specified size of dynamic region.")
+    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s}                                        # dump itself\n".format(_cmdline_)
@@ -31077,6 +31065,13 @@ class DynamicCommand(GenericCommand):
         0x6ffffffe: "DT_VERNEED",
         0x6fffffff: "DT_VERNEEDNUM",
         #0x70000000: "DT_LOPROC", # unspecified
+        0x7ffffffd: "DT_AUXILIARY",
+        0x7ffffffe: "DT_USED",
+        0x7fffffff: "DT_FILTER",
+        #0x7fffffff: "DT_HIPROC", # unspecified
+    }
+
+    ARCH_SPECIFIC_DT_TABLE = {
         "arm64": {
             0x70000001: "DT_AARCH64_BTI_PLT",
             0x70000003: "DT_AARCH64_PAC_PLT",
@@ -31133,9 +31128,9 @@ class DynamicCommand(GenericCommand):
             0x70000034: "DT_MIPS_RWPLT",
             0x70000035: "DT_MIPS_RLD_MAP_REL",
             0x70000036: "DT_MIPS_XHASH",
-            0x7ffffffd: "DT_AUXILIARY",
-            0x7ffffffe: "DT_USED",
-            0x7fffffff: "DT_FILTER",
+        },
+        "nios2": {
+            0x70000002: "DT_NIOS2_GP",
         },
         "ppc32": {
             0x70000000: "DT_PPC_GOT",
@@ -31147,11 +31142,78 @@ class DynamicCommand(GenericCommand):
             0x70000002: "DT_PPC64_OPDSZ",
             0x70000003: "DT_PPC64_OPT",
         },
+        "riscv": {
+            0x70000001: "DT_RISCV_VARIANT_CC",
+        },
         "sparc": {
             0x70000001: "DT_SPARC_REGISTER",
         },
-        #0x7fffffff: "DT_HIPROC", # unspecified
+        "x86-64": {
+            0x70000000: "DT_X86_64_PLT",
+            0x70000001: "DT_X86_64_PLTSZ",
+            0x70000003: "DT_X86_64_PLTENT",
+        },
+        "xtensa": {
+            0x70000000: "DT_XTENSA_GOT_LOC_OFF",
+            0x70000001: "DT_XTENSA_GOT_LOC_SZ",
+        },
     }
+
+    @staticmethod
+    def get_ARCH_SPECIFIC_DT_TABLE():
+        # defaut value
+        DT_THISPROCNUM = 0
+        ARCH_SPECIFIC_DT_TABLE = {}
+
+        # Considering glibc 2.20 and later
+        if is_arm64():
+            if get_libc_version() >= (2, 33):
+                DT_THISPROCNUM = 6
+                ARCH_SPECIFIC_DT_TABLE = DynamicCommand.ARCH_SPECIFIC_DT_TABLE["arm64"]
+        elif is_alpha():
+            DT_THISPROCNUM = 1
+            ARCH_SPECIFIC_DT_TABLE = DynamicCommand.ARCH_SPECIFIC_DT_TABLE["alpha"]
+        elif is_mips32() or is_mips64() or is_mipsn32():
+            if get_libc_version() >= (2, 31):
+                DT_THISPROCNUM = 0x37
+            elif get_libc_version() >= (2, 22):
+                DT_THISPROCNUM = 0x36
+            else:
+                DT_THISPROCNUM = 0x35
+            ARCH_SPECIFIC_DT_TABLE = DynamicCommand.ARCH_SPECIFIC_DT_TABLE["mips"] # 2.20~
+        elif is_nios2():
+            # DT_THISPROCNUM is not changed
+            ARCH_SPECIFIC_DT_TABLE = DynamicCommand.ARCH_SPECIFIC_DT_TABLE["nios2"]
+        elif is_ppc32():
+            if get_libc_version() >= (2, 22):
+                DT_THISPROCNUM = 2
+            else:
+                DT_THISPROCNUM = 1
+            ARCH_SPECIFIC_DT_TABLE = DynamicCommand.ARCH_SPECIFIC_DT_TABLE["ppc32"]
+        elif is_ppc64():
+            DT_THISPROCNUM = 4
+            ARCH_SPECIFIC_DT_TABLE = DynamicCommand.ARCH_SPECIFIC_DT_TABLE["ppc64"]
+        elif is_riscv32() or is_riscv64():
+            if get_libc_version() >= (2, 36):
+                # DT_THISPROCNUM is not changed
+                ARCH_SPECIFIC_DT_TABLE = DynamicCommand.ARCH_SPECIFIC_DT_TABLE["riscv"]
+        elif is_sparc32() or is_sparc32plus() or is_sparc64():
+            DT_THISPROCNUM = 2
+            ARCH_SPECIFIC_DT_TABLE = DynamicCommand.ARCH_SPECIFIC_DT_TABLE["sparc"]
+        elif is_x86_64():
+            if get_libc_version() >= (2, 39):
+                DT_THISPROCNUM = 4
+                ARCH_SPECIFIC_DT_TABLE = DynamicCommand.ARCH_SPECIFIC_DT_TABLE["x86-64"]
+        elif is_xtensa():
+            # DT_THISPROCNUM is not changed
+            ARCH_SPECIFIC_DT_TABLE = DynamicCommand.ARCH_SPECIFIC_DT_TABLE["xtensa"]
+        return DT_THISPROCNUM, ARCH_SPECIFIC_DT_TABLE
+
+    @staticmethod
+    @Cache.cache_this_session
+    def get_DT_TABLE():
+        _, ARCH_SPECIFIC_DT_TABLE = DynamicCommand.get_ARCH_SPECIFIC_DT_TABLE()
+        return DynamicCommand.DT_TABLE | ARCH_SPECIFIC_DT_TABLE
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_FILENAME)
@@ -31168,7 +31230,9 @@ class DynamicCommand(GenericCommand):
 
         fmt = "{:{:d}s}  {:{:d}s} {:{:d}s}     {:s}"
         legend = ["address", width, "tag", width, "value", width, "tag_name"]
-        gef_print(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
+        self.out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
+
+        DT_TABLE = DynamicCommand.get_DT_TABLE()
 
         current = dynamic.value
         while True:
@@ -31179,15 +31243,15 @@ class DynamicCommand(GenericCommand):
             current += current_arch.ptrsize
 
             if remain_size is None:
-                if tag not in self.DT_TABLE:
+                if tag not in DT_TABLE:
                     break
             else:
                 remain_size -= current_arch.ptrsize * 2
 
             val = ProcessMap.lookup_address(val)
-            tag_description = self.DT_TABLE.get(tag, "Unknown")
+            tag_description = DT_TABLE.get(tag, "Unknown")
             colored_addr = Color.colorify("{:#0{:d}x}".format(addr, width), base_address_color)
-            gef_print("{:s}: {:#0{:d}x} {!s}  |  {:s}".format(colored_addr, tag, width, val, tag_description))
+            self.out.append("{:s}: {:#0{:d}x} {!s}  |  {:s}".format(colored_addr, tag, width, val, tag_description))
 
             if remain_size is not None and remain_size <= 0:
                 break
@@ -31264,10 +31328,14 @@ class DynamicCommand(GenericCommand):
                 err("Failed to get _DYNAMIC.")
                 return
 
+        self.out = []
         try:
             self.dump_dynamic(dynamic, args.dynamic_size)
         except Exception:
             err("Failed to parse _DYNAMIC.")
+            return
+
+        self.print_output(args, term=True)
         return
 
 
@@ -31736,6 +31804,8 @@ class DestructorDumpCommand(GenericCommand):
         if not self.codebase:
             return None
 
+        DT_TABLE = DynamicCommand.get_DT_TABLE()
+
         if self.elf.has_dynamic():
             # Parse all loaded libraries.
             for link_map in self.yield_link_map(self.codebase):
@@ -31754,7 +31824,7 @@ class DestructorDumpCommand(GenericCommand):
                         if fini < link_map.load_address:
                             fini += link_map.load_address
                         break
-                    if tag not in DynamicCommand.DT_TABLE:
+                    if tag not in DT_TABLE:
                         break
                     current += current_arch.ptrsize * 2
 
@@ -31787,6 +31857,8 @@ class DestructorDumpCommand(GenericCommand):
         if not self.codebase:
             return None
 
+        DT_TABLE = DynamicCommand.get_DT_TABLE()
+
         if self.elf.has_dynamic():
             # Parse all loaded libraries.
             for link_map in self.yield_link_map(self.codebase):
@@ -31809,7 +31881,7 @@ class DestructorDumpCommand(GenericCommand):
                         fini_array_sz = read_int_from_memory(current + current_arch.ptrsize)
                     if fini_array is not None and fini_array_sz is not None:
                         break
-                    if tag not in DynamicCommand.DT_TABLE:
+                    if tag not in DT_TABLE:
                         break
                     current += current_arch.ptrsize * 2
 
