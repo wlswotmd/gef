@@ -45121,7 +45121,7 @@ class Syscall:
             syscall_list = []
             for entry in tbl:
                 if len(entry) == 5:
-                    nr, abi, name, func, _ = entry # dont use compat
+                    nr, abi, name, func, _ = entry # don't use compat
                 else:
                     nr, abi, name, func = entry
                 if abi != "i386":
@@ -45302,7 +45302,7 @@ class Syscall:
 
             syscall_list = []
             for entry in tbl:
-                nr, abi, name, func = entry[:4] # dont use OABI
+                nr, abi, name, func = entry[:4] # don't use OABI
                 if abi not in ["common", "eabi"]:
                     continue
                 # special case
@@ -45392,7 +45392,7 @@ class Syscall:
 
             syscall_list = []
             for entry in tbl:
-                nr, abi, name, func = entry[:4] # dont use compat
+                nr, abi, name, func = entry[:4] # don't use compat
                 if abi != "o32":
                     continue
                 nr += 4000 # arch/mips/include/asm/unistd.h
@@ -45460,7 +45460,7 @@ class Syscall:
 
             syscall_list = []
             for entry in tbl:
-                nr, abi, name, func = entry[:4] # dont use compat
+                nr, abi, name, func = entry[:4] # don't use compat
                 if abi != "n32":
                     continue
                 nr += 6000 # arch/mips/include/asm/unistd.h
@@ -45516,7 +45516,7 @@ class Syscall:
 
             syscall_list = []
             for entry in tbl:
-                nr, abi, name, func = entry[:4] # dont use compat
+                nr, abi, name, func = entry[:4] # don't use compat
                 if abi != "n64":
                     continue
                 nr += 5000 # arch/mips/include/asm/unistd.h
@@ -45602,7 +45602,7 @@ class Syscall:
 
             syscall_list = []
             for entry in tbl:
-                nr, abi, name, func = entry[:4] # dont use compat
+                nr, abi, name, func = entry[:4] # don't use compat
                 if abi not in ["common", "32", "nospu"]:
                     continue
                 # special case
@@ -45657,7 +45657,7 @@ class Syscall:
 
             syscall_list = []
             for entry in tbl:
-                nr, abi, name, func = entry[:4] # dont use compat
+                nr, abi, name, func = entry[:4] # don't use compat
                 if abi not in ["common", "64", "nospu"]:
                     continue
                 # special case
@@ -45720,7 +45720,7 @@ class Syscall:
 
             syscall_list = []
             for entry in tbl:
-                nr, abi, name, func = entry[:4] # dont use compat
+                nr, abi, name, func = entry[:4] # don't use compat
                 if abi not in ["common", "32"]:
                     continue
                 # special case
@@ -45807,7 +45807,7 @@ class Syscall:
 
             syscall_list = []
             for entry in tbl:
-                nr, abi, name, func = entry[:4] # dont use compat
+                nr, abi, name, func = entry[:4] # don't use compat
                 if abi not in ["common", "64"]:
                     continue
                 # special case
@@ -45955,7 +45955,7 @@ class Syscall:
 
             syscall_list = []
             for entry in tbl:
-                nr, abi, name, func = entry[:4] # dont use compat
+                nr, abi, name, func = entry[:4] # don't use compat
                 if abi not in ["common", "64"]:
                     continue
                 # special case
@@ -46323,7 +46323,7 @@ class Syscall:
 
             syscall_list = []
             for entry in tbl:
-                nr, abi, name, func = entry[:4] # dont use compat
+                nr, abi, name, func = entry[:4] # don't use compat
                 if abi not in ["common", "32"]:
                     continue
                 # special case
@@ -46394,7 +46394,7 @@ class Syscall:
             }
             syscall_list = []
             for entry in tbl:
-                nr, abi, name, func = entry[:4] # dont use compat
+                nr, abi, name, func = entry[:4] # don't use compat
                 if abi not in ["common", "64"]:
                     continue
                 # special case
