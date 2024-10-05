@@ -31161,7 +31161,7 @@ class DynamicCommand(GenericCommand, BufferingOutput):
 
     @staticmethod
     def get_ARCH_SPECIFIC_DT_TABLE():
-        # defaut value
+        # default value
         DT_THISPROCNUM = 0
         ARCH_SPECIFIC_DT_TABLE = {}
 
