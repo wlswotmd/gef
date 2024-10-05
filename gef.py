@@ -15128,10 +15128,7 @@ class ContCommand(GenericCommand):
     _note_ += "This setting is done only once, when hook_stop_handler is called for the first time.\n"
     _note_ += "Nested `c` command causes a problem, so in that case gef executes the original continue command instead."
 
-    def __init__(self):
-        super().__init__()
-        self.nest_count = 0
-        return
+    nested = False
 
     def continue_for_qemu(self):
         import signal
@@ -15176,10 +15173,10 @@ class ContCommand(GenericCommand):
     def do_invoke(self, args):
         if is_qemu_user() or is_pin():
             if Pid.get_pid():
-                if self.nest_count == 0:
-                    self.nest_count += 1
+                if not self.nested:
+                    self.nested = True
                     self.continue_for_qemu()
-                    self.nest_count -= 1
+                    self.nested = False
                     return
 
         # fall back to original continue command
@@ -26161,7 +26158,7 @@ class MainBreakCommand(GenericCommand):
                 entry += codebase
             EntryBreakBreakpoint("*{:#x}".format(entry))
             ContextCommand.hide_context()
-            gdb.execute("c") # use c wrapper
+            gdb.execute("continue") # do not use c wrapper
             ContextCommand.unhide_context()
             libc_start_main = self.get_libc_start_main()
 
@@ -26171,7 +26168,7 @@ class MainBreakCommand(GenericCommand):
 
         EntryBreakBreakpoint("*{:#x}".format(libc_start_main))
         ContextCommand.hide_context()
-        gdb.execute("c") # use c wrapper
+        gdb.execute("continue") # do not use c wrapper
         ContextCommand.unhide_context()
 
         # get first arg when break at __libc_start_main
@@ -26194,7 +26191,7 @@ class MainBreakCommand(GenericCommand):
         EntryBreakBreakpoint("*{:#x}".format(main_address))
         ContextCommand.hide_context()
         try:
-            gdb.execute("c") # use c wrapper
+            gdb.execute("continue") # do not use c wrapper
         except gdb.error as e:
             err(str(e))
             ContextCommand.unhide_context()
@@ -85160,7 +85157,7 @@ class XUntilCommand(GenericCommand):
         # `until` command has a bug(?) because sometimes fail,
         # so we should use `tbreak` and `continue` instead of `until`.
         SimpleInternalTemporaryBreakpoint(loc=stop_addr)
-        gdb.execute("c") # use c wrapper
+        gdb.execute("continue") # do not use c wrapper
         return
 
 
