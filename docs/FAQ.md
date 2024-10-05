@@ -35,7 +35,7 @@ It will be created automatically the next time GEF starts.
 ## What is `install-minimal.sh`?
 This is an installer for running GEF in limited environments where required packages cannot be installed for some reason.
 
-* To use all feature (=gef's command), use `install.sh`.
+* To use all feature (=GEF's command), use `install.sh`.
 * If you do not need some features (used in a limited environment), use `install-minimal.sh`. It should work at least except some commands.
 
 
@@ -49,7 +49,7 @@ If you want to use GEF as a user other than root, add `source /path/to/.gdbinit-
 ## I don't want to specify the `--break-system-packages` option during installation.
 You have some options:
 * Install inside docker to prevent impact on the host environment.
-* Use `install-minimal.sh` to skip installing with `pip`.
+* Use [`install-minimal.sh`](https://github.com/bata24/gef/blob/dev/install-minimal.sh) to skip installing with `pip`.
 * Use `venv` or `pyenv` to manage Python modules individually.
 
 ## How can I install GEF offline?
@@ -137,10 +137,8 @@ However, for some reason `debuginfod` does not display the `glibc` source code, 
 I don't really understand the reason for this.
 
 * Get `glibc` source
-    * Ubuntu 24.04 or later
-        * `sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources`
-    * Ubuntu 23.10 or before
-        * `sed -i -e 's/^# deb-src/deb-src/g' /etc/apt/sources.list`
+    * Ubuntu 24.04 or later: `sed -i -e 's/^Types: deb$/Types: deb deb-src/g' /etc/apt/sources.list.d/ubuntu.sources`
+    * Ubuntu 23.10 or before: `sed -i -e 's/^# deb-src/deb-src/g' /etc/apt/sources.list`
     * `cd /usr/lib/debug && apt update && apt source libc6`
     * `echo "directory /usr/lib/debug/glibc-2.39" >> ~/.gdbinit`
         * Need to fix version for your environment.
@@ -328,6 +326,25 @@ I encountered this behavior in python 3.9.2 on debian 11.
 This is because `source ~/.gdbinit-gef.py` was written in `/root/.gdbinit`.
 I modified it to `source /root/.gdbinit-gef.py`, then it worked.
 
+## When using qemu-user, an error occurs when continuing execution.
+Is the error something like this?
+```
+...
+dwarf2/dwz.c:188: internal-error: dwarf2_read_dwz_file: Assertion `is_main_thread ()' failed.
+A problem internal to GDB has been detected,
+further debugging may prove unreliable.
+----- Backtrace -----
+...
+```
+If so, this is caused by the `continue-for-qemu-user` command.
+
+`continue-for-qemu-user` is a command wrapper that accepts `Ctrl+C` even during `continue`.
+On some architectures, this wrapper may not work properly when running dynamically linked binaries with qemu-user.
+
+There are two ways to work around this:
+- Use the `main-break` command to reach `main` once, and this error will no longer occur.
+- Use the `continue` command instead of the `c` command (but `Ctrl+C` will not work).
+
 
 # About internal mechanism
 
@@ -349,6 +366,26 @@ Internally, it consists of several steps.
 
 As you can see, it doesn't work well if structure members are arranged randomly (`CONFIG_RANDSTRUCT=y`).
 Also, depending on the assembly output by the compiler, it may not be possible to parse it correctly.
+
+## How does GEF achieve the conversion from `page` to `virt` (or `phys`)?
+GEF achieves this by using the parsed results of SLUB's free list.
+
+If you are interested in this question, you probably know how difficult this conversion formula is.
+As you can see, this conversion (`page <-> virt`) is very difficult.
+
+This is because there are several values needed to convert `page` to `virt` (or vice versa), two of which are hard to obtain without symbols and type information.
+- `vmemmap`
+- `sizeof(struct page)`
+
+I concluded that the only way to get these is to calculate backwards from valid `page`, `virt` pairs.
+
+These pairs can be found with a very high probability while parsing the SLUB structure.
+Therefore, GEF calls the `slub-dump` command internally and temporarily, then calculate these values from the result.
+
+This is the reason why the first time the `page2virt` command runs it takes a long time - it parses the page tables, identifies function symbols, and internally calls `slub-dump` twice.
+
+Note: `slub-dump` command itself uses the `page` to `virt` conversion function too, resulting in a circular reference.
+I avoid this problem by adding an option to skip this (`--skip-page2virt`).
 
 
 # About python interface
