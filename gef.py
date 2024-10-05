@@ -32384,7 +32384,6 @@ class GotCommand(GenericCommand, BufferingOutput):
         elf = Elf.get_elf(self.filename)
 
         output = []
-        section_name = ".got"
         ncol = -1
         for line in lines:
             r = re.search(r"^\s+Address\s+.*\s+Initial\s+", line)
@@ -32533,8 +32532,6 @@ class GotCommand(GenericCommand, BufferingOutput):
         return ""
 
     def parse_plt_got(self):
-        width = AddressUtil.get_format_address_width()
-
         # retrieve jump slots using readelf
         jmpslots = self.get_jmp_slots()
         if jmpslots == []:
@@ -32551,33 +32548,7 @@ class GotCommand(GenericCommand, BufferingOutput):
         # retrieve the end of plt from elf parsing
         plt_begin, plt_end = self.get_plt_range()
 
-        # calc name_width
-        name_width = 0
-        for _, name, _, _, _ in jmpslots:
-            if len(name) > name_width:
-                name_width = len(name)
-
-        # print legend
-        if not self.quiet:
-            if self.verbose:
-                fmt = "{:<{:d}} {:s} {:9s} {:s} {:{:d}s} @ {:15s} {:>8s} {:>9s} {:s} {:{:d}s} @ {:12s} {:>8s} {:s} {:{:d}}"
-                legend = [
-                    "Name", name_width, VERTICAL_LINE,
-                    "Type", VERTICAL_LINE,
-                    "PLT", width, "Section", "Offset", "reloc_arg", VERTICAL_LINE,
-                    "GOT", width, "Section", "Offset", VERTICAL_LINE, "GOT value", width,
-                ]
-            else:
-                fmt = "{:<{:d}s} {:s} {:{:d}s} {:s} {:{:d}s} {:s} {:{:d}}"
-                legend = [
-                    "Name", name_width, VERTICAL_LINE,
-                    "PLT", width, VERTICAL_LINE,
-                    "GOT", width, VERTICAL_LINE, "GOT value", width,
-                ]
-            self.out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
-
         # link each PLT entries and each GOT entries
-        # and create lines for output
         resolved_info = []
         for got_address, name, section_name, type, reloc_arg in jmpslots:
             # resolve PLT from GOT name
@@ -32592,10 +32563,21 @@ class GotCommand(GenericCommand, BufferingOutput):
                     # It is actually popped from plts[name]. plt_address is reassigned by int value.
                     plt_address = plt_address.pop(0)
 
+            # resolve plt section
+            if plt_address:
+                plt_section = self.get_section_name(plt_address) + self.perm(plt_address)
+            else:
+                plt_section = ""
+
+            # resolve got section
+            got_section = self.get_section_name(got_address) + self.perm(got_address)
+
             # resolve offset from absolute address
             got_offset = got_address - self.base_address
             if plt_address:
                 plt_offset = plt_address - self.base_address
+            else:
+                plt_offset = 0
 
             # read the address of the function
             try:
@@ -32617,66 +32599,140 @@ class GotCommand(GenericCommand, BufferingOutput):
 
             # different colors if the function has been resolved or not
             if got_value == 0:
-                color = Config.get_gef_setting("got.function_resolved") # .rela.dyn && uninitialized, etc.
+                got_value_color = Config.get_gef_setting("got.function_resolved") # .rela.dyn && uninitialized, etc.
             elif plt_begin <= got_value < plt_end: # Non-PIE
-                color = Config.get_gef_setting("got.function_not_resolved")
+                got_value_color = Config.get_gef_setting("got.function_not_resolved")
             elif plt_begin - self.base_address <= got_value < plt_end - self.base_address: # PIE
-                color = Config.get_gef_setting("got.function_not_resolved")
+                got_value_color = Config.get_gef_setting("got.function_not_resolved")
             else:
-                color = Config.get_gef_setting("got.function_resolved")
+                got_value_color = Config.get_gef_setting("got.function_resolved")
 
-            # reloc_arg
-            if reloc_arg is None:
+            # aggregate
+            dic = {
+                "name": name,
+                "type": type,
+                "section_name": section_name,
+                "plt_address": plt_address,
+                "plt_section": plt_section,
+                "plt_offset": plt_offset,
+                "reloc_arg": reloc_arg,
+                "got_address": got_address,
+                "got_section": got_section,
+                "got_offset": got_offset,
+                "got_value": got_value,
+                "got_value_sym": got_value_sym,
+                "got_value_color": got_value_color,
+            }
+            PltGotInfo = collections.namedtuple("PltGotInfo", dic.keys())
+            plt_got_info = PltGotInfo(*dic.values())
+            resolved_info.append(plt_got_info)
+        return resolved_info
+
+    def make_output(self, resolved_info):
+        # calc each width
+        width = AddressUtil.get_format_address_width()
+        name_width = max([len(info.name) for info in resolved_info] + [len("Name")])
+        if self.verbose:
+            got_section_width = max([len(info.got_section) for info in resolved_info] + [len("Section")])
+            plt_section_width = max([len(info.plt_section) for info in resolved_info] + [len("Section")])
+            got_offset_width = max([len(hex(info.got_offset)) for info in resolved_info] + [len("Offset")])
+            plt_offset_width = max([len(hex(info.plt_offset)) for info in resolved_info] + [len("Offset")])
+
+        # print legend
+        if not self.quiet:
+            if self.verbose:
+                name_s = "{:<{:d}}".format("Name", name_width)
+                type_s = "{:9s}".format("Type")
+                plt_s = "{:{:d}s} @ {:{:d}s} {:>{:d}s} {:>9s}".format(
+                    "PLT", width,
+                    "Section", plt_section_width,
+                    "Offset", plt_offset_width,
+                    "reloc_arg",
+                )
+                got_s = "{:{:d}s} @ {:{:d}s} {:>{:d}s}".format(
+                    "GOT", width,
+                    "Section", got_section_width,
+                    "Offset", got_offset_width,
+                )
+                gotv_s = "{:{:d}}".format("GOT value", width)
+                delim = " {:s} ".format(VERTICAL_LINE)
+                legend = delim.join([name_s, type_s, plt_s, got_s, gotv_s])
+            else:
+                name_s = "{:<{:d}}".format("Name", name_width)
+                plt_s = "{:{:d}s}".format("PLT", width)
+                got_s = "{:{:d}s}".format("GOT", width)
+                gotv_s = "{:{:d}}".format("GOT value", width)
+                delim = " {:s} ".format(VERTICAL_LINE)
+                legend = delim.join([name_s, plt_s, got_s, gotv_s])
+            self.out.append(Color.colorify(legend, Config.get_gef_setting("theme.table_heading")))
+
+        entries = []
+        for info in resolved_info:
+            # make reloc_arg format
+            if info.reloc_arg is None:
                 reloc_arg_info = "{:>9s}".format("-")
             else:
-                reloc_arg_info = "{:#9x}".format(reloc_arg)
+                reloc_arg_info = "{:#9x}".format(info.reloc_arg)
 
-            # make name info
-            name_info = "{:{:d}s}".format(name, name_width)
+            # make name format
+            name_info = "{:{:d}s}".format(info.name, name_width)
 
-            # make plt info
+            # make plt format
             if self.verbose:
-                if plt_address:
-                    plt_section = self.get_section_name(plt_address) + self.perm(plt_address)
-                    plt_address = ProcessMap.lookup_address(plt_address)
-                    plt_info = "{!s} @{:16s} {:#8x} {:9s}".format(plt_address, plt_section, plt_offset, reloc_arg_info)
+                if info.plt_address:
+                    plt_info = "{!s} @{:{:d}s} {:#{:d}x} {:9s}".format(
+                        ProcessMap.lookup_address(info.plt_address),
+                        info.plt_section, plt_section_width + 1,
+                        info.plt_offset, plt_offset_width,
+                        reloc_arg_info,
+                    )
                 else:
-                    plt_info = "{:{:d}s}  {:16s} {:>8s} {:9s}".format("Not found", width, "", "", reloc_arg_info)
+                    plt_info = "{:{:d}s}  {:{:d}s} {:>{:d}s} {:9s}".format(
+                        "Not found", width,
+                        "", plt_section_width + 1,
+                        "", plt_offset_width,
+                        reloc_arg_info,
+                    )
             else:
-                if plt_address:
-                    plt_address = ProcessMap.lookup_address(plt_address)
-                    plt_info = "{!s}".format(plt_address)
+                if info.plt_address:
+                    plt_info = "{!s}".format(ProcessMap.lookup_address(info.plt_address))
                 else:
                     plt_info = "{:{:d}s}".format("Not found", width)
 
-            # make got info
+            # make got format
             if self.verbose:
-                got_section = self.get_section_name(got_address) + self.perm(got_address)
-                got_address = ProcessMap.lookup_address(got_address)
-                got_info = "{!s} @{:13s} {:#8x}".format(got_address, got_section, got_offset)
+                got_info = "{!s} @{:{:d}s} {:#{:d}x}".format(
+                    ProcessMap.lookup_address(info.got_address),
+                    info.got_section, got_section_width + 1,
+                    info.got_offset, got_offset_width,
+                )
             else:
-                got_address = ProcessMap.lookup_address(got_address)
-                got_info = "{!s}".format(got_address)
-            got_value_info = Color.colorify("{:#0{:d}x}{:s}".format(got_value, width, got_value_sym), color)
+                got_info = "{!s}".format(ProcessMap.lookup_address(info.got_address))
+
+            # make got value format
+            got_value_info = Color.colorify(
+                "{:#0{:d}x}{:s}".format(info.got_value, width, info.got_value_sym),
+                info.got_value_color,
+            )
 
             # make line
             if self.verbose:
-                type_info = "{:9s}".format(type)
+                type_info = "{:9s}".format(info.type)
                 line_element = [name_info, type_info, plt_info, got_info, got_value_info]
             else:
                 line_element = [name_info, plt_info, got_info, got_value_info]
             delim = " {:s} ".format(VERTICAL_LINE)
             line = delim.join(line_element)
 
-            # save
-            resolved_info.append([got_address.value, section_name, line])
+            # save temporarily
+            entries.append([info.got_address, info.section_name, line])
 
         # sort by GOT address
-        resolved_info = sorted(resolved_info)
+        entries = sorted(entries)
 
         # print
         prev_section = None
-        for _, section_name, line in sorted(resolved_info):
+        for _, section_name, line in sorted(entries):
             # print section name
             if prev_section != section_name:
                 if not self.quiet:
@@ -32823,7 +32879,8 @@ class GotCommand(GenericCommand, BufferingOutput):
         self.quiet = args.quiet
 
         # doit
-        self.parse_plt_got()
+        resolved_info = self.parse_plt_got()
+        self.make_output(resolved_info)
         self.print_output(args, term=True)
 
         # clean up
