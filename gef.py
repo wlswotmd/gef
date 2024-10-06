@@ -14299,6 +14299,8 @@ class BufferingOutput:
         return
 
     def print_output(self, args, term=False):
+        if not self.out:
+            return
         if term:
             if len(self.out) > GefUtil.get_terminal_size()[0]:
                 gef_print("\n".join(self.out), less=not args.no_pager)
