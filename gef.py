@@ -3716,7 +3716,9 @@ class GlibcHeap:
                 try:
                     malloc_hook_addr = AddressUtil.parse_address("(void *)&__malloc_hook")
                     if is_x86():
-                        Cache.cached_main_arena = AddressUtil.align_address_to_size(malloc_hook_addr + current_arch.ptrsize, 0x20)
+                        Cache.cached_main_arena = AddressUtil.align_address_to_size(
+                            malloc_hook_addr + current_arch.ptrsize, 0x20,
+                        )
                     elif is_arm64():
                         mstate_size = GlibcHeap.MallocStateStruct("*0").struct_size
                         Cache.cached_main_arena = malloc_hook_addr - current_arch.ptrsize * 2 - mstate_size
@@ -3885,15 +3887,23 @@ class GlibcHeap:
                 heap_base = ProcessMap.lookup_address(self.heap_base)
             arena_addr = ProcessMap.lookup_address(self.__addr)
             top = ProcessMap.lookup_address(self.top)
-            last_remainder = ProcessMap.lookup_address(self.last_remainder)
+            if is_valid_addr(self.last_remainder):
+                last_remainder = ProcessMap.lookup_address(self.last_remainder)
+            else:
+                last_remainder = hex(self.last_remainder)
             next = ProcessMap.lookup_address(int(self.next))
             system_mem = int(self.system_mem)
             try:
-                next_free = ProcessMap.lookup_address(int(self.next_free))
-                fmt = "{:s}(addr={!s}, heap_base={!s}, top={!s}, last_remainder={!s}, next={!s}, next_free={!s}, system_mem={:#x})"
+                if is_valid_addr(self.next_free):
+                    next_free = ProcessMap.lookup_address(self.next_free)
+                else:
+                    next_free = hex(self.next_free)
+                fmt = "{:s}(addr={!s}, heap_base={!s}, top={!s}, last_remainder={!s}, "
+                fmt += "next={!s}, next_free={!s}, system_mem={:#x})"
                 args = (arena, arena_addr, heap_base, top, last_remainder, next, next_free, system_mem)
-            except gdb.error:
-                fmt = "{:s}(addr={!s}, heap_base={!s}, top={!s}, last_remainder={!s}, next={!s}, system_mem={:#x})"
+            except (gdb.error, TypeError):
+                fmt = "{:s}(addr={!s}, heap_base={!s}, top={!s}, last_remainder={!s}, "
+                fmt += "next={!s}, system_mem={:#x})"
                 args = (arena, arena_addr, heap_base, top, last_remainder, next, system_mem)
             return fmt.format(*args)
 
