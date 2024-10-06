@@ -17862,13 +17862,13 @@ class PtrDemangleCommand(GenericCommand):
         info("Cookie is {:s}".format(Color.boldify("{:#x}".format(cookie))))
 
         decoded = current_arch.decode_cookie(args.value, cookie)
-        decoded_sym = Symbol.get_symbol_string(decoded)
-        if is_valid_addr(decoded):
+        decoded = ProcessMap.lookup_address(decoded)
+        decoded_sym = Symbol.get_symbol_string(decoded.value)
+        if is_valid_addr(decoded.value):
             valid_msg = Color.colorify("valid", "bold green")
         else:
             valid_msg = Color.colorify("invalid", "bold red")
-        decoded = Color.boldify("{:#x}".format(decoded))
-        info("Decoded value is {:s}{:s} [{:s}]".format(decoded, decoded_sym, valid_msg))
+        info("Decoded value is {!s}{:s} [{:s}]".format(decoded, decoded_sym, valid_msg))
         return
 
 
@@ -17935,22 +17935,21 @@ class SearchMangledPtrCommand(GenericCommand):
         ok(title)
         return
 
-    def print_loc(self, loc):
-        addr, value, decoded = loc[0], loc[1], loc[2]
+    def print_loc(self, addr, value, decoded):
         addr_sym = Symbol.get_symbol_string(addr)
-        decoded_sym = Symbol.get_symbol_string(decoded)
-        try:
-            read_memory(decoded, 1)
+        decoded = ProcessMap.lookup_address(decoded)
+        decoded_sym = Symbol.get_symbol_string(decoded.value)
+
+        if is_valid_addr(decoded.value):
             valid_msg = Color.colorify("valid", "bold green")
-        except gdb.MemoryError:
+        else:
             valid_msg = Color.colorify("invalid", "bold red")
-        decoded = Color.boldify("{:#x}".format(decoded))
 
         base_address_color = Config.get_gef_setting("theme.dereference_base_address")
         width = AddressUtil.get_format_address_width()
         addr = Color.colorify("{:#0{:d}x}".format(addr, width), base_address_color)
 
-        gef_print("  {:s}{:s}: {:#x} (={:s}{:s}) [{:s}]".format(addr, addr_sym, value, decoded, decoded_sym, valid_msg))
+        gef_print("  {:s}{:s}: {:#x} (={!s}{:s}) [{:s}]".format(addr, addr_sym, value, decoded, decoded_sym, valid_msg))
         return
 
     def search_mangled_ptr(self, start_address, end_address):
@@ -17975,9 +17974,7 @@ class SearchMangledPtrCommand(GenericCommand):
 
             for i, value in enumerate(slice_unpack(mem, current_arch.ptrsize)):
                 decoded = current_arch.decode_cookie(value, self.cookie)
-                try:
-                    read_memory(decoded, 1)
-                except gdb.MemoryError:
+                if not is_valid_addr(decoded):
                     continue
                 addr = chunk_addr + i * current_arch.ptrsize
                 locations.append((addr, value, decoded))
@@ -18018,8 +18015,8 @@ class SearchMangledPtrCommand(GenericCommand):
                 if not args.verbose:
                     self.print_section(section) # default: print section if found
 
-            for loc in ret:
-                self.print_loc(loc)
+            for addr, value, decoded in ret:
+                self.print_loc(addr, value, decoded)
 
             if not is_alive():
                 err("The process is dead")
