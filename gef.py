@@ -31262,7 +31262,10 @@ class DynamicCommand(GenericCommand, BufferingOutput):
             else:
                 info("address: {:#x}".format(filename_or_addr))
 
-        elf = Elf.get_elf(filename_or_addr)
+        try:
+            elf = Elf.get_elf(filename_or_addr)
+        except gdb.MemoryError:
+            return None
         phdr = elf.get_phdr(Elf.Phdr.PT_DYNAMIC)
         if phdr is None:
             return None
