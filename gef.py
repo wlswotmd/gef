@@ -3880,18 +3880,18 @@ class GlibcHeap:
             if self.heap_base is None:
                 heap_base = "uninitialized"
             else:
-                heap_base = str(ProcessMap.lookup_address(self.heap_base))
-            arena_addr = str(ProcessMap.lookup_address(self.__addr))
-            top = str(ProcessMap.lookup_address(self.top))
-            last_remainder = str(ProcessMap.lookup_address(self.last_remainder))
-            next = str(ProcessMap.lookup_address(int(self.next)))
+                heap_base = ProcessMap.lookup_address(self.heap_base)
+            arena_addr = ProcessMap.lookup_address(self.__addr)
+            top = ProcessMap.lookup_address(self.top)
+            last_remainder = ProcessMap.lookup_address(self.last_remainder)
+            next = ProcessMap.lookup_address(int(self.next))
             system_mem = int(self.system_mem)
             try:
-                next_free = int(self.next_free)
-                fmt = "{:s}(addr={:s}, heap_base={:s}, top={:s}, last_remainder={:s}, next={:s}, next_free={:#x}, system_mem={:#x})"
+                next_free = ProcessMap.lookup_address(int(self.next_free))
+                fmt = "{:s}(addr={!s}, heap_base={!s}, top={!s}, last_remainder={!s}, next={!s}, next_free={!s}, system_mem={:#x})"
                 args = (arena, arena_addr, heap_base, top, last_remainder, next, next_free, system_mem)
             except gdb.error:
-                fmt = "{:s}(addr={:s}, heap_base={:s}, top={:s}, last_remainder={:s}, next={:s}, system_mem={:#x})"
+                fmt = "{:s}(addr={!s}, heap_base={!s}, top={!s}, last_remainder={!s}, next={!s}, system_mem={:#x})"
                 args = (arena, arena_addr, heap_base, top, last_remainder, next, system_mem)
             return fmt.format(*args)
 
@@ -49201,9 +49201,9 @@ class ExtractHeapAddrCommand(GenericCommand):
 
         ptr = args.value
         extracted_ptr = self.reveal(ptr)
-        colored_extracted_ptr = str(ProcessMap.lookup_address(extracted_ptr))
+        extracted_ptr = ProcessMap.lookup_address(extracted_ptr)
         gef_print("Protected fd pointer: {:#x}".format(ptr))
-        gef_print("{:s}Extracted heap address: {:s} (=fd & ~0xfff)".format(RIGHT_ARROW, colored_extracted_ptr))
+        gef_print("{:s}Extracted heap address: {!s} (=fd & ~0xfff)".format(RIGHT_ARROW, extracted_ptr))
         return
 
 
@@ -64696,9 +64696,9 @@ class SequenceLengthCommand(GenericCommand):
             err("Too large unit size")
             return
 
-        colored_addr = str(ProcessMap.lookup_address(args.addr))
+        addr = ProcessMap.lookup_address(args.addr)
         colored_unit = Color.boldify("{:#x}".format(args.unit))
-        info("Check from {:s} in units of {:s} bytes".format(colored_addr, colored_unit))
+        info("Check from {!s} in units of {:s} bytes".format(addr, colored_unit))
 
         ret = self.check(args.phys, args.addr, args.unit)
         if ret is None:
@@ -64706,13 +64706,14 @@ class SequenceLengthCommand(GenericCommand):
 
         count, target = ret
         size = args.unit * count
-        end = args.addr + size
+        end = ProcessMap.lookup_address(args.addr + size)
+
         if len(target) > 0x100:
             target = target[:0x100] + b"..."
+
         colored_count = Color.boldify("{:#x}".format(count))
         colored_size = Color.boldify("{:#x}".format(size))
-        colored_end = str(ProcessMap.lookup_address(end))
-        gef_print("{:s} - {:s} is same value".format(colored_addr, colored_end))
+        gef_print("{!s} - {!s} is same value".format(addr, end))
         gef_print("{} is found {:s} times, {:s} bytes".format(target, colored_count, colored_size))
         return
 
@@ -75189,8 +75190,8 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
         self.out.append("uint16_t purge_generation:                             {:#x}".format(root.purge_generation))
         self.out.append("uint16_t purge_next_bucket_index:                      {:#x}".format(root.purge_next_bucket_index))
         inv_inv = root.inverted_self ^ ((1 << (current_arch.ptrsize * 8)) - 1)
-        inv_inv = str(ProcessMap.lookup_address(inv_inv))
-        self.out.append("uintptr_t inverted_self:                               {:#x} (=~{:s})".format(root.inverted_self, inv_inv))
+        inv_inv = ProcessMap.lookup_address(inv_inv)
+        self.out.append("uintptr_t inverted_self:                               {:#x} (=~{!s})".format(root.inverted_self, inv_inv))
         self.out.append("std::atomic<int> thread_caches_being_constructed_:     {:#x}".format(root.thread_caches_being_constructed_))
         self.out.append("bool quarantine_always_for_testing:                    {:#x}".format(root.quarantine_always_for_testing))
         self.out.append("size_t scheduler_loop_quarantine_branch_capacity_in_bytes: {:#x}".format(
