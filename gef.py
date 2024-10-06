@@ -32079,7 +32079,7 @@ class StandardIoCommand(GenericCommand, BufferingOutput):
     def process_member(self, member_name, member_defines, struct_array):
         # member name
         if not member_name:
-            return
+            return 0
         elif member_name == "__addr__":
             member_offset = 0
             member_size = current_arch.ptrsize
@@ -32089,41 +32089,57 @@ class StandardIoCommand(GenericCommand, BufferingOutput):
             member_size = self.get_size(member_name, member_defines)
             msg = "{:+#05x} | {:16s}: ".format(member_offset, member_name)
 
+        adjust = 0
+        val_width = [10, 18][is_64bit()]
+        sym_width = [25, 29][is_arm32()]
+
         # member of each struct
         for st in struct_array:
             member_addr = st + member_offset
             if member_name == "__addr__":
                 address_obj = ProcessMap.lookup_address(st)
                 sym = Symbol.get_symbol_string(st)
-                msg += "{:s}{:24s} ".format(address_obj.long_fmt(), sym)
+                msg += "{:s}{:{:d}s} ".format(address_obj.long_fmt(), sym, sym_width)
             elif not is_valid_addr(member_addr):
-                msg += "{:{:d}s}{:24s} ".format("", [10, 18][is_64bit()], "")
+                msg += "{:{:d}s}{:{:d}s} ".format("", val_width, "", sym_width)
             elif member_size == current_arch.ptrsize:
                 val = read_int_from_memory(member_addr)
                 address_obj = ProcessMap.lookup_address(val)
                 sym = Symbol.get_symbol_string(val)
-                msg += "{:s}{:24s} ".format(address_obj.long_fmt(), sym)
+                msg += "{:s}{:{:d}s} ".format(address_obj.long_fmt(), sym, sym_width)
             elif member_size == 8:
                 val = u64(read_memory(member_addr, 8))
+                # special case
+                if is_32bit() and member_name == "_offset":
+                    if Endian.is_big_endian():
+                        val_ = byteswap(val, 8)
+                    else:
+                        val_ = val
+                    if val_ == 0xffffffff00000000:
+                        adjust = 4
+                        member_offset += adjust
+                        msg = "{:+#05x} | {:16s}: ".format(member_offset, member_name)
+                        member_addr += adjust
+                        val = u64(read_memory(member_addr, 8))
                 val_s = "{:#018x}".format(val)
-                msg += "{:s}{:{:d}s} ".format(val_s, "", [16, 24][is_64bit()])
+                msg += "{:s}{:{:d}s} ".format(val_s, "", sym_width - [8, 0][is_64bit()])
             elif member_size == 4:
                 val = u32(read_memory(member_addr, 4))
                 val_s = "{:#010x}".format(val)
-                msg += "{:{:d}s}{:24s} ".format(val_s, [10, 18][is_64bit()], "")
+                msg += "{:{:d}s}{:{:d}s} ".format(val_s, val_width, "", sym_width)
             elif member_size == 2:
                 val = u16(read_memory(member_addr, 2))
                 val_s = "{:#06x}".format(val)
-                msg += "{:{:d}s}{:24s} ".format(val_s, [10, 18][is_64bit()], "")
+                msg += "{:{:d}s}{:{:d}s} ".format(val_s, val_width, "", sym_width)
             elif member_size == 1:
                 val = u8(read_memory(member_addr, 1))
                 val_s = "{:#04x}".format(val)
-                msg += "{:{:d}s}{:24s} ".format(val_s, [10, 18][is_64bit()], "")
+                msg += "{:{:d}s}{:{:d}s} ".format(val_s, val_width, "", sym_width)
             else:
-                msg += "{:{:d}s}{:24s} ".format("...", [10, 18][is_64bit()], "")
+                msg += "{:{:d}s}{:{:d}s} ".format("...", val_width, "", sym_width)
 
         self.out.append(msg.rstrip())
-        return
+        return adjust
 
     def stdio_dump(self, struct_io_file_array):
         self.process_member("__addr__", None, struct_io_file_array)
@@ -32154,6 +32170,7 @@ class StandardIoCommand(GenericCommand, BufferingOutput):
             [1,                    "_shortbuf"],
             [[0, 4][is_64bit()],   ""],
             [current_arch.ptrsize, "_lock"],
+            [0,                    ""], # varies depending on environment
             [8,                    "_offset"],
             [current_arch.ptrsize, "_codecvt"],
             [current_arch.ptrsize, "_wide_data"],
@@ -32165,7 +32182,10 @@ class StandardIoCommand(GenericCommand, BufferingOutput):
             [current_arch.ptrsize, "vtable"],
         ]
         for _, m in struct_io_file_member:
-            self.process_member(m, struct_io_file_member, struct_io_file_array)
+            adjust = self.process_member(m, struct_io_file_member, struct_io_file_array)
+            if adjust:
+                if is_32bit() and m == "_offset":
+                    struct_io_file_member[23][0] = adjust
 
         # vtable
         self.out.append(titlify("FILE->vtable"))
@@ -32273,19 +32293,24 @@ class StandardIoCommand(GenericCommand, BufferingOutput):
                     return
                 struct_io_file_array.append(x)
         else:
-            stdin = AddressUtil.parse_address("stdin")
-            if stdin is None or not is_valid_addr(stdin):
-                err("Not found stdin")
+            try:
+                stdin = AddressUtil.parse_address("(void*) stdin")
+                stdout = AddressUtil.parse_address("(void*) stdout")
+                stderr = AddressUtil.parse_address("(void*) stderr")
+            except gdb.error:
+                err("Not found stdin, stdout, stderr")
                 return
 
-            stdout = AddressUtil.parse_address("stdout")
-            if stdout is None or not is_valid_addr(stdout):
-                err("Not found stdout")
+            if not is_valid_addr(stdin):
+                err("stdin: read memory error")
                 return
 
-            stderr = AddressUtil.parse_address("stderr")
-            if stderr is None or not is_valid_addr(stderr):
-                err("Not found stderr")
+            if not is_valid_addr(stdout):
+                err("stdout: read memory error")
+                return
+
+            if not is_valid_addr(stderr):
+                err("stderr: read memory error")
                 return
             struct_io_file_array = [stdin, stdout, stderr]
 
