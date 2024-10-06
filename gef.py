@@ -17448,6 +17448,8 @@ class SearchPatternCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("--hex", action="store_true",
                         help="interpret PATTERN as hex. invalid character is ignored.")
+    parser.add_argument("--hex-regex", action="store_true",
+                        help="interpret PATTERN as hex with REGEX-style.")
     parser.add_argument("--big", action="store_true",
                         help="interpret PATTERN as big endian if PATTERN is 0xXXXXXXXX style.")
     parser.add_argument("--phys", action="store_true",
@@ -17474,17 +17476,18 @@ class SearchPatternCommand(GenericCommand):
                         help="search range size. valid only when a start address is specified.")
     _syntax_ = parser.format_help()
 
-    _example_ = "{:s} ABCD                      # search 'ABCD' from whole memory\n".format(_cmdline_)
-    _example_ += '{:s} "\\\\x41\\\\x42\\\\x43\\\\x44"    # double-escaped string is also valid\n'.format(_cmdline_)
-    _example_ += '{:s} --hex "41 42 43 44"       # another valid format\n'.format(_cmdline_)
-    _example_ += "{:s} 0x41424344                # search 0x41424344 (='DCBA') from whole memory\n".format(_cmdline_)
-    _example_ += "{:s} 0x555555554000 stack      # search 0x555555554000 (6byte) from stack\n".format(_cmdline_)
-    _example_ += "{:s} 0x0000555555554000 stack  # search 0x0000555555554000 (8byte) from stack\n".format(_cmdline_)
-    _example_ += "{:s} AAAA binary               # 'binary' means the area executable itself (only usermode)\n".format(_cmdline_)
-    _example_ += "{:s} AAAA 0x400000-0x404000    # search 'AAAA' from specific range\n".format(_cmdline_)
-    _example_ += "{:s} AAAA 0x400000 0x4000      # another valid format\n".format(_cmdline_)
-    _example_ += "{:s} AAAA heap --aligned 16    # search with aligned\n".format(_cmdline_)
-    _example_ += "{:s} AAAA -p r?-               # search from r-- or rw-, but not from r-x or rwx".format(_cmdline_)
+    _example_ = "{:s} ABCD                       # search 'ABCD' from whole memory\n".format(_cmdline_)
+    _example_ += '{:s} "\\\\x41\\\\x42\\\\x43\\\\x44"     # double-escaped string is also valid\n'.format(_cmdline_)
+    _example_ += '{:s} --hex "41 42 43 44"        # another valid format\n'.format(_cmdline_)
+    _example_ += '{:s} --hex-regex "4[0-9]424344" # hex regex search\n'.format(_cmdline_)
+    _example_ += "{:s} 0x41424344                 # search 0x41424344 (='DCBA') from whole memory\n".format(_cmdline_)
+    _example_ += "{:s} 0x555555554000 stack       # search 0x555555554000 (6byte) from stack\n".format(_cmdline_)
+    _example_ += "{:s} 0x0000555555554000 stack   # search 0x0000555555554000 (8byte) from stack\n".format(_cmdline_)
+    _example_ += "{:s} AAAA binary                # 'binary' means the area executable itself (only usermode)\n".format(_cmdline_)
+    _example_ += "{:s} AAAA 0x400000-0x404000     # search 'AAAA' from specific range\n".format(_cmdline_)
+    _example_ += "{:s} AAAA 0x400000 0x4000       # another valid format\n".format(_cmdline_)
+    _example_ += "{:s} AAAA heap --aligned 16     # search with aligned\n".format(_cmdline_)
+    _example_ += "{:s} AAAA -p r?-                # search from r-- or rw-, but not from r-x or rwx".format(_cmdline_)
 
     _note_ = "This command overwrites original \"find\" command."
 
@@ -17512,7 +17515,9 @@ class SearchPatternCommand(GenericCommand):
 
     def search_pattern_by_address(self, pattern, start_address, end_address):
         """Search a pattern within a range defined by arguments."""
-        pattern = String.str2bytes(pattern)
+        if not self.args.hex_regex:
+            pattern = String.str2bytes(pattern)
+
         if is_qemu_system():
             step = gef_getpagesize()
         else:
@@ -17535,14 +17540,26 @@ class SearchPatternCommand(GenericCommand):
                 # cannot access memory this range. It doesn't make sense to try any more
                 break
 
-            for match in re.finditer(pattern, mem):
-                start = chunk_addr + match.start()
+            if self.args.hex_regex:
+                mem_target = mem.hex()
+            else:
+                mem_target = mem
+
+            for match in re.finditer(pattern, mem_target):
+                if self.args.hex_regex:
+                    if match.start() % 2:
+                        continue
+                    start_pos = match.start() // 2
+                else:
+                    start_pos = match.start()
+                start = chunk_addr + start_pos
+
                 if self.args.interval:
                     if len(locations) > 0:
                         if start < locations[-1][0] + self.args.interval:
                             continue
 
-                data = mem[match.start():][:0x10]
+                data = mem[start_pos:][:0x10]
                 if len(data) < 0x10:
                     try:
                         data += read_memory(chunk_addr + chunk_size, 0x10 - len(data))
@@ -17642,6 +17659,11 @@ class SearchPatternCommand(GenericCommand):
         return
 
     def create_patterns(self, args):
+        if args.hex_regex:
+            pattern = args.pattern.lower()
+            pattern_utf16 = None
+            return pattern, pattern_utf16
+
         # create normal pattern
         if args.hex: # "41414141" -> "\x41\x41\x41\x41"
             pattern = re.sub(r"[^0-9a-fA-F]", "", args.pattern)
