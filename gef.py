@@ -1239,16 +1239,16 @@ class AddressUtil:
             memalign_size = AddressUtil.get_memory_alignment()
 
         if memalign_size == 8:
-            return addr & 0xFFFFFFFFFFFFFFFF
+            return addr & 0xffffffffffffffff
         elif memalign_size == 4:
-            return addr & 0xFFFFFFFF
+            return addr & 0xffffffff
         elif memalign_size == 2:
-            return addr & 0xFFFF
+            return addr & 0xffff
         elif memalign_size == 2.5:
             if current_arch.A20:
-                return addr & 0x1FFFFF
+                return addr & 0x1fffff
             else:
-                return addr & 0x0FFFFF
+                return addr & 0x0fffff
         return None
 
     @staticmethod
@@ -1261,6 +1261,8 @@ class AddressUtil:
         """Parse an address and return it as an Integer."""
         if String.is_hex(addr):
             return int(addr, 16)
+        # Don't enclose it in a try-catch. This is because it is used with argparse,
+        # and is intended to raise an exception if parsing fails.
         return to_unsigned_long(gdb.parse_and_eval(addr))
 
     @staticmethod
@@ -15565,7 +15567,7 @@ class CanaryCommand(GenericCommand):
         try:
             canary_location = auxval["AT_RANDOM"]
             canary = read_int_from_memory(canary_location)
-            canary &= ~0xFF
+            canary &= ~0xff
             return canary, canary_location
         except (KeyError, gdb.MemoryError):
             return None
@@ -19743,9 +19745,9 @@ class UnicornEmulateCommand(GenericCommand):
             content += "# from https://github.com/unicorn-engine/unicorn/blob/master/tests/regress/x86_64_msr.py\n"
             content += "SCRATCH_ADDR = 0xf000\n"
             if is_x86_64():
-                content += "FS_GS_MSR = 0xC0000100\n"
+                content += "FS_GS_MSR = 0xc0000100\n"
             else:
-                content += "FS_GS_MSR = 0xC0000101\n"
+                content += "FS_GS_MSR = 0xc0000101\n"
             content += "\n"
             content += "\n"
             content += "def set_msr(uc, msr, value, scratch=SCRATCH_ADDR):\n"
@@ -19753,13 +19755,13 @@ class UnicornEmulateCommand(GenericCommand):
             content += "    uc.mem_map(scratch, 0x1000)\n"
             content += "    uc.mem_write(scratch, buf)\n"
             if is_x86_64():
-                content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_RAX, value & 0xFFFFFFFF)\n"
-                content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_RDX, (value >> 32) & 0xFFFFFFFF)\n"
-                content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_RCX, msr & 0xFFFFFFFF)\n"
+                content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_RAX, value & 0xffffffff)\n"
+                content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_RDX, (value >> 32) & 0xffffffff)\n"
+                content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_RCX, msr & 0xffffffff)\n"
             else:
-                content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_EAX, value & 0xFFFFFFFF)\n"
-                content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_EDX, (value >> 32) & 0xFFFFFFFF)\n"
-                content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_ECX, msr & 0xFFFFFFFF)\n"
+                content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_EAX, value & 0xffffffff)\n"
+                content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_EDX, (value >> 32) & 0xffffffff)\n"
+                content += "    uc.reg_write(unicorn.x86_const.UC_X86_REG_ECX, msr & 0xffffffff)\n"
             content += "    uc.emu_start(scratch, scratch + len(buf), count=1)\n"
             content += "    uc.mem_unmap(scratch, 0x1000)\n"
             content += "    return\n"
@@ -50595,12 +50597,14 @@ class KernelAddressHeuristicFinder:
             kern_min = maps[0][0]
             if kern_min < 0x80000000:
                 PAGE_OFFSET = 0x40000000 # VMSPLIT_1G
-            elif kern_min < 0xB0000000:
+            elif kern_min < 0xb0000000:
                 PAGE_OFFSET = 0x80000000 # VMSPLIT_2G
-            elif kern_min < 0xBF000000: # 0xBF000000-0xC0000000 is kernel module area. Even if it is VMSPLIT_3G, this is used.
-                PAGE_OFFSET = 0xB0000000 # VMSPLIT_3G_OPT
+            elif kern_min < 0xbf000000:
+                # 0xbf000000-0xc0000000 is kernel module area.
+                # Even if it is VMSPLIT_3G, this is used.
+                PAGE_OFFSET = 0xb0000000 # VMSPLIT_3G_OPT
             else:
-                PAGE_OFFSET = 0xC0000000 # VMSPLIT_3G
+                PAGE_OFFSET = 0xc0000000 # VMSPLIT_3G
 
             # check if valid kernel address or not
             current_thread_info = current_arch.sp & ~0x1fff
@@ -80229,10 +80233,10 @@ class PagewalkRiscvCommand(PagewalkCommand):
 
         if is_riscv64():
             mode = (satp >> 60) & 0b1111 # upper 4 bit
-            pagewalk_base = (satp & 0xFFFFFFFFFFF) * gef_getpagesize() # lower 44 bit
+            pagewalk_base = (satp & 0xfffffffffff) * gef_getpagesize() # lower 44 bit
         else:
             mode = (satp >> 31) & 0b1 # upper 1 bit
-            pagewalk_base = (satp & 0x3FFFFF) * gef_getpagesize() # lower 22 bit
+            pagewalk_base = (satp & 0x3fffff) * gef_getpagesize() # lower 22 bit
         self.sstatus_sum = (sstatus >> 18) & 1
 
         # virtual address base
@@ -84661,12 +84665,12 @@ class PageCommand(GenericCommand):
                 self.PAGE_OFFSET = 0x40000000 # VMSPLIT_1G
             elif kern_min < 0x80000000:
                 self.PAGE_OFFSET = 0x78000000 # VMSPLIT_2G_OPT
-            elif kern_min < 0xB0000000:
+            elif kern_min < 0xb0000000:
                 self.PAGE_OFFSET = 0x80000000 # VMSPLIT_2G
-            elif kern_min < 0xC0000000:
-                self.PAGE_OFFSET = 0xB0000000 # VMSPLIT_3G_OPT
+            elif kern_min < 0xc0000000:
+                self.PAGE_OFFSET = 0xb0000000 # VMSPLIT_3G_OPT
             else:
-                self.PAGE_OFFSET = 0xC0000000 # VMSPLIT_3G
+                self.PAGE_OFFSET = 0xc0000000 # VMSPLIT_3G
 
             # Determine whether it is CONFIG_FLATMEM or CONFIG_SPARSEMEM.
             self.mem_map = KernelAddressHeuristicFinder.get_mem_map()
@@ -84760,12 +84764,14 @@ class PageCommand(GenericCommand):
             kern_min = maps[0][0]
             if kern_min < 0x80000000:
                 self.PAGE_OFFSET = 0x40000000 # VMSPLIT_1G
-            elif kern_min < 0xB0000000:
+            elif kern_min < 0xb0000000:
                 self.PAGE_OFFSET = 0x80000000 # VMSPLIT_2G
-            elif kern_min < 0xBF000000: # 0xBF000000-0xC0000000 is kernel module area. Even if it is VMSPLIT_3G, this is used.
-                self.PAGE_OFFSET = 0xB0000000 # VMSPLIT_3G_OPT
+            elif kern_min < 0xbf000000:
+                # 0xbf000000-0xc0000000 is kernel module area.
+                # Even if it is VMSPLIT_3G, this is used.
+                self.PAGE_OFFSET = 0xb0000000 # VMSPLIT_3G_OPT
             else:
-                self.PAGE_OFFSET = 0xC0000000 # VMSPLIT_3G
+                self.PAGE_OFFSET = 0xc0000000 # VMSPLIT_3G
 
             self.mem_map = KernelAddressHeuristicFinder.get_mem_map()
             if self.mem_map is None:
@@ -86916,7 +86922,7 @@ class KmallocAllocatedByCommand(GenericCommand):
             yield ("fd = userfaultfd(O_CLOEXEC|O_NONBLOCK)", "userfaultfd", [0o2000000 | 0o4000])
             if u2i(ret_history[-1]) >= 0:
                 fd = ret_history[-1]
-                uffdio_api = p64(0xAA) # api: UFFD_API
+                uffdio_api = p64(0xaa) # api: UFFD_API
                 uffdio_api += p64(0)   # features
                 uffdio_api += p64(0)   # ioctls
                 yield ("ioctl(fd, UFFDIO_API, &uffdio_api)", "ioctl", [fd, 0xc018aa3f, uffdio_api])
@@ -88950,7 +88956,7 @@ class PeekPageFrameCommand(GenericCommand):
         return (x >> bit) & 1
 
     def get_pfn(self, x):
-        return x & 0x7FFFFFFFFFFFFF
+        return x & 0x7fffffffffffff
 
     def append_pfn_zero_warn(self):
         warn_messages = [
