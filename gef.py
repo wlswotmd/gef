@@ -31713,16 +31713,16 @@ class DestructorDumpCommand(GenericCommand):
                 break
 
             decoded_fn = current_arch.decode_cookie(func.value, self.cookie)
-            sym = Symbol.get_symbol_string(decoded_fn)
-            decoded_fn_s = Color.boldify("{:#x}".format(decoded_fn))
+            decoded_fn = ProcessMap.lookup_address(decoded_fn)
+            sym = Symbol.get_symbol_string(decoded_fn.value)
 
-            if is_valid_addr(decoded_fn):
+            if is_valid_addr(decoded_fn.value):
                 valid_msg = Color.colorify("valid", "bold green")
             else:
                 valid_msg = Color.colorify("invalid", "bold red")
 
-            gef_print("   {:s}func:     {:s}: {!s} (={:s}{:s}) [{:s}]".format(
-                RIGHT_ARROW, self.C(current), func, decoded_fn_s, sym, valid_msg,
+            gef_print("   {:s}func:     {:s}: {!s} (={!s}{:s}) [{:s}]".format(
+                RIGHT_ARROW, self.C(current), func, decoded_fn, sym, valid_msg,
             ))
             gef_print("       obj:      {:s}: {!s}".format(
                 self.C(current + ptrsize * 1), obj,
@@ -31783,10 +31783,10 @@ class DestructorDumpCommand(GenericCommand):
             if fn.value == 0:
                 continue
             decoded_fn = current_arch.decode_cookie(fn.value, self.cookie)
-            sym = Symbol.get_symbol_string(decoded_fn)
-            decoded_fn_s = Color.boldify("{:#x}".format(decoded_fn))
+            decoded_fn = ProcessMap.lookup_address(decoded_fn)
+            sym = Symbol.get_symbol_string(decoded_fn.value)
 
-            if is_valid_addr(decoded_fn):
+            if is_valid_addr(decoded_fn.value):
                 valid_msg = Color.colorify("valid", "bold green")
             else:
                 valid_msg = Color.colorify("invalid", "bold red")
@@ -31794,7 +31794,7 @@ class DestructorDumpCommand(GenericCommand):
             fns = "       fns[{:#x}]: {:s}:".format(i, self.C(addr))
             width = len(fns) - 9
             gef_print("{} flavor:     {!s}".format(fns, flavor))
-            gef_print("{} func:       {!s} (={:s}{:s}) [{:s}]".format(" " * width, fn, decoded_fn_s, sym, valid_msg))
+            gef_print("{} func:       {!s} (={!s}{:s}) [{:s}]".format(" " * width, fn, decoded_fn, sym, valid_msg))
             gef_print("{} arg:        {!s}".format(" " * width, arg))
             gef_print("{} dso_handle: {!s}".format(" " * width, dso_handle))
         return
@@ -31829,7 +31829,7 @@ class DestructorDumpCommand(GenericCommand):
             # Parse all loaded libraries.
             for link_map in self.yield_link_map(self.codebase):
                 # get dynamic
-                dynamic = DynamicCommand.get_dynamic(link_map.load_address, silent=True)
+                dynamic = DynamicCommand.get_dynamic(link_map.load_address or link_map.name, silent=True)
                 if dynamic is None:
                     continue
 
@@ -31852,9 +31852,9 @@ class DestructorDumpCommand(GenericCommand):
 
                 # print .fini
                 gef_print(link_map.name)
-                sym = Symbol.get_symbol_string(fini)
-                func_s = Color.boldify("{:#x}".format(fini))
-                gef_print("   {:s}{:s}{:s}".format(RIGHT_ARROW, func_s, sym))
+                fini = ProcessMap.lookup_address(fini)
+                sym = Symbol.get_symbol_string(fini.value)
+                gef_print("   {:s}{!s}{:s}".format(RIGHT_ARROW, fini, sym))
         else:
             # Static binary has no _DYNAMIC, but we can resolve the target address
             # from section name due to local file path.
@@ -31867,9 +31867,9 @@ class DestructorDumpCommand(GenericCommand):
             if fini < self.codebase:
                 fini += self.codebase
             gef_print(self.local_filepath)
-            sym = Symbol.get_symbol_string(fini)
-            func_s = Color.boldify("{:#x}".format(fini))
-            gef_print("   {:s}{:s}{:s}".format(RIGHT_ARROW, func_s, sym))
+            fini = ProcessMap.lookup_address(fini)
+            sym = Symbol.get_symbol_string(fini.value)
+            gef_print("   {:s}{!s}{:s}".format(RIGHT_ARROW, fini, sym))
         return
 
     def dump_fini_array(self):
@@ -31882,7 +31882,7 @@ class DestructorDumpCommand(GenericCommand):
             # Parse all loaded libraries.
             for link_map in self.yield_link_map(self.codebase):
                 # get dynamic
-                dynamic = DynamicCommand.get_dynamic(link_map.load_address, silent=True)
+                dynamic = DynamicCommand.get_dynamic(link_map.load_address or link_map.name, silent=True)
                 if dynamic is None:
                     continue
 
@@ -31921,9 +31921,9 @@ class DestructorDumpCommand(GenericCommand):
                 # print .fini_array
                 gef_print(link_map.name)
                 for addr, func in entries:
-                    sym = Symbol.get_symbol_string(func)
-                    func_s = Color.boldify("{:#x}".format(func))
-                    gef_print("   {:s}{:s}: {:s}{:s}".format(RIGHT_ARROW, self.C(addr), func_s, sym))
+                    func = ProcessMap.lookup_address(func)
+                    sym = Symbol.get_symbol_string(func.value)
+                    gef_print("   {:s}{:s}: {!s}{:s}".format(RIGHT_ARROW, self.C(addr), func, sym))
         else:
             # Static binary has no _DYNAMIC, but we can resolve the target address
             # from section name due to local file path.
@@ -31945,9 +31945,9 @@ class DestructorDumpCommand(GenericCommand):
                 return
             gef_print(self.local_filepath)
             for addr, func in entries:
-                sym = Symbol.get_symbol_string(func)
-                func_s = Color.boldify("{:#x}".format(func))
-                gef_print("   {:s}{:s}: {:s}{:s}".format(RIGHT_ARROW, self.C(addr), func_s, sym))
+                func = ProcessMap.lookup_address(func)
+                sym = Symbol.get_symbol_string(func.value)
+                gef_print("   {:s}{:s}: {!s}{:s}".format(RIGHT_ARROW, self.C(addr), func, sym))
         return
 
     @parse_args
