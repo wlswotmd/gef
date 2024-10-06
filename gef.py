@@ -30895,7 +30895,17 @@ class LinkMapCommand(GenericCommand, BufferingOutput):
         return
 
     @staticmethod
-    def get_link_map(filename_or_addr, silent=False):
+    def get_link_map(filename_or_addr=None, silent=False):
+        if not filename_or_addr:
+            # fast path
+            try:
+                link_map = AddressUtil.parse_address("(void*) _rtld_global")
+                link_map = ProcessMap.lookup_address(link_map)
+                return link_map
+            except gdb.error:
+                pass
+
+        # slow path
         dynamic = DynamicCommand.get_dynamic(filename_or_addr, silent)
         DT_TABLE = DynamicCommand.get_DT_TABLE()
 
@@ -30938,30 +30948,10 @@ class LinkMapCommand(GenericCommand, BufferingOutput):
 
         if args.link_map_address:
             link_map = ProcessMap.lookup_address(args.link_map_address)
-
-        elif args.elf_address:
+        else:
             try:
                 link_map = self.get_link_map(args.elf_address)
-            except Exception:
-                err("Failed to get link_map.")
-                return
-        else:
-            filename = Path.get_filepath()
-            if filename is None:
-                err("Failed to get filename.")
-                return
-
-            if not os.path.exists(filename):
-                err("{:s} is not found.".format(filename))
-                return
-
-            if not Elf.get_elf(filename).has_dynamic():
-                info("The binary has no link_map.")
-                return
-
-            try:
-                link_map = self.get_link_map(filename)
-            except Exception:
+            except gdb.error:
                 err("Failed to get link_map.")
                 return
 
@@ -31279,7 +31269,40 @@ class DynamicCommand(GenericCommand, BufferingOutput):
         return
 
     @staticmethod
-    def get_dynamic(filename_or_addr, silent=False):
+    def get_dynamic(filename_or_addr=None, silent=False):
+        if not filename_or_addr:
+            # fast path
+            try:
+                dynamic = AddressUtil.parse_address("(void*) &_DYNAMIC")
+                dynamic = ProcessMap.lookup_address(dynamic)
+                return dynamic
+            except gdb.error:
+                pass
+
+            # prepare slow path
+            filename_or_addr = Path.get_filepath()
+            if filename_or_addr is None:
+                if not silent:
+                    err("Failed to get filename.")
+                return
+
+        if isinstance(filename_or_addr, str):
+            if not os.path.exists(filename_or_addr):
+                if not silent:
+                    err("{:s} is not found.".format(filename_or_addr))
+                return
+
+            if not Elf.get_elf(filename_or_addr).has_dynamic():
+                if not silent:
+                    info("The binary has no _DYNAMIC.")
+                return
+
+            if ProcessMap.get_section_base_address(filename_or_addr) is None:
+                if not silent:
+                    err("{:s} is not loaded.".format(filename_or_addr))
+                return
+
+        # slow path
         if not silent:
             if isinstance(filename_or_addr, str):
                 info("filename: {:s}".format(filename_or_addr))
@@ -31317,38 +31340,10 @@ class DynamicCommand(GenericCommand, BufferingOutput):
     def do_invoke(self, args):
         if args.dynamic_address:
             dynamic = ProcessMap.lookup_address(args.dynamic_address)
-
-        elif args.elf_address:
-            try:
-                dynamic = self.get_dynamic(args.elf_address)
-            except Exception:
-                err("Failed to get _DYNAMIC.")
-                return
-
         else:
-            if args.filename:
-                filename = args.filename
-            else:
-                filename = Path.get_filepath()
-                if filename is None:
-                    err("Failed to get filename.")
-                    return
-
-            if not os.path.exists(filename):
-                err("{:s} is not found.".format(filename))
-                return
-
-            if not Elf.get_elf(filename).has_dynamic():
-                info("The binary has no _DYNAMIC.")
-                return
-
-            if ProcessMap.get_section_base_address(filename) is None:
-                err("{:s} is not loaded.".format(filename))
-                return
-
             try:
-                dynamic = self.get_dynamic(filename)
-            except Exception:
+                dynamic = self.get_dynamic(args.elf_address or args.filename)
+            except gdb.error:
                 err("Failed to get _DYNAMIC.")
                 return
 
