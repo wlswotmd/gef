@@ -130,22 +130,34 @@ Consider building gdb from latest tarball or git.
 Although it is limited to Ubuntu 22.10 or later, it is recommended to use `debuginfod`.
 
 * Enable `debuginfod` (ubuntu 22.10~)
-    * `export DEBUGINFOD_URLS="https://debuginfod.ubuntu.com"`
-    * `echo "set debuginfod enabled on" >> ~/.gdbinit`
+    ```
+    export DEBUGINFOD_URLS="https://debuginfod.ubuntu.com"
+    echo "set debuginfod enabled on" >> ~/.gdbinit
+    ```
 
-However, for some reason `debuginfod` does not display the `glibc` source code, so you need to obtain and place the source code separately.
+However, for some reason `debuginfod` does not display the `glibc` source code.
+So you need to obtain and place the source code separately.
 I don't really understand the reason for this.
 
 * Get `glibc` source
-    * Ubuntu 24.04 or later: `sed -i -e 's/^Types: deb$/Types: deb deb-src/g' /etc/apt/sources.list.d/ubuntu.sources`
-    * Ubuntu 23.10 or before: `sed -i -e 's/^# deb-src/deb-src/g' /etc/apt/sources.list`
-    * `cd /usr/lib/debug && apt update && apt source libc6`
-    * `echo "directory /usr/lib/debug/glibc-2.39" >> ~/.gdbinit`
-        * Need to fix version for your environment.
+    ```
+    #Ubuntu 24.04 or later
+    sed -i -e 's/^Types: deb$/Types: deb deb-src/g' /etc/apt/sources.list.d/ubuntu.sources
+
+    # Ubuntu 23.10 or before
+    sed -i -e 's/^# deb-src/deb-src/g' /etc/apt/sources.list
+
+    # common
+    cd /usr/lib/debug && apt update && apt source libc6
+    echo "directory /usr/lib/debug/glibc-2.39" >> ~/.gdbinit
+    # Need to fix version for your environment.
+    ```
 
 * Also add `glibc` symbols
-    * `apt install libc6-dbg`
-    * `echo "set debug-file-directory /usr/lib/debug" >> ~/.gdbinit`.
+    ```
+    apt install libc6-dbg
+    echo "set debug-file-directory /usr/lib/debug" >> ~/.gdbinit
+    ```
 
 
 # About the guest (debugged) environment

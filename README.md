@@ -36,20 +36,20 @@ Many other commands have been added and improved. Enjoy!
 - It might work on ubuntu 20.04 - 21.10, but not recommended.
 
 ### Install
-```bash
-# Ubuntu 23.04 or later restrict global installation of python packages with pip3.
-# So you need --break-system-packages option.
-wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sed -e 's/pip3 install/pip3 install --break-system-packages/g' | sh
+* Run following commands as root user.
+    ```bash
+    # Ubuntu 23.04 or later restrict global installation of python packages with pip3.
+    # So you need --break-system-packages option.
+    wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sed -e 's/pip3 install/pip3 install --break-system-packages/g' | sh
 
-# Ubuntu 22.10 or before
-wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sh
-```
-
+    # Ubuntu 22.10 or before
+    wget -q https://raw.githubusercontent.com/bata24/gef/dev/install.sh -O- | sh
+    ```
 * Note
     * To simplify the installation script, GEF (`gef.py`) is installed to a fixed path (`/root/.gdbinit-gef.py`).
     * Also, it registers the GEF path to `/root/.gdbinit`.
     * If you want to change the location or user, please modify both yourself.
-    * See [docs/FAQ.md](https://github.com/bata24/gef/blob/dev/docs/FAQ.md) for more information.
+    * See [docs/FAQ.md](https://github.com/bata24/gef/blob/dev/docs/FAQ.md) for more information and other install options.
 
 ### Upgrade
 ```bash
@@ -154,21 +154,21 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
         * `vmlinux-to-elf-apply`: Requires installation of external tools. Create `vmlinux` with symbols.
         * `ksymaddr-remote-apply`: Requires no external tools. Create an blank ELF with only embedded symbols.
 * `slub-dump`: dumps slub free-list.
-    * Supported on x64/x86/ARM64/ARM + SLUB + no-symbol + kASLR.
+    * Supported on x64/x86/ARM64/ARM + `SLUB` + no-symbol + kASLR.
     * Supported on both `CONFIG_SLAB_FREELIST_HARDENED` is `y` or `n`.
     * It supports to dump partial pages (`-v`) and NUMA node pages (`-vv`).
     * Since `page_to_virt` is difficult to implement, it will heuristically determine the virtual address from the free-list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-dump.png)
 * `slab-dump`: dumps slab free-list.
-    * Supported on x64/x86/ARM64/ARM + SLAB + no-symbol + kASLR.
+    * Supported on x64/x86/ARM64/ARM + `SLAB` + no-symbol + kASLR.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slab-dump.png)
 * `slob-dump`: dumps slob free-list.
-    * Supported on x64/x86/ARM64/ARM + SLOB + no-symbol + kASLR.
+    * Supported on x64/x86/ARM64/ARM + `SLOB` + no-symbol + kASLR.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slob-dump.png)
 * `slub-tiny-dump`: dumps slub-tiny free-list.
-    * Supported on x64/x86/ARM64/ARM + SLUB-TINY + no-symbol + kASLR.
+    * Supported on x64/x86/ARM64/ARM + `SLUB-TINY` + no-symbol + kASLR.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-tiny-dump.png)
-* `slab-contains`: resolves which `kmem_cache` certain address (object) belongs to (for SLUB/SLUB-TINY/SLAB).
+* `slab-contains`: resolves which `kmem_cache` certain address (object) belongs to (for `SLUB/SLUB-TINY/SLAB`).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slab-contains.png)
     * For `SLUB/SLUB-TINY`, if all chunks belonging to a certain `page` are in use, they will not be displayed by `slub-dump/slub-tiny-dump` command.
     * Even with such an address (object), this command may be able to resolve `kmem_cache`.
@@ -265,9 +265,9 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * On cris architecture, `stepi`/`nexti` commands don't work well, so use breakpoints to simulate.
     * If you want to use native `si`/`ni`, use the full form `stepi`/`nexti`.
 * `c`: is the wrapper for native `c` if gdb is connected to qemu-user or intel pin.
-    * When connecting to gdb stub of qemu-user or Intel Pin, gdb does not trap SIGINT during `continue`.
-    * If you want to trap, you need to issue SIGTRAP on the qemu-user or pin side, but switching screens is troublesome.
-    * This command realizes a pseudo SIGTRAP trap by trapping SIGINT on the python side and throwing SIGTRAP back to qemu-user or Intel Pin.
+    * When connecting to gdb stub of qemu-user or Intel Pin, gdb does not trap `SIGINT` during `continue`.
+    * If you want to trap, you need to issue `SIGTRAP` on the qemu-user or pin side, but switching screens is troublesome.
+    * This command realizes a pseudo `SIGTRAP` trap by trapping `SIGINT` on the python side and throwing `SIGTRAP` back to qemu-user or Intel Pin.
     * It works only local qemu-user or Intel Pin.
     * If you want to use native `c`, use the full form `continue`.
 
@@ -363,19 +363,31 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * `context`: is improved.
     * It supports automatic display of system call arguments when calling a system call.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/context-syscall-args.png)
+    * It supports new modes:
+        * `context on`
+        * `context off`
     * It supports automatic display of address and value when accessing memory.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/context-memory-access.png)
-    * It supports smart symbol printing for cpp function.
+    * It supports smart symbol printing for C++ function.
         * ex: `std::map<int, std::map<int, int>>` will be replaced by `std::map<...>`.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/smart-cpp-function-name.png)
         * command: `gef config context.smart_cpp_function_name true` or `smart-cpp-function-name` (later is used to toggle).
 * `telescope`: is improved.
     * It displays ordinal numbers as well as offsets.
-    * It displays if there are canary and ret-addr on the target area.
+    * It displays if there are canary and return address on the target area.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/telescope.png)
     * It supports blacklist address features (to avoid dying when touching the address mapped to the serial device).
     * It also shows the symbol if available.
-    * It supports some new options: `--is-addr`, `--is-not-addr`, `--uniq`, `--depth`, `--slab-contains`, `--slab-contains-unaligned`, `--phys` and `--tag`.
+    * It supports some new options:
+        * `--is-addr`
+        * `--is-not-addr`
+        * `--depth`
+        * `--tag`
+        * `--uniq`
+        * `--list-head`
+        * `--phys`
+        * `--slab-contains`
+        * `--slab-contains-unaligned`
 * `proc-info`: is improved.
     * It displays some additional information.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/proc-info.png)
@@ -422,7 +434,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * It shows changed memories.
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/unicorn-emulate.png)
 * `ropper`: is improved.
-    * It does not reset autocomplete settings after calling imported ropper.
+    * It does not reset autocomplete settings after calling imported `ropper`.
 * `hexdump`: is improved.
     * It supports physical memory if under qemu-system.
     * It will retry with adjusting read size when failed reading memory.
@@ -430,12 +442,28 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hexdump.png)
 * `patch`: is improved.
     * It supports physical memory if under qemu-system.
-    * Added some new modes: `pattern`, `hex`, `history`, `revert`, `nop`, `inf`, `trap`, `ret`, and `syscall`.
+    * Added some new modes:
+        * `patch hex`
+        * `patch pattern`
+        * `patch nop`
+        * `patch inf`
+        * `patch trap`
+        * `patch ret`
+        * `patch syscall`
+        * `patch history`
+        * `patch revert`
     * `nop` command has been integrated into `patch` command.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/patch.png)
 * `search-pattern`: is improved.
     * It supports when under qemu-system (in short, it works without `/proc/self/maps`)
-    * It supports hex string specification, aligned search, search interval and search limit.
+    * It supports some new options:
+        * `--hex`
+        * `--hex-regex`
+        * `--aligned`
+        * `--perm`
+        * `--interval`
+        * `--limit`
+        * `--max-region-size`
     * It also searches UTF-16 string if target string is ASCII.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-pattern.png)
 * `mprotect`: is improved.
