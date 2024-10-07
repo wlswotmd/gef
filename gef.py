@@ -89918,12 +89918,16 @@ class GefCommand(GenericCommand):
     def load_commands(self):
         """Load all the commands and functions defined by GEF into GDB."""
         global __gef_command_instances__
+
+        DEBUG = False
+
         nb_missing = 0
         time_elapsed = []
         for cmd_class in __gef_commands__:
             try:
-                start_time_real = time.perf_counter()
-                start_time_proc = time.process_time()
+                if DEBUG:
+                    start_time_real = time.perf_counter()
+                    start_time_proc = time.process_time()
 
                 if cmd_class._cmdline_ == "gef":
                     instance = self
@@ -89931,14 +89935,15 @@ class GefCommand(GenericCommand):
                     instance = cmd_class() # command loading is here
                 __gef_command_instances__[cmd_class._cmdline_] = instance
 
-                end_time_real = time.perf_counter()
-                end_time_proc = time.process_time()
+                if DEBUG:
+                    end_time_real = time.perf_counter()
+                    end_time_proc = time.process_time()
 
-                time_elapsed.append((
-                    cmd_class._cmdline_,
-                    end_time_real - start_time_real,
-                    end_time_proc - start_time_proc,
-                ))
+                    time_elapsed.append((
+                        cmd_class._cmdline_,
+                        end_time_real - start_time_real,
+                        end_time_proc - start_time_proc,
+                    ))
 
                 if hasattr(cmd_class._aliases_, "__iter__"):
                     for alias in cmd_class._aliases_:
@@ -89948,11 +89953,11 @@ class GefCommand(GenericCommand):
                 self.missing_commands[cmd_class._cmdline_] = reason
                 nb_missing += 1
 
-        DEBUG = False
         if DEBUG:
             print(titlify("Top 10 commands that took the longest to load"))
             for cmdline, real, cpu in sorted(time_elapsed, key=lambda x: x[1], reverse=True)[:10]:
                 print("{:30s} Real:{:.10f} s, CPU:{:.10f} s".format(cmdline, real, cpu))
+            print(titlify(""))
 
         # print message
         gef_print("{:s} is ready, type '{:s}' to start, '{:s}' to configure".format(
