@@ -15591,7 +15591,7 @@ class CanaryCommand(GenericCommand):
         canary, location = res
         gef_print(titlify("canary value"))
         info("Found AT_RANDOM at {!s}, reading {} bytes".format(ProcessMap.lookup_address(location), current_arch.ptrsize))
-        info("The canary is {:s}".format(Color.boldify("{:#x}".format(canary))))
+        info("The canary is {:s}".format(Color.colorify_hex(canary, "bold")))
 
         gef_print(titlify("found canary"))
         vmmap = ProcessMap.get_process_maps()
@@ -17871,7 +17871,7 @@ class PtrDemangleCommand(GenericCommand):
         cookie = self.get_cookie()
         if cookie is None:
             return
-        info("Cookie is {:s}".format(Color.boldify("{:#x}".format(cookie))))
+        info("Cookie is {:s}".format(Color.colorify_hex(cookie, "bold")))
 
         decoded = current_arch.decode_cookie(args.value, cookie)
         decoded = ProcessMap.lookup_address(decoded)
@@ -17912,7 +17912,7 @@ class PtrMangleCommand(GenericCommand):
         cookie = PtrDemangleCommand.get_cookie()
         if cookie is None:
             return
-        info("Cookie is {:s}".format(Color.boldify("{:#x}".format(cookie))))
+        info("Cookie is {:s}".format(Color.colorify_hex(cookie, "bold")))
 
         encoded = current_arch.encode_cookie(args.value, cookie)
         info("Encoded value is {:#x}".format(encoded))
@@ -18002,7 +18002,7 @@ class SearchMangledPtrCommand(GenericCommand):
         self.cookie = PtrDemangleCommand.get_cookie()
         if self.cookie is None:
             return
-        info("Cookie is {:s}".format(Color.boldify("{:#x}".format(self.cookie))))
+        info("Cookie is {:s}".format(Color.colorify_hex(self.cookie, "bold")))
 
         # check
         if current_arch.decode_cookie(0, 1) == 0:
@@ -64632,8 +64632,7 @@ class StringLengthCommand(GenericCommand):
         if length is None:
             return
 
-        colored_length = Color.boldify("{:#x}".format(length))
-        gef_print("{:s} bytes".format(colored_length))
+        gef_print("{:s} bytes".format(Color.colorify_hex(length, "bold")))
         return
 
 
@@ -64711,8 +64710,9 @@ class SequenceLengthCommand(GenericCommand):
             return
 
         addr = ProcessMap.lookup_address(args.addr)
-        colored_unit = Color.boldify("{:#x}".format(args.unit))
-        info("Check from {!s} in units of {:s} bytes".format(addr, colored_unit))
+        info("Check from {!s} in units of {:s} bytes".format(
+            addr, Color.colorify_hex(args.unit, "bold"),
+        ))
 
         ret = self.check(args.phys, args.addr, args.unit)
         if ret is None:
@@ -64725,10 +64725,12 @@ class SequenceLengthCommand(GenericCommand):
         if len(target) > 0x100:
             target = target[:0x100] + b"..."
 
-        colored_count = Color.boldify("{:#x}".format(count))
-        colored_size = Color.boldify("{:#x}".format(size))
         gef_print("{!s} - {!s} is same value".format(addr, end))
-        gef_print("{} is found {:s} times, {:s} bytes".format(target, colored_count, colored_size))
+        gef_print("{!s} is found {:s} times, {:s} bytes".format(
+            target,
+            Color.colorify_hex(count, "bold"),
+            Color.colorify_hex(size, "bold"),
+        ))
         return
 
 
@@ -79143,20 +79145,22 @@ class QemuRegistersCommand(GenericCommand, BufferingOutput):
         tr = re.search(r"TR\s*=\s*(\S+) (\S+) (\S+) (\S+)", res)
         trseg, base, limit, attr = [int(tr.group(i), 16) for i in range(1, 5)]
         self.out.append("{:s} = {:s}".format(red("TR"), yellow("{:#x}".format(trseg))))
-        regv = Color.boldify("{:#x} (rpl:{:d},ti:{:d},index:{:d})".format(trseg, trseg & 0b11, (trseg >> 2) & 1, trseg >> 3))
-        self.out.append("seg: {:s}: segment selector for TSS (Task State Segment)".format(regv))
-        self.out.append("  base : {:s}: starting address of TSS".format(Color.boldify("{:#x}".format(base))))
-        limit_c = Color.boldify("{:#x}".format(limit))
-        self.out.append("  limit: {:s}: segment limit or fixed value(=__KERNEL_TSS_LIMIT x64:0x206f/x86:0x206b)".format(limit_c))
-        self.out.append("  attr : {:s}: attribute".format(Color.boldify("{:#x}".format(attr))))
+        self.out.append("seg: {:s}: segment selector for TSS (Task State Segment)".format(
+            Color.boldify("{:#x} (rpl:{:d},ti:{:d},index:{:d})".format(trseg, trseg & 0b11, (trseg >> 2) & 1, trseg >> 3)),
+        ))
+        self.out.append("  base : {:s}: starting address of TSS".format(Color.colorify_hex(base, "bold")))
+        self.out.append("  limit: {:s}: segment limit or fixed value(=__KERNEL_TSS_LIMIT x64:0x206f/x86:0x206b)".format(
+            Color.colorify_hex(limit, "bold"),
+        ))
+        self.out.append("  attr : {:s}: attribute".format(Color.colorify_hex(attr, "bold")))
 
         # GDTR
         self.out.append(titlify("GDTR (Global Descriptor Table Register)"))
         gdtr = re.search(r"GDT\s*=\s*(\S+) (\S+)", res)
         base, limit = [int(gdtr.group(i), 16) for i in range(1, 3)]
         self.out.append("{:s} = {:s}:{:s}".format(red("GDTR"), yellow("{:#x}".format(base)), yellow("{:#x}".format(limit))))
-        self.out.append("base : {:s}: starting address of GDT (Global Descriptor Table)".format(Color.boldify("{:#x}".format(base))))
-        self.out.append("limit: {:s}: (size of GDT) - 1".format(Color.boldify("{:#x}".format(limit))))
+        self.out.append("base : {:s}: starting address of GDT (Global Descriptor Table)".format(Color.colorify_hex(base, "bold")))
+        self.out.append("limit: {:s}: (size of GDT) - 1".format(Color.colorify_hex(limit, "bold")))
 
         ret = gdb.execute("gdtinfo -q --only-gdt", to_string=True)
         self.out.append(ret.rstrip())
@@ -79166,8 +79170,8 @@ class QemuRegistersCommand(GenericCommand, BufferingOutput):
         idtr = re.search(r"IDT\s*=\s*(\S+) (\S+)", res)
         base, limit = [int(idtr.group(i), 16) for i in range(1, 3)]
         self.out.append("{:s} = {:s}:{:s}".format(red("IDTR"), yellow("{:#x}".format(base)), yellow("{:#x}".format(limit))))
-        self.out.append("base : {:s}: starting address of IDT (Interrupt Descriptor Table)".format(Color.boldify("{:#x}".format(base))))
-        self.out.append("limit: {:s}: (size of IDT) - 1".format(Color.boldify("{:#x}".format(limit))))
+        self.out.append("base : {:s}: starting address of IDT (Interrupt Descriptor Table)".format(Color.colorify_hex(base, "bold")))
+        self.out.append("limit: {:s}: (size of IDT) - 1".format(Color.colorify_hex(limit, "bold")))
 
         ret = gdb.execute("idtinfo -q", to_string=True)
         self.out.append(ret.rstrip())
@@ -79177,11 +79181,12 @@ class QemuRegistersCommand(GenericCommand, BufferingOutput):
         ldtr = re.search(r"LDT\s*=\s*(\S+) (\S+) (\S+) (\S+)", res)
         seg, base, limit, attr = [int(ldtr.group(i), 16) for i in range(1, 5)]
         self.out.append("{:s} = {:s}".format(red("LDTR"), yellow("{:#x}".format(seg))))
-        regv = Color.boldify("{:#x} (rpl:{:d},ti:{:d},index:{:d})".format(seg, seg & 0b11, (seg >> 2) & 1, seg >> 3))
-        self.out.append("seg: {:s}: segment selector for LDT (Local Descriptor Table)".format(regv))
-        self.out.append("  base : {:s}: starting address of LDT".format(Color.boldify("{:#x}".format(base))))
-        self.out.append("  limit: {:s}: segment limit".format(Color.boldify("{:#x}".format(limit))))
-        self.out.append("  attr : {:s}: attribute".format(Color.boldify("{:#x}".format(attr))))
+        self.out.append("seg: {:s}: segment selector for LDT (Local Descriptor Table)".format(
+            Color.boldify("{:#x} (rpl:{:d},ti:{:d},index:{:d})".format(seg, seg & 0b11, (seg >> 2) & 1, seg >> 3)),
+        ))
+        self.out.append("  base : {:s}: starting address of LDT".format(Color.colorify_hex(base, "bold")))
+        self.out.append("  limit: {:s}: segment limit".format(Color.colorify_hex(limit, "bold")))
+        self.out.append("  attr : {:s}: attribute".format(Color.colorify_hex(attr, "bold")))
 
         ret = gdb.execute("gdtinfo -q --only-ldt", to_string=True)
         self.out.append(ret.rstrip())
@@ -79199,7 +79204,6 @@ class QemuRegistersCommand(GenericCommand, BufferingOutput):
             else:
                 self.info("Additional info")
                 self.qregisters_x86_x64()
-
         return
 
     @parse_args
