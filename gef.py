@@ -21615,7 +21615,9 @@ class AssembleCommand(GenericCommand):
             return
         else:
             try:
-                arch, mode = UnicornKeystoneCapstone.get_keystone_arch(arch=args.arch, mode=args.mode, endian=args.big_endian)
+                arch, mode = UnicornKeystoneCapstone.get_keystone_arch(
+                    arch=args.arch, mode=args.mode, endian=args.big_endian,
+                )
                 arch_mode_s = ":".join([args.arch, args.mode])
                 endian_s = "big" if args.big_endian else "little"
             except AttributeError:
@@ -21625,7 +21627,9 @@ class AssembleCommand(GenericCommand):
         insns = " ".join(args.instruction)
         insns = [x.strip() for x in insns.split(";") if x is not None and x.strip() != ""]
 
-        info("Assembling {} instruction{} for {} ({} endian)".format(len(insns), "s" if len(insns) > 1 else "", arch_mode_s, endian_s))
+        info("Assembling {:d} instruction{:s} for {:s} ({:s} endian)".format(
+            len(insns), "s" if len(insns) > 1 else "", arch_mode_s, endian_s,
+        ))
 
         if args.as_shellcode:
             gef_print('sc = ""')
@@ -21740,7 +21744,9 @@ class DisassembleCommand(GenericCommand):
             err("Invalid format")
             return
 
-        info("Disassembling {} bytes for {} ({} endian)".format(len(insns), arch_mode_s, endian_s))
+        info("Disassembling {:d} bytes for {:s} ({:s} endian)".format(
+            len(insns), arch_mode_s, endian_s,
+        ))
 
         capstone = sys.modules["capstone"]
         try:
@@ -23585,7 +23591,9 @@ class KernelChecksecCommand(GenericCommand):
             else:
                 selinux_enabled = u32(read_memory(selinux_enabled_addr, 4))
                 selinux_enforcing = u32(read_memory(selinux_enforcing_addr, 4))
-                additional = "selinux_init: Found, selinux_enabled: {:d}, selinux_enforcing: {:d}".format(selinux_enabled, selinux_enforcing)
+                additional = "selinux_init: Found, selinux_enabled: {:d}, selinux_enforcing: {:d}".format(
+                    selinux_enabled, selinux_enforcing,
+                )
                 if selinux_enabled == 0:
                     gef_print("{:<40s}: {:s} ({:s})".format(cfg, Color.colorify("Disabled", "bold red"), additional))
                 elif selinux_enforcing == 0:
@@ -24055,8 +24063,8 @@ class KernelChecksecCommand(GenericCommand):
         # In cases where kallsyms could be resolved, but ksysctl could not be resolved correctly,
         # it is assumed that the structure is strange.
         # Each structure parsed by ksysctl has no difference among kernel versions, except for `struct ctl_dir.inodes`.
-        # Additionally, the first member of struct ctl_table is a *char procname, which will almost certainly readable something.
-        # If this fails, it can be determined that the randstruct is used.
+        # Additionally, the first member of struct ctl_table is a *char procname, which will almost certainly
+        # readable something. If this fails, it can be determined that the randstruct is used.
         ksysctl_ret = Kernel.get_ksysctl("kernel.version")
         if not ksysctl_ret:
             additional = "ksysctl was failed"
