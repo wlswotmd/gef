@@ -32704,13 +32704,13 @@ class GotCommand(GenericCommand, BufferingOutput):
             if self.verbose:
                 name_s = "{:<{:d}}".format("Name", name_width)
                 type_s = "{:9s}".format("Type")
-                plt_s = "{:{:d}s} @ {:{:d}s} {:>{:d}s} {:>9s}".format(
+                plt_s = "{:{:d}s} @{:{:d}s} {:>{:d}s} {:>9s}".format(
                     "PLT", width,
                     "Section", plt_section_width,
                     "Offset", plt_offset_width,
                     "reloc_arg",
                 )
-                got_s = "{:{:d}s} @ {:{:d}s} {:>{:d}s}".format(
+                got_s = "{:{:d}s} @{:{:d}s} {:>{:d}s}".format(
                     "GOT", width,
                     "Section", got_section_width,
                     "Offset", got_offset_width,
@@ -32743,14 +32743,14 @@ class GotCommand(GenericCommand, BufferingOutput):
                 if info.plt_address:
                     plt_info = "{!s} @{:{:d}s} {:#{:d}x} {:9s}".format(
                         ProcessMap.lookup_address(info.plt_address),
-                        info.plt_section, plt_section_width + 1,
+                        info.plt_section, plt_section_width,
                         info.plt_offset, plt_offset_width,
                         reloc_arg_info,
                     )
                 else:
                     plt_info = "{:{:d}s}  {:{:d}s} {:>{:d}s} {:9s}".format(
                         "Not found", width,
-                        "", plt_section_width + 1,
+                        "", plt_section_width,
                         "", plt_offset_width,
                         reloc_arg_info,
                     )
@@ -32764,7 +32764,7 @@ class GotCommand(GenericCommand, BufferingOutput):
             if self.verbose:
                 got_info = "{!s} @{:{:d}s} {:#{:d}x}".format(
                     ProcessMap.lookup_address(info.got_address),
-                    info.got_section, got_section_width + 1,
+                    info.got_section, got_section_width,
                     info.got_offset, got_offset_width,
                 )
             else:
