@@ -314,14 +314,14 @@ class DisplayHook:
             return re.sub(r"(zone_start=|zone_end=)(\d+)", lambda x:x.group(1) + hex(int(x.group(2))), str(o))
 
         elif name == "Table":
-            f = "Table(arch={!s}, mode={!s}, table={{\n".format(repr(o.arch), repr(o.mode))
+            f = "Table(arch={!r}, mode={!r}, table={{\n".format(o.arch, o.mode)
             f += "\n".join(RD2(o.table.items(), idt))
             f += "\n" + I1(idt) + "})"
             return f
 
         elif name == "Entry":
             f = "Entry(\n"
-            f += I2(idt) + "name={!s},\n".format(repr(o.name))
+            f += I2(idt) + "name={!r},\n".format(o.name)
             f += I2(idt) + "ret_regs={!s},\n".format(o.ret_regs)
             f += I2(idt) + "arg_regs={!s},\n".format(o.arg_regs)
             f += I2(idt) + "args_full={!s},\n".format(o.args_full)
@@ -16275,7 +16275,7 @@ class ProcInfoCommand(GenericCommand):
 
     def get_state_of(self, pid):
         try:
-            status = open("/proc/{}/status".format(pid), "r").read()
+            status = open("/proc/{:d}/status".format(pid), "r").read()
         except (FileNotFoundError, OSError):
             return {}
         res = {}
@@ -16286,7 +16286,7 @@ class ProcInfoCommand(GenericCommand):
 
     def get_stat_of(self, pid):
         try:
-            stat = open("/proc/{}/stat".format(pid), "r").read()
+            stat = open("/proc/{:d}/stat".format(pid), "r").read()
         except (FileNotFoundError, OSError):
             return []
         name = re.search(r"\((.+)\)", stat)
@@ -16296,32 +16296,32 @@ class ProcInfoCommand(GenericCommand):
 
     def get_cmdline_of(self, pid):
         try:
-            cmdline = open("/proc/{}/cmdline".format(pid), "r").read()
+            cmdline = open("/proc/{:d}/cmdline".format(pid), "r").read()
         except (FileNotFoundError, OSError):
             return ""
-        return cmdline.replace("\x00", "\x20").strip()
+        return cmdline.replace("\0", " ").strip()
 
     def get_process_path_of(self, pid):
         try:
-            return os.readlink("/proc/{}/exe".format(pid))
+            return os.readlink("/proc/{:d}/exe".format(pid))
         except (FileNotFoundError, OSError):
             return "Not found"
 
     def get_process_cwd(self, pid):
         try:
-            return os.readlink("/proc/{}/cwd".format(pid))
+            return os.readlink("/proc/{:d}/cwd".format(pid))
         except (FileNotFoundError, OSError):
             return "Not found"
 
     def get_process_root(self, pid):
         try:
-            return os.readlink("/proc/{}/root".format(pid))
+            return os.readlink("/proc/{:d}/root".format(pid))
         except (FileNotFoundError, OSError):
             return "Not found"
 
     def get_thread_ids(self, pid):
         try:
-            tids = os.listdir("/proc/{}/task".format(pid))
+            tids = os.listdir("/proc/{:d}/task".format(pid))
             return [int(x) for x in tids]
         except (FileNotFoundError, OSError):
             return []
@@ -16333,7 +16333,7 @@ class ProcInfoCommand(GenericCommand):
             err("{}".format(e))
             return []
 
-        cmd = [ps, "-o", "pid", "--ppid", "{}".format(pid), "--noheaders"]
+        cmd = [ps, "-o", "pid", "--ppid", str(pid), "--noheaders"]
         try:
             return [int(x) for x in GefUtil.gef_execute_external(cmd, as_list=True)]
         except (subprocess.CalledProcessError, ValueError):
@@ -16341,14 +16341,14 @@ class ProcInfoCommand(GenericCommand):
 
     def get_uid_map(self, pid):
         try:
-            uid_map = open("/proc/{}/uid_map".format(pid), "r").read().strip()
+            uid_map = open("/proc/{:d}/uid_map".format(pid), "r").read().strip()
         except (FileNotFoundError, OSError):
             return []
         return slicer([int(x) for x in uid_map.split()], 3)
 
     def get_gid_map(self, pid):
         try:
-            gid_map = open("/proc/{}/gid_map".format(pid), "r").read().strip()
+            gid_map = open("/proc/{:d}/gid_map".format(pid), "r").read().strip()
         except (FileNotFoundError, OSError):
             return []
         return slicer([int(x) for x in gid_map.split()], 3)
@@ -16403,18 +16403,18 @@ class ProcInfoCommand(GenericCommand):
         cmdline = self.get_cmdline_of(pid)
         cwd = self.get_process_cwd(pid)
         root = self.get_process_root(pid)
-        gef_print("{:32s} {} {}".format("PID", RIGHT_ARROW, pid))
-        gef_print("{:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(executable)))
-        gef_print("{:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(cmdline)))
-        gef_print("{:32s} {} {}".format("  Current Working Directory", RIGHT_ARROW, repr(cwd)))
-        gef_print("{:32s} {} {}".format("  Root Directory", RIGHT_ARROW, repr(root)))
+        gef_print("{:32s} {:s} {:d}".format("PID", RIGHT_ARROW, pid))
+        gef_print("{:32s} {:s} {!r}".format("  Executable", RIGHT_ARROW, executable))
+        gef_print("{:32s} {:s} {!r}".format("  Command Line", RIGHT_ARROW, cmdline))
+        gef_print("{:32s} {:s} {!r}".format("  Current Working Directory", RIGHT_ARROW, cwd))
+        gef_print("{:32s} {:s} {!r}".format("  Root Directory", RIGHT_ARROW, root))
         uids = re.sub(r"\s+", " : ", self.get_state_of(pid)["Uid"])
         gids = re.sub(r"\s+", " : ", self.get_state_of(pid)["Gid"])
-        gef_print("{:32s} {} {}".format("  RUID:EUID:SavedUID:FSUID", RIGHT_ARROW, uids))
-        gef_print("{:32s} {} {}".format("  RGID:EGID:SavedGID:FSGID", RIGHT_ARROW, gids))
+        gef_print("{:32s} {:s} {:s}".format("  RUID:EUID:SavedUID:FSUID", RIGHT_ARROW, uids))
+        gef_print("{:32s} {:s} {:s}".format("  RGID:EGID:SavedGID:FSGID", RIGHT_ARROW, gids))
         seccomp_n = self.get_state_of(pid)["Seccomp"]
         seccomp_s = {"0": "Disabled", "1": "Strict", "2": "CustomFilter"}[seccomp_n]
-        gef_print("{:32s} {} {} ({})".format("  Seccomp Mode", RIGHT_ARROW, seccomp_n, seccomp_s))
+        gef_print("{:32s} {:s} {:s} ({:s})".format("  Seccomp Mode", RIGHT_ARROW, seccomp_n, seccomp_s))
         return
 
     def show_info_proc_extra(self):
@@ -16424,25 +16424,25 @@ class ProcInfoCommand(GenericCommand):
         pgid = self.get_stat_of(pid)[4]
         pgid_exec = self.get_process_path_of(pgid)
         pgid_cmdline = self.get_cmdline_of(pgid)
-        gef_print("{:32s} {} {}".format("Process Group ID", RIGHT_ARROW, pgid))
-        gef_print("{:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(pgid_exec)))
-        gef_print("{:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(pgid_cmdline)))
+        gef_print("{:32s} {:s} {:d}".format("Process Group ID", RIGHT_ARROW, pgid))
+        gef_print("{:32s} {:s} {!r}".format("  Executable", RIGHT_ARROW, pgid_exec))
+        gef_print("{:32s} {:s} {!r}".format("  Command Line", RIGHT_ARROW, pgid_cmdline))
         sid = self.get_stat_of(pid)[5]
         sid_exec = self.get_process_path_of(sid)
         sid_cmdline = self.get_cmdline_of(sid)
-        gef_print("{:32s} {} {}".format("Session ID", RIGHT_ARROW, sid))
-        gef_print("{:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(sid_exec)))
-        gef_print("{:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(sid_cmdline)))
+        gef_print("{:32s} {:s} {:d}".format("Session ID", RIGHT_ARROW, sid))
+        gef_print("{:32s} {:s} {!r}".format("  Executable", RIGHT_ARROW, sid_exec))
+        gef_print("{:32s} {:s} {!r}".format("  Command Line", RIGHT_ARROW, sid_cmdline))
         tpgid = self.get_stat_of(pid)[7]
         tpgid_exec = self.get_process_path_of(tpgid)
         tpgid_cmdline = self.get_cmdline_of(tpgid)
-        gef_print("{:32s} {} {}".format("TTY Process Group ID", RIGHT_ARROW, tpgid))
-        gef_print("{:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(tpgid_exec)))
-        gef_print("{:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(tpgid_cmdline)))
+        gef_print("{:32s} {:s} {:d}".format("TTY Process Group ID", RIGHT_ARROW, tpgid))
+        gef_print("{:32s} {:s} {!r}".format("  Executable", RIGHT_ARROW, tpgid_exec))
+        gef_print("{:32s} {:s} {!r}".format("  Command Line", RIGHT_ARROW, tpgid_cmdline))
         ttynr = self.get_stat_of(pid)[6]
         major, minor = (ttynr >> 8) & 0xff, ((ttynr >> 20) << 8) | (ttynr & 0xff)
         ttystr = self.get_tty_str(major, minor)
-        gef_print("{:32s} {} {} ({})".format("  TTY Device Number", RIGHT_ARROW, ttynr, repr(ttystr)))
+        gef_print("{:32s} {:s} {:d} ({!r})".format("  TTY Device Number", RIGHT_ARROW, ttynr, ttystr))
         return
 
     def show_parent(self):
@@ -16450,9 +16450,9 @@ class ProcInfoCommand(GenericCommand):
         ppid = int(self.get_state_of(Pid.get_pid())["PPid"])
         ppid_exec = self.get_process_path_of(ppid)
         ppid_cmdline = self.get_cmdline_of(ppid)
-        gef_print("{:32s} {} {}".format("Parent PID", RIGHT_ARROW, ppid))
-        gef_print("{:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(ppid_exec)))
-        gef_print("{:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(ppid_cmdline)))
+        gef_print("{:32s} {:s} {:d}".format("Parent PID", RIGHT_ARROW, ppid))
+        gef_print("{:32s} {:s} {!r}".format("  Executable", RIGHT_ARROW, ppid_exec))
+        gef_print("{:32s} {:s} {!r}".format("  Command Line", RIGHT_ARROW, ppid_cmdline))
         return
 
     def show_childs(self):
@@ -16466,9 +16466,9 @@ class ProcInfoCommand(GenericCommand):
         for i, cpid in enumerate(children, start=1):
             cpid_exec = self.get_process_path_of(cpid)
             cpid_cmdline = self.get_cmdline_of(cpid)
-            gef_print("{:32s} {} {}".format("Child {} PID".format(i), RIGHT_ARROW, cpid))
-            gef_print("{:32s} {} {}".format("  Executable", RIGHT_ARROW, repr(cpid_exec)))
-            gef_print("{:32s} {} {}".format("  Command Line", RIGHT_ARROW, repr(cpid_cmdline)))
+            gef_print("{:32s} {:s} {:d}".format("Child {:d} PID".format(i), RIGHT_ARROW, cpid))
+            gef_print("{:32s} {:s} {!r}".format("  Executable", RIGHT_ARROW, cpid_exec))
+            gef_print("{:32s} {:s} {!r}".format("  Command Line", RIGHT_ARROW, cpid_cmdline))
         return
 
     def show_info_thread(self):
@@ -16477,13 +16477,13 @@ class ProcInfoCommand(GenericCommand):
         pid = Pid.get_pid()
         nthreads = self.get_state_of(pid)["Threads"]
         tgid = self.get_state_of(pid)["Tgid"]
-        gef_print("{:32s} {} {}".format("Num of Threads", RIGHT_ARROW, nthreads))
-        gef_print("{:32s} {} {}".format("Thread Group ID", RIGHT_ARROW, tgid))
+        gef_print("{:32s} {:s} {:s}".format("Num of Threads", RIGHT_ARROW, nthreads))
+        gef_print("{:32s} {:s} {:s}".format("Thread Group ID", RIGHT_ARROW, tgid))
         tids = self.get_thread_ids(pid)
         split = 8
-        gef_print("{:32s} {} {}".format("Thread ID List", RIGHT_ARROW, tids[:split]))
+        gef_print("{:32s} {:s} {!r}".format("Thread ID List", RIGHT_ARROW, tids[:split]))
         for i in range(split, len(tids), split):
-            gef_print("{:32s} {} {}".format("", RIGHT_ARROW, tids[i:i + split]))
+            gef_print("{:32s} {:s} {!r}".format("", RIGHT_ARROW, tids[i:i + split]))
         return
 
     def show_info_proc_ns(self):
@@ -16505,18 +16505,30 @@ class ProcInfoCommand(GenericCommand):
         gef_print(titlify("Pid Namespace Information"))
         state = self.get_state_of(pid)
         if len(state["NSpid"].split()) > 1:
-            gef_print("{:32s} {} {}".format("Host PID  : Namespace PID", RIGHT_ARROW, re.sub(r"\s+", " : ", state["NSpid"])))
-            gef_print("{:32s} {} {}".format("Host PGID : Namespace PGID", RIGHT_ARROW, re.sub(r"\s+", " : ", state["NSpgid"])))
-            gef_print("{:32s} {} {}".format("Host SID  : Namespace SID", RIGHT_ARROW, re.sub(r"\s+", " : ", state["NSsid"])))
-            gef_print("{:32s} {} {}".format("Host TGID : Namespace TGID", RIGHT_ARROW, re.sub(r"\s+", " : ", state["NStgid"])))
+            gef_print("{:32s} {:s} {:s}".format(
+                "Host PID  : Namespace PID", RIGHT_ARROW, re.sub(r"\s+", " : ", state["NSpid"]),
+            ))
+            gef_print("{:32s} {:s} {:s}".format(
+                "Host PGID : Namespace PGID", RIGHT_ARROW, re.sub(r"\s+", " : ", state["NSpgid"]),
+            ))
+            gef_print("{:32s} {:s} {:s}".format(
+                "Host SID  : Namespace SID", RIGHT_ARROW, re.sub(r"\s+", " : ", state["NSsid"]),
+            ))
+            gef_print("{:32s} {:s} {:s}".format(
+                "Host TGID : Namespace TGID", RIGHT_ARROW, re.sub(r"\s+", " : ", state["NStgid"]),
+            ))
         else:
             gef_print("{:32s}".format("No pid namespace"))
 
         gef_print(titlify("User Namespace Information"))
         for u in self.get_uid_map(pid):
-            gef_print("{:32s} {} [{:#x} : {:#x} : {:#x}]".format("UID_MAP [NameSpace:Host:Range]", RIGHT_ARROW, u[0], u[1], u[2]))
+            gef_print("{:32s} {:s} [{:#x} : {:#x} : {:#x}]".format(
+                "UID_MAP [NameSpace:Host:Range]", RIGHT_ARROW, u[0], u[1], u[2],
+            ))
         for g in self.get_gid_map(pid):
-            gef_print("{:32s} {} [{:#x} : {:#x} : {:#x}]".format("GID_MAP [NameSpace:Host:Range]", RIGHT_ARROW, g[0], g[1], g[2]))
+            gef_print("{:32s} {:s} [{:#x} : {:#x} : {:#x}]".format(
+                "GID_MAP [NameSpace:Host:Range]", RIGHT_ARROW, g[0], g[1], g[2],
+            ))
         return
 
     def show_fds(self):
@@ -16525,7 +16537,7 @@ class ProcInfoCommand(GenericCommand):
         pid = Pid.get_pid()
         path = "/proc/{:d}/fd".format(pid)
 
-        gef_print("{:32s} {} {}".format("Num of FD slots", RIGHT_ARROW, self.get_state_of(pid)["FDSize"]))
+        gef_print("{:32s} {:s} {:s}".format("Num of FD slots", RIGHT_ARROW, self.get_state_of(pid)["FDSize"]))
         items = os.listdir(path)
         if not items:
             gef_print("No FD opened")
@@ -16596,9 +16608,9 @@ class ProcInfoCommand(GenericCommand):
                     state = int(state, 16)
                     state_str = tcp_states_str[state] if proto == "TCP" else udp_states_str[state]
 
-                    conn_local = "{}:{}".format(local[0], local[1])
-                    conn_remote = "{}:{}".format(remote[0], remote[1])
-                    gef_print("{:32s} {} {} ({})".format(conn_local, RIGHT_ARROW, conn_remote, state_str))
+                    conn_local = "{:s}:{:d}".format(local[0], local[1])
+                    conn_remote = "{:s}:{:d}".format(remote[0], remote[1])
+                    gef_print("{:32s} {:s} {:s} ({:s})".format(conn_local, RIGHT_ARROW, conn_remote, state_str))
         return
 
     @parse_args
@@ -16761,7 +16773,7 @@ class ProcDumpCommand(GenericCommand):
                     continue
 
                 if f in ["pagemap", "mem"]:
-                    self.out.append("{} skipped".format(Color.colorify("[*]", "bold yellow"))) # too large
+                    self.out.append("{:s} skipped".format(Color.colorify("[*]", "bold yellow"))) # too large
                     continue
 
                 if f == "environ":
@@ -16994,7 +17006,7 @@ class CapabilityCommand(GenericCommand):
 
     def get_thread_ids(self, pid):
         try:
-            tids = os.listdir("/proc/{}/task".format(pid))
+            tids = os.listdir("/proc/{:d}/task".format(pid))
             return [int(x) for x in tids]
         except (FileNotFoundError, OSError):
             return []
@@ -17205,7 +17217,7 @@ class SmartMemoryDumpCommand(GenericCommand):
                 path = path.replace("<", "").replace(">", "") # consider <tls-th1>, <explored>
             path = path.replace(" ", "_") # consider deleted case. e.g.: /path/to/file (deleted)
 
-            dumpfile_name = "{:s}{:0{}x}-{:0{}x}_{:s}_{:s}{:s}.raw".format(
+            dumpfile_name = "{:s}{:0{:d}x}-{:0{:d}x}_{:s}_{:s}{:s}.raw".format(
                 self.prefix, start, addr_len, end, addr_len, perm, path, self.suffix,
             )
 
@@ -17322,7 +17334,7 @@ class HijackFdCommand(GenericCommand):
 
     def call_syscall(self, syscall_name, args):
         args = " ".join([hex(x) if x >= 0 else str(x) for x in args])
-        cmd = "call-syscall {:s} {}".format(syscall_name, args)
+        cmd = "call-syscall {:s} {:s}".format(syscall_name, args)
         info(cmd)
         res = gdb.execute(cmd, to_string=True)
         output_line = res.splitlines()[-1]
@@ -17373,8 +17385,8 @@ class HijackFdCommand(GenericCommand):
             err("Failed to read stack")
             return None, None
 
-        info("Original contents: {} @ {:#x}".format(original_contents, stack_addr))
-        info("Overwrite data: {}".format(data))
+        info("Original contents: {!s} @ {:#x}".format(original_contents, stack_addr))
+        info("Overwrite data: {!s}".format(data))
 
         # overwrite it
         try:
@@ -17396,7 +17408,7 @@ class HijackFdCommand(GenericCommand):
         if stack_addr is None:
             return None
 
-        info("Trying to open {}".format(args.new_output))
+        info("Trying to open {!s}".format(args.new_output))
 
         AT_FDCWD = -100
         flags = self.O_APPEND | self.O_CREAT | self.O_RDWR
@@ -18806,7 +18818,9 @@ class MmapMemoryCommand(GenericCommand):
             flags |= 0x800 # MAP_DENYWRITE (why?)
 
         # doit
-        cmd = "call-syscall {:s} {:#x} {:#x} {:#x} {:#x} -1 0".format(mmap_syscall_name, args.location, args.size, perm, flags)
+        cmd = "call-syscall {:s} {:#x} {:#x} {:#x} {:#x} -1 0".format(
+            mmap_syscall_name, args.location, args.size, perm, flags,
+        )
         gdb.execute(cmd)
         Cache.reset_gef_caches()
         return
@@ -63573,8 +63587,10 @@ class GdtInfoCommand(GenericCommand):
             # extra info
             reglist = regs.get(i, [])
             if reglist:
-                reglist = "{:s}{:s}".format(LEFT_ARROW, " ,".join(reglist))
-                regstr = Color.colorify(reglist, Config.get_gef_setting("theme.dereference_register_value"))
+                regstr = Color.colorify(
+                    "{:s}{:s}".format(LEFT_ARROW, " ,".join(reglist)),
+                    Config.get_gef_setting("theme.dereference_register_value"),
+                )
             else:
                 regstr = ""
 
