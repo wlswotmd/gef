@@ -16627,23 +16627,102 @@ class FileDescriptorsCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     _syntax_ = parser.format_help()
 
-    @parse_args
-    @only_if_gdb_running
-    @only_if_gdb_target_local
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
-    def do_invoke(self, args):
+    def fd_dump(self):
         pid = Pid.get_pid()
+        if not pid:
+            err("Not found local pid")
+            return
         path = "/proc/{:d}/fd".format(pid)
 
         items = os.listdir(path)
         if not items:
-            gef_print("No FD opened")
+            err("No FD opened")
             return
 
         for fname in items:
             fullpath = os.path.join(path, fname)
             if os.path.islink(fullpath):
                 gef_print("{:32s} {:s} {:s}".format(fullpath, RIGHT_ARROW, os.readlink(fullpath)))
+        return
+
+    # I also created a heuristic version, but it seems unnecessary.
+    # I'll leave it here for now.
+    def fd_dump_heuristic(self): # noqa
+        # 1. Get inode numbers from /proc/pid/fd
+        pid = Pid.get_pid()
+        if not pid:
+            err("Not found local pid")
+            return
+        path = "/proc/{:d}/fd".format(pid)
+
+        items = os.listdir(path)
+        if not items:
+            err("No FD opened")
+            return
+
+        outer_fds = {}
+        for fname in items:
+            fullpath = os.path.join(path, fname)
+            if not os.path.islink(fullpath):
+                continue
+            ino = os.stat(fullpath).st_ino
+            realpath = os.readlink(fullpath)
+            outer_fds[ino] = realpath
+
+        # 2. Get inode numbers from fstat system call
+        # check if stack is writable
+        if not is_valid_addr(current_arch.sp):
+            err("*$sp is not writable")
+            return
+
+        # get fstat system call number
+        try:
+            syscall_table = get_syscall_table()
+        except Exception:
+            err("syscall table does not exist")
+            return
+        for nr, entry in syscall_table.table.items():
+            if is_x86_64() and nr >= 0x40000000:
+                continue
+            if "fstat" == entry.name:
+                fstat_nr = nr
+                break
+        else:
+            err("System call `fstat` is not found.")
+            return
+
+        # prepare
+        sizeof_struct_stat = current_arch.ptrsize * 18
+        old_mem = read_memory(current_arch.sp, sizeof_struct_stat)
+        fd_max = 64 # The maximum value of fd
+
+        # call syscall
+        inner_fds = []
+        tqdm = GefUtil.get_tqdm(use_tqdm=True)
+        for fd in tqdm(range(fd_max), leave=False):
+            ret = ExecSyscall(fstat_nr, [fd, current_arch.sp]).exec_code()
+            if ret["reg"][current_arch.return_register] != 0:
+                continue
+            ino = read_int_from_memory(current_arch.sp + current_arch.ptrsize)
+            inner_fds.append([fd, ino])
+
+        # revert
+        write_memory(current_arch.sp, old_mem)
+
+        # print
+        for fd, ino in inner_fds:
+            fullpath = os.path.join("/proc/self/fd/", str(fd))
+            if ino not in outer_fds:
+                gef_print("{:32s} {:s} {:s}".format(fullpath, RIGHT_ARROW, "???"))
+            else:
+                gef_print("{:32s} {:s} {:s}".format(fullpath, RIGHT_ARROW, outer_fds[ino]))
+        return
+
+    @parse_args
+    @only_if_gdb_running
+    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware", "wine"))
+    def do_invoke(self, args):
+        self.fd_dump()
         return
 
 
@@ -63002,8 +63081,9 @@ class ExecSyscall(ExecAsm):
             syscall_insn = syscall_insn[:-1] + bytes([nr])
 
         codes += [syscall_insn]
-        if current_arch.has_syscall_delay_slot:
-            codes += [current_arch.nop_insn]
+        # When stepping through a system call instruction, execution may continue to the next instruction.
+        # Depending on the version of gdb, this can occur even on architectures without delay slots, so a nop is required.
+        codes += [current_arch.nop_insn]
 
         # list to bytes
         if Endian.is_big_endian():
