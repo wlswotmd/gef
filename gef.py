@@ -59582,7 +59582,7 @@ class KernelOperationsCommand(GenericCommand):
     parser.add_argument("mode", choices=types, help="the structure type.")
     parser.add_argument("address", metavar="ADDRESS", nargs="?", type=AddressUtil.parse_address,
                         help="the address interpreted as ops.")
-    parser.add_argument("-V", "--version", help="use specific kernel version")
+    parser.add_argument("-V", "--version", help="use specific kernel version. (default: detected kernel version)")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
     _syntax_ = parser.format_help()
@@ -59590,7 +59590,9 @@ class KernelOperationsCommand(GenericCommand):
     _example_ = "{:s} -q\n".format(_cmdline_)
     _example_ += "{:s} -q -V 6.6.0".format(_cmdline_)
 
-    _note_ = "This command needs CONFIG_RANDSTRUCT=n."
+    _note_ = "This command needs CONFIG_RANDSTRUCT=n.\n"
+    _note_ += "\n"
+    _note_ += "Currently supports from 3.0 to 6.12-rc2."
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -59598,7 +59600,7 @@ class KernelOperationsCommand(GenericCommand):
 
     def initialize(self, kversion):
         if kversion.major < 3:
-            err("Unsupported v3.0 or before")
+            err("Unsupported v2.x")
             return False
 
         self.members = {}
@@ -59623,6 +59625,7 @@ class KernelOperationsCommand(GenericCommand):
         file_operations = [
             # type,      name                                       minver     maxver
             ["ptr",      "owner",                                   None,      None],
+            ["int",      "flags",                                   "6.10.0",  None],
             ["func_ptr", "llseek",                                  None,      None],
             ["func_ptr", "read",                                    None,      None],
             ["func_ptr", "write",                                   None,      None],
@@ -59632,14 +59635,14 @@ class KernelOperationsCommand(GenericCommand):
             ["func_ptr", "write_iter",                              "3.16.0",  None],
             ["func_ptr", "readdir",                                 None,      "3.10.108"],
             ["func_ptr", "iopoll",                                  "5.1.0",   None],
-            ["func_ptr", "iterate",                                 "3.11.0",  None],
+            ["func_ptr", "iterate",                                 "3.11.0",  "6.4.16"],
             ["func_ptr", "iterate_shared",                          "4.7.0",   None],
             ["func_ptr", "poll",                                    None,      None],
             ["func_ptr", "unlocked_ioctl",                          None,      None],
             ["func_ptr", "compat_ioctl",                            None,      None],
             ["func_ptr", "mmap",                                    None,      None],
             ["func_ptr", "mremap",                                  "3.19.0",  "4.2.8"],
-            ["ulong",    "mmap_supported_flags",                    "4.15.0",  None],
+            ["ulong",    "mmap_supported_flags",                    "4.15.0",  "6.9.12"],
             ["func_ptr", "open",                                    None,      None],
             ["func_ptr", "flush",                                   None,      None],
             ["func_ptr", "release",                                 None,      None],
@@ -59647,12 +59650,13 @@ class KernelOperationsCommand(GenericCommand):
             ["func_ptr", "aio_fsync",                               None,      "4.8.17"],
             ["func_ptr", "fasync",                                  None,      None],
             ["func_ptr", "lock",                                    None,      None],
-            ["func_ptr", "sendpage",                                None,      None],
+            ["func_ptr", "sendpage",                                None,      "6.4.16"],
             ["func_ptr", "get_unmapped_area",                       None,      None],
             ["func_ptr", "check_flags",                             None,      None],
             ["func_ptr", "flock",                                   None,      None],
             ["func_ptr", "splice_write",                            None,      None],
             ["func_ptr", "splice_read",                             None,      None],
+            ["func_ptr", "splice_eof",                              "6.5.0",   None],
             ["func_ptr", "setlease",                                None,      None],
             ["func_ptr", "fallocate",                               None,      None],
             ["func_ptr", "show_fdinfo",                             "3.8.0",   None],
@@ -59690,6 +59694,7 @@ class KernelOperationsCommand(GenericCommand):
             ["func_ptr", "hangup",                                  None,      None],
             ["func_ptr", "break_ctl",                               None,      None],
             ["func_ptr", "flush_buffer",                            None,      None],
+            ["func_ptr", "ldisc_ok",                                "6.1.0",   None],
             ["func_ptr", "set_ldisc",                               None,      None],
             ["func_ptr", "wait_until_sent",                         None,      None],
             ["func_ptr", "send_xchar",                              None,      None],
@@ -59783,6 +59788,7 @@ class KernelOperationsCommand(GenericCommand):
             ["func_ptr", "dentry_open",                             None,      "4.1.52"],
             ["func_ptr", "fileattr_set",                            "5.13.0",  None],
             ["func_ptr", "fileattr_get",                            "5.13.0",  None],
+            ["func_ptr", "get_offset_ctx",                          "6.6.0",   None],
         ]
         self.members["inode"] = adapt_to_kernel_version(inode_operations)
 
@@ -59828,7 +59834,8 @@ class KernelOperationsCommand(GenericCommand):
             ["func_ptr", "launder_page",                            None,      "5.17.15"],
             ["func_ptr", "is_partially_uptodate",                   None,      None],
             ["func_ptr", "is_dirty_writeback",                      "3.11.0",  None],
-            ["func_ptr", "error_remove_page",                       None,      None],
+            ["func_ptr", "error_remove_page",                       None,      "6.7.12"],
+            ["func_ptr", "error_remove_folio",                      "6.8.0",   None],
             ["func_ptr", "swap_activate",                           "3.6.0",   None],
             ["func_ptr", "swap_deactivate",                         "3.6.0",   None],
             ["func_ptr", "swap_rw",                                 "5.19.0",  None],
@@ -59890,6 +59897,7 @@ class KernelOperationsCommand(GenericCommand):
             ["func_ptr", "bdev_try_to_free_page",                   None,      "5.13.19"],
             ["func_ptr", "nr_cached_objects",                       "3.1.0",   None],
             ["func_ptr", "free_cached_objects",                     "3.1.0",   None],
+            ["func_ptr", "shutdown",                                "6.5.0",   None],
         ]
         self.members["super"] = adapt_to_kernel_version(super_operations)
 
