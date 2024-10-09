@@ -57988,7 +57988,7 @@ class KernelModuleLoadCommand(GenericCommand):
         kversion = Kernel.kernel_version()
         if kversion < "3.0":
             if not self.quiet:
-                err("Unsupported v3.0 or before")
+                err("Unsupported v2.x")
             return
 
         self.quiet = args.quiet
@@ -59592,7 +59592,7 @@ class KernelOperationsCommand(GenericCommand):
 
     _note_ = "This command needs CONFIG_RANDSTRUCT=n.\n"
     _note_ += "\n"
-    _note_ += "Currently supports from 3.0 to 6.12-rc2."
+    _note_ += "Currently it supports from 3.0 to 6.12-rc2."
 
     def __init__(self):
         super().__init__(complete=gdb.COMPLETE_LOCATION)
@@ -60199,38 +60199,46 @@ class KernelSysctlCommand(GenericCommand):
                             # data length
                             if handler in self.str_types:
                                 data_val = read_cstring_from_memory(data_addr)
-                                fmt = "{:<56s} {:#018x} {:#07x} {:#010o} {:s}"
-                                self.out.append(fmt.format(param_path, data_addr, maxlen, mode, str(data_val))) # allow None
+                                self.out.append("{:<56s} {:#018x} {:#07x} {:#010o} {!s}".format(
+                                    param_path, data_addr, maxlen, mode, data_val,
+                                )) # allow None
                             elif maxlen == 4:
                                 data_val = u32(read_memory(data_addr, 4))
-                                fmt = "{:<56s} {:#018x} {:#07x} {:#010o} {:#018x}"
-                                self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
+                                self.out.append("{:<56s} {:#018x} {:#07x} {:#010o} {:#018x}".format(
+                                    param_path, data_addr, maxlen, mode, data_val,
+                                ))
                             elif maxlen == 8:
                                 data_val = u64(read_memory(data_addr, 8))
-                                fmt = "{:<56s} {:#018x} {:#07x} {:#010o} {:#018x}"
-                                self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
+                                self.out.append("{:<56s} {:#018x} {:#07x} {:#010o} {:#018x}".format(
+                                    param_path, data_addr, maxlen, mode, data_val,
+                                ))
                             elif maxlen == 1:
                                 data_val = u8(read_memory(data_addr, 1))
-                                fmt = "{:<56s} {:#018x} {:#07x} {:#010o} {:#018x}"
-                                self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
+                                self.out.append("{:<56s} {:#018x} {:#07x} {:#010o} {:#018x}".format(
+                                    param_path, data_addr, maxlen, mode, data_val,
+                                ))
                             elif maxlen == 0:
                                 if self.verbose:
-                                    fmt = "{:<56s} {:#018x} {:#07x} {:#010o}"
-                                    self.out.append(fmt.format(param_path, data_addr, maxlen, mode))
+                                    self.out.append("{:<56s} {:#018x} {:#07x} {:#010o}".format(
+                                        param_path, data_addr, maxlen, mode,
+                                    ))
                             else:
                                 # type from heuristic
                                 data_val = read_cstring_from_memory(data_addr)
                                 if data_val and data_val.isprintable() and len(data_val) >= 2:
-                                    fmt = "{:<56s} {:#018x} {:#07x} {:#010o} {:s}"
-                                    self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
+                                    self.out.append("{:<56s} {:#018x} {:#07x} {:#010o} {:s}".format(
+                                        param_path, data_addr, maxlen, mode, data_val,
+                                    ))
                                 else:
                                     data_val = read_int_from_memory(data_addr)
-                                    fmt = "{:<56s} {:#018x} {:#07x} {:#010o} {:#018x}"
-                                    self.out.append(fmt.format(param_path, data_addr, maxlen, mode, data_val))
+                                    self.out.append("{:<56s} {:#018x} {:#07x} {:#010o} {:#018x}".format(
+                                        param_path, data_addr, maxlen, mode, data_val,
+                                    ))
                         else:
                             if self.verbose:
-                                fmt = "{:<56s} {:#018x} {:#07x} {:#010o}"
-                                self.out.append(fmt.format(param_path, data_addr, maxlen, mode))
+                                self.out.append("{:<56s} {:#018x} {:#07x} {:#010o}".format(
+                                    param_path, data_addr, maxlen, mode,
+                                ))
                         if self.exact:
                             self.exact_found = True
                             return
@@ -60883,7 +60891,10 @@ class KernelFileSystemsCommand(GenericCommand):
     def parse_file_systems(self, skip_mount_path):
         if not self.quiet:
             fmt = "{:18s} {:12s} {:18s} {:20s} {:6s} {:6s} {:18s} {:18s} {:s}"
-            legend = ["file_system_type", "fsname", "super_block", "devname", "major", "minor", "s_mount", "(parsed) mount", "mount_point"]
+            legend = [
+                "file_system_type", "fsname", "super_block", "devname", "major", "minor",
+                "s_mount", "(parsed) mount", "mount_point",
+            ]
             self.out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
 
         fst = read_int_from_memory(self.file_systems)
@@ -61903,8 +61914,9 @@ class KernelPciDeviceCommand(GenericCommand):
             base_class = (class_val >> 16) & 0xff
 
             desc = self.get_description(base_class, sub_class, prgif, vendor, device, sub_vendor, sub_device)
-            fmt = "{:#018x} {:s} {:02x}{:02x}:{:02x} {:04x}:{:04x}  {:04x}:{:04x}  {:02x}  {:s}"
-            self.out.append(fmt.format(dev, dev_name, base_class, sub_class, prgif, vendor, device, sub_vendor, sub_device, revision, desc))
+            self.out.append("{:#018x} {:s} {:02x}{:02x}:{:02x} {:04x}:{:04x}  {:04x}:{:04x}  {:02x}  {:s}".format(
+                dev, dev_name, base_class, sub_class, prgif, vendor, device, sub_vendor, sub_device, revision, desc,
+            ))
 
             if self.verbose:
                 # parse resource
@@ -61937,8 +61949,9 @@ class KernelPciDeviceCommand(GenericCommand):
                         else:
                             type_str = "???"
 
-                        fmt = "  [{:d}] {:7s}: {:#010x}-{:#010x} ({:#010x}) flags:{:#x} ({:s})"
-                        self.out.append(fmt.format(i, type_str, resource_i_start, resource_i_end, resource_i_size, resource_i_flags, flag_str))
+                        self.out.append("  [{:d}] {:7s}: {:#010x}-{:#010x} ({:#010x}) flags:{:#x} ({:s})".format(
+                            i, type_str, resource_i_start, resource_i_end, resource_i_size, resource_i_flags, flag_str,
+                        ))
 
                         # add more details
                         ret = self.search_label(resource_i_start, resource_i_end)
@@ -62013,7 +62026,8 @@ class KernelConfigCommand(GenericCommand):
     _category_ = "08-d. Qemu-system Cooperation - Linux Advanced"
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP include filter.")
+    parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[],
+                        help="REGEXP include filter.")
     parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
