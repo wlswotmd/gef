@@ -440,7 +440,8 @@ class Cache:
 
 class Config:
     """Manages gef configurations. Most configs are tied to specific commands.
-    They are defined in the form `command_name.config_name`."""
+    They are defined in the form `command_name.config_name`.
+    Internally it is stored as a triple (value, type, description)."""
 
     __gef_config__ = {} # keep gef configs
     __gef_config_orig__ = {} # for debugging
@@ -448,11 +449,10 @@ class Config:
     @staticmethod
     @Cache.cache_until_next
     def get_gef_setting(name):
-        """Read global gef settings.
-        Return None if not found. A valid config setting can never return None, but False, 0 or ""."""
+        """Read global gef settings. Return None if not found."""
         setting = Config.__gef_config__.get(name, None)
-        if not setting:
-            return None
+        if setting is None:
+            return None # A valid config can never return None, but False, 0 or ""
         return setting[0]
 
     @staticmethod
@@ -2412,7 +2412,8 @@ class Elf:
             else:
                 self.p_type, self.p_offset = struct.unpack("{}II".format(endian), elf.read(8))
                 self.p_vaddr, self.p_paddr = struct.unpack("{}II".format(endian), elf.read(8))
-                self.p_filesz, self.p_memsz, self.p_flags, self.p_align = struct.unpack("{}IIII".format(endian), elf.read(16))
+                self.p_filesz, self.p_memsz, = struct.unpack("{}II".format(endian), elf.read(8))
+                self.p_flags, self.p_align = struct.unpack("{}II".format(endian), elf.read(8))
 
         def __repr__(self):
             for e in dir(self):
