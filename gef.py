@@ -58035,7 +58035,7 @@ class KernelModuleLoadCommand(GenericCommand):
 
 
 @register_command
-class KernelBlockDevicesCommand(GenericCommand):
+class KernelBlockDevicesCommand(GenericCommand, BufferingOutput):
     """Display block device list."""
 
     _cmdline_ = "kbdev"
@@ -58400,20 +58400,15 @@ class KernelBlockDevicesCommand(GenericCommand):
             bdevs_with_info.append([major, minor, name, bdev])
 
         # print
-        fmt = "{:#018x} {:<18s} {:<6d} {:<6d}"
         for major, minor, name, bdev in sorted(bdevs_with_info):
-            self.out.append(fmt.format(bdev, name, major, minor))
+            self.out.append("{:#018x} {:<18s} {:<6d} {:<6d}".format(bdev, name, major, minor))
 
-        if self.out:
-            if len(self.out) > GefUtil.get_terminal_size()[0]:
-                gef_print("\n".join(self.out), less=not args.no_pager)
-            else:
-                gef_print("\n".join(self.out), less=False)
+        self.print_output(args, term=True)
         return
 
 
 @register_command
-class KernelCharacterDevicesCommand(GenericCommand):
+class KernelCharacterDevicesCommand(GenericCommand, BufferingOutput):
     """Display character device list."""
 
     _cmdline_ = "kcdev"
@@ -59541,19 +59536,16 @@ class KernelCharacterDevicesCommand(GenericCommand):
             self.out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
 
         for (major, minor), m in sorted(merged.items()):
-            fmt = "{:#018x} {:<18s} {:<24s} {:<6d} {:<6d} {:#018x} {:#018x} {:<18s} {:#018x}{:s}"
             guessed_name = KernelCharacterDevicesCommand.get_cdev_name(major, minor)
             if not args.verbose:
                 if m["chrdev"] == 0:
                     continue
-            self.out.append(fmt.format(m["chrdev"], m["name"], guessed_name, major, minor,
-                                       m["cdev"], m["parent"], m["parent_name"], m["ops"], m["ops_sym"]))
+            self.out.append("{:#018x} {:<18s} {:<24s} {:<6d} {:<6d} {:#018x} {:#018x} {:<18s} {:#018x}{:s}".format(
+                m["chrdev"], m["name"], guessed_name, major, minor,
+                m["cdev"], m["parent"], m["parent_name"], m["ops"], m["ops_sym"],
+            ))
 
-        if self.out:
-            if len(self.out) > GefUtil.get_terminal_size()[0]:
-                gef_print("\n".join(self.out), less=not args.no_pager)
-            else:
-                gef_print("\n".join(self.out), less=False)
+        self.print_output(args, term=True)
         return
 
 
