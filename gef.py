@@ -88095,6 +88095,201 @@ class KmallocAllocatedByCommand(GenericCommand):
         return
 
 
+class KtraceBreakpoint(gdb.Breakpoint):
+    """Create a breakpoint to print information for kernel functions."""
+
+    def __init__(self, loc, sym, task_name, task_addr):
+        super().__init__("*{:#x}".format(loc), gdb.BP_BREAKPOINT, internal=True)
+        self.loc = loc
+        self.sym = sym
+        self.task_name = task_name
+        self.task_addr = task_addr
+        return
+
+    def stop(self):
+        Cache.reset_gef_caches()
+
+        # check task
+        task_addr, task_name = KmallocTracerCommand.get_task()
+        if self.task_name and task_name not in self.task_name:
+            return False
+        if self.task_addr and task_addr not in self.task_addr:
+            return False
+
+        # get args
+        arg_key_color = Config.get_gef_setting("theme.registers_register_name")
+        args = []
+        nb_argument = 6 # guessed
+        for i in range(nb_argument):
+            try:
+                _key, _value = current_arch.get_ith_parameter(i, in_func=True)
+                _value = AddressUtil.recursive_dereference_to_string(_value)
+            except Exception:
+                break
+            args.append("    {} = {}".format(Color.colorify(_key, arg_key_color), _value))
+
+        # random id to distinguish between nested functions
+        import random
+        random_id = random.randint(1, 0xffffffff)
+
+        # print
+        task_prefix = Color.boldify("[task:{:#018x} {:16s}]".format(task_addr, task_name))
+        gef_print("{:s} {:#x} <{:s}> ( // enter // random_id:{:#x}".format(
+            task_prefix, self.loc, self.sym, random_id,
+        ))
+        for arg in args:
+            gef_print(arg)
+        gef_print(")")
+
+        # set bp for return value
+        try:
+            KtraceRetBreakpoint(self.loc, self.sym, self.task_name, self.task_addr, random_id)
+        except gdb.error:
+            # The case is following (why?):
+            #   Warning:
+            #   Cannot insert breakpoint -440.
+            #   Cannot access memory at address 0x0
+            pass
+        return False
+
+
+class KtraceRetBreakpoint(gdb.FinishBreakpoint):
+    """Create a breakpoint to print information for kernel functions."""
+
+    def __init__(self, loc, sym, task_name, task_addr, random_id):
+        super().__init__(gdb.newest_frame(), internal=True)
+        self.loc = loc
+        self.sym = sym
+        self.task_name = task_name
+        self.task_addr = task_addr
+        self.random_id = random_id
+        KernelTraceCommand.finish_breakpoints.append(self)
+        return
+
+    def stop(self):
+        Cache.reset_gef_caches()
+
+        # check task
+        task_addr, task_name = KmallocTracerCommand.get_task()
+        if self.task_name and task_name not in self.task_name:
+            return False
+        if self.task_addr and task_addr not in self.task_addr:
+            return False
+
+        # get return value
+        arg_key_color = Config.get_gef_setting("theme.registers_register_name")
+        # self.return_value unavailable since no type information. use current_arch.return register
+        reg = current_arch.return_register
+        value = AddressUtil.recursive_dereference_to_string(get_register(reg))
+        msg = "    {} = {}".format(Color.colorify(reg, arg_key_color), value)
+
+        # print
+        task_prefix = Color.boldify("[task:{:#018x} {:16s}]".format(task_addr, task_name))
+        gef_print("{:s} {:#x} <{:s}> ( // return // random_id:{:#x}".format(
+            task_prefix, self.loc, self.sym, self.random_id,
+        ))
+        gef_print(msg)
+        gef_print(")")
+        return False
+
+    def out_of_scope(self): # noqa
+        if self.enabled:
+            self.enabled = False
+
+        # print
+        task_addr, task_name = KmallocTracerCommand.get_task()
+        task_prefix = Color.boldify("[task:{:#018x} {:16s}]".format(task_addr, task_name))
+        warn("{:s} {:#x} <{:s}> (random_id{:#x}) has been disabled due to out of scope.".format(
+            task_prefix, self.loc, self.sym, self.random_id,
+        ))
+        return
+
+
+@register_command
+class KernelTraceCommand(GenericCommand):
+    """Trace kernel functions and arguments."""
+
+    _cmdline_ = "ktrace"
+    _category_ = "08-i. Qemu-system Cooperation - Other"
+
+    parser = argparse.ArgumentParser(prog=_cmdline_)
+    parser.add_argument("--task-name", action="append", default=[],
+                        help="task name (from `ktask`) for filtering.")
+    parser.add_argument("--task-addr", action="append", default=[], type=AddressUtil.parse_address,
+                        help="task address for filtering.")
+    parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[],
+                        help="function include filter (REGEXP).")
+    parser.add_argument("-e", "--exclude", action="append", type=re.compile, default=[],
+                        help="function exclude filter (REGEXP).")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="display the function name where breakpoint is set.")
+    parser.add_argument("-q", "--quiet", action="store_true", help="skip tqdm.")
+    _syntax_ = parser.format_help()
+
+    _note_ = "If you set breakpoints in some commonly called functions, it became too slow to be useful.\n"
+    _note_ += "Use filtering options to reduce the number of functions targeted by breakpoints as much as possible.\n"
+    _note_ += "This command is not stable and may crash the kernel (under --enable-kvm ?)."
+
+    finish_breakpoints = []
+
+    @parse_args
+    @only_if_gdb_running
+    @only_if_specific_gdb_mode(mode=("qemu-system", "vmware"))
+    @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
+    @only_if_in_kernel
+    def do_invoke(self, args):
+        text_base = Symbol.get_ksymaddr("_stext")
+        if text_base is None:
+            err("Failed to get kernel base (_stext)")
+            return False
+
+        # set break points
+        info("Set breakpoints in all functions that match the specified criteria.")
+        tqdm = GefUtil.get_tqdm(not args.quiet)
+        res = gdb.execute("ksymaddr-remote --quiet --no-pager --type t", to_string=True)
+        breakpoints = []
+        for line in tqdm(res.splitlines(), leave=False):
+            func_addr, _, func_name = line.split()
+            func_addr = int(func_addr, 16)
+
+            # user specified filtering
+            if args.filter and not any(filt.search(func_name) for filt in args.filter):
+                continue
+            if args.exclude and any(filt.search(func_name) for filt in args.exclude):
+                continue
+
+            if func_addr < text_base: # lower address is percpu-relative.
+                continue
+            if not is_valid_addr(func_addr): # The function with `init` attribute may no longer exist.
+                continue
+
+            bp = KtraceBreakpoint(func_addr, func_name, args.task_name, args.task_addr)
+            breakpoints.append(bp)
+
+        if args.verbose:
+            gef_print(titlify("breakpoint target"))
+            for bp in breakpoints:
+                info("{:#x} {:s}".format(bp.loc, bp.sym))
+            gef_print(titlify(""))
+
+        # Locking a thread can have disadvantages: such as making it impossible to enter commands
+        # from the guest's terminal. Therefore, we decided not to disable it.
+
+        # doit
+        info("Setup is complete (set {:d} braekpoints). continuing...".format(len(breakpoints)))
+        gdb.execute("continue")
+
+        # clean up
+        info("ktrace is complete, cleaning up...")
+        for bp in breakpoints:
+            bp.delete()
+        while KernelTraceCommand.finish_breakpoints:
+            bp = KernelTraceCommand.finish_breakpoints.pop()
+            if bp.is_valid():
+                bp.delete()
+        return
+
+
 @register_command
 class UefiOvmfInfoCommand(GenericCommand):
     """Print UEFI OVMF info."""

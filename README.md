@@ -258,6 +258,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/thunk-tracer.png)
 * `usermodehelper-tracer`: collects and displays the information that is executed by `call_usermodehelper_setup`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/usermodehelper-tracer.png)
+* `ktrace`: traces kernel functions and arguments.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktrace.png)
 
 ### Qemu-user cooperation
 * `si`/`ni`: are the wrapper for native `si`/`ni` if OpenRISC or cris.
