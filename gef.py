@@ -15977,8 +15977,10 @@ class DumpArgsCommand(GenericCommand):
     _aliases_ = ["args"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("-c", "--count", type=lambda x: int(x, 0), help="number of arguments to guess.")
-    parser.add_argument("-o", "--out-of-function", action="store_true", help="assume here is out of the function.")
+    parser.add_argument("-c", "--count", type=lambda x: int(x, 0),
+                        help="number of arguments to guess.")
+    parser.add_argument("-o", "--out-of-function", action="store_true",
+                        help="assume here is out of the function.")
     _syntax_ = parser.format_help()
 
     @parse_args
@@ -57988,7 +57990,7 @@ class KernelModuleLoadCommand(GenericCommand):
         kversion = Kernel.kernel_version()
         if kversion < "3.0":
             if not self.quiet:
-                err("Unsupported v2.x")
+                err("Unsupported before v3.0")
             return
 
         self.quiet = args.quiet
@@ -59600,7 +59602,7 @@ class KernelOperationsCommand(GenericCommand):
 
     def initialize(self, kversion):
         if kversion.major < 3:
-            err("Unsupported v2.x")
+            err("Unsupported before v3.0")
             return False
 
         self.members = {}
@@ -61507,7 +61509,7 @@ class KernelTimerCommand(GenericCommand):
     def do_invoke(self, args):
         kversion = Kernel.kernel_version()
         if kversion < "4.8":
-            err("Unsupported v4.8 or before")
+            err("Unsupported before v4.8")
             return
 
         if not args.quiet:
@@ -70151,7 +70153,7 @@ class KernelBpfCommand(GenericCommand):
         if kversion < "4.20":
             # xarray is introduced from 4.20
             if not self.quiet:
-                err("Unsupported v4.19 or before")
+                err("Unsupported before v4.20")
             return
 
         stv_bpf_ret = gdb.execute("syscall-table-view -f bpf --quiet --no-pager", to_string=True)
@@ -70628,7 +70630,7 @@ class KernelIpcsCommand(GenericCommand):
         if kversion < "4.20":
             # xarray is introduced from 4.20
             if not self.quiet:
-                err("Unsupported v4.19 or before")
+                err("Unsupported before v4.20")
             return
 
         ipc_ns_list = self.get_all_ipc_ns()
@@ -71180,7 +71182,7 @@ class KernelDmaBufCommand(GenericCommand):
 
         kversion = Kernel.kernel_version()
         if kversion < "5.11":
-            err("Unsupported v5.10 or before")
+            err("Unsupported before v5.11")
             return
 
         ret = self.initialize()
@@ -71615,7 +71617,7 @@ class KernelIrqCommand(GenericCommand):
         if kversion < "4.20":
             # xarray is introduced from 4.20
             if not self.quiet:
-                err("Unsupported v4.19 or before")
+                err("Unsupported before v4.20")
             return
 
         ret = self.initialize()
@@ -85077,7 +85079,7 @@ class PageCommand(GenericCommand):
         if is_arm64():
             kversion = Kernel.kernel_version()
             if kversion < "4.7":
-                err("Unsupported v4.6 or before")
+                err("Unsupported before v4.7")
                 return
 
         if not self.initialized:
@@ -89171,7 +89173,7 @@ class WalkLinkListCommand(GenericCommand, BufferingOutput):
 
 
 @register_command
-class PeekPointersCommand(GenericCommand):
+class PeekPointersCommand(GenericCommand, BufferingOutput):
     """Find pointers belonging to other memory regions."""
 
     _cmdline_ = "peek-pointers"
@@ -89196,25 +89198,28 @@ class PeekPointersCommand(GenericCommand):
     def do_invoke(self, args):
         # get start address section
         start_addr = args.address or current_arch.sp
-        start_addr = ProcessMap.lookup_address(AddressUtil.align_address_to_size(start_addr, current_arch.ptrsize))
+        start_addr = AddressUtil.align_address_to_size(start_addr, current_arch.ptrsize)
+        start_addr = ProcessMap.lookup_address(start_addr)
         if start_addr.section is None:
             err("{:#x} does not exist".format(start_addr.value))
             return
 
         # get target
         vmmap = ProcessMap.get_process_maps()
+
+        get_param = lambda s: [s.path, s.page_start, s.page_end]
         if args.name:
             section_name = args.name
             if section_name == "stack":
-                sections = [[s.path, s.page_start, s.page_end] for s in vmmap if s.path.startswith("[stack]")]
+                sections = [get_param(s) for s in vmmap if s.path.startswith("[stack]")]
             elif section_name == "heap":
-                sections = [[s.path, s.page_start, s.page_end] for s in vmmap if s.path.startswith("[heap]")]
+                sections = [get_param(s) for s in vmmap if s.path.startswith("[heap]")]
             elif section_name == "binary":
-                sections = [[s.path, s.page_start, s.page_end] for s in vmmap if s.path == Path.get_filepath()]
+                sections = [get_param(s) for s in vmmap if s.path == Path.get_filepath()]
             else:
-                sections = [[s.path, s.page_start, s.page_end] for s in vmmap if section_name in s.path]
+                sections = [get_param(s) for s in vmmap if section_name in s.path]
         else:
-            sections = [[s.path, s.page_start, s.page_end] for s in vmmap]
+            sections = [get_param(s) for s in vmmap]
 
         # fix pathname
         for i in range(len(sections)):
@@ -89227,7 +89232,7 @@ class PeekPointersCommand(GenericCommand):
         data = slice_unpack(data, current_arch.ptrsize)
 
         # search
-        out = []
+        self.out = []
         for off, value in enumerate(data):
             value = ProcessMap.lookup_address(value)
             if not value:
@@ -89246,22 +89251,20 @@ class PeekPointersCommand(GenericCommand):
             found_offset = off * current_arch.ptrsize
             found_addr = ProcessMap.lookup_address(start_addr.value + found_offset)
             perm = value.section.permission
-            fmt = "Found at {!s} (+{:#x}): {!s}{:s} ('{:s}' [{!s}])"
-            out.append(fmt.format(found_addr, found_offset, value, sym, sec_name, perm))
+            self.out.append("Found at {!s} (+{:#x}): {!s}{:s} ('{:s}' [{!s}])".format(
+                found_addr, found_offset, value, sym, sec_name, perm,
+            ))
 
             # peek nbyte
             if args.nb_byte:
                 try:
                     peeked_data = read_memory(value.value, args.nb_byte)
                     h = hexdump(peeked_data, 0x10, base=value.value, show_symbol=False)
-                    out.append(h)
+                    self.out.append(h)
                 except gdb.MemoryError:
                     pass
 
-        if len(out) > GefUtil.get_terminal_size()[0]:
-            gef_print("\n".join(out), less=not args.no_pager)
-        else:
-            gef_print("\n".join(out), less=False)
+        self.print_output(args, term=True)
         return
 
 
