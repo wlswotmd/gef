@@ -90449,6 +90449,10 @@ class GefConfigCommand(GenericCommand):
     def complete(self, text, word): # noqa
         settings = sorted(Config.__gef_config__)
 
+        if text.strip() in settings:
+            # already matched
+            return []
+
         if text == "":
             # no prefix: example: `gef config TAB`
             return [s for s in settings if word is None or word in s]
