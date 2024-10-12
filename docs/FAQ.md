@@ -35,6 +35,8 @@ It will be created automatically the next time GEF starts.
 ## What is `install-minimal.sh`?
 This is an installer for running GEF in limited environments where required packages cannot be installed for some reason.
 
+The essence of it is very simple. Just download `gef.py`, place it, and add its path to `.gdbinit`.
+
 * To use all feature (=GEF's command), use `install.sh`.
 * If you do not need some features (used in a limited environment), use `install-minimal.sh`. It should work at least except some commands.
 
@@ -106,6 +108,9 @@ No, it doesn't work. It replaces `hugsy/gef`.
 The compatibility with `hugsy/gef` has already been lost. Of course, `hugsy/gef-extras` too.
 Think of it as a completely different product.
 
+Similarly, this GEF cannot be used at the same time as `peda` or `pwndbg`.
+Make sure you only load one of them.
+
 ## GDB will not load GEF.
 This is probably because gdb does not support cooperation with python3.
 
@@ -141,7 +146,7 @@ I don't really understand the reason for this.
 
 * Get `glibc` source
     ```
-    #Ubuntu 24.04 or later
+    # Ubuntu 24.04 or later
     sed -i -e 's/^Types: deb$/Types: deb deb-src/g' /etc/apt/sources.list.d/ubuntu.sources
 
     # Ubuntu 23.10 or before
@@ -219,7 +224,8 @@ The reason is that most memory access to kernel space is unavailable if KPTI is 
 ## How do I break in userland when using qemu-system?
 Use a hardware breakpoint.
 
-When you are stopped inside the kernel, is it in the intended process context? If so, just use `break *ADDRESS` as usual.
+When you are stopped inside the kernel, is it in the intended process context?
+If so, just use `break *ADDRESS` as usual.
 But if you're stuck in the kernel context of a different user process than you expected, or in a kernel thread like `swapper/0`,
 the virtual address of the process you wanted isn't mapped.
 For this reason, software breakpoints that embed `0xcc` in virtual memory cannot be used in some situations.
@@ -238,7 +244,7 @@ If you find a case where it doesn't work, please report it on the issue page.
 ## I don't like the color scheme.
 Customize it using the `theme` command, then `gef save`. The config is saved to `~/.gef.rc`.
 
-There is another option is disable colors. Try `gef config gef.disable_color True`.
+Another option is to disable colors. Try `gef config gef.disable_color True`.
 
 ## I don't want to add `-n` to every command to disable pager.
 Try `gef config gef.always_no_pager True` then `gef save`.
@@ -252,11 +258,12 @@ After that, try `slub-dump`, `ktask` and `ksysctl` as well.
 
 Other commands are less important, so check them with `gef help` if necessary.
 
-## Is GEF possible to re-display the results of a command (for using less-pager)?
+## Is GEF possible to re-display the results of a command (for using `less` pager)?
 Basically you can't.
 
-Please save as appropriate with `|$cat > /tmp/foo.txt` while the less-pager is running.
-Or try `gef config gef.keep_pager_result True` then `gef save`. From next time onwards, temporary files will no longer be deleted.
+Please save as appropriate with `|$cat > /tmp/foo.txt` while the `less` pager is running.
+Or try `gef config gef.keep_pager_result True` then `gef save`.
+From next time onwards, temporary files will no longer be deleted.
 
 ## Is GEF possible to pass the result of a command to a shell command?
 Yes, you can use built-in `pipe` command.
@@ -289,12 +296,14 @@ Currently, at least following commands do not work.
 Try `pagewalk` command.
 
 When connected to qemu-system or vmware's gdb stub, the `vmmap` command is just redirected to the `pagewalk` command.
-All options are ignored at this time. If you want to use some options, please use the `pagewalk` command instead of `vmmap` command.
+All options are ignored at this time.
+If you want to use some options, please use the `pagewalk` command instead of `vmmap` command.
 
 ## `vmlinux-to-elf-apply` command causes an error of creating ELF.
 Please update `vmlinux-to-elf` to the latest version.
 
-If the problem persists, try using the `ks-apply` command. The logic is different a little, so it might work.
+If the problem persists, try using the `ks-apply` command.
+The logic is different a little, so it might work.
 If it still doesn't work, please report it on the issue page.
 
 ## If I have `vmlinux` with debuginfo, how can I use `ks-apply`?
@@ -350,7 +359,7 @@ further debugging may prove unreliable.
 ```
 If so, this is caused by the `continue-for-qemu-user` command.
 
-`continue-for-qemu-user` is a command wrapper that accepts `Ctrl+C` even during `continue`.
+`continue-for-qemu-user` is a command wrapper of `c`(=`continue`) that accepts `Ctrl+C` even during `continue` under qemu-user.
 On some architectures, this wrapper may not work properly when running dynamically linked binaries with qemu-user.
 
 There are two ways to work around this:
@@ -389,7 +398,7 @@ This is because there are several values needed to convert `page` to `virt` (or 
 - `vmemmap`
 - `sizeof(struct page)`
 
-I concluded that the only way to get these is to calculate backwards from valid `page`, `virt` pairs.
+I concluded that the only way to get these is to calculate backwards from valid `page` and `virt` pairs.
 
 These pairs can be found with a very high probability while parsing the SLUB structure.
 Therefore, GEF calls the `slub-dump` command internally and temporarily, then calculate these values from the result.
