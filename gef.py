@@ -3771,22 +3771,42 @@ class GlibcHeap:
             else:
                 return self.addr + self.size
 
-        def tcachebins_addr(self, i):
+        @Cache.cache_until_next
+        def tcachebins_base_addr(self):
             if self.heap_base is None:
                 return None
 
+            # strict way
+            if len(GlibcHeap.get_all_arenas()) == 1:
+                # If there is only one arena, there is only one tcache to display.
+                # Use symbols if available.
+                try:
+                    return AddressUtil.parse_address("(void*) tcache")
+                except gdb.error:
+                    pass
+                # fall through
+
+            # heuristic way
             if (is_x86_32() or is_riscv32() or is_ppc32()) and not self.is_main_arena:
+                # This conditional branch is provided because the offsets for these three
+                # architectures may change in the future.
                 arch_offset = 0
             elif is_32bit():
                 arch_offset = 0
             else:
                 arch_offset = 0x10
+            return self.heap_base + arch_offset
+
+        def tcachebins_addr(self, i):
+            tcachebins_base = self.tcachebins_base_addr()
+            if tcachebins_base is None:
+                return None
 
             if get_libc_version() < (2, 30):
                 offset = self.TCACHE_MAX_BINS + i * current_arch.ptrsize
             else:
                 offset = 2 * self.TCACHE_MAX_BINS + i * current_arch.ptrsize
-            return self.heap_base + arch_offset + offset
+            return tcachebins_base + offset
 
         def fastbins_addr(self, i):
             if hasattr(self.__arena, "fastbins_addr"):
