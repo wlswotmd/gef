@@ -3138,9 +3138,13 @@ class GlibcHeap:
         @property
         def mmapped_mem_addr(self):
             if get_libc_version() >= (2, 15):
-                return AddressUtil.align_address_to_size(self.no_dyn_threshold_addr + self.int_t.sizeof, current_arch.ptrsize)
+                return AddressUtil.align_address_to_size(
+                    self.no_dyn_threshold_addr + self.int_t.sizeof, current_arch.ptrsize,
+                )
             else:
-                return AddressUtil.align_address_to_size(self.pagesize_addr + self.int_t.sizeof, current_arch.ptrsize)
+                return AddressUtil.align_address_to_size(
+                    self.pagesize_addr + self.int_t.sizeof, current_arch.ptrsize,
+                )
 
         @property
         def max_mmapped_mem_addr(self):
@@ -4095,13 +4099,15 @@ class GlibcHeap:
                     pos = ",".join([str(i + 1) for i, x in enumerate(tcache_list) if x == address])
                     sz = GlibcHeap.get_binsize_table()["tcache"][tcache_idx]["size"]
                     m = "tcache[idx={:d},sz={:#x}][{:s}/{:d}]".format(tcache_idx, sz, pos, len(tcache_list))
-                    self.bins_dict_for_address[address] = self.bins_dict_for_address.get(address, []) + [m]
+                    new_list = self.bins_dict_for_address.get(address, []) + [m]
+                    self.bins_dict_for_address[address] = new_list
             for fastbin_idx, fastbin_list in self.cached_fastbins_list.items():
                 for address in set(fastbin_list):
                     pos = ",".join([str(i + 1) for i, x in enumerate(fastbin_list) if x == address])
                     sz = GlibcHeap.get_binsize_table()["fastbins"][fastbin_idx]["size"]
                     m = "fastbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(fastbin_idx, sz, pos, len(fastbin_list))
-                    self.bins_dict_for_address[address] = self.bins_dict_for_address.get(address, []) + [m]
+                    new_list = self.bins_dict_for_address.get(address, []) + [m]
+                    self.bins_dict_for_address[address] = new_list
 
             # dict[base_address] = ["bins info1", "bins info2", ...]
             self.bins_dict_for_base_address = {}
@@ -4109,20 +4115,25 @@ class GlibcHeap:
                 for base_address in unsortedbin_list:
                     pos = ",".join([str(i + 1) for i, x in enumerate(unsortedbin_list) if x == base_address])
                     m = "unsortedbins[{:s}/{:d}]".format(pos, len(unsortedbin_list))
-                    self.bins_dict_for_base_address[base_address] = self.bins_dict_for_base_address.get(base_address, []) + [m]
+                    new_list = self.bins_dict_for_base_address.get(base_address, []) + [m]
+                    self.bins_dict_for_base_address[base_address] = new_list
             for smallbin_idx, smallbin_list in self.cached_smallbins_list.items():
                 for base_address in smallbin_list:
                     pos = ",".join([str(i + 1) for i, x in enumerate(smallbin_list) if x == base_address])
                     sz = GlibcHeap.get_binsize_table()["small_bins"][smallbin_idx]["size"]
                     m = "smallbins[idx={:d},sz={:#x}][{:s}/{:d}]".format(smallbin_idx, sz, pos, len(smallbin_list))
-                    self.bins_dict_for_base_address[base_address] = self.bins_dict_for_base_address.get(base_address, []) + [m]
+                    new_list = self.bins_dict_for_base_address.get(base_address, []) + [m]
+                    self.bins_dict_for_base_address[base_address] = new_list
             for largebin_idx, largebin_list in self.cached_largebins_list.items():
                 for base_address in largebin_list:
                     pos = ",".join([str(i + 1) for i, x in enumerate(largebin_list) if x == base_address])
                     sz_min = GlibcHeap.get_binsize_table()["large_bins"][largebin_idx]["size_min"]
                     sz_max = GlibcHeap.get_binsize_table()["large_bins"][largebin_idx]["size_max"]
-                    m = "largebins[idx={:d},sz={:#x}-{:#x}][{:s}/{:d}]".format(largebin_idx, sz_min, sz_max, pos, len(largebin_list))
-                    self.bins_dict_for_base_address[base_address] = self.bins_dict_for_base_address.get(base_address, []) + [m]
+                    m = "largebins[idx={:d},sz={:#x}-{:#x}][{:s}/{:d}]".format(
+                        largebin_idx, sz_min, sz_max, pos, len(largebin_list),
+                    )
+                    new_list = self.bins_dict_for_base_address.get(base_address, []) + [m]
+                    self.bins_dict_for_base_address[base_address] = new_list
             return
 
         def is_chunk_in_tcache(self, chunk):
