@@ -27819,10 +27819,10 @@ class ContextCommand(GenericCommand):
 
             # current index coloring
             if current_frame == orig_frame:
-                idx = Color.colorify("#{}".format(level), "bold green")
+                idx = Color.colorify("#{:d}".format(level), "bold green")
                 arrow = "-> "
             else:
-                idx = Color.colorify("#{}".format(level), "bold magenta")
+                idx = Color.colorify("#{:d}".format(level), "bold magenta")
                 arrow = "   "
 
             # print
@@ -27886,7 +27886,10 @@ class ContextCommand(GenericCommand):
             shown_threads = len(threads)
         else:
             shown_threads = nb_lines_threads
-        self.context_title("threads: {:d}/{:d}".format(shown_threads, len(threads)))
+        if shown_threads != len(threads):
+            self.context_title("threads (shown:{:d} / all:{:d})".format(shown_threads, len(threads)))
+        else:
+            self.context_title("threads")
 
         if nb_lines_threads > 0:
             threads = threads[:nb_lines_threads]
@@ -27908,9 +27911,9 @@ class ContextCommand(GenericCommand):
         for thread in threads:
             tid = str(thread.ptid[1]) or str(thread.ptid[2]) or "???"
             if thread == selected_thread:
-                line = "[{:s}] ".format(Color.colorify("Thread Id:{:d}, tid:{:s}".format(thread.num, tid), "bold green"))
+                line = "-> [{:s}] ".format(Color.colorify("Thread Id:{:d}, tid:{:s}".format(thread.num, tid), "bold green"))
             else:
-                line = "[{:s}] ".format(Color.colorify("Thread Id:{:d}, tid:{:s}".format(thread.num, tid), "bold magenta"))
+                line = "   [{:s}] ".format(Color.colorify("Thread Id:{:d}, tid:{:s}".format(thread.num, tid), "bold magenta"))
 
             if thread.name:
                 line += 'Name: "{:s}", '.format(thread.name)
