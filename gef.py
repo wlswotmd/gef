@@ -54338,6 +54338,8 @@ class KernelCurrentCommand(GenericCommand):
         for thread in threads:
             thread.switch() # change thread
             task = KernelAddressHeuristicFinder.get_current_task_for_current_thread()
+            if task is None:
+                continue
             if is_valid_addr(task):
                 cpu_num = thread.num - 1 # ?
                 gef_print("current (cpu{:d}): {:#x} {:s}".format(cpu_num, task, self.get_comm_str(task)))
