@@ -54476,7 +54476,10 @@ class KernelTaskCommand(GenericCommand):
     _note_ += "    | ...          |  |   | max_fds   |  |   | [0]         |--+    |   dentry        |----+ |  | ...        |\n"
     _note_ += "    | fdt          |--+   | fd        |--+   | ...         |       | f_inode (v3.9~) |------+  | i_ino      |\n"
     _note_ += "    | ...          |      | ...       |      | [max_fds-1] |       | ...             |         | ...        |\n"
-    _note_ += "    +--------------+      +-----------+      +-------------+       +-----------------+         +------------+"
+    _note_ += "    +--------------+      +-----------+      +-------------+       +-----------------+         +------------+\n"
+    _note_ += "\n"
+    _note_ += "This command will only track tasks that can be tracked from `init_task` or the result of `kcurrent` command.\n"
+    _note_ += "Other tasks (such as `swapper/1` if thread 1 is running some task) will not be detected."
 
     def __init__(self):
         super().__init__()
@@ -54681,6 +54684,8 @@ class KernelTaskCommand(GenericCommand):
 
     def get_thread_info(self, task_addr, offset_stack):
         kstack = read_int_from_memory(task_addr + offset_stack)
+        if not is_valid_addr(kstack):
+            return None
         stack_top_val = u32(read_memory(kstack, 4))
         if stack_top_val == 0x57ac6e9d: # STACK_END_MAGIC
             """
@@ -54696,6 +54701,8 @@ class KernelTaskCommand(GenericCommand):
 
     def has_seccomp(self, task_addr):
         thread_info = self.get_thread_info(task_addr, self.offset_stack)
+        if thread_info is None:
+            return None
         kversion = Kernel.kernel_version()
         if is_x86():
             if kversion >= "5.11":
@@ -56728,7 +56735,44 @@ class KernelTaskCommand(GenericCommand):
 
         return task_addrs
 
+    def get_current_task_list(self):
+        try:
+            res = gdb.execute("kcurrent --quiet", to_string=True)
+        except gdb.error:
+            return {}
+
+        tmp_current_tasks = {}
+        for line in res.splitlines():
+            r = re.search(r"current \(cpu(\d+)\): (0x\S+) .+", line.strip())
+            if r:
+                cpu = int(r.group(1))
+                task = int(r.group(2), 16)
+                new_list = tmp_current_tasks.get(task, []) + [cpu]
+                tmp_current_tasks[task] = new_list
+                continue
+            r = re.search(r"current: (0x\S+) .+", line.strip())
+            if r:
+                cpu = 0
+                task = int(r.group(1), 16)
+                new_list = tmp_current_tasks.get(task, []) + [cpu]
+                tmp_current_tasks[task] = new_list
+                continue
+
+        current_tasks = {}
+        for k, v in tmp_current_tasks.items():
+            if len(v) > 1:
+                # I don't know if it's possible
+                current_tasks[k] = "cpu{:d},..".format(min(v))
+            else:
+                current_tasks[k] = "cpu{:d}".format(v[0])
+        return current_tasks
+
     def dump(self, args, task_addrs):
+        # add current tasks (cpuN > 0)
+        current_tasks = self.get_current_task_list()
+        to_add_tasks = [task for task in current_tasks.keys() if task not in task_addrs]
+        task_addrs = task_addrs[:1] + to_add_tasks + task_addrs[1:]
+
         # LWP
         if args.print_thread:
             task_addrs = self.add_lwp_task(task_addrs)
@@ -56736,7 +56780,7 @@ class KernelTaskCommand(GenericCommand):
         # print legend
         out = []
         if not self.quiet:
-            fmt = "{:<18s} {:3s} {:<7s} {:<16s} {:<18s} [{:s}] {:<8s} {:<18s} {:<18s}"
+            fmt = "{:<18s} {:7s} {:3s} {:<7s} {:<16s} {:<18s} [{:s}] {:<8s} {:<18s} {:<18s}"
             if args.print_all_id:
                 ids_str = ["uid", "gid", "suid", "sgid", "euid", "egid", "fsuid", "fsgid"]
                 uids_fmt = "{:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s}"
@@ -56744,7 +56788,7 @@ class KernelTaskCommand(GenericCommand):
                 ids_str = ["uid", "gid"]
                 uids_fmt = "{:>5s} {:>5s}"
             uids_str = uids_fmt.format(*ids_str)
-            legend = ["task", "K/U", "lwpid", "task->comm", "task->cred", uids_str, "seccomp", "kstack", "kcanary"]
+            legend = ["task", "current", "K/U", "lwpid", "task->comm", "task->cred", uids_str, "seccomp", "kstack", "kcanary"]
             out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
 
         if args.print_namespace:
@@ -56770,6 +56814,9 @@ class KernelTaskCommand(GenericCommand):
             kstack = read_int_from_memory(task + self.offset_stack)
             pid = u32(read_memory(task + self.offset_pid, 4))
             cred = read_int_from_memory(task + self.offset_cred)
+
+            # current
+            currentN = current_tasks.get(task, "-")
 
             # get process type (kernel or user-land)
             mm = read_int_from_memory(task + self.offset_mm)
@@ -56811,8 +56858,8 @@ class KernelTaskCommand(GenericCommand):
                 seccomp = "Disabled"
 
             # make output
-            out.append("{:#018x} {:<3s} {:<7d} {:<16s} {:#018x} [{:s}] {:<8s} {:#018x} {:<18s}".format(
-                task, proctype, pid, comm_string, cred, uids_str, seccomp, kstack, kcanary,
+            out.append("{:#018x} {:<7} {:<3s} {:<7d} {:<16s} {:#018x} [{:s}] {:<8s} {:#018x} {:<18s}".format(
+                task, currentN, proctype, pid, comm_string, cred, uids_str, seccomp, kstack, kcanary,
             ))
 
             # skip additional information when swapper/N
