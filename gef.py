@@ -20923,7 +20923,9 @@ class GlibcHeapBinsCommand(GenericCommand):
                     break
                 if nb_chunk > 0:
                     bins[i] = nb_chunk
-            info("Found {:d} valid chunks in {:d} small bins (when traced from `bk`).".format(sum(bins.values()), len(bins)))
+            info("Found {:d} valid chunks in {:d} small bins (when traced from `bk`).".format(
+                sum(bins.values()), len(bins),
+            ))
 
             # large bins
             gef_print(titlify("Large Bins for arena '{:s}'".format(arena.name)))
@@ -20934,7 +20936,9 @@ class GlibcHeapBinsCommand(GenericCommand):
                     break
                 if nb_chunk > 0:
                     bins[i] = nb_chunk
-            info("Found {:d} valid chunks in {:d} large bins (when traced from `bk`).".format(sum(bins.values()), len(bins)))
+            info("Found {:d} valid chunks in {:d} large bins (when traced from `bk`).".format(
+                sum(bins.values()), len(bins),
+            ))
         return
 
 
@@ -20944,7 +20948,7 @@ class GlibcHeapTcachebinsCommand(GenericCommand):
 
     _cmdline_ = "heap bins tcache"
     _category_ = "06-a. Heap - Glibc"
-    _aliases_ = ["tcache"]
+    _aliases_ = ["tcachebins"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-a", "--arena-addr", type=AddressUtil.parse_address,
@@ -56863,7 +56867,7 @@ class KernelTaskCommand(GenericCommand):
                 seccomp = "Disabled"
 
             # make output
-            out.append("{:#018x} {:<7} {:<3s} {:<7d} {:<16s} {:#018x} [{:s}] {:<8s} {:#018x} {:<18s}".format(
+            out.append("{:#018x} {:<7s} {:<3s} {:<7d} {:<16s} {:#018x} [{:s}] {:<8s} {:#018x} {:<18s}".format(
                 task, currentN, proctype, pid, comm_string, cred, uids_str, seccomp, kstack, kcanary,
             ))
 
