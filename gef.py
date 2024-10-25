@@ -60411,7 +60411,7 @@ class KernelOperationsCommand(GenericCommand, BufferingOutput):
 
 
 @register_command
-class KernelSysctlCommand(GenericCommand):
+class KernelSysctlCommand(GenericCommand, BufferingOutput):
     """Dump sysctl parameters."""
 
     _cmdline_ = "ksysctl"
@@ -60420,10 +60420,11 @@ class KernelSysctlCommand(GenericCommand):
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-f", "--filter", action="append", type=re.compile, default=[], help="REGEXP filter.")
     parser.add_argument("-s", "--skip-symlink", action="store_true", help="do not follow symlink (net.* and user.*).")
+    parser.add_argument("-e", "--exact", action="store_true", help="use exact match.")
+    parser.add_argument("-r", "--reparse", action="store_true", help="do not use cache.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="dump zero-sized entries too.")
     parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
-    parser.add_argument("-v", "--verbose", action="store_true", help="enable verbose mode.")
     parser.add_argument("-q", "--quiet", action="store_true", help="enable quiet mode.")
-    parser.add_argument("--exact", action="store_true", help="use exact match.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} -q".format(_cmdline_)
@@ -60463,32 +60464,130 @@ class KernelSysctlCommand(GenericCommand):
     def __init__(self):
         super().__init__()
         self.initialized = False
+        self.cache = []
         return
 
     def should_be_print(self, procname):
-        if self.filter == []:
+        if self.args.filter == []:
             return True
 
-        if self.exact:
-            for filt in self.filter:
+        if self.args.exact:
+            for filt in self.args.filter:
                 if filt.pattern == procname:
+                    self.exact_found = True
                     return True
             return False
 
         else:
-            for re_pattern in self.filter:
+            for re_pattern in self.args.filter:
                 if re_pattern.search(procname):
                     return True
             return False
 
-    def sysctl_dump(self, rb_node):
-        if self.exact and self.exact_found:
+    def dump_data(self, ctl_table, param_path, mode, skip_add_cache=False):
+        if not self.should_be_print(param_path):
             return
 
-        right = read_int_from_memory(rb_node + current_arch.ptrsize * 1) & ~1 # remove RB_BLACK
-        left = read_int_from_memory(rb_node + current_arch.ptrsize * 2) & ~1 # remove RB_BLACK
-        ctl_dir = read_int_from_memory(rb_node + current_arch.ptrsize * 3)
+        maxlen = u32(read_memory(ctl_table + self.offset_maxlen, 4))
+        # data
+        data_addr = read_int_from_memory(ctl_table + current_arch.ptrsize)
+        if data_addr and is_valid_addr(data_addr):
+            # type from handler
+            handler = read_int_from_memory(ctl_table + self.offset_handler)
+            # data length
+            if handler in self.str_types:
+                data_val = read_cstring_from_memory(data_addr)
+                self.out.append("{:<56s} {:#018x} {:#07x} {:#010o} {!s}".format(
+                    param_path, data_addr, maxlen, mode, data_val,
+                )) # allow None
+            elif maxlen == 4:
+                data_val = u32(read_memory(data_addr, 4))
+                self.out.append("{:<56s} {:#018x} {:#07x} {:#010o} {:#018x}".format(
+                    param_path, data_addr, maxlen, mode, data_val,
+                ))
+            elif maxlen == 8:
+                data_val = u64(read_memory(data_addr, 8))
+                self.out.append("{:<56s} {:#018x} {:#07x} {:#010o} {:#018x}".format(
+                    param_path, data_addr, maxlen, mode, data_val,
+                ))
+            elif maxlen == 1:
+                data_val = u8(read_memory(data_addr, 1))
+                self.out.append("{:<56s} {:#018x} {:#07x} {:#010o} {:#018x}".format(
+                    param_path, data_addr, maxlen, mode, data_val,
+                ))
+            elif maxlen == 0:
+                if self.args.verbose:
+                    self.out.append("{:<56s} {:#018x} {:#07x} {:#010o}".format(
+                        param_path, data_addr, maxlen, mode,
+                    ))
+            else:
+                # type from heuristic
+                data_val = read_cstring_from_memory(data_addr)
+                if data_val and data_val.isprintable() and len(data_val) >= 2:
+                    self.out.append("{:<56s} {:#018x} {:#07x} {:#010o} {:s}".format(
+                        param_path, data_addr, maxlen, mode, data_val,
+                    ))
+                else:
+                    data_val = read_int_from_memory(data_addr)
+                    self.out.append("{:<56s} {:#018x} {:#07x} {:#010o} {:#018x}".format(
+                        param_path, data_addr, maxlen, mode, data_val,
+                    ))
+        else:
+            if self.args.verbose:
+                self.out.append("{:<56s} {:#018x} {:#07x} {:#010o}".format(
+                    param_path, data_addr, maxlen, mode,
+                ))
 
+        if skip_add_cache:
+            return
+
+        # for cache
+        if not self.args.filter:
+            if not self.args.exact:
+                if not self.args.skip_symlink:
+                    self.cache.append([ctl_table, param_path, mode])
+        return
+
+    def redirect_root_for_symlink(self, ctl_table):
+        if self.args.skip_symlink:
+            return
+
+        ctset = None
+        root = read_int_from_memory(ctl_table + current_arch.ptrsize)
+        if is_valid_addr(root + self.offset_lookup):
+            lookup = read_int_from_memory(root + self.offset_lookup)
+            if lookup == Symbol.get_ksymaddr("net_ctl_header_lookup"): # net.*
+                ctset = self.net_ctset
+            elif lookup == Symbol.get_ksymaddr("set_lookup"): # user.*
+                ctset = self.user_ctset
+        if ctset:
+            symlink_rb_node = read_int_from_memory(ctset + current_arch.ptrsize + self.offset_rb_node)
+            if ctset not in self.seen_ctset:
+                self.seen_ctset.append(ctset)
+                self.sysctl_dump(symlink_rb_node)
+        return
+
+    def get_param_path(self, ctl_dir, ctl_table, parent_path):
+        procname = read_int_from_memory(ctl_table)
+        if procname == 0:
+            return None
+
+        procname_str = read_cstring_from_memory(procname)
+        if not procname_str: # None or ""
+            return None
+
+        param_path = (parent_path + "." + procname_str).lstrip(".")
+        self.parent_paths[ctl_dir] = param_path
+        return param_path
+
+    def sysctl_dump(self, rb_node):
+        if not rb_node:
+            return
+        if self.args.exact and self.exact_found:
+            return
+
+        # ctl_node.header (=ctl_dir)
+        ctl_dir = read_int_from_memory(rb_node + current_arch.ptrsize * 3)
         if ctl_dir not in self.seen_ctl_dir:
             self.seen_ctl_dir.append(ctl_dir)
 
@@ -60498,110 +60597,57 @@ class KernelSysctlCommand(GenericCommand):
 
             # ctl_table(s)
             ctl_table = read_int_from_memory(ctl_dir)
-            while True:
-                # procname
-                procname = read_int_from_memory(ctl_table)
-                if procname == 0:
+            while ctl_table not in self.seen_ctl_table:
+                self.seen_ctl_table.append(ctl_table)
+
+                # param_path
+                param_path = self.get_param_path(ctl_dir, ctl_table, parent_path)
+                if param_path is None:
                     break
-                procname_str = read_cstring_from_memory(procname)
-                if procname_str is None:
-                    break
-                param_path = (parent_path + "." + procname_str).lstrip(".")
-                self.parent_paths[ctl_dir] = param_path
 
                 # mode
                 mode = u32(read_memory(ctl_table + self.offset_mode, 4))
 
-                # `net.*` and `user.*` have a symlink attribute and they are redirected to another location.
-                # These must be traced from another root.
+                # dump
                 if (mode & 0o0120000) == 0o0120000: # symlink
-                    if not self.skip_symlink:
-                        ctset = None
-                        root = read_int_from_memory(ctl_table + current_arch.ptrsize)
-                        if is_valid_addr(root + self.offset_lookup):
-                            lookup = read_int_from_memory(root + self.offset_lookup)
-                            if lookup == Symbol.get_ksymaddr("net_ctl_header_lookup"): # net.*
-                                ctset = self.net_ctset
-                            elif lookup == Symbol.get_ksymaddr("set_lookup"): # user.*
-                                ctset = self.user_ctset
-                        if ctset:
-                            symlink_rb_node = read_int_from_memory(ctset + current_arch.ptrsize + self.offset_rb_node)
-                            if ctset not in self.seen_ctset:
-                                self.seen_ctset.append(ctset)
-                                self.sysctl_dump(symlink_rb_node)
-
-                if self.should_be_print(param_path):
+                    # `net.*` and `user.*` have a symlink attribute and they are redirected to another location.
+                    # These must be traced from another root.
+                    self.redirect_root_for_symlink(ctl_table)
+                elif (mode & 0o0040000) != 0: # directory
+                    pass
+                else:
                     # If it's not a directory, it should hold data, so dump it.
-                    if (mode & 0o0040000) == 0: # not directory
-                        maxlen = u32(read_memory(ctl_table + self.offset_maxlen, 4))
-                        # data
-                        data_addr = read_int_from_memory(ctl_table + current_arch.ptrsize)
-                        if data_addr and is_valid_addr(data_addr):
-                            # type from handler
-                            handler = read_int_from_memory(ctl_table + self.offset_handler)
-                            # data length
-                            if handler in self.str_types:
-                                data_val = read_cstring_from_memory(data_addr)
-                                self.out.append("{:<56s} {:#018x} {:#07x} {:#010o} {!s}".format(
-                                    param_path, data_addr, maxlen, mode, data_val,
-                                )) # allow None
-                            elif maxlen == 4:
-                                data_val = u32(read_memory(data_addr, 4))
-                                self.out.append("{:<56s} {:#018x} {:#07x} {:#010o} {:#018x}".format(
-                                    param_path, data_addr, maxlen, mode, data_val,
-                                ))
-                            elif maxlen == 8:
-                                data_val = u64(read_memory(data_addr, 8))
-                                self.out.append("{:<56s} {:#018x} {:#07x} {:#010o} {:#018x}".format(
-                                    param_path, data_addr, maxlen, mode, data_val,
-                                ))
-                            elif maxlen == 1:
-                                data_val = u8(read_memory(data_addr, 1))
-                                self.out.append("{:<56s} {:#018x} {:#07x} {:#010o} {:#018x}".format(
-                                    param_path, data_addr, maxlen, mode, data_val,
-                                ))
-                            elif maxlen == 0:
-                                if self.verbose:
-                                    self.out.append("{:<56s} {:#018x} {:#07x} {:#010o}".format(
-                                        param_path, data_addr, maxlen, mode,
-                                    ))
-                            else:
-                                # type from heuristic
-                                data_val = read_cstring_from_memory(data_addr)
-                                if data_val and data_val.isprintable() and len(data_val) >= 2:
-                                    self.out.append("{:<56s} {:#018x} {:#07x} {:#010o} {:s}".format(
-                                        param_path, data_addr, maxlen, mode, data_val,
-                                    ))
-                                else:
-                                    data_val = read_int_from_memory(data_addr)
-                                    self.out.append("{:<56s} {:#018x} {:#07x} {:#010o} {:#018x}".format(
-                                        param_path, data_addr, maxlen, mode, data_val,
-                                    ))
-                        else:
-                            if self.verbose:
-                                self.out.append("{:<56s} {:#018x} {:#07x} {:#010o}".format(
-                                    param_path, data_addr, maxlen, mode,
-                                ))
-                        if self.exact:
-                            self.exact_found = True
-                            return
+                    self.dump_data(ctl_table, param_path, mode)
+                    if self.args.exact and self.exact_found:
+                        return
 
                 # next array element
                 ctl_table += self.sizeof_ctl_table
 
-            rb_node = read_int_from_memory(ctl_dir + self.offset_rb_node) & ~1 # remove RB_BLACK
-            if rb_node:
-                self.sysctl_dump(rb_node)
+            # ctl_dir.rb_root->rb_node
+            ctl_dir_rb_node = read_int_from_memory(ctl_dir + self.offset_rb_node) & ~1 # remove RB_BLACK
+            self.sysctl_dump(ctl_dir_rb_node)
 
-        if right:
-            self.sysctl_dump(right)
-        if left:
-            self.sysctl_dump(left)
+        # ctl_node.node.rb_right
+        right = read_int_from_memory(rb_node + current_arch.ptrsize * 1) & ~1 # remove RB_BLACK
+        self.sysctl_dump(right)
+
+        # ctl_node.node.rb_left
+        left = read_int_from_memory(rb_node + current_arch.ptrsize * 2) & ~1 # remove RB_BLACK
+        self.sysctl_dump(left)
         return
 
     def initialize(self):
         if self.initialized:
-            return
+            return True
+
+        self.sysctl_table_root = KernelAddressHeuristicFinder.get_sysctl_table_root()
+        if self.sysctl_table_root is None:
+            if not self.args.quiet:
+                err("Not found sysctl_table_root")
+            return False
+        if not self.args.quiet:
+            info("sysctl_table_root: {:#x}".format(self.sysctl_table_root))
 
         """
         struct ctl_table_root {
@@ -60774,8 +60820,14 @@ class KernelSysctlCommand(GenericCommand):
             if handler_addr:
                 self.str_types.append(handler_addr)
 
+        self.root_ctl_dir = self.sysctl_table_root + current_arch.ptrsize
+        self.root_rb_node = read_int_from_memory(self.root_ctl_dir + self.offset_rb_node)
+        if not self.args.quiet:
+            info("root_ctl_dir: {:#x}".format(self.root_ctl_dir))
+            info("root_rb_node: {:#x}".format(self.root_rb_node))
+
         self.initialized = True
-        return
+        return True
 
     @parse_args
     @only_if_gdb_running
@@ -60783,55 +60835,54 @@ class KernelSysctlCommand(GenericCommand):
     @only_if_specific_arch(arch=("x86_32", "x86_64", "ARM32", "ARM64"))
     @only_if_in_kernel_or_kpti_disabled
     def do_invoke(self, args):
-        self.filter = args.filter
-        self.exact = args.exact
+        self.args = args
         self.exact_found = False
-        self.verbose = args.verbose
-        self.skip_symlink = args.skip_symlink
 
-        if self.exact and not self.filter:
+        if args.exact and not args.filter:
             if not args.quiet:
                 err("Filter string is needed")
             return
 
+        if args.reparse:
+            self.initialized = False
+            self.cache = []
+
         if not args.quiet:
             info("Wait for memory scan")
 
-        sysctl_table_root = KernelAddressHeuristicFinder.get_sysctl_table_root()
-        if sysctl_table_root is None:
-            if not args.quiet:
-                err("Not found sysctl_table_root")
+        if not self.initialize():
             return
-        if not args.quiet:
-            info("sysctl_table_root: {:#x}".format(sysctl_table_root))
 
-        self.initialize()
-
-        root_ctl_dir = sysctl_table_root + current_arch.ptrsize
-        root_rb_node = read_int_from_memory(root_ctl_dir + self.offset_rb_node)
-
-        if not args.quiet:
-            info("root_ctl_dir: {:#x}".format(root_ctl_dir))
-            info("root_rb_node: {:#x}".format(root_rb_node))
-
+        # legend
         self.out = []
         if not args.quiet:
-            fmt = "{:<56s} {:<18s} {:<7s} {:<10s} {:<18s}"
+            fmt = "{:<56s} {:<18s} {:<7s} {:<10s} {:<s}"
             legend = ["ParamName", "ParamAddress", "MaxLen", "Mode", "ParamValue"]
             self.out.append(Color.colorify(fmt.format(*legend), Config.get_gef_setting("theme.table_heading")))
 
-        self.seen_ctl_dir = []
-        self.seen_ctset = []
-        self.parent_paths = {root_ctl_dir: ""}
-        try:
-            self.sysctl_dump(root_rb_node)
-        except gdb.MemoryError:
-            if not args.quiet:
-                err("Memory error")
-            return
+        if self.cache:
+            for entry in self.cache:
+                if args.skip_symlink:
+                    if entry[1].startswith(("net.", "user.")):
+                        continue
+                self.dump_data(*entry, skip_add_cache=True)
+                if args.exact and self.exact_found:
+                    break
+        else:
+            self.seen_ctl_dir = []
+            self.seen_ctl_table = []
+            self.seen_ctset = []
+            self.parent_paths = {self.root_ctl_dir: ""}
+            try:
+                # This try-except is a countermeasure to a parse error when CONFIG_RANDSTRUCT=y.
+                self.sysctl_dump(self.root_rb_node)
+            except gdb.MemoryError:
+                self.cache = []
+                if not args.quiet:
+                    err("Memory error")
+                return
 
-        if self.out:
-            gef_print("\n".join(self.out), less=not args.no_pager)
+        self.print_output(args, term=True)
         return
 
 
