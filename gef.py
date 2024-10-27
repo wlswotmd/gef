@@ -26858,6 +26858,7 @@ class ContextCommand(GenericCommand):
         self.add_setting("show_stack_raw", False, "Show the stack pane as raw hexdump (no dereference)")
         self.add_setting("show_registers_raw", False, "Show the registers pane with raw values (no dereference)")
         self.add_setting("show_opcodes_size", 8, "Number of bytes of opcodes to display next to the disassembly")
+        self.add_setting("show_opcodes_size_x64_x86", 10, "Number of bytes of opcodes to display next to the disassembly")
         self.add_setting("peek_calls", True, "Peek into calls")
         self.add_setting("peek_ret", True, "Peek at return address")
         self.add_setting("nb_lines_stack", 8, "Number of line in the stack pane")
@@ -27145,7 +27146,10 @@ class ContextCommand(GenericCommand):
         use_native_x_command = Config.get_gef_setting("context.use_native_x_command")
         nb_insn = Config.get_gef_setting("context.nb_lines_code")
         nb_insn_prev = Config.get_gef_setting("context.nb_lines_code_prev")
-        show_opcodes_size = Config.get_gef_setting("context.show_opcodes_size")
+        if is_x86():
+            show_opcodes_size = Config.get_gef_setting("context.show_opcodes_size_x64_x86")
+        else:
+            show_opcodes_size = Config.get_gef_setting("context.show_opcodes_size")
         past_lines_color = Config.get_gef_setting("theme.context_code_past")
         future_lines_color = Config.get_gef_setting("theme.context_code_future")
         use_capstone = Config.get_gef_setting("context.use_capstone")
