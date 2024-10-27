@@ -3298,13 +3298,12 @@ class GlibcHeap:
             else:
                 return None
 
-        @property
+        @property # noqa
         def tcache_count(self):
             if get_libc_version() >= (2, 26):
                 return self.get_size_t(self.tcache_count_addr)
             else:
                 return None
-            self.tcache_count # avoid to be detected as unused # noqa: B018
 
         @property
         def tcache_unsorted_limit(self):
@@ -4817,6 +4816,51 @@ class String:
     STRING_PUNCTUATION = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
     STRING_WHITESPACE = " \t\n\r\x0b\x0c"
     STRING_PRINTABLE = STRING_DIGITS + STRING_ASCII_LETTERS + STRING_PUNCTUATION + STRING_WHITESPACE
+    MORSE_CODE_DICT = {
+        b".-"     : b"A",
+        b"-..."   : b"B",
+        b"-.-."   : b"C",
+        b"-.."    : b"D",
+        b"."      : b"E",
+        b"..-."   : b"F",
+        b"--."    : b"G",
+        b"...."   : b"H",
+        b".."     : b"I",
+        b".---"   : b"J",
+        b"-.-"    : b"K",
+        b".-.."   : b"L",
+        b"--"     : b"M",
+        b"-."     : b"N",
+        b"---"    : b"O",
+        b".--."   : b"P",
+        b"--.-"   : b"Q",
+        b".-."    : b"R",
+        b"..."    : b"S",
+        b"-"      : b"T",
+        b"..-"    : b"U",
+        b"...-"   : b"V",
+        b".--"    : b"W",
+        b"-..-"   : b"X",
+        b"-.--"   : b"Y",
+        b"--.."   : b"Z",
+        b".----"  : b"1",
+        b"..---"  : b"2",
+        b"...--"  : b"3",
+        b"....-"  : b"4",
+        b"....."  : b"5",
+        b"-...."  : b"6",
+        b"--..."  : b"7",
+        b"---.."  : b"8",
+        b"----."  : b"9",
+        b"-----"  : b"0",
+        b"--..--" : b",",
+        b".-.-.-" : b".",
+        b"..--.." : b"?",
+        b"-..-."  : b"/",
+        b"-....-" : b"-",
+        b"-.--."  : b"(",
+        b"-.--.-" : b")",
+    }
 
     @staticmethod
     def gef_pystring(x):
@@ -4850,6 +4894,76 @@ class String:
         if isinstance(x, bytes):
             return "".join(chr(xx) for xx in x)
         raise
+
+    @staticmethod # noqa
+    def bits2bytes(a, endian="big"):
+        """Helper function for bits -> bytes."""
+        if isinstance(a, str):
+            a = String.str2bytes(a)
+        if isinstance(a, bytes):
+            a = a.replace(b"0", b"\x00")
+            a = a.replace(b"1", b"\x01")
+        if not isinstance(a, list):
+            a = list(a)
+        assert set(a) <= {0x0, 0x1}
+
+        out = []
+
+        if endian == "little":
+            s = i = 0
+            for x in a:
+                s += x << i
+                i += 1
+                if i == 8:
+                    out.append(s)
+                    s = i = 0
+            if i > 0:
+                out.append(s)
+        else:
+            s = i = 0
+            for x in a:
+                s += s + x
+                i += 1
+                if i == 8:
+                    out.append(s)
+                    s = i = 0
+            if i > 0:
+                s = s << (8 - i)
+                out.append(s)
+        return bytes(out)
+
+    @staticmethod # noqa
+    def bytes2bits(a, endian="big"):
+        """Helper function for bytes -> bits."""
+        if isinstance(a, str):
+            a = String.str2bytes(a)
+
+        out = []
+
+        if endian == "little":
+            for x in a:
+                for i in range(8):
+                    b = (x >> i) & 1
+                    out.append(b)
+        else:
+            for x in a:
+                for i in range(8):
+                    b = (x >> (7 - i)) & 1
+                    out.append(b)
+        return out
+
+    @staticmethod
+    def morse(a):
+        if isinstance(a, str):
+            a = String.str2bytes(a)
+
+        decoded = b""
+        for elem in a.split():
+            if set(elem) <= {0x2d, 0x2e}:
+                decoded += String.MORSE_CODE_DICT.get(elem, elem)
+            else:
+                decoded += elem
+        return decoded
 
     @staticmethod
     def is_hex(pattern):
@@ -21219,7 +21333,7 @@ class GlibcHeapSmallBinsCommand(GenericCommand):
 
     _cmdline_ = "heap bins small"
     _category_ = "06-a. Heap - Glibc"
-    _aliases_ = ["smallbin"]
+    _aliases_ = ["smallbins"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-a", "--arena-addr", type=AddressUtil.parse_address,
@@ -21275,7 +21389,7 @@ class GlibcHeapLargeBinsCommand(GenericCommand):
 
     _cmdline_ = "heap bins large"
     _category_ = "06-a. Heap - Glibc"
-    _aliases_ = ["largebin"]
+    _aliases_ = ["largebins"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("-a", "--arena_addr", type=AddressUtil.parse_address,
@@ -50329,60 +50443,9 @@ class ConvertCommand(GenericCommand):
         return
 
     def morse(self, value):
-        MORSE_CODE_DICT = {
-            b".-"     : b"A",
-            b"-..."   : b"B",
-            b"-.-."   : b"C",
-            b"-.."    : b"D",
-            b"."      : b"E",
-            b"..-."   : b"F",
-            b"--."    : b"G",
-            b"...."   : b"H",
-            b".."     : b"I",
-            b".---"   : b"J",
-            b"-.-"    : b"K",
-            b".-.."   : b"L",
-            b"--"     : b"M",
-            b"-."     : b"N",
-            b"---"    : b"O",
-            b".--."   : b"P",
-            b"--.-"   : b"Q",
-            b".-."    : b"R",
-            b"..."    : b"S",
-            b"-"      : b"T",
-            b"..-"    : b"U",
-            b"...-"   : b"V",
-            b".--"    : b"W",
-            b"-..-"   : b"X",
-            b"-.--"   : b"Y",
-            b"--.."   : b"Z",
-            b".----"  : b"1",
-            b"..---"  : b"2",
-            b"...--"  : b"3",
-            b"....-"  : b"4",
-            b"....."  : b"5",
-            b"-...."  : b"6",
-            b"--..."  : b"7",
-            b"---.."  : b"8",
-            b"----."  : b"9",
-            b"-----"  : b"0",
-            b"--..--" : b",",
-            b".-.-.-" : b".",
-            b"..--.." : b"?",
-            b"-..-."  : b"/",
-            b"-....-" : b"-",
-            b"-.--."  : b"(",
-            b"-.--.-" : b")",
-        }
         try:
             encoded = codecs.escape_decode(value)[0]
-            decoded = b""
-            for elem in encoded.split():
-                if elem.replace(b".", b"").replace(b"-", b"") != b"":
-                    decoded += elem
-                    continue
-                decoded += MORSE_CODE_DICT.get(elem, elem)
-
+            decoded = String.morse(encoded)
             if encoded != decoded:
                 self.out.append(titlify("str - morse"))
                 self.out.append("morse-decode:   {}".format(decoded))
