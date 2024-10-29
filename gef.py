@@ -6764,10 +6764,18 @@ class AARCH64(ARM):
     def get_tls(self):
         if is_in_kernel():
             return None
-        tls = get_register("$TPIDR_EL0")
-        if tls is None:
-            tls = get_register("$tpidr")
-        return tls
+
+        tls = get_register("$TPIDR_EL0") # qemu-user + gdb-multiarch
+        if tls is not None:
+            return tls
+
+        tls = get_register("$tpidr") # native gdb 14.0
+        if tls is not None:
+            return tls
+
+        codes = [b"\x40\xd0\x3b\xd5"] # mrs x0, tpidr_el0
+        ret = ExecAsm(codes).exec_code()
+        return ret["reg"]["$x0"]
 
     def mprotect_asm(self, addr, size, perm):
         _NR_mprotect = 226
@@ -12860,7 +12868,7 @@ class ProcessMap:
                 # When using gdbserver, thread.num may start from 2 even though there is no thread.
                 # This is confusing, so if there is only the main thread, force it to 1.
                 if len(extra_info) == 1:
-                    extra_info = [ [1] + extra_info[0][1:] ]
+                    extra_info[0][0] = 1
 
         # parse
         maps = []
@@ -92334,7 +92342,7 @@ class Gef:
 
         if gdb.current_progspace().filename is not None:
             # if here, we are sourcing gef from a gdb session already attached
-            # we must force a call to the new_objfile handler (see issue #278)
+            # we must force a call to the new_objfile handler
             EventHandler.new_objfile_handler(None)
 
         # python-interactive
