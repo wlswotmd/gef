@@ -59900,6 +59900,7 @@ class KernelOperationsCommand(GenericCommand, BufferingOutput):
     types = [
         "address_space_operations",
         "ata_port_operations",
+        "btf_kind_operations",
         "block_device_operations",
         "clk_ops",
         "configfs_item_operations",
@@ -59912,6 +59913,7 @@ class KernelOperationsCommand(GenericCommand, BufferingOutput):
         "file_operations",
         "fs_context_operations",
         "inode_operations",
+        "kobj_ns_type_operations",
         "media_entity_operations",
         "movable_operations",
         "net_device_ops",
@@ -59925,8 +59927,9 @@ class KernelOperationsCommand(GenericCommand, BufferingOutput):
         "seq_operations",
         "smp_operations",
         "super_operations",
-        "tty_operations",
         "tty_ldisc_ops",
+        "tty_operations",
+        "tty_port_operations",
         "ucsi_operations",
         "vm_operations_struct",
     ]
@@ -60827,6 +60830,39 @@ class KernelOperationsCommand(GenericCommand, BufferingOutput):
             ["func_ptr", "set_pull_down",                           "4.2.0",   None],
         ]
         self.members["regulator_ops"] = adapt_to_kernel_version(regulator_ops)
+
+        tty_port_operations = [
+            # type       name                                       minver     maxver
+            ["func_ptr", "carrier_raised",                          "5.15.0",  None],
+            ["func_ptr", "dtr_rts",                                 "5.15.0",  None],
+            ["func_ptr", "shutdown",                                "5.15.0",  None],
+            ["func_ptr", "activate",                                "5.15.0",  None],
+            ["func_ptr", "destruct",                                "5.15.0",  None],
+        ]
+        self.members["tty_port_operations"] = adapt_to_kernel_version(tty_port_operations)
+
+        kobj_ns_type_operations = [
+            # type       name                                       minver     maxver
+            ["int",      "type",                                    None,      None],
+            ["func_ptr", "current_may_mount",                       "3.12.0",  None],
+            ["func_ptr", "grab_current_ns",                         None,      None],
+            ["func_ptr", "netlink_ns",                              None,      None],
+            ["func_ptr", "initial_ns",                              None,      None],
+            ["func_ptr", "drop_ns",                                 None,      None],
+        ]
+        self.members["kobj_ns_type_operations"] = adapt_to_kernel_version(kobj_ns_type_operations)
+
+        btf_kind_operations = [
+            # type       name                                       minver     maxver
+            ["func_ptr", "check_meta",                              "4.18.0",  None],
+            ["func_ptr", "resolve",                                 "4.18.0",  None],
+            ["func_ptr", "check_member",                            "4.18.0",  None],
+            ["func_ptr", "check_kflag_member",                      "5.0.0",   None],
+            ["func_ptr", "log_details",                             "4.18.0",  None],
+            ["func_ptr", "show",                                    "5.10.0",  None],
+            ["func_ptr", "seq_show",                                "4.18.0",  "5.9.16"],
+        ]
+        self.members["btf_kind_operations"] = adapt_to_kernel_version(btf_kind_operations)
 
         assert set(self.members.keys()) == set(self.types)
         return True
