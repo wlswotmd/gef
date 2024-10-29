@@ -17644,30 +17644,32 @@ class ScanSectionCommand(GenericCommand):
 
     _cmdline_ = "scan-section"
     _category_ = "03-a. Memory - Search"
+    _aliases_ = ["peek-pointers", "leakfind", "p2p"]
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("haystack", metavar="HAYSTACK", help="where to search for the needle.")
-    parser.add_argument("needle", metavar="NEEDLE", help="what to explore.")
+    parser.add_argument("haystack", metavar="HAYSTACK", nargs="?", help="where to search for the needle.")
+    parser.add_argument("needle", metavar="NEEDLE", nargs="?", help="what to explore.")
     _syntax_ = parser.format_help()
 
     _example_ = "{:s} stack binary # scan binary address from stack\n".format(_cmdline_)
     _example_ += "{:s} stack libc   # scan libc address from stack\n".format(_cmdline_)
     _example_ += "{:s} stack heap   # scan heap address from stack\n".format(_cmdline_)
     _example_ += "{:s} heap libc    # scan libc address from heap\n".format(_cmdline_)
-    _example_ += "{:s} 0x0000555555772000-0x0000555555774000 libc".format(_cmdline_)
+    _example_ += "{:s} 0x0000555555772000-0x0000555555774000 libc\n".format(_cmdline_)
+    _example_ += "{:s} any any".format(_cmdline_)
 
     def scan(self, haystack, needle):
         needle_sections = []
         haystack_sections = []
 
-        if "0x" in haystack:
+        if haystack and "0x" in haystack:
             try:
                 start, end = AddressUtil.parse_string_range(haystack)
                 haystack_sections.append((start, end, ""))
             except ValueError:
                 pass
 
-        if "0x" in needle:
+        if needle and "0x" in needle:
             try:
                 start, end = AddressUtil.parse_string_range(needle)
                 needle_sections.append((start, end))
@@ -17675,13 +17677,10 @@ class ScanSectionCommand(GenericCommand):
                 pass
 
         for sect in ProcessMap.get_process_maps():
-            if haystack in sect.path:
+            if haystack is None or haystack in sect.path:
                 haystack_sections.append((sect.page_start, sect.page_end, os.path.basename(sect.path)))
-            if needle in sect.path:
+            if needle is None or needle in sect.path:
                 needle_sections.append((sect.page_start, sect.page_end))
-
-        step = current_arch.ptrsize
-        unpack = u32 if step == 4 else u64
 
         for hstart, hend, hname in haystack_sections:
             try:
@@ -17689,17 +17688,18 @@ class ScanSectionCommand(GenericCommand):
             except gdb.MemoryError:
                 continue
 
-            for i in range(0, len(mem), step):
-                target = unpack(mem[i:i + step])
+            for i, target in enumerate(slice_unpack(mem, current_arch.ptrsize)):
                 for nstart, nend in needle_sections:
                     if not (nstart <= target < nend):
                         continue
-                    deref = AddressUtil.recursive_dereference_to_string(hstart + i)
+                    # match
+                    deref = AddressUtil.recursive_dereference_to_string(hstart + i * current_arch.ptrsize)
                     if hname != "":
                         name = Color.colorify(hname, "yellow")
                         gef_print("{:s}: {:s}".format(name, deref))
                     else:
                         gef_print(" {:s}".format(deref))
+                    break
         return
 
     @parse_args
@@ -17709,18 +17709,23 @@ class ScanSectionCommand(GenericCommand):
         haystack = args.haystack
         needle = args.needle
 
-        info("Searching for addresses in '{:s}' that point to '{:s}'"
-             .format(Color.yellowify(haystack), Color.yellowify(needle)))
+        info("Searching for addresses in '{:s}' that point to '{:s}'".format(
+            Color.yellowify(haystack), Color.yellowify(needle),
+        ))
 
-        if haystack in ["binary", "bin"]:
+        if haystack == "any":
+            haystack = None
+        elif haystack in ["binary", "bin"]:
             haystack = Path.get_filepath(append_proc_root_prefix=False)
-        if is_qemu_user() and haystack is None:
-            haystack = "[code]"
+            if is_qemu_user() and haystack is None:
+                haystack = "[code]"
 
-        if needle in ["binary", "bin"]:
+        if needle == "any":
+            needle = None
+        elif needle in ["binary", "bin"]:
             needle = Path.get_filepath(append_proc_root_prefix=False)
-        if is_qemu_user() and needle is None:
-            needle = "[code]"
+            if is_qemu_user() and needle is None:
+                needle = "[code]"
 
         self.scan(haystack, needle)
         return
@@ -90087,102 +90092,6 @@ class WalkLinkListCommand(GenericCommand, BufferingOutput):
         self.info("next pointer offset: {:#x}".format(args.next_offset))
         self.walk_link_list(args.address, args.next_offset)
         self.print_output(args)
-        return
-
-
-@register_command
-class PeekPointersCommand(GenericCommand, BufferingOutput):
-    """Find pointers belonging to other memory regions."""
-
-    _cmdline_ = "peek-pointers"
-    _category_ = "03-a. Memory - Search"
-    _aliases_ = ["leakfind"]
-
-    parser = argparse.ArgumentParser(prog=_cmdline_)
-    parser.add_argument("address", metavar="ADDRESS", type=AddressUtil.parse_address, nargs="?",
-                        help="search start address. (default: current_arch.sp)")
-    parser.add_argument("name", metavar="NAME", nargs="?", help="what area to search. (default: all area)")
-    parser.add_argument("-b", "--nb-byte", type=lambda x: int(x, 0), default=0,
-                        help="the size to dump each area. (default: %(default)s)")
-    parser.add_argument("-n", "--no-pager", action="store_true", help="do not use less.")
-    _syntax_ = parser.format_help()
-
-    _example_ = "{:s} 0x00007ffffffde000          # begin address of stack region\n".format(_cmdline_)
-    _example_ += "{:s} 0x00007ffffffde000 vdso     # grep by `vdso` area".format(_cmdline_)
-
-    @parse_args
-    @only_if_gdb_running
-    @exclude_specific_gdb_mode(mode=("qemu-system", "kgdb", "vmware"))
-    def do_invoke(self, args):
-        # get start address section
-        start_addr = args.address or current_arch.sp
-        start_addr = AddressUtil.align_address_to_size(start_addr, current_arch.ptrsize)
-        start_addr = ProcessMap.lookup_address(start_addr)
-        if start_addr.section is None:
-            err("{:#x} does not exist".format(start_addr.value))
-            return
-
-        # get target
-        vmmap = ProcessMap.get_process_maps()
-
-        get_param = lambda s: [s.path, s.page_start, s.page_end]
-        if args.name:
-            section_name = args.name
-            if section_name == "stack":
-                sections = [get_param(s) for s in vmmap if s.path.startswith("[stack]")]
-            elif section_name == "heap":
-                sections = [get_param(s) for s in vmmap if s.path.startswith("[heap]")]
-            elif section_name == "binary":
-                sections = [get_param(s) for s in vmmap if s.path == Path.get_filepath()]
-            else:
-                sections = [get_param(s) for s in vmmap if section_name in s.path]
-        else:
-            sections = [get_param(s) for s in vmmap]
-
-        # fix pathname
-        for i in range(len(sections)):
-            name = sections[i][0]
-            if name.startswith("/"):
-                sections[i][0] = os.path.basename(name)
-
-        # read data
-        data = read_memory(start_addr.value, start_addr.section.page_end - start_addr.value)
-        data = slice_unpack(data, current_arch.ptrsize)
-
-        # search
-        self.out = []
-        for off, value in enumerate(data):
-            value = ProcessMap.lookup_address(value)
-            if not value:
-                continue
-
-            found = False
-            for section in sections:
-                sec_name, sec_start_addr, sec_end_addr = section
-                if sec_start_addr <= value.value < sec_end_addr:
-                    found = True
-                    break
-            if not found:
-                continue
-
-            sym = Symbol.get_symbol_string(value.value, " <NO_SYMBOL>")
-            found_offset = off * current_arch.ptrsize
-            found_addr = ProcessMap.lookup_address(start_addr.value + found_offset)
-            perm = value.section.permission
-            self.out.append("Found at {!s} (+{:#x}): {!s}{:s} ('{:s}' [{!s}])".format(
-                found_addr, found_offset, value, sym, sec_name, perm,
-            ))
-
-            # peek nbyte
-            if args.nb_byte:
-                try:
-                    peeked_data = read_memory(value.value, args.nb_byte)
-                    h = hexdump(peeked_data, 0x10, base=value.value, show_symbol=False)
-                    self.out.append(h)
-                except gdb.MemoryError:
-                    pass
-
-        self.print_output(args, term=True)
         return
 
 

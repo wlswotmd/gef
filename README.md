@@ -703,7 +703,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * The category is introduced in `gef help`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/gef-help.png)
 * Combined into one file (from gef-extra). The following are moved from gef-extras.
-    * `peek-pointers`, `current-stack-frame`, `xref-telescope`, `bytearray`, and `bincompare`.
+    * `current-stack-frame`, `xref-telescope`, `bytearray`, and `bincompare`.
     * This is because a single file is more attractive than ease of maintenance.
 * The system-call table used by `syscall-args` is moved from gef-extras.
     * It was updated up to linux kernel 6.11.0 for each architecture.
