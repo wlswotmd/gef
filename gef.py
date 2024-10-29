@@ -90542,7 +90542,7 @@ class StackFrameCommand(GenericCommand):
 
 
 @register_command
-class XRefTelescopeCommand(SearchPatternCommand):
+class XRefTelescopeCommand(SearchPatternCommand, BufferingOutput):
     """Recursively search for cross-references to a pattern in memory."""
 
     _cmdline_ = "xref-telescope"
@@ -90552,7 +90552,7 @@ class XRefTelescopeCommand(SearchPatternCommand):
 
     parser = argparse.ArgumentParser(prog=_cmdline_)
     parser.add_argument("pattern", metavar="PATTERN", help="search pattern.")
-    parser.add_argument("depth", metavar="DEPTH", nargs="?", type=int, default=3,
+    parser.add_argument("depth", metavar="DEPTH", nargs="?", type=int, default=1,
                         help="max recursive depth. (default: %(default)s)")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="shows the section you are currently searching.")
@@ -90611,6 +90611,7 @@ class XRefTelescopeCommand(SearchPatternCommand):
         args.interval = False
         args.limit = False
         args.phys = False
+        args.hex_regex = False
 
         self.args = args
         self.found_count = 0
@@ -90621,7 +90622,7 @@ class XRefTelescopeCommand(SearchPatternCommand):
         ))
         self.xref_telescope(args.pattern, args.depth, [args.pattern])
 
-        gef_print("\n".join(self.out), less=not args.no_pager)
+        self.print_output(args, term=True)
         return
 
 
