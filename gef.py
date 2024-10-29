@@ -3708,9 +3708,19 @@ class GlibcHeap:
             if Cache.cached_main_arena:
                 return Cache.cached_main_arena
 
+            if is_arm64():
+                # For some reason, native gdb (at least v10.1) on ARM64 has a bug where evaluating main_arena
+                # destroys tcache symbols. See issues #95
+                # Once you evaluate it, it will work without any problems after that.
+                # This is a temporary workaround.
+                try:
+                    gdb.execute("p (void*) &tcache", to_string=True)
+                except gdb.error:
+                    pass
+
             # plan 1 (directly)
             try:
-                Cache.cached_main_arena = AddressUtil.parse_address("&main_arena")
+                Cache.cached_main_arena = AddressUtil.parse_address("(void*) &main_arena")
                 return Cache.cached_main_arena
             except gdb.error:
                 pass
@@ -3718,7 +3728,7 @@ class GlibcHeap:
             # plan 2 (from __malloc_hook)
             if get_libc_version() < (2, 34):
                 try:
-                    malloc_hook_addr = AddressUtil.parse_address("(void *)&__malloc_hook")
+                    malloc_hook_addr = AddressUtil.parse_address("(void*) &__malloc_hook")
                     if is_x86():
                         Cache.cached_main_arena = AddressUtil.align_address_to_size(
                             malloc_hook_addr + current_arch.ptrsize, 0x20,
@@ -3779,15 +3789,33 @@ class GlibcHeap:
             if self.heap_base is None:
                 return None
 
-            # strict way
-            if len(GlibcHeap.get_all_arenas()) == 1:
-                # If there is only one arena, there is only one tcache to display.
-                # Use symbols if available.
-                try:
-                    return AddressUtil.parse_address("(void*) tcache")
-                except gdb.error:
-                    pass
-                # fall through
+            def tcache_from_symbol():
+                # The tcache is per-thread, so the address got by a symbol is depending on the currently running thread.
+                # So we get all tcaches from all threads and take the address closest to self.heap_base.
+                orig_thread = gdb.selected_thread()
+                orig_frame = gdb.selected_frame()
+                if not orig_thread: # orig_thread may be None if under winedbg
+                    return None
+                tcache = None
+                for thread in gdb.selected_inferior().threads():
+                    thread.switch() # change thread
+                    try:
+                        tcache_candidate = AddressUtil.parse_address("(void*) tcache")
+                        if tcache_candidate <= self.heap_base:
+                            continue
+                        if tcache is None or tcache > tcache_candidate:
+                            tcache = tcache_candidate
+                    except gdb.error:
+                        tcache_candidate = None
+                        break
+                orig_thread.switch() # revert thread
+                orig_frame.select()
+                return tcache
+
+            # strict way (from symbol)
+            tcache = tcache_from_symbol()
+            if tcache is not None:
+                return tcache
 
             # heuristic way
             if (is_x86_32() or is_riscv32() or is_ppc32()) and not self.is_main_arena:
