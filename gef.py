@@ -75925,7 +75925,7 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
             ReadOnlySuperPageExtentEntry* current_extent = nullptr;
             ReadOnlySuperPageExtentEntry* first_extent = nullptr;
             ReadOnlyDirectMapExtent* direct_map_list PA_GUARDED_BY(internal::PartitionRootLock(this)) = nullptr;
-            SlotSpanMetadata* global_empty_slot_span_ring[internal::kMaxFreeableSpans] PA_GUARDED_BY(internal::PartitionRootLock(this)) = {};
+            ReadOnlySlotSpanMetadata* global_empty_slot_span_ring[internal::kMaxEmptySlotSpanRingSize] PA_GUARDED_BY(internal::PartitionRootLock(this)) = {};
             int16_t global_empty_slot_span_ring_index PA_GUARDED_BY(internal::PartitionRootLock(this)) = 0;
             int16_t global_empty_slot_span_ring_size PA_GUARDED_BY(internal::PartitionRootLock(this)) = internal::kDefaultEmptySlotSpanRingSize;
             uint16_t purge_generation PA_GUARDED_BY(internal::PartitionRootLock(this)) = 0;
@@ -76046,9 +76046,9 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
         """
         https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/src/partition_alloc/partition_bucket.h
         struct base::internal::PartitionBucket {
-            SlotSpanMetadata* active_slot_spans_head;
-            SlotSpanMetadata* empty_slot_spans_head;
-            SlotSpanMetadata* decommitted_slot_spans_head;
+            SlotSpanMetadata<MetadataKind::kReadOnly>* active_slot_spans_head;
+            SlotSpanMetadata<MetadataKind::kReadOnly>* empty_slot_spans_head;
+            SlotSpanMetadata<MetadataKind::kReadOnly>* decommitted_slot_spans_head;
             uint32_t slot_size;
             uint32_t num_system_pages_per_slot_span : 8;
             uint32_t num_full_slot_spans : 24;
@@ -76092,7 +76092,7 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
         https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/src/partition_alloc/partition_superpage_extent_entry.h
         struct PartitionSuperPageExtentEntry {
           PartitionRootBase* root;
-          PartitionSuperPageExtentEntry* next;
+          PartitionSuperPageExtentEntry<MetadataKind::kReadOnly>* next;
           uint16_t number_of_consecutive_super_pages;
           uint16_t number_of_nonempty_slot_spans;
         };
@@ -76118,9 +76118,9 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
         """
         https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/src/partition_alloc/partition_direct_map_extent.h
         struct PartitionDirectMapExtent {
-          PartitionDirectMapExtent* next_extent;
-          PartitionDirectMapExtent* prev_extent;
-          PartitionBucket* bucket;
+          PartitionDirectMapExtent<MetadataKind::kReadOnly>* next_extent;
+          PartitionDirectMapExtent<MetadataKind::kReadOnly>* prev_extent;
+          const PartitionBucket* bucket;
           size_t reservation_size;
           size_t padding_for_alignment;
         };
@@ -76151,15 +76151,15 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
         https://source.chromium.org/chromium/chromium/src/+/main:base/allocator/partition_allocator/src/partition_alloc/partition_page.h
         struct SlotSpanMetadata {
           PartitionFreelistEntry* freelist_head = nullptr;
-          SlotSpanMetadata* next_slot_span = nullptr;
+          SlotSpanMetadata<MetadataKind::kReadOnly>* next_slot_span = nullptr;
           PartitionBucket* const bucket = nullptr;
-          uint32_t num_allocated_slots : kMaxSlotsPerSlotSpanBits; // 15 bits
-          uint32_t num_unprovisioned_slots : kMaxSlotsPerSlotSpanBits; // 15 bits
-          uint32_t marked_full : 1
-          const uint32_t can_store_raw_size_ : 1;
-          uint16_t freelist_is_sorted_ : 1;
-          uint16_t in_empty_cache_ : 1;
-          uint16_t empty_cache_index_ : kMaxEmptyCacheIndexBits; // 10 bits
+          uint32_t num_allocated_slots : kMaxSlotsPerSlotSpanBits = 0u; // 15 bits
+          uint32_t num_unprovisioned_slots : kMaxSlotsPerSlotSpanBits = 0u; // 15 bits
+          uint32_t marked_full : 1 = 0u;
+          const uint32_t can_store_raw_size_ : 1 = 0u;
+          uint16_t freelist_is_sorted_ : 1 = 1u;
+          uint16_t in_empty_cache_ : 1 = 0u;
+          uint16_t empty_cache_index_ : kMaxEmptyCacheIndexBits = 0u; // 10 bits
         };
         """
         _slot_span["freelist_head"] = read_int_from_memory(current)
@@ -76247,12 +76247,12 @@ class PartitionAllocDumpCommand(GenericCommand, BufferingOutput):
         self.dump_direct_map_list(root.direct_map_list, root)
         ring_len = len(root.global_empty_slot_span_ring)
         if self.verbose:
-            self.out.append("SlotSpanMetadata* global_empty_slot_span_ring[{:3d}]:".format(ring_len))
+            self.out.append("ReadOnlySlotSpanMetadata* global_empty_slot_span_ring[{:3d}]:".format(ring_len))
             for i in range(len(root.global_empty_slot_span_ring)):
                 colored_slot_span = self.C(root.global_empty_slot_span_ring[i])
                 self.out.append("    global_empty_slot_span_ring[{:3d}]:                       {:s}".format(i, colored_slot_span))
         else:
-            self.out.append("SlotSpan* global_empty_slot_span_ring[{:3d}]:             ...".format(ring_len))
+            self.out.append("ReadOnlySlotSpanMetadata* global_empty_slot_span_ring[{:3d}]:             ...".format(ring_len))
         self.out.append("int16_t global_empty_slot_span_ring_index:             {:#x}".format(root.global_empty_slot_span_ring_index))
         self.out.append("int16_t global_empty_slot_span_ring_size:              {:#x}".format(root.global_empty_slot_span_ring_size))
         self.out.append("uint16_t purge_generation:                             {:#x}".format(root.purge_generation))
