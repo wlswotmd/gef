@@ -73456,33 +73456,57 @@ class KsymaddrRemoteCommand(GenericCommand):
             # check alignment
             align_diff = needle % self.kallsyms_markers_table_element_size
             if align_diff == 0:
-                break
-            position = needle + self.kallsyms_markers_table_element_size - align_diff
-
-        # kallsyms_seqs_of_names is introduced from kernel 6.1.42
-        # in this case, it finds kallsyms_seqs_of_names instead of kallsyms_markers, so search back through memory again.
-        if self.kernel_version >= (6, 1, 42) and self.kernel_version < (6, 9, 0):
-            if u32(self.kernel_img[needle + 4:needle + 8]) & 0xfff00000: # false positive, search again
                 position = needle
-                # aligned search from memory
-                while position > 0:
-                    needle = self.kernel_img.rfind(seq_to_find, 0, position)
-                    if needle == -1:
-                        self.verbose_err("Could not find kallsyms_markers")
-                        return False
-                    # check alignment
-                    align_diff = needle % self.kallsyms_markers_table_element_size
-                    if align_diff == 0:
-                        break
+                break # ok
+            else:
+                position = needle + self.kallsyms_markers_table_element_size - align_diff
+                # not aligned, so retry
+
+        if self.kernel_version >= (6, 1, 42) and self.kernel_version < (6, 9, 0):
+            # kallsyms_seqs_of_names is introduced from kernel 6.1.42
+            # In this case, we may find kallsyms_seqs_of_names instead of kallsyms_markers,
+            # so we should search back through memory again.
+            #
+            # kallsyms_markers        (1) we want to find this
+            # kallsyms_seqs_of_names  (3) this may have been found, try the backward search again
+            # kallsyms_token_table    (2) backward search from here
+            # kallsyms_token_index
+            #
+            while position > 0:
+                # the first some values of kallsyms_markers should be a small number.
+                # if not, kallsyms_markers is incorrect and we'll go back further.
+                first_10_elements = self.kernel_img[position + self.kallsyms_markers_table_element_size:][:40]
+                first_10_elements = slice_unpack(first_10_elements, self.kallsyms_markers_table_element_size)
+                if all((x & 0xfff0000) == 0 for x in first_10_elements):
+                    break
+
+                needle = self.kernel_img.rfind(seq_to_find, 0, position)
+                if needle == -1:
+                    self.verbose_err("Could not find kallsyms_markers")
+                    return False
+                # check alignment
+                align_diff = needle % self.kallsyms_markers_table_element_size
+                if align_diff == 0:
+                    position = needle
+                else:
                     position = needle + self.kallsyms_markers_table_element_size - align_diff
 
-        self.offset_kallsyms_markers = needle
+        if position <= 0:
+            self.verbose_err("Could not find kallsyms_markers")
+            return False
+
+        self.offset_kallsyms_markers = position
         self.save_config("offset_kallsyms_markers")
         self.verbose_info("kallsyms_markers: {:#x}".format(self.ro_base + self.offset_kallsyms_markers))
 
-        # find kallsyms_seqs_of_names
         if self.kernel_version >= (6, 1, 42) and self.kernel_version < (6, 9, 0):
             # locate kallsyms_seqs_of_names to get the table size of kallsyms_markers (used after).
+            #
+            # kallsyms_markers        (1) we found this
+            # kallsyms_seqs_of_names  (2) to know the end of kallsyms_markers, we need to find this
+            # kallsyms_token_table
+            # kallsyms_token_index
+            #
             position = self.offset_kallsyms_markers + 4
             while self.kernel_img[position + 3] == 0:
                 a = u32(self.kernel_img[position - 4:position])
