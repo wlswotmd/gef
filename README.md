@@ -698,6 +698,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/peek-pageframe.png)
 * `peek-pageflags`: reads page flags of a page frame.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/peek-pageflags.png)
+* `angr`: finds simple constraints by `angr`.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/angr.png)
 
 ### Other
 * The category is introduced in `gef help`.
