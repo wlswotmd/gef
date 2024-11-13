@@ -105,6 +105,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm.png)
         * Secure memory scanning is also supported, and you don't have to break in the secure world (unlike ARM64).
         * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-arm-secure.png)
+* `pagewalk-with-hints`: prints pagetables with description.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-with-hints.png)
 * `v2p`/`p2v`: displays transformation virtual address <-> physical address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/v2p-p2v.png)
 * `xp`: is a shortcut for physical memory dump.
@@ -116,28 +118,11 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * `sysreg`: pretty prints system registers.
     * It is the result of `info registers` with filtering general registers.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/sysreg.png)
-* `qemu-device-info`: dumps device information for qemu-escape (WIP).
 * `msr`: reads/writes MSR (Model Specific Registers) value by embedding/executing dynamic assembly.
     * Supported on only x64 and x86.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/msr.png)
-* `uefi-ovmf-info`: dumps addresses of some important structures in each boot phase of UEFI when OVMF is used.
-    * Supported on only x64.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uefi-ovmf-info.png)
-* `xsm`: dumps secure memory when gdb is in normal world.
-    * Supported on only ARM64 and ARM.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xsm.png)
-* `wsm`: writes the value to secure memory when gdb is in normal world.
-    * Supported on only ARM64 and ARM.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/wsm.png)
-* `bsm`: sets the breakpoint to secure memory when gdb is in normal world.
-    * Supported on only ARM64 and ARM.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/bsm.png)
-* `optee-break-ta`: sets the breakpoint to the offset of OPTEE-Trusted-App when gdb is in normal world.
-    * Supported on only ARM64 and ARM.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-break-ta.png)
-* `pac-keys`: pretty prints ARM64 PAC keys.
-    * Supported on only ARM64.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pac-keys.png)
+* `read-system-register`: reads system register for old `qemu-system-arm`.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/read-system-register.png)
 * `kbase`: displays the kernel base address.
 * `kversion`: displays the kernel version.
 * `kcmdline`: displays the kernel cmdline used at boot time.
@@ -251,8 +236,6 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/knetdev.png)
 * `ksearch-code-ptr`: searches the code pointer in kernel data area.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ksearch-code-ptr.png)
-* `pagewalk-with-hints`: prints pagetables with description.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pagewalk-with-hints.png)
 * `thunk-tracer`: collects and displays the thunk function addresses that are called automatically (only x64/x86).
     * If this address comes from RW area, this is useful for getting RIP.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/thunk-tracer.png)
@@ -260,6 +243,25 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/usermodehelper-tracer.png)
 * `ktrace`: traces kernel functions and arguments.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktrace.png)
+* `xsm`: dumps secure memory when gdb is in normal world.
+    * Supported on only ARM64 and ARM.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/xsm.png)
+* `wsm`: writes the value to secure memory when gdb is in normal world.
+    * Supported on only ARM64 and ARM.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/wsm.png)
+* `bsm`: sets the breakpoint to secure memory when gdb is in normal world.
+    * Supported on only ARM64 and ARM.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/bsm.png)
+* `optee-break-ta`: sets the breakpoint to the offset of OPTEE-Trusted-App when gdb is in normal world.
+    * Supported on only ARM64 and ARM.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/optee-break-ta.png)
+* `pac-keys`: pretty prints ARM64 PAC keys.
+    * Supported on only ARM64.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/pac-keys.png)
+* `uefi-ovmf-info`: dumps addresses of some important structures in each boot phase of UEFI when OVMF is used.
+    * Supported on only x64.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/uefi-ovmf-info.png)
+* `qemu-device-info`: dumps device information for qemu-escape (WIP).
 
 ### Qemu-user cooperation
 * `si`/`ni`: are the wrapper for native `si`/`ni` if OpenRISC or cris.
@@ -610,8 +612,6 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/multi-line.png)
 * `cpuid`: shows the result of cpuid(eax=0,1,2...).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/cpuid.png)
-* `read-system-register`: reads system register for old `qemu-system-arm`.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/read-system-register.png)
 * `read-control-register`: reads control register for kgdb.
 * `capability`: shows the capabilities of the debugging process.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/capability.png)
