@@ -125,8 +125,9 @@
 
 ## With wine
 * Usage
-    * Run `winedbg --gdb /PATH/TO/BINARY`.
-    * Or run `winedbg --gdb --no-start /PATH/TO/BINARY` and attach with `gdb -ex 'target remote localhost:<port>'`.
+    * Run `winedbg --gdb --no-start /PATH/TO/BINARY` and attach with `gdb -ex 'target remote localhost:<port>'`.
+        * If you do not specify the `--no-start` option, gdb will be started directly.
+        * However, gdb will be terminated by pressing `Ctrl+C`, so it may be difficult to use.
 * Supported architectures
     * x86 and x64.
 * Note
