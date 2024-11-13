@@ -557,6 +557,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/unsigned.png)
 * `convert`: shows various conversion.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/convert.png)
+* `addressify`: converts reverse-order hex values to address.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/addressify.png)
 * `walk-link-list`: walks the link list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/walk-link-list.png)
 * `hexdump-flexible`: displays the hexdump with user defined format.
