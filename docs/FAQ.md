@@ -91,7 +91,10 @@ If you install with `install-minimal.sh`, you will not be able to use these comm
 |`seccomp-tools`|`ruby-dev`|-|`seccomp-tools`|
 |`ktask -S`|`ruby-dev`|-|`seccomp-tools`|
 |`rp`|-|-|`rp++`|
+|`angr`|`python3-pip`|`angr` (M)|-|
+|`diffo colordiff`|`colordiff` (M)|-|-|
 
+M: Needed manual install (They will not install even if you use `install.sh`)
 
 # About the host environment
 
