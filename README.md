@@ -121,8 +121,6 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * `msr`: reads/writes MSR (Model Specific Registers) value by embedding/executing dynamic assembly.
     * Supported on only x64 and x86.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/msr.png)
-* `read-system-register`: reads system register for old `qemu-system-arm`.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/read-system-register.png)
 * `kbase`: displays the kernel base address.
 * `kversion`: displays the kernel version.
 * `kcmdline`: displays the kernel cmdline used at boot time.
@@ -164,14 +162,10 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * `page`: displays transformation `struct page` <-> virtual/physical address.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/page.png)
     * There are shortcuts: `virt2page`, `page2virt`, `phys2page` and `page2phys`.
-* `kmalloc-tracer`: collects and displays information when `kmalloc`/`kfree`.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-tracer.png)
-* `kmalloc-allocated-by`: calls a predefined set of system calls and prints structures allocated by `kmalloc` or freed by `kfree`.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-allocated-by.png)
-* `kmagic`: displays useful addresses in kernel.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmagic.png)
 * `kchecksec`: checks kernel security.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kchecksec.png)
+* `kmagic`: displays useful addresses in kernel.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmagic.png)
 * `kconfig`: dumps kernel config if available.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kconfig.png)
 * `syscall-table-view`: displays system call table.
@@ -241,6 +235,10 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/thunk-tracer.png)
 * `usermodehelper-tracer`: collects and displays the information that is executed by `call_usermodehelper_setup`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/usermodehelper-tracer.png)
+* `kmalloc-tracer`: collects and displays information when `kmalloc`/`kfree`.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-tracer.png)
+* `kmalloc-allocated-by`: calls a predefined set of system calls and prints structures allocated by `kmalloc` or freed by `kfree`.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/kmalloc-allocated-by.png)
 * `ktrace`: traces kernel functions and arguments.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/ktrace.png)
 * `xsm`: dumps secure memory when gdb is in normal world.
@@ -385,11 +383,13 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * It supports some new options:
         * `--is-addr`
         * `--is-not-addr`
-        * `--depth`
+        * `--zero`
+        * `--non-zero`
         * `--tag`
         * `--uniq`
-        * `--list-head`
+        * `--depth`
         * `--phys`
+        * `--list-head`
         * `--slab-contains`
         * `--slab-contains-unaligned`
 * `proc-info`: is improved.
@@ -468,6 +468,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
         * `--interval`
         * `--limit`
         * `--max-region-size`
+        * `--phys`
     * It also searches UTF-16 string if target string is ASCII.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-pattern.png)
 * `mprotect`: is improved.
@@ -615,6 +616,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/multi-line.png)
 * `cpuid`: shows the result of cpuid(eax=0,1,2...).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/cpuid.png)
+* `read-system-register`: reads system register for old `qemu-system-arm`.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/read-system-register.png)
 * `read-control-register`: reads control register for kgdb.
 * `capability`: shows the capabilities of the debugging process.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/capability.png)
