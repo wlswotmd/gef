@@ -568,6 +568,8 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hash.png)
 * `crc`: calculates various CRCs.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/crc.png)
+* `base-n-decode`: decodes various baseN.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/base-n-decode.png)
 * `saveo`/`diffo`: saves and diffs the command outputs.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/saveo-diffo.png)
 * `memcmp`: compares the contents of the address A and B, whether virtual or physical.

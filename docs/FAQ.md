@@ -78,6 +78,7 @@ If you install with `install-minimal.sh`, you will not be able to use these comm
 |`vmlinux-to-elf-apply`|`python3-pip`, `git`|`vmlinux-to-elf`|-|
 |`uefi-ovmf-info`|`python3-pip`|`crccheck`|-|
 |`crc`|`python3-pip`|`crccheck`|-|
+|`base-n-decode`|`python3-pip`|`codext`|-|
 |`unicorn-emulate`|`python3-pip`|`unicorn`, `capstone`|-|
 |`capstone-disassemble`|`python3-pip`|`capstone`|-|
 |`dasm`|`python3-pip`|`capstone`|-|

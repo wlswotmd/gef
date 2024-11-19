@@ -11,7 +11,7 @@ apt-get update
 apt-get install -y gdb-multiarch binutils python3-pip ruby-dev git
 
 echo "[+] pip3"
-pip3 install crccheck unicorn capstone ropper keystone-engine tqdm magika
+pip3 install crccheck unicorn capstone ropper keystone-engine tqdm magika codext
 
 echo "[+] install seccomp-tools, one_gadget"
 if [ "x$(which seccomp-tools)" = "x" ]; then
