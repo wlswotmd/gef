@@ -51,8 +51,9 @@ If you want to use GEF as a user other than root, add `source /path/to/.gdbinit-
 ## I don't want to specify the `--break-system-packages` option during installation.
 You have some options:
 * Install inside docker to prevent impact on the host environment.
+* Install inside another virtual machine.
 * Use [`install-minimal.sh`](https://github.com/bata24/gef/blob/dev/install-minimal.sh) to skip installing with `pip`.
-* Use `venv` or `pyenv` to manage Python modules individually.
+* Use `venv` etc. to manage Python modules individually.
 
 ## How can I install GEF offline?
 Please refer to [`install.sh`](https://github.com/bata24/gef/blob/dev/install.sh) or [`install-minimal.sh`](https://github.com/bata24/gef/blob/dev/install-minimal.sh), and set it up manually.
@@ -64,7 +65,7 @@ If you do not install external tools, the features that are not available are li
 ## If I do not install external tools, which commands will no longer be available?
 Following are the breakdown. It may not be comprehensive.
 
-If you install with `install-minimal.sh`, you will not be able to use these commands unless you install the required packages and tools.
+If you install using `install-minimal.sh`, these commands will not be available unless you manually install the required packages and tools yourself.
 
 |GEF command/feature|required apt package|required python3 package|required other tools|
 |:---|:---|:---|:---|
@@ -95,7 +96,7 @@ If you install with `install-minimal.sh`, you will not be able to use these comm
 |`angr`|`python3-pip`|`angr` (M)|-|
 |`diffo colordiff`|`colordiff` (M)|-|-|
 
-M: Needed manual install (They will not install even if you use `install.sh`)
+M: Needed manual install (They will not be installed even if you use `install.sh`)
 
 # About the host environment
 
@@ -123,7 +124,7 @@ Consider building gdb from latest tarball or git.
 * from latest tarball
     * Download latest tarball from https://ftp.gnu.org/gnu/gdb/
     ```
-    tar xf gdb-14.2.tar.xz && cd gdb-14.2
+    tar xf gdb-15.2.tar.xz && cd gdb-15.2
     ./configure --enable-targets=all --with-python=/usr/bin/python3
     make && make install
     ```
@@ -144,6 +145,13 @@ Although it is limited to Ubuntu 22.10 or later, it is recommended to use `debug
     echo "set debuginfod enabled on" >> ~/.gdbinit
     ```
 
+* If you are not able to use `debuginfod`, please set the symbols manually.
+    ```
+    # Not necessary if debuginfod is enabled
+    apt install libc6-dbg
+    echo "set debug-file-directory /usr/lib/debug" >> ~/.gdbinit
+    ```
+
 However, for some reason `debuginfod` does not display the `glibc` source code.
 So you need to obtain and place the source code separately.
 I don't really understand the reason for this.
@@ -160,12 +168,6 @@ I don't really understand the reason for this.
     cd /usr/lib/debug && apt update && apt source libc6
     echo "directory /usr/lib/debug/glibc-2.39" >> ~/.gdbinit
     # Need to fix version for your environment.
-    ```
-
-* Also add `glibc` symbols
-    ```
-    apt install libc6-dbg
-    echo "set debug-file-directory /usr/lib/debug" >> ~/.gdbinit
     ```
 
 
