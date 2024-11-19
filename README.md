@@ -564,8 +564,10 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/walk-link-list.png)
 * `hexdump-flexible`: displays the hexdump with user defined format.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hexdump-flexible.png)
-* `hash-memory`: calculates various hashes/CRCs.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hash-memory.png)
+* `hash`: calculates various hashes.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hash.png)
+* `crc`: calculates various CRCs.
+    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/crc.png)
 * `saveo`/`diffo`: saves and diffs the command outputs.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/saveo-diffo.png)
 * `memcmp`: compares the contents of the address A and B, whether virtual or physical.

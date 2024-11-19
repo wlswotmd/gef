@@ -77,7 +77,7 @@ If you install with `install-minimal.sh`, you will not be able to use these comm
 |`diffo git-diff`|`git`|-|-|
 |`vmlinux-to-elf-apply`|`python3-pip`, `git`|`vmlinux-to-elf`|-|
 |`uefi-ovmf-info`|`python3-pip`|`crccheck`|-|
-|`hash-memory -v`|`python3-pip`|`crccheck`|-|
+|`crc`|`python3-pip`|`crccheck`|-|
 |`unicorn-emulate`|`python3-pip`|`unicorn`, `capstone`|-|
 |`capstone-disassemble`|`python3-pip`|`capstone`|-|
 |`dasm`|`python3-pip`|`capstone`|-|
