@@ -93,6 +93,9 @@ If you install using `install-minimal.sh`, these commands will not be available 
 |`seccomp-tools`|`ruby-dev`|-|`seccomp-tools`|
 |`ktask -S`|`ruby-dev`|-|`seccomp-tools`|
 |`rp`|-|-|`rp++`|
+|`filetype-memory`|`file` (M)|-|-|
+|`filetype-memory`|`python3-pip`|`magika`|-|
+|`binwalk-memory`|`python3-binwalk` (M)|-|-|
 |`angr`|`python3-pip`|`angr` (M)|-|
 |`diffo colordiff`|`colordiff` (M)|-|-|
 
