@@ -96,6 +96,8 @@ If you install using `install-minimal.sh`, these commands will not be available 
 |`filetype-memory`|`file` (M)|-|-|
 |`filetype-memory`|`python3-pip`|`magika`|-|
 |`binwalk-memory`|`python3-binwalk` (M)|-|-|
+|`sixel-memory`|`libsixel-bin` (M)|-|-|
+|`sixel-memory`|`imagemagick` (M)|-|-|
 |`angr`|`python3-pip`|`angr` (M)|-|
 |`diffo colordiff`|`colordiff` (M)|-|-|
 
