@@ -705,7 +705,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/binwalk-memory.png)
 * `filetype-memory`: scans memory by `file` and `magika`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/filetype-memory.png)
-* `sixel-memory`: shows image to terminal by `img2sixel`.
+* `sixel-memory`: shows image to terminal by `imagemagick`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/sixel-memory.png)
 * `stdio-dump`: dumps members of stdin/stdout/stderr.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/stdio-dump.png)

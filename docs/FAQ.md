@@ -78,7 +78,7 @@ If you install using `install-minimal.sh`, these commands will not be available 
 |`binwalk-memory`|`binwalk`|-|-|
 |`diffo colordiff`|`colordiff`|-|-|
 |`diffo git-diff`|`git`|-|-|
-|`sixel-memory`|`libsixel-bin`, `imagemagick`|-|-|
+|`sixel-memory`|`imagemagick`|-|-|
 |`ktask -S`|`ruby-dev`|-|`seccomp-tools`|
 |`seccomp-tools`|`ruby-dev`|-|`seccomp-tools`|
 |`onegadget`|`ruby-dev`|-|`one_gadget`|
