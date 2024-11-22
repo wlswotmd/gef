@@ -71,37 +71,32 @@ If you install using `install-minimal.sh`, these commands will not be available 
 |:---|:---|:---|:---|
 |(`gef`)|`gdb` or `gdb-multiarch`|-|-|
 |`got`|`binutils` (`objdump`, `readelf`)|-|-|
-|`rp --kernel`|`binutils` (`nm`)|-|-|
-|`qemu-device-info`|`binutils` (`nm`)|-|-|
 |`add-symbol-temporary`|`binutils` (`objcopy`)|-|-|
 |`ksymaddr-remote-apply`|`binutils` (`objcopy`)|-|-|
+|`qemu-device-info`|`binutils` (`nm`)|-|-|
+|`rp`|`binutils` (`nm`)|-|`rp++`|
+|`binwalk-memory`|`binwalk`|-|-|
+|`diffo colordiff`|`colordiff`|-|-|
 |`diffo git-diff`|`git`|-|-|
-|`vmlinux-to-elf-apply`|`python3-pip`, `git`|`vmlinux-to-elf`|-|
-|`uefi-ovmf-info`|`python3-pip`|`crccheck`|-|
-|`crc`|`python3-pip`|`crccheck`|-|
-|`base-n-decode`|`python3-pip`|`codext`|-|
-|`unicorn-emulate`|`python3-pip`|`unicorn`, `capstone`|-|
+|`sixel-memory`|`libsixel-bin`, `imagemagick`|-|-|
+|`ktask -S`|`ruby-dev`|-|`seccomp-tools`|
+|`seccomp-tools`|`ruby-dev`|-|`seccomp-tools`|
+|`onegadget`|`ruby-dev`|-|`one_gadget`|
+|(Progress Indicator)|`python3-pip`|`tqdm`|-|
+|`angr`|`python3-pip`|`angr`|-|
+|`asm-list`|`python3-pip`|`capstone`|-|
 |`capstone-disassemble`|`python3-pip`|`capstone`|-|
 |`dasm`|`python3-pip`|`capstone`|-|
-|`asm-list`|`python3-pip`|`capstone`|-|
 |`i8086` mode|`python3-pip`|`capstone`|-|
-|`ropper`|`python3-pip`|`ropper`|-|
-|`mprotect`|`python3-pip`|`keystone-engine`|-|
+|`unicorn-emulate`|`python3-pip`|`capstone`, `unicorn`|-|
 |`asm`|`python3-pip`|`keystone-engine`|-|
-|(Progress Indicator)|`python3-pip`|`tqdm`|-|
-|`onegadget`|`ruby-dev`|-|`one_gadget`|
-|`seccomp-tools`|`ruby-dev`|-|`seccomp-tools`|
-|`ktask -S`|`ruby-dev`|-|`seccomp-tools`|
-|`rp`|-|-|`rp++`|
-|`filetype-memory`|`file` (M)|-|-|
-|`filetype-memory`|`python3-pip`|`magika`|-|
-|`binwalk-memory`|`python3-binwalk` (M)|-|-|
-|`sixel-memory`|`libsixel-bin` (M)|-|-|
-|`sixel-memory`|`imagemagick` (M)|-|-|
-|`angr`|`python3-pip`|`angr` (M)|-|
-|`diffo colordiff`|`colordiff` (M)|-|-|
-
-M: Needed manual install (They will not be installed even if you use `install.sh`)
+|`mprotect`|`python3-pip`|`keystone-engine`|-|
+|`base-n-decode`|`python3-pip`|`codext`|-|
+|`crc`|`python3-pip`|`crccheck`|-|
+|`uefi-ovmf-info`|`python3-pip`|`crccheck`|-|
+|`filetype-memory`|`python3-pip`, `file`|`magika`|-|
+|`ropper`|`python3-pip`|`ropper`|-|
+|`vmlinux-to-elf-apply`|`python3-pip`, `git`|`vmlinux-to-elf`|-|
 
 # About the host environment
 
