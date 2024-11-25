@@ -5,6 +5,7 @@ if [ -z "${GDBINIT_PATH}" ]; then
     GDBINIT_PATH="/root/.gdbinit"
 fi
 GEF_PATH="${GDBINIT_PATH}-gef.py"
+GEF_VENV_PATH="$(dirname ${GDBINIT_PATH})/.venv-gef"
 
 echo "[+] User check"
 if [ "$(id -u)" != "0" ]; then
@@ -15,7 +16,11 @@ fi
 
 echo "[+] apt"
 apt-get update
-apt-get install -y gdb-multiarch wget binutils python3-pip ruby-dev git file colordiff binwalk imagemagick
+apt-get install -y gdb-multiarch wget binutils python3-pip python3-venv ruby-dev git file colordiff binwalk imagemagick
+
+echo "[+] Setup venv"
+python3 -m venv -- "${GEF_VENV_PATH}"
+. "${GEF_VENV_PATH}/bin/activate"
 
 echo "[+] pip3"
 pip3 install setuptools crccheck unicorn capstone ropper keystone-engine tqdm magika codext angr
@@ -70,4 +75,5 @@ if [ ! -e "${GDBINIT_PATH}" ] || [ -z "$(grep "${STARTUP_COMMAND}" "${GDBINIT_PA
 fi
 
 echo "[+] INSTALLATION SUCCESSFUL"
+echo "[+] Run 'source ${GEF_VENV_PATH}/bin/activate' before starting gdb."
 exit 0

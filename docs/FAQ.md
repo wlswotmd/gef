@@ -37,9 +37,17 @@ This is an installer for running GEF in limited environments where required pack
 
 The essence of it is very simple. Just download `gef.py`, place it, and add its path to `.gdbinit`.
 
-* To use all feature (=GEF's command), use `install.sh`.
+* To use all feature (=GEF's command), use `install.sh` or `install-venv.sh`.
 * If you do not need some features (used in a limited environment), use `install-minimal.sh`. It should work at least except some commands.
 
+## What is `install-venv.sh`?
+This is the `venv` version of `install.sh`.
+
+This will install the same packages as `install.sh`.
+The only difference is that the python package will be installed into the `venv` environment.
+By default, it will be installed into `/root/.venv-gef`.
+
+Before starting gdb, you need to execute `source /root/.venv-gef/bin/activate` and transition to the `venv` environment.
 
 # About the install
 
@@ -50,13 +58,13 @@ If you want to use GEF as a user other than root, add `source /path/to/.gdbinit-
 
 ## I don't want to specify the `--break-system-packages` option during installation.
 You have some options:
+* Use [`install-minimal.sh`](https://github.com/bata24/gef/blob/dev/install-minimal.sh) to skip installing with `pip`.
+* Use [`install-venv.sh`](https://github.com/bata24/gef/blob/dev/install-venv.sh) to avoid affecting the global environment.
 * Install inside docker to prevent impact on the host environment.
 * Install inside another virtual machine.
-* Use [`install-minimal.sh`](https://github.com/bata24/gef/blob/dev/install-minimal.sh) to skip installing with `pip`.
-* Use `venv` etc. to manage Python modules individually.
 
 ## How can I install GEF offline?
-Please refer to [`install.sh`](https://github.com/bata24/gef/blob/dev/install.sh) or [`install-minimal.sh`](https://github.com/bata24/gef/blob/dev/install-minimal.sh), and set it up manually.
+Please refer to [`install.sh`](https://github.com/bata24/gef/blob/dev/install.sh), [`install-minimal.sh`](https://github.com/bata24/gef/blob/dev/install-minimal.sh), or [`install-venv.sh`](https://github.com/bata24/gef/blob/dev/install-venv.sh) and set it up manually.
 
 Note: GEF is designed to have as few dependencies as possible.
 Many commands should work with just `gef.py` without any additional external tools.
@@ -88,7 +96,7 @@ If you install using `install-minimal.sh`, these commands will not be available 
 |`capstone-disassemble`|`python3-pip`|`capstone`|-|
 |`dasm`|`python3-pip`|`capstone`|-|
 |`i8086` mode|`python3-pip`|`capstone`|-|
-|`unicorn-emulate`|`python3-pip`|`capstone`, `unicorn`|-|
+|`unicorn-emulate`|`python3-pip`|`capstone`, `unicorn`, `setuptools`(after python 3.12)|-|
 |`asm`|`python3-pip`|`keystone-engine`|-|
 |`mprotect`|`python3-pip`|`keystone-engine`|-|
 |`base-n-decode`|`python3-pip`|`codext`|-|

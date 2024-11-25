@@ -50,6 +50,8 @@ Many other commands have been added and improved. Enjoy!
     * Also, it registers the GEF path to `/root/.gdbinit`.
     * If you want to change the location or user, please modify both yourself.
     * See [docs/FAQ.md](https://github.com/bata24/gef/blob/dev/docs/FAQ.md) for more information and other install options.
+        * There is a way to install it using `venv`.
+        * There is a minimum installation that reduces installation as much as possible.
 
 ### Upgrade
 ```bash
