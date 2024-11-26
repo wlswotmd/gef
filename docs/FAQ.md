@@ -35,10 +35,16 @@ It will be created automatically the next time GEF starts.
 ## What is `install-minimal.sh`?
 This is an installer for running GEF in limited environments where required packages cannot be installed for some reason.
 
-The essence of it is very simple. Just download `gef.py`, place it, and add its path to `.gdbinit`.
+Usage:
+```
+# For any Ubuntu version
+wget -q https://raw.githubusercontent.com/bata24/gef/dev/install-minimal.sh -O- | sh
+```
 
-* To use all feature (=GEF's command), use `install.sh` or `install-venv.sh`.
-* If you do not need some features (used in a limited environment), use `install-minimal.sh`. It should work at least except some commands.
+Use this if you do not need some features (used in a limited environment).
+It should work at least except some commands.
+The essence of it is very simple. Just download `gef.py`, place it, and add its path to `.gdbinit`.
+You could also do the same thing manually.
 
 ## What is `install-venv.sh`?
 This is the `venv` version of `install.sh`.
@@ -47,7 +53,17 @@ This will install the same packages as `install.sh`.
 The only difference is that the python package will be installed into the `venv` environment.
 By default, it will be installed into `/root/.venv-gef`.
 
-Before starting gdb, you need to execute `source /root/.venv-gef/bin/activate` and transition to the `venv` environment.
+Usage:
+```
+# For any Ubuntu version
+wget -q https://raw.githubusercontent.com/bata24/gef/dev/install-venv.sh -O- | sh
+```
+
+Before starting gdb, you need to execute following and transition to the `venv` environment.
+```
+source /root/.venv-gef/bin/activate
+```
+
 
 # About the install
 

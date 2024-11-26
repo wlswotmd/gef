@@ -22,7 +22,7 @@
 ## What is this?
 This is a fork of [GEF](https://github.com/hugsy/gef) with 3 major improvements.
 
-1. Added many heuristic commands for kernel debugging __WITHOUT symboled vmlinux__ (for qemu-system; linux kernel 3.x ~ 6.11.x).
+1. Added many heuristic commands for kernel debugging __WITHOUT a symbolized vmlinux__ (for qemu-system; linux kernel 3.x ~ 6.11.x).
 2. Added support for [many architectures](https://github.com/bata24/gef/blob/dev/docs/QEMU-USER-SUPPORTED-ARCH.md) (for qemu-user).
 3. Added some heap dump commands for various allocators.
 
@@ -155,7 +155,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-tiny-dump.png)
 * `slab-contains`: resolves which `kmem_cache` certain address (object) belongs to (for `SLUB/SLUB-TINY/SLAB`).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slab-contains.png)
-    * For `SLUB/SLUB-TINY`, if all chunks belonging to a certain `page` are in use, they will not be displayed by `slub-dump/slub-tiny-dump` command.
+    * For `SLUB/SLUB-TINY`, if all chunks belonging to a certain `page` are in use, they will not be displayed by `slub-dump`/`slub-tiny-dump` command.
     * Even with such an address (object), this command may be able to resolve `kmem_cache`.
 * `buddy-dump`: dumps zone of page allocator (buddy allocator) free-list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/buddy-dump.png)
