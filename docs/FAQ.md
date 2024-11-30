@@ -113,6 +113,7 @@ If you install using `install-minimal.sh`, these commands will not be available 
 |`dasm`|`python3-pip`|`capstone`|-|
 |`i8086` mode|`python3-pip`|`capstone`|-|
 |`unicorn-emulate`|`python3-pip`|`capstone`, `unicorn`, `setuptools`(after python 3.12)|-|
+|`heap try-free`|`python3-pip`|`capstone`, `unicorn`, `setuptools`(after python 3.12)|-|
 |`asm`|`python3-pip`|`keystone-engine`|-|
 |`mprotect`|`python3-pip`|`keystone-engine`|-|
 |`base-n-decode`|`python3-pip`|`codext`|-|
