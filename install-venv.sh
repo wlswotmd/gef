@@ -16,6 +16,7 @@ fi
 
 echo "[+] apt"
 apt-get update
+DEBIAN_FRONTEND=noninteractive apt-get install -y tzdata
 apt-get install -y gdb-multiarch wget binutils python3-pip python3-venv ruby-dev git file colordiff binwalk imagemagick
 
 echo "[+] Setup venv"
