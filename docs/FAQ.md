@@ -389,6 +389,7 @@ further debugging may prove unreliable.
 ...
 ```
 If so, this is caused by the `continue-for-qemu-user` command.
+This problem occurs only when the configuration is `continue_for_qemu_user.use_fork = False`.
 
 `continue-for-qemu-user` is a command wrapper of `c`(=`continue`) that accepts `Ctrl+C` even during `continue` under qemu-user.
 On some architectures, this wrapper may not work properly when running dynamically linked binaries with qemu-user.
@@ -396,6 +397,7 @@ On some architectures, this wrapper may not work properly when running dynamical
 There are two ways to work around this:
 - Use the `main-break` command to reach `main` once, and this error will no longer occur.
 - Use the `continue` command instead of the `c` command (but `Ctrl+C` will not work).
+
 
 
 # About internal mechanism
