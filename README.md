@@ -573,7 +573,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/crc.png)
 * `base-n-decode`/`base-n-encode`: decodes/encodes various baseN.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/base-n-decode.png)
-* `morse-decode`: decodes morse code.
+* `morse-decode`/`morse-encode`: decodes/encodes morse code.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/morse-decode.png)
 * `saveo`/`diffo`: saves and diffs the command outputs.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/saveo-diffo.png)
