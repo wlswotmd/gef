@@ -563,3 +563,5 @@ Yes. However, please follow the license.
     * [gefを改造した話](https://hackmd.io/@bata24/rJVtBJsrP)
 * The story behind each command, etc.
     * [bata24/gefの機能紹介とか](https://hackmd.io/@bata24/SycIO4qPi)
+* The story behind each command, etc. 2024 Edition
+    * [bata24/gefの機能紹介とか 2024](https://hackmd.io/@bata24/SJOzjzqQ1e)
