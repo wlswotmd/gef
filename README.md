@@ -571,7 +571,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hash.png)
 * `crc`: calculates various CRCs.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/crc.png)
-* `base-n-decode`: decodes various baseN.
+* `base-n-decode`/`base-n-encode`: decodes/encodes various baseN.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/base-n-decode.png)
 * `morse-decode`: decodes morse code.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/morse-decode.png)
