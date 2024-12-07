@@ -213,6 +213,8 @@ I use [https://kernel.ubuntu.com/](https://kernel.ubuntu.com/mainline).
 Download `linux-image-unsigned-*_amd64.deb` your preferred, and extract `/boot/vmlinuz-*`.
 No filesystem image is provided. Please use the one created with `buildroot` or provided in past CTF challenges.
 
+Download `linux-modules-*_amd64.deb` for `System.map` and `config`.
+
 ## Will each GEF command be more accurate if I have `vmlinux` with debug symbols?
 No, whether `vmlinux` includes debug information has no effect on GEF behavior.
 
