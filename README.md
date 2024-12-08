@@ -475,8 +475,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * It also searches UTF-16 string if target string is ASCII.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/search-pattern.png)
 * `mprotect`: is improved.
-    * It supports more architectures.
-    * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/mprotect.png)
+    * Rewritten to use `call-syscall`.
 * `hijack-fd`: is improved.
     * It supports more architectures.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/hijack-fd.png)
@@ -637,7 +636,6 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * This command uses x86data.js from https://github.com/asmjit/asmdb
 * `syscall-search`: searches system call by regex.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/syscall-search.png)
-* `syscall-sample`: shows the syscall calling sample for specified architecture.
 * `dwarf-exception-handler`: dumps the DWARF exception handler information.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/dwarf-exception-handler.png)
 * `magic`: displays useful addresses in glibc etc.
