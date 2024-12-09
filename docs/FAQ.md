@@ -117,6 +117,7 @@ If you install using `install-minimal.sh`, these commands will not be available 
 |`asm`|`python3-pip`|`keystone-engine`|-|
 |`base-n-decode`|`python3-pip`|`codext`|-|
 |`crc`|`python3-pip`|`crccheck`|-|
+|`hash` (for what is not in `hashlib`)|`python3-pip`|`pycryptodome`|-|
 |`uefi-ovmf-info`|`python3-pip`|`crccheck`|-|
 |`filetype-memory`|`python3-pip`, `file`|`magika`|-|
 |`ropper`|`python3-pip`|`ropper`|-|
