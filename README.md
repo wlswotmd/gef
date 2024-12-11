@@ -726,7 +726,17 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * The system-call table used by `syscall-args` is moved from gef-extras.
     * It was updated up to linux kernel 6.11.0 for each architecture.
 * Removed some features I don't use.
-    * `$`, `ida-interact`, `gef-remote`, `pie`, `pcustom`, `ksymaddr`, `trace-run`, `bufferize`, `output redirect` and `shellcode`.
+    * `$`
+    * `ida-interact`
+    * `gef-remote`
+    * `pie`
+    * `pcustom`
+    * `ksymaddr`
+    * `trace-run`
+    * bufferize
+    * output redirect
+    * `shellcode`
+    * `heap-analysis-helper`
 * Many bugs fix / formatting / made it easy for me to use.
 
 ## FAQ
