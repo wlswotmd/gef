@@ -264,11 +264,11 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * `qemu-device-info`: dumps device information for qemu-escape (WIP).
 
 ### Qemu-user cooperation
-* `si`/`ni`: are the wrapper for native `si`/`ni` if OpenRISC or cris.
-    * On OpenRISC architecture, branch operations don't work well, so use breakpoints to simulate.
-    * On cris architecture, `stepi`/`nexti` commands don't work well, so use breakpoints to simulate.
+* `si`/`ni`: are the wrapper for native `si`/`ni` if OpenRISC 1000 or CRIS.
+    * On OpenRISC 1000 architecture, branch operations don't work well, so GEF uses breakpoints to simulate.
+    * On CRIS architecture, `stepi`/`nexti` commands don't work well, so GEF uses breakpoints to simulate.
     * If you want to use native `si`/`ni`, use the full form `stepi`/`nexti`.
-* `c`: is the wrapper for native `c` if gdb is connected to qemu-user or intel pin.
+* `c`: is the wrapper for native `c` if gdb is connected to qemu-user or Intel Pin.
     * When connecting to gdb stub of qemu-user or Intel Pin, gdb does not trap `SIGINT` during `continue`.
     * If you want to trap, you need to issue `SIGTRAP` on the qemu-user or pin side, but switching screens is troublesome.
     * This command realizes a pseudo `SIGTRAP` trap by trapping `SIGINT` on the python side and throwing `SIGTRAP` back to qemu-user or Intel Pin.
