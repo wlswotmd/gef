@@ -736,7 +736,6 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * bufferize
     * output redirect
     * `shellcode`
-    * `heap-analysis-helper`
 * Many bugs fix / formatting / made it easy for me to use.
 
 ## FAQ
