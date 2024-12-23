@@ -115,7 +115,7 @@ If you install using `install-minimal.sh`, these commands will not be available 
 |`unicorn-emulate`|`python3-pip`|`capstone`, `unicorn`, `setuptools`(after python 3.12)|-|
 |`heap try-free`|`python3-pip`|`capstone`, `unicorn`, `setuptools`(after python 3.12)|-|
 |`asm`|`python3-pip`|`keystone-engine`|-|
-|`base-n-decode`|`python3-pip`|`codext`|-|
+|`base-n-decode`/`base-n-encode`|`python3-pip`|`codext`|-|
 |`crc`|`python3-pip`|`crccheck`|-|
 |`hash` (for what is not in `hashlib`)|`python3-pip`|`pycryptodome`|-|
 |`uefi-ovmf-info`|`python3-pip`|`crccheck`|-|

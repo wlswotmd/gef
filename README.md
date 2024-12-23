@@ -153,9 +153,9 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
 * `slub-tiny-dump`: dumps slub-tiny free-list.
     * Supported on x64/x86/ARM64/ARM + `SLUB-TINY` + no-symbol + kASLR.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slub-tiny-dump.png)
-* `slab-contains`: resolves which `kmem_cache` certain address (object) belongs to (for `SLUB/SLUB-TINY/SLAB`).
+* `slab-contains`: resolves which `kmem_cache` certain address (object) belongs to (for `SLUB`/`SLUB-TINY`/`SLAB`).
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/slab-contains.png)
-    * For `SLUB/SLUB-TINY`, if all chunks belonging to a certain `page` are in use, they will not be displayed by `slub-dump`/`slub-tiny-dump` command.
+    * For `SLUB`/`SLUB-TINY`, if all chunks belonging to a certain `page` are in use, they will not be displayed by `slub-dump`/`slub-tiny-dump` command.
     * Even with such an address (object), this command may be able to resolve `kmem_cache`.
 * `buddy-dump`: dumps zone of page allocator (buddy allocator) free-list.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/buddy-dump.png)
@@ -612,7 +612,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/call-syscall.png)
 * `mmap`: allocates a new memory by `call-syscall`.
 * `killthreads`: kill specific or all pthread.
-* `constgrep`: invokes `grep` under `/usr/include`.
+* `constgrep`: invokes `grep` under `/usr/include/`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/constgrep.png)
 * `proc-dump`: dumps each file under `/proc/PID/`.
     * ![](https://raw.githubusercontent.com/bata24/gef/dev/images/proc-dump.png)
