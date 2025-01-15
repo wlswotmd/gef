@@ -80,7 +80,7 @@ You have some options:
 * Install inside another virtual machine.
 
 ## How can I install GEF offline?
-Please refer to [`install.sh`](https://github.com/bata24/gef/blob/dev/install.sh), [`install-minimal.sh`](https://github.com/bata24/gef/blob/dev/install-minimal.sh), or [`install-venv.sh`](https://github.com/bata24/gef/blob/dev/install-venv.sh) and set it up manually.
+Please refer to [`install.sh`](https://github.com/bata24/gef/blob/dev/install.sh), [`install-minimal.sh`](https://github.com/bata24/gef/blob/dev/install-minimal.sh) or [`install-venv.sh`](https://github.com/bata24/gef/blob/dev/install-venv.sh) and set it up manually.
 
 Note: GEF is designed to have as few dependencies as possible.
 Many commands should work with just `gef.py` without any additional external tools.
@@ -324,6 +324,9 @@ Currently, at least following commands do not work.
 * `knamespaces`
 * `kipcs`
 * `kfilesystems`
+
+If it does not work properly even though `CONFIG_RANDSTRUCT=n`, GEF may be failing to parse due to a change in `struct task_struct`, etc.
+If you think there is a problem with GEF, please report it on the issues page.
 
 ## `vmmap` command does not recognize option.
 Try `pagewalk` command.
