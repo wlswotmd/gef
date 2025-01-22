@@ -3,6 +3,7 @@ import sys
 import os
 import subprocess
 import shutil
+import hashlib
 
 ################################################################################
 # init and arguments check
@@ -23,26 +24,44 @@ def init():
     GEF_TMP_PATH = GEF_PATH + ".tmp"
 
     if not os.path.exists(K_DIR):
-        print("Not found {:s}".format(K_DIR))
+        print("[-] Not found {:s}".format(K_DIR))
         exit()
 
     if not os.path.exists(GEF_PATH):
-        print("Not found {:s}".format(GEF_PATH))
+        print("[-] Not found {:s}".format(GEF_PATH))
         exit()
 
     if os.path.exists(GEF_TMP_PATH):
-        print("Found {:s} already.".format(GEF_TMP_PATH))
+        print("[-] Found {:s} already.".format(GEF_TMP_PATH))
         exit()
 
     if os.path.exists("/tmp/a"):
-        print("Found {:s} already.".format("/tmp/a"))
+        print("[-] Found {:s} already.".format("/tmp/a"))
         exit()
 
     if os.path.exists("/tmp/b"):
-        print("Found {:s} already.".format("/tmp/b"))
+        print("[-] Found {:s} already.".format("/tmp/b"))
         exit()
 
     shutil.copyfile(GEF_PATH, GEF_TMP_PATH)
+    return
+
+def print_patch_result():
+    print(titlify("patch result"))
+    h1 = hashlib.sha1(open(GEF_PATH, "rb").read()).hexdigest()
+    h2 = hashlib.sha1(open(GEF_TMP_PATH, "rb").read()).hexdigest()
+    if h1 != h2:
+        print("[+] patched gef.py is saved to {:s}".format(GEF_TMP_PATH))
+    else:
+        print("[+] No diff")
+        os.unlink(GEF_TMP_PATH)
+    return
+
+def cleanup():
+    if os.path.exists("/tmp/a"):
+        os.unlink("/tmp/a")
+    if os.path.exists("/tmp/b"):
+        os.unlink("/tmp/b")
     return
 
 ################################################################################
@@ -76,7 +95,7 @@ def titlify(text):
 def which(command):
     x = subprocess.getoutput("which {:s}".format(command))
     if not x:
-        print("Not found {:s}".format(command))
+        print("[-] Not found {:s}".format(command))
         exit()
     return x
 
@@ -248,6 +267,12 @@ def syscall_defs_compat_update():
         ["asmlinkage long compat_sys_fanotify_mark(int, unsigned int, __u32, __u32, int, const char __user *);",
          "asmlinkage long compat_sys_fanotify_mark(int fanotify_fd, unsigned int flags, __u32 mask_1, __u32 mask_2, int dfd, const char __user *pathname);",
         ],
+        ["asmlinkage long compat_sys_io_pgetevents(compat_aio_context_t ctx_id, compat_long_t min_nr, compat_long_t nr, struct io_event __user *events, struct old_timespec32 __user *timeout, const struct __compat_aio_sigset __user *usig);",
+         "asmlinkage long compat_sys_io_pgetevents(compat_aio_context_t ctx_id, compat_long_t min_nr, compat_long_t nr, struct io_event __user *events, struct old_timespec32 __user *timeout, const struct __compat_aio_sigset __user *usig); # codespell:ignore",
+        ],
+        ["asmlinkage long compat_sys_io_pgetevents_time64(compat_aio_context_t ctx_id, compat_long_t min_nr, compat_long_t nr, struct io_event __user *events, struct __kernel_timespec __user *timeout, const struct __compat_aio_sigset __user *usig);",
+         "asmlinkage long compat_sys_io_pgetevents_time64(compat_aio_context_t ctx_id, compat_long_t min_nr, compat_long_t nr, struct io_event __user *events, struct __kernel_timespec __user *timeout, const struct __compat_aio_sigset __user *usig); # codespell:ignore",
+        ],
     ]
 
     replace_rules2 = [
@@ -267,6 +292,7 @@ def get_new_tbl(tbl_path):
     path = os.path.join(K_DIR, tbl_path)
     print("[+] path:", path)
     new_tbl = open(path, "rb").read().decode("ascii").expandtabs(8).splitlines()
+    new_tbl = [l for l in new_tbl if not l.startswith("#")]
     return new_tbl
 
 def get_new_tbl_by_cmds(cmds):
@@ -276,15 +302,15 @@ def get_new_tbl_by_cmds(cmds):
     return result.splitlines()
 
 def x64_syscall_tbl_update():
-    print(titlify("x64_syscall_tbl"))
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
     new_tbl = get_new_tbl("arch/x86/entry/syscalls/syscall_64.tbl")
     old_tbl, s, e = get_gef_defs('x64_syscall_tbl = """', '"""')
     print_diff(old_tbl, new_tbl)
     write_back(new_tbl, s, e)
     return
 
-def x86_syscall_tbl_update():
-    print(titlify("i386_syscall_tbl"))
+def i386_syscall_tbl_update():
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
     new_tbl = get_new_tbl("arch/x86/entry/syscalls/syscall_32.tbl")
     old_tbl, s, e = get_gef_defs('x86_syscall_tbl = """', '"""')
     print_diff(old_tbl, new_tbl)
@@ -292,7 +318,10 @@ def x86_syscall_tbl_update():
     return
 
 def arm64_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
+    print("\033[1m" + "[!] skip {:s}. need fix manually.".format(sys._getframe().f_code.co_name[:-19]) + "\033[0m")
+    return
+
     new_tbl = get_new_tbl_by_cmds(
         r"""
         cd {:s}
@@ -307,22 +336,15 @@ def arm64_syscall_tbl_update():
     return
 
 def arm_compat_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
-    new_tbl = get_new_tbl_by_cmds(
-        r"""
-        cd {:s}
-        gcc -E -D__SYSCALL=SYSCALL arch/arm64/include/asm/unistd32.h | grep ^SYSCALL | sed -e 's/SYSCALL(//;s/[,)]//g' > /tmp/a
-        grep -oP "__NR\S+\s+\d+" arch/arm64/include/asm/unistd32.h > /tmp/b
-        join -2 2 -o 1.1,1.10,2.1,1.2 -e arm /tmp/a /tmp/b 2>/dev/null | sed -e 's/__NR_//g' | column -t
-        """.format(K_DIR)
-    )
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
+    new_tbl = get_new_tbl("arch/arm64/tools/syscall_32.tbl")
     old_tbl, s, e = get_gef_defs('arm_compat_syscall_tbl = """', '"""')
     print_diff(old_tbl, new_tbl)
     write_back(new_tbl, s, e)
     return
 
 def arm_native_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
     new_tbl = get_new_tbl("arch/arm/tools/syscall.tbl")
     old_tbl, s, e = get_gef_defs('arm_native_syscall_tbl = """', '"""')
     print_diff(old_tbl, new_tbl)
@@ -330,47 +352,50 @@ def arm_native_syscall_tbl_update():
     return
 
 def mips_o32_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
-    new_tbl = get_new_tbl("arch/mips/kernel/syscalls/syscall_o32.tbl")[2:]
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
+    new_tbl = get_new_tbl("arch/mips/kernel/syscalls/syscall_o32.tbl")
     old_tbl, s, e = get_gef_defs('mips_o32_syscall_tbl = """', '"""')
     print_diff(old_tbl, new_tbl)
     write_back(new_tbl, s, e)
     return
 
 def mips_n32_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
-    new_tbl = get_new_tbl("arch/mips/kernel/syscalls/syscall_n32.tbl")[2:]
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
+    new_tbl = get_new_tbl("arch/mips/kernel/syscalls/syscall_n32.tbl")
     old_tbl, s, e = get_gef_defs('mips_n32_syscall_tbl = """', '"""')
     print_diff(old_tbl, new_tbl)
     write_back(new_tbl, s, e)
     return
 
 def mips_n64_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
-    new_tbl = get_new_tbl("arch/mips/kernel/syscalls/syscall_n64.tbl")[2:]
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
+    new_tbl = get_new_tbl("arch/mips/kernel/syscalls/syscall_n64.tbl")
     old_tbl, s, e = get_gef_defs('mips_n64_syscall_tbl = """', '"""')
     print_diff(old_tbl, new_tbl)
     write_back(new_tbl, s, e)
     return
 
 def ppc_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
-    new_tbl = get_new_tbl("arch/powerpc/kernel/syscalls/syscall.tbl")[2:]
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
+    new_tbl = get_new_tbl("arch/powerpc/kernel/syscalls/syscall.tbl")
     old_tbl, s, e = get_gef_defs('ppc_syscall_tbl = """', '"""')
     print_diff(old_tbl, new_tbl)
     write_back(new_tbl, s, e)
     return
 
 def sparc_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
-    new_tbl = get_new_tbl("arch/sparc/kernel/syscalls/syscall.tbl")[2:]
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
+    new_tbl = get_new_tbl("arch/sparc/kernel/syscalls/syscall.tbl")
     old_tbl, s, e = get_gef_defs('sparc_syscall_tbl = """', '"""')
     print_diff(old_tbl, new_tbl)
     write_back(new_tbl, s, e)
     return
 
 def riscv64_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
+    print("\033[1m" + "[!] skip {:s}. need fix manually.".format(sys._getframe().f_code.co_name[:-19]) + "\033[0m")
+    return
+
     new_tbl = get_new_tbl_by_cmds(
         r"""
         cd {:s}
@@ -385,7 +410,10 @@ def riscv64_syscall_tbl_update():
     return
 
 def riscv32_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
+    print("\033[1m" + "[!] skip {:s}. need fix manually.".format(sys._getframe().f_code.co_name[:-19]) + "\033[0m")
+    return
+
     new_tbl = get_new_tbl_by_cmds(
         r"""
         cd {:s}
@@ -400,47 +428,50 @@ def riscv32_syscall_tbl_update():
     return
 
 def s390x_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
-    new_tbl = get_new_tbl("arch/s390/kernel/syscalls/syscall.tbl")[2:]
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
+    new_tbl = get_new_tbl("arch/s390/kernel/syscalls/syscall.tbl")
     old_tbl, s, e = get_gef_defs('s390x_syscall_tbl = """', '"""')
     print_diff(old_tbl, new_tbl)
     write_back(new_tbl, s, e)
     return
 
 def sh4_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
-    new_tbl = get_new_tbl("arch/sh/kernel/syscalls/syscall.tbl")[2:]
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
+    new_tbl = get_new_tbl("arch/sh/kernel/syscalls/syscall.tbl")
     old_tbl, s, e = get_gef_defs('sh4_syscall_tbl = """', '"""')
     print_diff(old_tbl, new_tbl)
     write_back(new_tbl, s, e)
     return
 
 def m68k_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
-    new_tbl = get_new_tbl("arch/m68k/kernel/syscalls/syscall.tbl")[2:]
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
+    new_tbl = get_new_tbl("arch/m68k/kernel/syscalls/syscall.tbl")
     old_tbl, s, e = get_gef_defs('m68k_syscall_tbl = """', '"""')
     print_diff(old_tbl, new_tbl)
     write_back(new_tbl, s, e)
     return
 
 def alpha_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
-    new_tbl = get_new_tbl("arch/alpha/kernel/syscalls/syscall.tbl")[2:]
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
+    new_tbl = get_new_tbl("arch/alpha/kernel/syscalls/syscall.tbl")
     old_tbl, s, e = get_gef_defs('alpha_syscall_tbl = """', '"""')
     print_diff(old_tbl, new_tbl)
     write_back(new_tbl, s, e)
     return
 
 def hppa_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
-    new_tbl = get_new_tbl("arch/parisc/kernel/syscalls/syscall.tbl")[2:]
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
+    new_tbl = get_new_tbl("arch/parisc/kernel/syscalls/syscall.tbl")
     old_tbl, s, e = get_gef_defs('hppa_syscall_tbl = """', '"""')
     print_diff(old_tbl, new_tbl)
     write_back(new_tbl, s, e)
     return
 
 def or1k_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
+    print("\033[1m" + "[!] skip {:s}. need fix manually.".format(sys._getframe().f_code.co_name[:-19]) + "\033[0m")
+    return
+
     new_tbl = get_new_tbl_by_cmds(
         r"""
         cd {:s}
@@ -455,7 +486,10 @@ def or1k_syscall_tbl_update():
     return
 
 def nios2_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
+    print("\033[1m" + "[!] skip {:s}. need fix manually.".format(sys._getframe().f_code.co_name[:-19]) + "\033[0m")
+    return
+
     new_tbl = get_new_tbl_by_cmds(
         r"""
         cd {:s}
@@ -470,23 +504,23 @@ def nios2_syscall_tbl_update():
     return
 
 def microblaze_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
-    new_tbl = get_new_tbl("arch/microblaze/kernel/syscalls/syscall.tbl")[2:]
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
+    new_tbl = get_new_tbl("arch/microblaze/kernel/syscalls/syscall.tbl")
     old_tbl, s, e = get_gef_defs('microblaze_syscall_tbl = """', '"""')
     print_diff(old_tbl, new_tbl)
     write_back(new_tbl, s, e)
     return
 
 def xtensa_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
-    new_tbl = get_new_tbl("arch/xtensa/kernel/syscalls/syscall.tbl")[2:]
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
+    new_tbl = get_new_tbl("arch/xtensa/kernel/syscalls/syscall.tbl")
     old_tbl, s, e = get_gef_defs('xtensa_syscall_tbl = """', '"""')
     print_diff(old_tbl, new_tbl)
     write_back(new_tbl, s, e)
     return
 
 def cris_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
     new_tbl = get_new_tbl_by_cmds(
         r"""
         cd {:s}
@@ -499,7 +533,10 @@ def cris_syscall_tbl_update():
     return
 
 def loongarch_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
+    print("\033[1m" + "[!] skip {:s}. need fix manually.".format(sys._getframe().f_code.co_name[:-19]) + "\033[0m")
+    return
+
     new_tbl = get_new_tbl_by_cmds(
         r"""
         cd {:s}
@@ -514,7 +551,10 @@ def loongarch_syscall_tbl_update():
     return
 
 def arc_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
+    print("\033[1m" + "[!] skip {:s}. need fix manually.".format(sys._getframe().f_code.co_name[:-19]) + "\033[0m")
+    return
+
     new_tbl = get_new_tbl_by_cmds(
         r"""
         cd {:s}
@@ -529,7 +569,10 @@ def arc_syscall_tbl_update():
     return
 
 def csky_syscall_tbl_update():
-    print(titlify(sys._getframe().f_code.co_name.rstrip("_update")))
+    print(titlify(sys._getframe().f_code.co_name[:-7]))
+    print("\033[1m" + "[!] skip {:s}. need fix manually.".format(sys._getframe().f_code.co_name[:-19]) + "\033[0m")
+    return
+
     new_tbl = get_new_tbl_by_cmds(
         r"""
         cd {:s}
@@ -553,8 +596,8 @@ if __name__ == "__main__":
     syscall_defs_compat_update()
 
     x64_syscall_tbl_update()
-    x86_syscall_tbl_update()
-    arm64_syscall_tbl_update()
+    i386_syscall_tbl_update()
+    arm64_syscall_tbl_update() # skip
     arm_compat_syscall_tbl_update()
     arm_native_syscall_tbl_update()
     mips_o32_syscall_tbl_update()
@@ -569,14 +612,14 @@ if __name__ == "__main__":
     m68k_syscall_tbl_update()
     alpha_syscall_tbl_update()
     hppa_syscall_tbl_update()
-    or1k_syscall_tbl_update()
-    nios2_syscall_tbl_update()
+    or1k_syscall_tbl_update() # skip
+    nios2_syscall_tbl_update() # skip
     microblaze_syscall_tbl_update()
     xtensa_syscall_tbl_update()
     #cris_syscall_tbl_update() # cris is removed at current linux
-    loongarch_syscall_tbl_update()
-    arc_syscall_tbl_update()
-    csky_syscall_tbl_update()
+    loongarch_syscall_tbl_update() # skip
+    arc_syscall_tbl_update() # skip
+    csky_syscall_tbl_update() # skip
 
-    print(titlify("patch result"))
-    print("patched gef.py is saved to {:s}".format(GEF_TMP_PATH))
+    print_patch_result()
+    cleanup()

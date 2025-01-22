@@ -723,7 +723,7 @@ See [docs/SUPPORTED-MODE.md](https://github.com/bata24/gef/blob/dev/docs/SUPPORT
     * `current-stack-frame`, `xref-telescope`, `bytearray`, and `bincompare`.
     * This is because a single file is more attractive than ease of maintenance.
 * The system-call table used by `syscall-args` is moved from gef-extras.
-    * It was updated up to linux kernel 6.12.0 for each architecture.
+    * It was updated up to linux kernel 6.13 for each architecture.
 * Removed some features I don't use.
     * `$`
     * `ida-interact`
